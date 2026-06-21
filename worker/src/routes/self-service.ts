@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
@@ -552,6 +553,9 @@ selfServiceRoutes.post("/kyc-requests", async (c) => {
 kycRoutes.get("/", async (c) => {
   const conditions: string[] = [];
   const bindings: unknown[] = [];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "employees", "manage", "e");
+  conditions.push(scope.sql);
+  bindings.push(...scope.params);
   const search = readString(c.req.query("search"));
   const status = readString(c.req.query("status"));
   const section = readString(c.req.query("section"));
@@ -598,6 +602,8 @@ kycRoutes.get("/", async (c) => {
 kycRoutes.post("/:id/approve", async (c) => {
   const body = await readJsonBody(c.req.raw);
   const reviewNote = readString(body.review_note);
+  const request = await c.env.DB.prepare("SELECT employee_id FROM employee_kyc_update_requests WHERE id = ?").bind(c.req.param("id")).first<{ employee_id: string }>();
+  if (!request || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), request.employee_id, "employees", "manage"))) return fail(c, 404, "NOT_FOUND", "KYC request was not found.");
   await c.env.DB.prepare("UPDATE employee_kyc_update_requests SET status = 'APPROVED', reviewed_by_user_id = ?, reviewed_at = ?, review_note = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, new Date().toISOString(), reviewNote || null, new Date().toISOString(), c.req.param("id")).run();
   await recordAudit(c.env.DB, {
     actorUserId: c.get("currentUser").id,
@@ -617,6 +623,8 @@ kycRoutes.post("/:id/reject", async (c) => {
   const body = await readJsonBody(c.req.raw);
   const reviewNote = readString(body.review_note);
   if (!reviewNote) return fail(c, 400, "REVIEW_NOTE_REQUIRED", "Review note is required when rejecting a KYC request.");
+  const request = await c.env.DB.prepare("SELECT employee_id FROM employee_kyc_update_requests WHERE id = ?").bind(c.req.param("id")).first<{ employee_id: string }>();
+  if (!request || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), request.employee_id, "employees", "manage"))) return fail(c, 404, "NOT_FOUND", "KYC request was not found.");
   await c.env.DB.prepare("UPDATE employee_kyc_update_requests SET status = 'REJECTED', reviewed_by_user_id = ?, reviewed_at = ?, review_note = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, new Date().toISOString(), reviewNote || null, new Date().toISOString(), c.req.param("id")).run();
   await recordAudit(c.env.DB, {
     actorUserId: c.get("currentUser").id,

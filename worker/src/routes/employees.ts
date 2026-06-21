@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
 import { getUserById } from "../db/users";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
+import { applyRoleMappingToEmployee, roleMappingPreviewForEmployee } from "./role-mappings";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
@@ -542,6 +544,9 @@ employeeRoutes.get("/settings/numbering/preview", requirePermission("employees.v
 employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
   const conditions: string[] = [];
   const params: BindValue[] = [];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "employees", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const search = readString(c.req.query("search"));
   if (search) {
     conditions.push("(e.employee_no LIKE ? OR e.full_name LIKE ? OR e.display_name LIKE ?)");
@@ -640,6 +645,9 @@ employeeRoutes.post("/", requirePermission("employees.create"), async (c) => {
 });
 
 employeeRoutes.get("/:id", requirePermission("employees.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const employee = await getEmployeeById(c.env.DB, c.req.param("id"));
   if (!employee) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
@@ -648,6 +656,9 @@ employeeRoutes.get("/:id", requirePermission("employees.view"), async (c) => {
 });
 
 employeeRoutes.patch("/:id", requirePermission("employees.update"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const existing = await getEmployeeById(c.env.DB, c.req.param("id"));
   if (!existing) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
@@ -706,6 +717,9 @@ employeeRoutes.patch("/:id", requirePermission("employees.update"), async (c) =>
 });
 
 employeeRoutes.post("/:id/status", requirePermission("employees.status.manage"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const employee = await getEmployeeById(c.env.DB, c.req.param("id"));
   if (!employee) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
@@ -735,6 +749,9 @@ employeeRoutes.post("/:id/status", requirePermission("employees.status.manage"),
 });
 
 employeeRoutes.post("/:id/archive", requirePermission("employees.archive"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const employee = await getEmployeeById(c.env.DB, c.req.param("id"));
   if (!employee) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
@@ -756,6 +773,9 @@ employeeRoutes.post("/:id/archive", requirePermission("employees.archive"), asyn
 });
 
 employeeRoutes.get("/:id/overview", requirePermission("employees.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const employee = await getEmployeeById(c.env.DB, c.req.param("id"));
   if (!employee) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
@@ -797,7 +817,27 @@ employeeRoutes.get("/:id/overview", requirePermission("employees.view"), async (
   });
 });
 
+employeeRoutes.get("/:id/user-access", requirePermission("role_mappings.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const preview = await roleMappingPreviewForEmployee(c, c.req.param("id"));
+  if (!preview) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  return ok(c, { preview });
+});
+
+employeeRoutes.post("/:id/user-access/apply", requirePermission("role_mappings.apply"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const body = await readJsonBody(c.req.raw).catch(() => ({} as Record<string, unknown>));
+  return applyRoleMappingToEmployee(c, c.req.param("id"), optionalString(body.role_mapping_rule_id));
+});
+
 employeeRoutes.get("/:id/contacts", requirePermission("employees.contacts.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const employee = await getEmployeeById(c.env.DB, c.req.param("id"));
   if (!employee) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
@@ -807,6 +847,9 @@ employeeRoutes.get("/:id/contacts", requirePermission("employees.contacts.view")
 });
 
 employeeRoutes.post("/:id/contacts", requirePermission("employees.contacts.manage"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const employee = await getEmployeeById(c.env.DB, c.req.param("id"));
   if (!employee) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
@@ -815,6 +858,9 @@ employeeRoutes.post("/:id/contacts", requirePermission("employees.contacts.manag
 });
 
 employeeRoutes.patch("/:id/contacts/:contactId", requirePermission("employees.contacts.manage"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const employee = await getEmployeeById(c.env.DB, c.req.param("id"));
   if (!employee) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
@@ -823,6 +869,9 @@ employeeRoutes.patch("/:id/contacts/:contactId", requirePermission("employees.co
 });
 
 employeeRoutes.post("/:id/contacts/:contactId/archive", requirePermission("employees.contacts.manage"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const contact = await c.env.DB.prepare("SELECT * FROM employee_contacts WHERE id = ? AND employee_id = ?").bind(c.req.param("contactId"), c.req.param("id")).first<ContactRow>();
   if (!contact) {
     return fail(c, 404, "NOT_FOUND", "Contact was not found.");
@@ -834,6 +883,9 @@ employeeRoutes.post("/:id/contacts/:contactId/archive", requirePermission("emplo
 });
 
 employeeRoutes.get("/:id/job-history", requirePermission("employees.job_history.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const rows = await c.env.DB
     .prepare(
       `SELECT h.*,
@@ -862,6 +914,9 @@ employeeRoutes.get("/:id/job-history", requirePermission("employees.job_history.
 });
 
 employeeRoutes.post("/:id/job-history", requirePermission("employees.job_history.manage"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const employee = await getEmployeeById(c.env.DB, c.req.param("id"));
   if (!employee) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
@@ -887,11 +942,17 @@ employeeRoutes.post("/:id/job-history", requirePermission("employees.job_history
 });
 
 employeeRoutes.get("/:id/onboarding", requirePermission("employees.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const rows = await c.env.DB.prepare("SELECT * FROM employee_onboarding_tasks WHERE employee_id = ? ORDER BY required DESC, created_at").bind(c.req.param("id")).all();
   return ok(c, { onboarding: rows.results });
 });
 
 employeeRoutes.patch("/:id/onboarding/:taskId", requirePermission("employees.onboarding.manage"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const body = await readJsonBody(c.req.raw);
   const status = body.status;
   if (typeof status !== "string" || !ONBOARDING_STATUSES.has(status as OnboardingStatus)) {
@@ -915,6 +976,9 @@ employeeRoutes.patch("/:id/onboarding/:taskId", requirePermission("employees.onb
 
 employeeRoutes.get("/:id/audit", requirePermission("employees.view"), async (c) => {
   const employeeId = c.req.param("id");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const rows = await c.env.DB.prepare(
     `SELECT * FROM audit_logs
      WHERE (module = 'employees' AND (entity_id = ? OR new_value_json LIKE ?))

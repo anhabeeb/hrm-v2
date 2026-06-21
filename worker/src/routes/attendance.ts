@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
+import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
@@ -293,6 +294,9 @@ function buildRecordFilters(c: Context<AppBindings>) {
 
 attendanceRoutes.get("/records", requirePermission("attendance.view"), async (c) => {
   const { conditions, params } = buildRecordFilters(c);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const rows = await c.env.DB
     .prepare(
       `SELECT ${recordColumns()}
@@ -312,6 +316,7 @@ attendanceRoutes.get("/records", requirePermission("attendance.view"), async (c)
 attendanceRoutes.get("/records/:id", requirePermission("attendance.view"), async (c) => {
   const record = await getRecord(c, routeParam(c, "id"));
   if (!record) return fail(c, 404, "NOT_FOUND", "Attendance record was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(record.employee_id), "attendance", "view"))) return fail(c, 404, "NOT_FOUND", "Attendance record was not found.");
   return ok(c, { record });
 });
 
@@ -321,6 +326,7 @@ attendanceRoutes.post("/records", requirePermission("attendance.manage"), async 
   const validation = validateRecord(input);
   if (validation) return fail(c, 400, "VALIDATION_ERROR", validation);
   if (!(await getEmployee(c, input.employee_id))) return fail(c, 400, "INVALID_EMPLOYEE", "Employee was not found or is archived.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), input.employee_id, "attendance", "manage"))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
   const duplicate = await c.env.DB.prepare("SELECT id FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(input.employee_id, input.attendance_date).first();
   if (duplicate) return fail(c, 409, "DUPLICATE_RECORD", "A daily attendance record already exists. Update the existing record instead.");
   const id = crypto.randomUUID();
@@ -343,6 +349,7 @@ attendanceRoutes.patch("/records/:id", requirePermission("attendance.manage"), a
   const id = routeParam(c, "id");
   const old = await getRecord(c, id);
   if (!old) return fail(c, 404, "NOT_FOUND", "Attendance record was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "attendance", "manage"))) return fail(c, 404, "NOT_FOUND", "Attendance record was not found.");
   const body = await readJsonBody(c.req.raw);
   const reason = optionalString(body.reason);
   const input = readRecordInput(body, old);
@@ -405,6 +412,9 @@ attendanceRoutes.post("/records/:id/recalculate-placeholder", requirePermission(
 
 attendanceRoutes.get("/calendar", requirePermission("attendance.view"), async (c) => {
   const { conditions, params } = buildRecordFilters(c);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const month = readString(c.req.query("month"));
   let overlayFrom = readString(c.req.query("date_from"));
   let overlayTo = readString(c.req.query("date_to"));
@@ -563,6 +573,9 @@ async function getCorrection(c: Context<AppBindings>, id: string) {
 attendanceRoutes.get("/corrections", requirePermission("attendance.view"), async (c) => {
   const conditions: string[] = [];
   const params: BindValue[] = [];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const search = readString(c.req.query("search"));
   if (search) {
     conditions.push("(e.employee_no LIKE ? OR e.full_name LIKE ?)");
@@ -583,6 +596,7 @@ attendanceRoutes.get("/corrections", requirePermission("attendance.view"), async
 attendanceRoutes.get("/corrections/:id", requirePermission("attendance.view"), async (c) => {
   const correction = await getCorrection(c, routeParam(c, "id"));
   if (!correction) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(correction.employee_id), "attendance", "view"))) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
   return ok(c, { correction });
 });
 
@@ -595,6 +609,7 @@ attendanceRoutes.post("/corrections", async (c) => {
   if (!employeeId || !validDate(attendanceDate) || !reason) return fail(c, 400, "VALIDATION_ERROR", "Employee, date, and reason are required.");
   const employee = await getEmployee(c, employeeId);
   if (!employee) return fail(c, 404, "EMPLOYEE_NOT_FOUND", "Employee was not found or is archived.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "attendance", has(c, "attendance.manage") ? "manage" : "view"))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
   if (!body.requested_clock_in && !body.requested_clock_out && !body.requested_status) return fail(c, 400, "VALIDATION_ERROR", "At least one requested correction field is required.");
   const current = await c.env.DB.prepare("SELECT * FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(employeeId, attendanceDate).first<Record<string, unknown>>();
   if (clockOutBeforeIn(optionalString(body.requested_clock_in), optionalString(body.requested_clock_out))) return fail(c, 400, "VALIDATION_ERROR", "Requested clock-out cannot be before clock-in.");
@@ -631,6 +646,7 @@ attendanceRoutes.post("/corrections/:id/approve", requirePermission("attendance.
   const id = routeParam(c, "id");
   const correction = await getCorrection(c, id);
   if (!correction) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(correction.employee_id), "attendance", "manage"))) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
   if (correction.status !== "SUBMITTED") return fail(c, 409, "INVALID_STATUS", "Only submitted correction requests can be approved.");
   const body = await readJsonBody(c.req.raw);
   const reviewNote = optionalString(body.review_note ?? body.note ?? body.reason);
@@ -651,6 +667,7 @@ attendanceRoutes.post("/corrections/:id/reject", requirePermission("attendance.a
   const id = routeParam(c, "id");
   const correction = await getCorrection(c, id);
   if (!correction) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(correction.employee_id), "attendance", "manage"))) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
   if (correction.status !== "SUBMITTED") return fail(c, 409, "INVALID_STATUS", "Only submitted correction requests can be rejected.");
   const body = await readJsonBody(c.req.raw);
   const note = optionalString(body.review_note ?? body.note ?? body.reason);
@@ -665,6 +682,7 @@ attendanceRoutes.post("/corrections/:id/cancel", async (c) => {
   const id = routeParam(c, "id");
   const correction = await getCorrection(c, id);
   if (!correction) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(correction.employee_id), "attendance", has(c, "attendance.manage") ? "manage" : "view"))) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
   if (correction.status !== "SUBMITTED") return fail(c, 409, "INVALID_STATUS", "Only submitted correction requests can be cancelled.");
   if (correction.requested_by_user_id !== c.get("currentUser").id && !has(c, "attendance.manage")) return fail(c, 403, "FORBIDDEN", "Only the requester or an attendance manager can cancel this correction.");
   const body = await readJsonBody(c.req.raw);
@@ -700,18 +718,23 @@ attendanceRoutes.patch("/settings", requirePermission("attendance.settings.manag
 
 attendanceRoutes.get("/dashboard", requirePermission("attendance.view"), async (c) => {
   const today = new Date().toISOString().slice(0, 10);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
+  const scopedEmployeeSql = `SELECT e.id FROM employees e WHERE ${scope.sql}`;
   const row = await c.env.DB.prepare(`SELECT
-    (SELECT COUNT(*) FROM attendance_daily_records WHERE attendance_date = ? AND status IN ('PRESENT','LATE','HALF_DAY')) AS present_today,
-    (SELECT COUNT(*) FROM attendance_daily_records WHERE attendance_date = ? AND status = 'ABSENT') AS absent_today,
-    (SELECT COUNT(*) FROM attendance_daily_records WHERE attendance_date = ? AND COALESCE(late_minutes,0) > 0) AS late_today,
-    (SELECT COUNT(*) FROM attendance_daily_records WHERE attendance_date = ? AND missed_punch = 1) AS missed_punch_today,
-    (SELECT COUNT(*) FROM attendance_correction_requests WHERE status = 'SUBMITTED') AS pending_corrections,
-    (SELECT COUNT(*) FROM attendance_devices WHERE status = 'ACTIVE') AS active_devices`).bind(today, today, today, today).first();
+    (SELECT COUNT(*) FROM attendance_daily_records WHERE employee_id IN (${scopedEmployeeSql}) AND attendance_date = ? AND status IN ('PRESENT','LATE','HALF_DAY')) AS present_today,
+    (SELECT COUNT(*) FROM attendance_daily_records WHERE employee_id IN (${scopedEmployeeSql}) AND attendance_date = ? AND status = 'ABSENT') AS absent_today,
+    (SELECT COUNT(*) FROM attendance_daily_records WHERE employee_id IN (${scopedEmployeeSql}) AND attendance_date = ? AND COALESCE(late_minutes,0) > 0) AS late_today,
+    (SELECT COUNT(*) FROM attendance_daily_records WHERE employee_id IN (${scopedEmployeeSql}) AND attendance_date = ? AND missed_punch = 1) AS missed_punch_today,
+    (SELECT COUNT(*) FROM attendance_correction_requests WHERE employee_id IN (${scopedEmployeeSql}) AND status = 'SUBMITTED') AS pending_corrections,
+    (SELECT COUNT(*) FROM attendance_devices WHERE status = 'ACTIVE') AS active_devices`).bind(...scope.params, today, ...scope.params, today, ...scope.params, today, ...scope.params, today, ...scope.params).first();
   return ok(c, row ?? {});
 });
 
 attendanceRoutes.get("/reports", requirePermission("attendance.reports.view"), async (c) => {
   const { conditions, params } = buildRecordFilters(c);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const rows = await c.env.DB.prepare(
     `SELECT e.id AS employee_id, e.employee_no, e.full_name AS employee_name,
        d.name AS department_name, l.name AS location_name,
@@ -733,6 +756,9 @@ attendanceRoutes.get("/reports", requirePermission("attendance.reports.view"), a
 
 attendanceRoutes.get("/reports/export.csv", requirePermission("attendance.reports.export"), async (c) => {
   const { conditions, params } = buildRecordFilters(c);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const rows = (await c.env.DB.prepare(`SELECT ${recordColumns()} FROM attendance_daily_records adr INNER JOIN employees e ON e.id = adr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY adr.attendance_date DESC LIMIT 5000`).bind(...params).all<Record<string, unknown>>()).results;
   await auditAttendance(c, { action: "attendance.report_exported", entityType: "attendance_report", entityId: "attendance_records_csv", newValue: { rows: rows.length } });
   const header = ["attendance_date", "employee_no", "employee_name", "department_name", "position_title", "location_name", "status", "first_clock_in", "last_clock_out", "total_work_minutes", "late_minutes", "early_checkout_minutes", "missed_punch", "source"];
@@ -741,17 +767,20 @@ attendanceRoutes.get("/reports/export.csv", requirePermission("attendance.report
 });
 
 employeeAttendanceRoutes.get("/:employeeId/attendance/records", requireAnyPermission(["employees.attendance.view", "attendance.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "attendance", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const rows = await c.env.DB.prepare(`SELECT ${recordColumns()} FROM attendance_daily_records adr INNER JOIN employees e ON e.id = adr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id WHERE adr.employee_id = ? ORDER BY adr.attendance_date DESC`).bind(routeParam(c, "employeeId")).all();
   return ok(c, { records: rows.results });
 });
 
 employeeAttendanceRoutes.get("/:employeeId/attendance/raw-logs", requireAnyPermission(["employees.attendance.view", "attendance.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "attendance", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const rows = await c.env.DB.prepare("SELECT arl.*, ad.name AS device_name, ad.device_code FROM attendance_raw_logs arl LEFT JOIN attendance_devices ad ON ad.id = arl.device_id WHERE arl.employee_id = ? ORDER BY arl.punch_time DESC LIMIT 100").bind(routeParam(c, "employeeId")).all();
   return ok(c, { logs: rows.results, raw_logs: rows.results });
 });
 
 employeeAttendanceRoutes.get("/:employeeId/attendance/calendar", requireAnyPermission(["employees.attendance.view", "attendance.view"]), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "attendance", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const month = readString(c.req.query("month"));
   const from = readString(c.req.query("date_from")) || (month && /^\d{4}-\d{2}$/.test(month) ? `${month}-01` : "");
   const to = readString(c.req.query("date_to")) || (month && /^\d{4}-\d{2}$/.test(month) ? `${month}-31` : "");
@@ -766,6 +795,7 @@ employeeAttendanceRoutes.get("/:employeeId/attendance/calendar", requireAnyPermi
 
 employeeAttendanceRoutes.get("/:employeeId/attendance/summary", requireAnyPermission(["employees.attendance.view", "attendance.view"]), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "attendance", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const [records, rawLogs, corrections, counts] = await Promise.all([
     c.env.DB.prepare(`SELECT ${recordColumns()} FROM attendance_daily_records adr INNER JOIN employees e ON e.id = adr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id WHERE adr.employee_id = ? ORDER BY adr.attendance_date DESC LIMIT 60`).bind(employeeId).all(),
     c.env.DB.prepare("SELECT arl.*, ad.name AS device_name FROM attendance_raw_logs arl LEFT JOIN attendance_devices ad ON ad.id = arl.device_id WHERE arl.employee_id = ? ORDER BY arl.punch_time DESC LIMIT 50").bind(employeeId).all(),

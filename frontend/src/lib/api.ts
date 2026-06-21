@@ -1,4 +1,4 @@
-import type { AccessUser, ApiEnvelope, AuthUser, BootstrapStatus, Permission, Role, UserStatus } from "../types/auth";
+import type { AccessScopeRule, AccessUser, ApiEnvelope, AuthUser, BootstrapStatus, EmployeeUserAccessPreview, Permission, Role, RoleMappingRule, UserStatus } from "../types/auth";
 import type { AttendanceCorrection, AttendanceDashboard, AttendanceDevice, AttendanceRawLog, AttendanceRecord, AttendanceSettings } from "../types/attendance";
 import type {
   CompanyInput,
@@ -346,6 +346,40 @@ export const api = {
   },
   listPermissions(token: string) {
     return request<{ permissions: Permission[]; modules: Record<string, Permission[]> }>("/api/v1/permissions", {}, token);
+  },
+  listRoleMappings(token: string) {
+    return request<{ role_mappings: RoleMappingRule[] }>("/api/v1/role-mappings", {}, token);
+  },
+  createRoleMapping(token: string, input: Record<string, unknown>) {
+    return request<{ role_mapping: RoleMappingRule }>("/api/v1/role-mappings", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateRoleMapping(token: string, id: string, input: Record<string, unknown>) {
+    return request<{ role_mapping: RoleMappingRule }>(`/api/v1/role-mappings/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  roleMappingAction(token: string, id: string, action: "enable" | "disable") {
+    return request<{ role_mapping: RoleMappingRule }>(`/api/v1/role-mappings/${id}/${action}`, { method: "POST" }, token);
+  },
+  listAccessScopes(token: string) {
+    return request<{ access_scopes: AccessScopeRule[] }>("/api/v1/access-scopes", {}, token);
+  },
+  createAccessScope(token: string, input: Record<string, unknown>) {
+    return request<{ access_scope: AccessScopeRule }>("/api/v1/access-scopes", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateAccessScope(token: string, id: string, input: Record<string, unknown>) {
+    return request<{ access_scope: AccessScopeRule }>(`/api/v1/access-scopes/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  accessScopeAction(token: string, id: string, action: "enable" | "disable") {
+    return request<{ access_scope: AccessScopeRule }>(`/api/v1/access-scopes/${id}/${action}`, { method: "POST" }, token);
+  },
+  getEmployeeUserAccess(token: string, employeeId: string) {
+    return request<{ preview: EmployeeUserAccessPreview }>(`/api/v1/employees/${employeeId}/user-access`, {}, token);
+  },
+  applyEmployeeRoleMapping(token: string, employeeId: string, role_mapping_rule_id?: string | null) {
+    return request<{ applied: boolean; preview: EmployeeUserAccessPreview }>(
+      `/api/v1/employees/${employeeId}/user-access/apply`,
+      { method: "POST", body: JSON.stringify({ role_mapping_rule_id: role_mapping_rule_id ?? null }) },
+      token
+    );
   },
   getCompany(token: string) {
     return request<{ company: OrganizationCompany | null }>("/api/v1/organization/company", {}, token);

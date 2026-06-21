@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
@@ -340,6 +341,9 @@ function addDateRange(c: Context<AppBindings>, conditions: string[], params: Bin
 async function listRegistry(c: Context<AppBindings>) {
   const conditions: string[] = [];
   const params: BindValue[] = [];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const search = readString(c.req.query("search"));
   if (search) {
     conditions.push("(e.employee_no LIKE ? OR e.full_name LIKE ? OR ed.document_number LIKE ?)");
@@ -622,6 +626,9 @@ documentRoutes.get("/registry", async (c) => {
 async function missingRows(c: Context<AppBindings>) {
   const conditions: string[] = ["rr.is_active = 1", "rr.is_required = 1"];
   const params: BindValue[] = [];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const search = readString(c.req.query("search"));
   if (search) {
     conditions.push("(e.employee_no LIKE ? OR e.full_name LIKE ? OR dt.name LIKE ?)");
@@ -727,6 +734,9 @@ documentRoutes.get("/dashboard", requirePermission("documents.view"), async (c) 
 
 employeeDocumentRoutes.get("/:employeeId/documents", requirePermission("documents.view"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   if (!(await ensureEmployee(c.env.DB, employeeId))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const docs = (await listRegistry(c)).filter((doc) => doc.employee_id === employeeId);
   const missing = (await missingRows(c)).filter((row) => (row as { employee_id?: string }).employee_id === employeeId);
@@ -752,6 +762,9 @@ async function createDocumentVersion(c: Context<AppBindings>, input: { employeeI
 
 async function uploadEmployeeDocument(c: Context<AppBindings>, replaceDocumentId?: string, forcedTypeId?: string, defaultReplacementReason?: string) {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const employee = await ensureEmployee(c.env.DB, employeeId);
   if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const body = await parseMultipart(c);
@@ -807,6 +820,9 @@ employeeDocumentRoutes.post("/:employeeId/documents/upload", requirePermission("
 employeeDocumentRoutes.post("/:employeeId/documents/:documentId/replace", requirePermission("documents.upload"), (c) => uploadEmployeeDocument(c, routeParam(c, "documentId")));
 
 employeeDocumentRoutes.patch("/:employeeId/documents/:documentId", requirePermission("documents.upload"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "documents", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Document was not found.");
+  }
   const doc = await getDocument(c.env.DB, routeParam(c, "documentId"), routeParam(c, "employeeId"));
   if (!doc) return fail(c, 404, "NOT_FOUND", "Document was not found.");
   const type = await getType(c.env.DB, doc.document_type_id);
@@ -823,6 +839,9 @@ employeeDocumentRoutes.patch("/:employeeId/documents/:documentId", requirePermis
 
 async function documentStatusAction(c: Context<AppBindings>, status: StoredStatus, permission: "documents.archive" | "documents.delete", action: string) {
   if (!hasPermission(c, permission)) return fail(c, 403, "FORBIDDEN", "You do not have permission to perform this action.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "documents", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Document was not found.");
+  }
   const doc = await getDocument(c.env.DB, routeParam(c, "documentId"), routeParam(c, "employeeId"));
   if (!doc) return fail(c, 404, "NOT_FOUND", "Document was not found.");
   const body = await readJsonBody(c.req.raw);
@@ -848,6 +867,9 @@ employeeDocumentRoutes.post("/:employeeId/documents/:documentId/restore", (c) =>
 employeeDocumentRoutes.post("/:employeeId/documents/:documentId/soft-delete", (c) => documentStatusAction(c, "SOFT_DELETED", "documents.delete", "soft_deleted"));
 
 employeeDocumentRoutes.delete("/:employeeId/documents/:documentId/permanent-delete", requirePermission("documents.permanent_delete"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "documents", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Document was not found.");
+  }
   const doc = await getDocument(c.env.DB, routeParam(c, "documentId"), routeParam(c, "employeeId"));
   if (!doc) return fail(c, 404, "NOT_FOUND", "Document was not found.");
   const body = await readJsonBody(c.req.raw);
@@ -865,6 +887,9 @@ employeeDocumentRoutes.delete("/:employeeId/documents/:documentId/permanent-dele
 });
 
 employeeDocumentRoutes.get("/:employeeId/documents/:documentId/download", async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "documents", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Document was not found.");
+  }
   const doc = await getDocument(c.env.DB, routeParam(c, "documentId"), routeParam(c, "employeeId"));
   if (!doc) return fail(c, 404, "NOT_FOUND", "Document was not found.");
   if (doc.is_sensitive === 1 && !hasPermission(c, "documents.sensitive.download")) return fail(c, 403, "FORBIDDEN", "Sensitive document download permission is required.");
@@ -884,6 +909,9 @@ employeeDocumentRoutes.get("/:employeeId/documents/:documentId/download", async 
 });
 
 employeeDocumentRoutes.get("/:employeeId/documents/:documentId/versions", requirePermission("documents.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "documents", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Document was not found.");
+  }
   const doc = await getDocument(c.env.DB, routeParam(c, "documentId"), routeParam(c, "employeeId"));
   if (!doc) return fail(c, 404, "NOT_FOUND", "Document was not found.");
   if (doc.is_sensitive === 1 && !hasPermission(c, "documents.sensitive.view")) return fail(c, 403, "FORBIDDEN", "Sensitive document permission is required.");
@@ -925,6 +953,9 @@ employeeDocumentRoutes.post("/:employeeId/profile-photo", requirePermission("doc
 
 employeeDocumentRoutes.delete("/:employeeId/profile-photo", requirePermission("documents.archive"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
   const type = await c.env.DB.prepare("SELECT * FROM document_types WHERE code = 'PROFILE_PHOTO'").first<DocumentTypeRow>();
   const employee = await c.env.DB.prepare("SELECT id, profile_photo_document_id FROM employees WHERE id = ?").bind(employeeId).first<{ id: string; profile_photo_document_id: string | null }>();
   if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
@@ -950,6 +981,9 @@ employeeDocumentRoutes.delete("/:employeeId/profile-photo", requirePermission("d
 
 employeeDocumentRoutes.get("/:employeeId/profile-photo", requirePermission("employees.view"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Profile photo was not found.");
+  }
   const employee = await c.env.DB.prepare("SELECT id, profile_photo_document_id FROM employees WHERE id = ?").bind(employeeId).first<{ id: string; profile_photo_document_id: string | null }>();
   if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   if (!employee?.profile_photo_document_id) return fail(c, 404, "NOT_FOUND", "Profile photo was not found.");

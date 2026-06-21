@@ -106,6 +106,8 @@ export interface AccessRealtimePayload {
     | "user"
     | "role"
     | "permission"
+    | "role_mapping_rule"
+    | "access_scope"
     | "company"
     | "location"
     | "department"

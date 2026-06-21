@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
+import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
@@ -93,9 +94,16 @@ function csvEscape(value: unknown) {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
 
-function payrollReportFilters(c: Context<AppBindings>, runId?: string) {
+async function addEmployeeScope(c: Context<AppBindings>, conditions: string[], params: BindValue[], action: "view" | "manage" = "view", employeeColumn = "e.id") {
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "payroll", action, "e");
+  conditions.push(`${employeeColumn} IN (SELECT e.id FROM employees e WHERE ${scope.sql})`);
+  params.push(...scope.params);
+}
+
+async function payrollReportFilters(c: Context<AppBindings>, runId?: string) {
   const conditions = runId ? ["pre.payroll_run_id = ?"] : ["1 = 1"];
   const params: BindValue[] = runId ? [runId] : [];
+  await addEmployeeScope(c, conditions, params, "view", "pre.employee_id");
   const periodId = readString(c.req.query("payroll_period_id") ?? c.req.query("period_id"));
   if (periodId) { conditions.push("pp.id = ?"); params.push(periodId); }
   const departmentId = readString(c.req.query("department_id"));
@@ -216,6 +224,11 @@ function employeeFilter(c: Context<AppBindings>, conditions: string[], params: B
   if (locationId) { conditions.push("e.primary_location_id = ?"); params.push(locationId); }
 }
 
+async function scopedEmployeeFilter(c: Context<AppBindings>, conditions: string[], params: BindValue[], action: "view" | "manage" = "view") {
+  await addEmployeeScope(c, conditions, params, action, "e.id");
+  employeeFilter(c, conditions, params);
+}
+
 async function getPeriod(c: Context<AppBindings>, id: string) {
   return c.env.DB.prepare("SELECT pp.*, u.name AS created_by_name FROM payroll_periods pp LEFT JOIN users u ON u.id = pp.created_by_user_id WHERE pp.id = ?").bind(id).first<Record<string, unknown>>();
 }
@@ -236,6 +249,31 @@ async function getRun(c: Context<AppBindings>, id: string) {
     .first<Record<string, unknown>>();
 }
 
+function canUseGlobalPayrollRunSummary(c: Context<AppBindings>, scope: Awaited<ReturnType<typeof buildEmployeeScopeWhereClause>>) {
+  return c.get("currentUser").is_owner || scope.summary.scope_type === "WHOLE_COMPANY";
+}
+
+async function getScopedRun(c: Context<AppBindings>, id: string, action: "view" | "manage" = "view") {
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "payroll", action, "e");
+  if (canUseGlobalPayrollRunSummary(c, scope)) return getRun(c, id);
+  const scopedEmployeeSql = `SELECT e.id FROM employees e WHERE ${scope.sql}`;
+  return c.env.DB
+    .prepare(
+      `SELECT pr.*, pp.period_month, pp.period_year, pp.start_date, pp.end_date,
+        COUNT(pre.id) AS employee_count,
+        COALESCE(SUM(pre.total_earnings), 0) AS total_earnings,
+        COALESCE(SUM(pre.total_deductions), 0) AS total_deductions,
+        COALESCE(SUM(pre.net_salary), 0) AS net_salary_total
+       FROM payroll_runs pr
+       INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id
+       INNER JOIN payroll_run_employees pre ON pre.payroll_run_id = pr.id
+       WHERE pr.id = ? AND pre.employee_id IN (${scopedEmployeeSql})
+       GROUP BY pr.id`
+    )
+    .bind(id, ...scope.params)
+    .first<Record<string, unknown>>();
+}
+
 async function recalculateRun(c: Context<AppBindings>, run: Record<string, unknown>, mode: "generate" | "recalculate") {
   const period = await getPeriod(c, String(run.payroll_period_id));
   if (!period) return { error: "Payroll period was not found." };
@@ -244,6 +282,7 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
   await c.env.DB.prepare("DELETE FROM payroll_run_lines WHERE payroll_run_employee_id IN (SELECT id FROM payroll_run_employees WHERE payroll_run_id = ?)").bind(runId).run();
   await c.env.DB.prepare("DELETE FROM payroll_run_employees WHERE payroll_run_id = ? AND status != 'HELD'").bind(runId).run();
 
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "payroll", "manage", "e");
   const employees = (await c.env.DB
     .prepare(
       `SELECT e.id, e.employee_no, e.full_name, e.primary_department_id, e.primary_position_id, e.primary_location_id,
@@ -251,9 +290,10 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
        FROM employees e
        INNER JOIN employee_statuses s ON s.id = e.status_id
        LEFT JOIN employee_payroll_profiles p ON p.employee_id = e.id
-       WHERE e.archived_at IS NULL
+       WHERE e.archived_at IS NULL AND ${scope.sql}
        ORDER BY e.employee_no`
     )
+    .bind(...scope.params)
     .all<Record<string, unknown>>()).results;
 
   const basicComponent = await componentByCode(c, "BASIC_SALARY");
@@ -459,6 +499,7 @@ payrollRoutes.patch("/settings", requirePermission("payroll.settings.manage"), a
 });
 
 employeePayrollRoutes.get("/:employeeId/payroll/profile", requireAnyPermission(["employees.payroll.view", "payroll.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const employee = await getEmployee(c, routeParam(c, "employeeId"));
   if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const profile = await ensureProfile(c, routeParam(c, "employeeId"));
@@ -467,6 +508,7 @@ employeePayrollRoutes.get("/:employeeId/payroll/profile", requireAnyPermission([
 
 employeePayrollRoutes.patch("/:employeeId/payroll/profile", requirePermission("employees.payroll.update"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const employee = await getEmployee(c, employeeId);
   if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const old = await ensureProfile(c, employeeId);
@@ -489,10 +531,14 @@ employeePayrollRoutes.patch("/:employeeId/payroll/profile", requirePermission("e
   return ok(c, { profile: saved });
 });
 
-employeePayrollRoutes.get("/:employeeId/payroll/salary-history", requireAnyPermission(["employees.payroll.view", "payroll.view"]), async (c) => ok(c, { salary_history: (await c.env.DB.prepare("SELECT * FROM employee_salary_history WHERE employee_id = ? ORDER BY effective_date DESC, created_at DESC").bind(routeParam(c, "employeeId")).all()).results }));
+employeePayrollRoutes.get("/:employeeId/payroll/salary-history", requireAnyPermission(["employees.payroll.view", "payroll.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  return ok(c, { salary_history: (await c.env.DB.prepare("SELECT * FROM employee_salary_history WHERE employee_id = ? ORDER BY effective_date DESC, created_at DESC").bind(routeParam(c, "employeeId")).all()).results });
+});
 
 employeePayrollRoutes.post("/:employeeId/payroll/salary-history", requirePermission("employees.payroll.update"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const profile = await ensureProfile(c, employeeId);
   if (!profile) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const body = await readJsonBody(c.req.raw);
@@ -509,10 +555,14 @@ employeePayrollRoutes.post("/:employeeId/payroll/salary-history", requirePermiss
   return ok(c, { salary_history: saved }, 201);
 });
 
-employeePayrollRoutes.get("/:employeeId/payroll/increments", requireAnyPermission(["employees.payroll.view", "payroll.view"]), async (c) => ok(c, { increments: (await c.env.DB.prepare("SELECT * FROM employee_increments WHERE employee_id = ? ORDER BY effective_date DESC, created_at DESC").bind(routeParam(c, "employeeId")).all()).results }));
+employeePayrollRoutes.get("/:employeeId/payroll/increments", requireAnyPermission(["employees.payroll.view", "payroll.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  return ok(c, { increments: (await c.env.DB.prepare("SELECT * FROM employee_increments WHERE employee_id = ? ORDER BY effective_date DESC, created_at DESC").bind(routeParam(c, "employeeId")).all()).results });
+});
 
 employeePayrollRoutes.post("/:employeeId/payroll/increments", requirePermission("employees.payroll.update"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const profile = await ensureProfile(c, employeeId);
   if (!profile) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const body = await readJsonBody(c.req.raw);
@@ -531,10 +581,14 @@ employeePayrollRoutes.post("/:employeeId/payroll/increments", requirePermission(
   return ok(c, { increment: saved }, 201);
 });
 
-employeePayrollRoutes.get("/:employeeId/payroll/advances", requireAnyPermission(["employees.payroll.view", "payroll.view", "payroll.advances.view"]), async (c) => ok(c, { advances: (await c.env.DB.prepare("SELECT * FROM payroll_advance_payments WHERE employee_id = ? ORDER BY payment_date DESC, created_at DESC").bind(routeParam(c, "employeeId")).all()).results }));
+employeePayrollRoutes.get("/:employeeId/payroll/advances", requireAnyPermission(["employees.payroll.view", "payroll.view", "payroll.advances.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  return ok(c, { advances: (await c.env.DB.prepare("SELECT * FROM payroll_advance_payments WHERE employee_id = ? ORDER BY payment_date DESC, created_at DESC").bind(routeParam(c, "employeeId")).all()).results });
+});
 
 employeePayrollRoutes.get("/:employeeId/payroll/summary", requireAnyPermission(["employees.payroll.view", "payroll.view"]), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const [profile, salary, increments, advances, deductions, runs, settlements, audit] = await Promise.all([
     ensureProfile(c, employeeId),
     c.env.DB.prepare("SELECT * FROM employee_salary_history WHERE employee_id = ? ORDER BY effective_date DESC LIMIT 20").bind(employeeId).all(),
@@ -575,7 +629,7 @@ employeePayrollRoutes.get("/:employeeId/payroll/summary", requireAnyPermission([
 payrollRoutes.get("/advances", requireAnyPermission(["payroll.advances.view", "payroll.view"]), async (c) => {
   const conditions = ["1 = 1"];
   const params: BindValue[] = [];
-  employeeFilter(c, conditions, params);
+  await scopedEmployeeFilter(c, conditions, params);
   const departmentId = readString(c.req.query("department_id"));
   if (departmentId) { conditions.push("e.primary_department_id = ?"); params.push(departmentId); }
   const locationId = readString(c.req.query("location_id"));
@@ -593,6 +647,7 @@ payrollRoutes.get("/advances", requireAnyPermission(["payroll.advances.view", "p
 payrollRoutes.get("/advances/:id", requireAnyPermission(["payroll.advances.view", "payroll.view"]), async (c) => {
   const row = await c.env.DB.prepare("SELECT * FROM payroll_advance_payments WHERE id = ?").bind(routeParam(c, "id")).first();
   if (!row) return fail(c, 404, "NOT_FOUND", "Advance payment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String((row as Record<string, unknown>).employee_id), "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Advance payment was not found.");
   return ok(c, { advance: row });
 });
 
@@ -601,6 +656,7 @@ payrollRoutes.post("/advances", requirePermission("payroll.advances.manage"), as
   const employeeId = readString(body.employee_id);
   const employee = await getEmployee(c, employeeId);
   if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "manage"))) return fail(c, 403, "FORBIDDEN", "You do not have payroll access to this employee.");
   const profile = await ensureProfile(c, employeeId);
   const amount = num(body.amount, null);
   const paymentDate = readString(body.payment_date);
@@ -621,6 +677,7 @@ payrollRoutes.patch("/advances/:id", requirePermission("payroll.advances.manage"
   const id = routeParam(c, "id");
   const old = await c.env.DB.prepare("SELECT * FROM payroll_advance_payments WHERE id = ?").bind(id).first<Record<string, unknown>>();
   if (!old) return fail(c, 404, "NOT_FOUND", "Advance payment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Advance payment was not found.");
   const body = await readJsonBody(c.req.raw);
   const amount = num(body.amount, Number(old.amount)) ?? Number(old.amount);
   if (amount <= 0) return fail(c, 400, "VALIDATION_ERROR", "Advance amount must be positive.");
@@ -635,6 +692,7 @@ async function advanceStatus(c: Context<AppBindings>, status: "APPROVED" | "PAID
   const id = routeParam(c, "id");
   const old = await c.env.DB.prepare("SELECT * FROM payroll_advance_payments WHERE id = ?").bind(id).first<Record<string, unknown>>();
   if (!old) return fail(c, 404, "NOT_FOUND", "Advance payment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Advance payment was not found.");
   const body: Record<string, unknown> = await readJsonBody(c.req.raw).catch(() => ({}));
   if (status === "CANCELLED" && !optionalString(body.reason)) return fail(c, 400, "VALIDATION_ERROR", "Cancellation reason is required.");
   const now = isoNow();
@@ -655,7 +713,7 @@ payrollRoutes.post("/advances/:id/cancel", requirePermission("payroll.advances.m
 payrollRoutes.get("/deductions", requirePermission("payroll.view"), async (c) => {
   const conditions = ["1 = 1"];
   const params: BindValue[] = [];
-  employeeFilter(c, conditions, params);
+  await scopedEmployeeFilter(c, conditions, params);
   const departmentId = readString(c.req.query("department_id"));
   if (departmentId) { conditions.push("e.primary_department_id = ?"); params.push(departmentId); }
   const locationId = readString(c.req.query("location_id"));
@@ -674,6 +732,7 @@ payrollRoutes.post("/deductions", requirePermission("payroll.adjustments.manage"
   const type = readString(body.deduction_type).toUpperCase();
   const reason = readString(body.reason);
   if (!readString(body.employee_id) || amount == null || amount <= 0 || !DEDUCTION_TYPES.has(type) || !reason) return fail(c, 400, "VALIDATION_ERROR", "Employee, deduction type, amount, and reason are required.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), readString(body.employee_id), "payroll", "manage"))) return fail(c, 403, "FORBIDDEN", "You do not have payroll access to this employee.");
   const id = crypto.randomUUID();
   await c.env.DB.prepare("INSERT INTO payroll_deductions (id, employee_id, payroll_component_id, deduction_type, amount, start_date, end_date, payroll_period_id, reason, status, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?)").bind(id, readString(body.employee_id), optionalString(body.payroll_component_id), type, amount, optionalString(body.start_date), optionalString(body.end_date), optionalString(body.payroll_period_id), reason, c.get("currentUser").id).run();
   const saved = await c.env.DB.prepare("SELECT * FROM payroll_deductions WHERE id = ?").bind(id).first();
@@ -685,6 +744,7 @@ payrollRoutes.patch("/deductions/:id", requirePermission("payroll.adjustments.ma
   const id = routeParam(c, "id");
   const old = await c.env.DB.prepare("SELECT * FROM payroll_deductions WHERE id = ?").bind(id).first<Record<string, unknown>>();
   if (!old) return fail(c, 404, "NOT_FOUND", "Deduction was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Deduction was not found.");
   const body = await readJsonBody(c.req.raw);
   const amount = num(body.amount, Number(old.amount)) ?? Number(old.amount);
   const type = readString(body.deduction_type ?? old.deduction_type).toUpperCase();
@@ -699,6 +759,7 @@ async function deductionAction(c: Context<AppBindings>, status: "ACTIVE" | "INAC
   const id = routeParam(c, "id");
   const old = await c.env.DB.prepare("SELECT * FROM payroll_deductions WHERE id = ?").bind(id).first();
   if (!old) return fail(c, 404, "NOT_FOUND", "Deduction was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String((old as Record<string, unknown>).employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Deduction was not found.");
   const body: Record<string, unknown> = await readJsonBody(c.req.raw).catch(() => ({}));
   if (status === "CANCELLED" && !optionalString(body.reason)) return fail(c, 400, "VALIDATION_ERROR", "Cancellation reason is required.");
   await c.env.DB.prepare("UPDATE payroll_deductions SET status = ?, updated_at = ? WHERE id = ?").bind(status, isoNow(), id).run();
@@ -714,7 +775,7 @@ payrollRoutes.post("/deductions/:id/cancel", requirePermission("payroll.adjustme
 payrollRoutes.get("/adjustments", requirePermission("payroll.view"), async (c) => {
   const conditions = ["1 = 1"];
   const params: BindValue[] = [];
-  employeeFilter(c, conditions, params);
+  await scopedEmployeeFilter(c, conditions, params);
   const rows = await c.env.DB.prepare(`SELECT x.*, e.employee_no, e.full_name AS employee_name FROM payroll_adjustments x INNER JOIN employees e ON e.id = x.employee_id WHERE ${conditions.join(" AND ")} ORDER BY x.created_at DESC LIMIT 500`).bind(...params).all();
   return ok(c, { adjustments: rows.results });
 });
@@ -725,6 +786,7 @@ payrollRoutes.post("/adjustments", requirePermission("payroll.adjustments.manage
   const amount = num(body.amount, null);
   const reason = readString(body.reason);
   if (!readString(body.employee_id) || !ADJUSTMENT_TYPES.has(type) || amount == null || amount <= 0 || !reason) return fail(c, 400, "VALIDATION_ERROR", "Employee, adjustment type, amount, and reason are required.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), readString(body.employee_id), "payroll", "manage"))) return fail(c, 403, "FORBIDDEN", "You do not have payroll access to this employee.");
   const id = crypto.randomUUID();
   await c.env.DB.prepare("INSERT INTO payroll_adjustments (id, employee_id, payroll_period_id, adjustment_type, amount, reason, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(id, readString(body.employee_id), optionalString(body.payroll_period_id), type, amount, reason, c.get("currentUser").id).run();
   const saved = await c.env.DB.prepare("SELECT * FROM payroll_adjustments WHERE id = ?").bind(id).first();
@@ -736,6 +798,7 @@ payrollRoutes.patch("/adjustments/:id", requirePermission("payroll.adjustments.m
   const id = routeParam(c, "id");
   const old = await c.env.DB.prepare("SELECT * FROM payroll_adjustments WHERE id = ?").bind(id).first<Record<string, unknown>>();
   if (!old) return fail(c, 404, "NOT_FOUND", "Adjustment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Adjustment was not found.");
   const body = await readJsonBody(c.req.raw);
   const status = readString(body.status ?? old.status).toUpperCase();
   await c.env.DB.prepare("UPDATE payroll_adjustments SET payroll_period_id = ?, amount = ?, reason = ?, status = ?, updated_at = ? WHERE id = ?").bind(optionalString(body.payroll_period_id ?? old.payroll_period_id), num(body.amount, Number(old.amount)), readString(body.reason ?? old.reason), ADJUSTMENT_STATUSES.has(status) ? status : old.status, isoNow(), id).run();
@@ -748,6 +811,7 @@ async function adjustmentAction(c: Context<AppBindings>, status: "APPROVED" | "C
   const id = routeParam(c, "id");
   const old = await c.env.DB.prepare("SELECT * FROM payroll_adjustments WHERE id = ?").bind(id).first();
   if (!old) return fail(c, 404, "NOT_FOUND", "Adjustment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String((old as Record<string, unknown>).employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Adjustment was not found.");
   const body: Record<string, unknown> = await readJsonBody(c.req.raw).catch(() => ({}));
   if (status === "CANCELLED" && !optionalString(body.reason)) return fail(c, 400, "VALIDATION_ERROR", "Cancellation reason is required.");
   await c.env.DB.prepare("UPDATE payroll_adjustments SET status = ?, approved_by_user_id = ?, approved_at = ?, updated_at = ? WHERE id = ?").bind(status, status === "APPROVED" ? c.get("currentUser").id : null, status === "APPROVED" ? isoNow() : null, isoNow(), id).run();
@@ -837,18 +901,35 @@ payrollRoutes.post("/periods/:id/cancel", requirePermission("payroll.manage"), a
 payrollRoutes.get("/runs", requirePermission("payroll.view"), async (c) => {
   const conditions = ["1 = 1"];
   const params: BindValue[] = [];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "payroll", "view", "e");
+  const globalSummary = canUseGlobalPayrollRunSummary(c, scope);
+  const scopedEmployeeSql = `SELECT e.id FROM employees e WHERE ${scope.sql}`;
   const periodId = readString(c.req.query("period_id") ?? c.req.query("payroll_period_id"));
   if (periodId) { conditions.push("pr.payroll_period_id = ?"); params.push(periodId); }
   const status = readString(c.req.query("status")).toUpperCase();
   if (status && RUN_STATUSES.has(status)) { conditions.push("pr.status = ?"); params.push(status); }
   const search = readString(c.req.query("search"));
   if (search) { conditions.push("(CAST(pr.run_no AS TEXT) LIKE ? OR pp.period_year LIKE ? OR pp.period_month LIKE ?)"); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
-  const rows = await c.env.DB.prepare(`SELECT pr.*, pp.period_month, pp.period_year, (SELECT COUNT(*) FROM payroll_run_employees pre WHERE pre.payroll_run_id = pr.id) AS employee_count, (SELECT COALESCE(SUM(total_earnings),0) FROM payroll_run_employees pre WHERE pre.payroll_run_id = pr.id) AS total_earnings, (SELECT COALESCE(SUM(total_deductions),0) FROM payroll_run_employees pre WHERE pre.payroll_run_id = pr.id) AS total_deductions, (SELECT COALESCE(SUM(net_salary),0) FROM payroll_run_employees pre WHERE pre.payroll_run_id = pr.id) AS net_salary_total FROM payroll_runs pr INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE ${conditions.join(" AND ")} ORDER BY pp.period_year DESC, pp.period_month DESC, pr.run_no DESC`).bind(...params).all();
+  const rows = globalSummary
+    ? await c.env.DB.prepare(`SELECT pr.*, pp.period_month, pp.period_year, (SELECT COUNT(*) FROM payroll_run_employees pre WHERE pre.payroll_run_id = pr.id) AS employee_count, (SELECT COALESCE(SUM(total_earnings),0) FROM payroll_run_employees pre WHERE pre.payroll_run_id = pr.id) AS total_earnings, (SELECT COALESCE(SUM(total_deductions),0) FROM payroll_run_employees pre WHERE pre.payroll_run_id = pr.id) AS total_deductions, (SELECT COALESCE(SUM(net_salary),0) FROM payroll_run_employees pre WHERE pre.payroll_run_id = pr.id) AS net_salary_total FROM payroll_runs pr INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE ${conditions.join(" AND ")} ORDER BY pp.period_year DESC, pp.period_month DESC, pr.run_no DESC`).bind(...params).all()
+    : await c.env.DB.prepare(
+      `SELECT pr.*, pp.period_month, pp.period_year,
+        COUNT(pre.id) AS employee_count,
+        COALESCE(SUM(pre.total_earnings),0) AS total_earnings,
+        COALESCE(SUM(pre.total_deductions),0) AS total_deductions,
+        COALESCE(SUM(pre.net_salary),0) AS net_salary_total
+       FROM payroll_runs pr
+       INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id
+       INNER JOIN payroll_run_employees pre ON pre.payroll_run_id = pr.id
+       WHERE ${conditions.join(" AND ")} AND pre.employee_id IN (${scopedEmployeeSql})
+       GROUP BY pr.id
+       ORDER BY pp.period_year DESC, pp.period_month DESC, pr.run_no DESC`
+    ).bind(...params, ...scope.params).all();
   return ok(c, { runs: rows.results });
 });
 
 payrollRoutes.get("/runs/:id", requirePermission("payroll.view"), async (c) => {
-  const run = await getRun(c, routeParam(c, "id"));
+  const run = await getScopedRun(c, routeParam(c, "id"));
   if (!run) return fail(c, 404, "NOT_FOUND", "Payroll run was not found.");
   return ok(c, { run });
 });
@@ -917,11 +998,17 @@ payrollRoutes.post("/runs/:id/cancel", requirePermission("payroll.manage"), asyn
   return ok(c, { cancelled: true });
 });
 
-payrollRoutes.get("/runs/:id/employees", requirePermission("payroll.view"), async (c) => ok(c, { employees: (await c.env.DB.prepare("SELECT pre.*, d.name AS department_name, l.name AS location_name FROM payroll_run_employees pre LEFT JOIN departments d ON d.id = pre.department_id LEFT JOIN locations l ON l.id = pre.location_id WHERE pre.payroll_run_id = ? ORDER BY pre.employee_no_snapshot").bind(routeParam(c, "id")).all()).results }));
+payrollRoutes.get("/runs/:id/employees", requirePermission("payroll.view"), async (c) => {
+  const conditions = ["pre.payroll_run_id = ?"];
+  const params: BindValue[] = [routeParam(c, "id")];
+  await addEmployeeScope(c, conditions, params, "view", "pre.employee_id");
+  return ok(c, { employees: (await c.env.DB.prepare(`SELECT pre.*, d.name AS department_name, l.name AS location_name FROM payroll_run_employees pre LEFT JOIN departments d ON d.id = pre.department_id LEFT JOIN locations l ON l.id = pre.location_id WHERE ${conditions.join(" AND ")} ORDER BY pre.employee_no_snapshot`).bind(...params).all()).results });
+});
 
 payrollRoutes.get("/runs/:id/employees/:runEmployeeId", requirePermission("payroll.view"), async (c) => {
   const row = await getRunEmployee(c, routeParam(c, "runEmployeeId"));
   if (!row) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(row.employee_id), "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
   return ok(c, { employee: row });
 });
 
@@ -929,6 +1016,7 @@ payrollRoutes.patch("/runs/:id/employees/:runEmployeeId", requirePermission("pay
   const id = routeParam(c, "runEmployeeId");
   const old = await getRunEmployee(c, id);
   if (!old) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
   const body = await readJsonBody(c.req.raw);
   const status = readString(body.status ?? old.status).toUpperCase();
   await c.env.DB.prepare("UPDATE payroll_run_employees SET status = ?, hold_reason = ?, updated_at = ? WHERE id = ?").bind(RUN_EMPLOYEE_STATUSES.has(status) ? status : old.status, optionalString(body.hold_reason ?? old.hold_reason), isoNow(), id).run();
@@ -944,6 +1032,7 @@ payrollRoutes.post("/runs/:id/employees/:runEmployeeId/hold", requirePermission(
   const id = routeParam(c, "runEmployeeId");
   const old = await getRunEmployee(c, id);
   if (!old) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
   await c.env.DB.prepare("UPDATE payroll_run_employees SET status = 'HELD', hold_reason = ?, updated_at = ? WHERE id = ?").bind(reason, isoNow(), id).run();
   await auditPayroll(c, { action: "payroll.run_employee.held", entityType: "payroll_run_employee", entityId: id, oldValue: old, reason });
   return ok(c, { employee: await getRunEmployee(c, id) });
@@ -953,26 +1042,43 @@ payrollRoutes.post("/runs/:id/employees/:runEmployeeId/release-hold", requirePer
   const id = routeParam(c, "runEmployeeId");
   const old = await getRunEmployee(c, id);
   if (!old) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
   await c.env.DB.prepare("UPDATE payroll_run_employees SET status = 'REVIEW', hold_reason = NULL, updated_at = ? WHERE id = ?").bind(isoNow(), id).run();
   await auditPayroll(c, { action: "payroll.run_employee.released", entityType: "payroll_run_employee", entityId: id, oldValue: old });
   return ok(c, { employee: await getRunEmployee(c, id) });
 });
 
-payrollRoutes.get("/runs/:id/employees/:runEmployeeId/lines", requirePermission("payroll.view"), async (c) => ok(c, { lines: (await c.env.DB.prepare("SELECT prl.*, pc.code AS component_code, pc.name AS component_name FROM payroll_run_lines prl LEFT JOIN payroll_components pc ON pc.id = prl.payroll_component_id WHERE payroll_run_employee_id = ? ORDER BY line_type, category, description").bind(routeParam(c, "runEmployeeId")).all()).results }));
+payrollRoutes.get("/runs/:id/employees/:runEmployeeId/lines", requirePermission("payroll.view"), async (c) => {
+  const row = await getRunEmployee(c, routeParam(c, "runEmployeeId"));
+  if (!row || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(row.employee_id), "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
+  return ok(c, { lines: (await c.env.DB.prepare("SELECT prl.*, pc.code AS component_code, pc.name AS component_name FROM payroll_run_lines prl LEFT JOIN payroll_components pc ON pc.id = prl.payroll_component_id WHERE payroll_run_employee_id = ? ORDER BY line_type, category, description").bind(routeParam(c, "runEmployeeId")).all()).results });
+});
 
 payrollRoutes.get("/dashboard", requirePermission("payroll.view"), async (c) => {
   const currentPeriod = await c.env.DB.prepare("SELECT * FROM payroll_periods ORDER BY CASE status WHEN 'OPEN' THEN 0 WHEN 'PROCESSING' THEN 1 WHEN 'REVIEW' THEN 2 ELSE 3 END, period_year DESC, period_month DESC LIMIT 1").first();
-  const row = await c.env.DB.prepare(`SELECT
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "payroll", "view", "e");
+  const globalSummary = canUseGlobalPayrollRunSummary(c, scope);
+  const scopedEmployeeSql = `SELECT e.id FROM employees e WHERE ${scope.sql}`;
+  const draftRunsSql = globalSummary
+    ? "(SELECT COUNT(*) FROM payroll_runs WHERE status = 'DRAFT')"
+    : "(SELECT COUNT(DISTINCT pr.id) FROM payroll_runs pr INNER JOIN payroll_run_employees pre ON pre.payroll_run_id = pr.id WHERE pr.status = 'DRAFT' AND pre.employee_id IN (SELECT id FROM scoped_employees))";
+  const approvedRunsSql = globalSummary
+    ? "(SELECT COUNT(*) FROM payroll_runs WHERE status = 'APPROVED')"
+    : "(SELECT COUNT(DISTINCT pr.id) FROM payroll_runs pr INNER JOIN payroll_run_employees pre ON pre.payroll_run_id = pr.id WHERE pr.status = 'APPROVED' AND pre.employee_id IN (SELECT id FROM scoped_employees))";
+  const paidRunsSql = globalSummary
+    ? "(SELECT COUNT(*) FROM payroll_runs WHERE status = 'PAID')"
+    : "(SELECT COUNT(DISTINCT pr.id) FROM payroll_runs pr INNER JOIN payroll_run_employees pre ON pre.payroll_run_id = pr.id WHERE pr.status = 'PAID' AND pre.employee_id IN (SELECT id FROM scoped_employees))";
+  const row = await c.env.DB.prepare(`WITH scoped_employees AS (${scopedEmployeeSql}) SELECT
     (SELECT status FROM payroll_periods ORDER BY period_year DESC, period_month DESC LIMIT 1) AS current_payroll_period_status,
-    (SELECT COUNT(*) FROM payroll_runs WHERE status = 'DRAFT') AS draft_payroll_runs,
-    (SELECT COUNT(*) FROM payroll_runs WHERE status = 'APPROVED') AS approved_payroll_runs,
-    (SELECT COUNT(*) FROM payroll_runs WHERE status = 'PAID') AS paid_payroll_runs,
-    (SELECT COALESCE(SUM(pre.net_salary), 0) FROM payroll_run_employees pre INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE pp.id = (SELECT id FROM payroll_periods ORDER BY period_year DESC, period_month DESC LIMIT 1)) AS total_payroll_amount_current_period,
-    (SELECT COUNT(*) FROM payroll_advance_payments WHERE status IN ('REQUESTED', 'APPROVED')) AS advance_payments_pending,
-    (SELECT COUNT(*) FROM employee_payroll_profiles WHERE payroll_included = 0) AS employees_excluded_from_payroll,
-    (SELECT COUNT(*) FROM attendance_daily_records WHERE status = 'ABSENT') AS attendance_deduction_candidates,
-    (SELECT COUNT(*) FROM leave_request_days lrd INNER JOIN leave_requests lr ON lr.id = lrd.leave_request_id LEFT JOIN leave_policies lp ON lp.id = lr.policy_id WHERE lr.status = 'APPROVED' AND lp.salary_deduction_mode != 'NONE') AS leave_deduction_candidates,
-    (SELECT COUNT(*) FROM payroll_run_employees WHERE status = 'HELD') AS payroll_holds`).first();
+    ${draftRunsSql} AS draft_payroll_runs,
+    ${approvedRunsSql} AS approved_payroll_runs,
+    ${paidRunsSql} AS paid_payroll_runs,
+    (SELECT COALESCE(SUM(pre.net_salary), 0) FROM payroll_run_employees pre INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE pre.employee_id IN (SELECT id FROM scoped_employees) AND pp.id = (SELECT id FROM payroll_periods ORDER BY period_year DESC, period_month DESC LIMIT 1)) AS total_payroll_amount_current_period,
+    (SELECT COUNT(*) FROM payroll_advance_payments WHERE employee_id IN (SELECT id FROM scoped_employees) AND status IN ('REQUESTED', 'APPROVED')) AS advance_payments_pending,
+    (SELECT COUNT(*) FROM employee_payroll_profiles WHERE employee_id IN (SELECT id FROM scoped_employees) AND payroll_included = 0) AS employees_excluded_from_payroll,
+    (SELECT COUNT(*) FROM attendance_daily_records WHERE employee_id IN (SELECT id FROM scoped_employees) AND status = 'ABSENT') AS attendance_deduction_candidates,
+    (SELECT COUNT(*) FROM leave_request_days lrd INNER JOIN leave_requests lr ON lr.id = lrd.leave_request_id LEFT JOIN leave_policies lp ON lp.id = lr.policy_id WHERE lr.employee_id IN (SELECT id FROM scoped_employees) AND lr.status = 'APPROVED' AND lp.salary_deduction_mode != 'NONE') AS leave_deduction_candidates,
+    (SELECT COUNT(*) FROM payroll_run_employees WHERE employee_id IN (SELECT id FROM scoped_employees) AND status = 'HELD') AS payroll_holds`).bind(...scope.params).first();
   return ok(c, {
     ...(row ?? {}),
     current_period: currentPeriod ?? null,
@@ -989,13 +1095,13 @@ payrollRoutes.get("/dashboard", requirePermission("payroll.view"), async (c) => 
 });
 
 payrollRoutes.get("/reports", requirePermission("payroll.reports.view"), async (c) => {
-  const { conditions, params } = payrollReportFilters(c);
+  const { conditions, params } = await payrollReportFilters(c);
   const rows = await c.env.DB.prepare(`SELECT pp.period_month, pp.period_year, pre.employee_id, pre.employee_no_snapshot, pre.employee_name_snapshot, d.name AS department_name, l.name AS location_name, pre.basic_salary, pre.advance_deductions, pre.days_worked, pre.missed_date_ranges_json, pre.total_deductions, pre.net_salary, pre.status FROM payroll_run_employees pre INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id LEFT JOIN departments d ON d.id = pre.department_id LEFT JOIN locations l ON l.id = pre.location_id WHERE ${conditions.join(" AND ")} ORDER BY pp.period_year DESC, pp.period_month DESC, pre.employee_no_snapshot LIMIT 1000`).bind(...params).all();
   return ok(c, { reports: rows.results });
 });
 
 async function payrollReportCsv(c: Context<AppBindings>, runId?: string) {
-  const { conditions, params } = payrollReportFilters(c, runId);
+  const { conditions, params } = await payrollReportFilters(c, runId);
   const rows = (await c.env.DB.prepare(`SELECT pp.period_month, pp.period_year, pre.employee_no_snapshot, pre.employee_name_snapshot, d.name AS department_name, l.name AS location_name, pre.basic_salary, pre.advance_deductions, pre.days_worked, pre.missed_date_ranges_json, pre.total_deductions, pre.net_salary, pre.status FROM payroll_run_employees pre INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id LEFT JOIN departments d ON d.id = pre.department_id LEFT JOIN locations l ON l.id = pre.location_id WHERE ${conditions.join(" AND ")} ORDER BY pre.employee_no_snapshot`).bind(...params).all<Record<string, unknown>>()).results;
   await auditPayroll(c, { action: "payroll.report_exported", entityType: "payroll_report", entityId: runId ?? "payroll_summary", newValue: { rows: rows.length } });
   const header = ["period_month", "period_year", "employee_no_snapshot", "employee_name_snapshot", "department_name", "location_name", "basic_salary", "advance_deductions", "days_worked", "missed_date_ranges_json", "total_deductions", "net_salary", "status"];
@@ -1009,7 +1115,7 @@ payrollRoutes.get("/runs/:id/export.csv", requirePermission("payroll.reports.exp
 payrollRoutes.get("/final-settlements", requirePermission("payroll.view"), async (c) => {
   const conditions = ["1 = 1"];
   const params: BindValue[] = [];
-  employeeFilter(c, conditions, params);
+  await scopedEmployeeFilter(c, conditions, params);
   const rows = (await c.env.DB.prepare(`SELECT fs.*, e.employee_no, e.full_name AS employee_name FROM final_settlements fs INNER JOIN employees e ON e.id = fs.employee_id WHERE ${conditions.join(" AND ")} ORDER BY fs.created_at DESC LIMIT 500`).bind(...params).all()).results;
   return ok(c, { final_settlements: rows, settlements: rows });
 });
@@ -1018,6 +1124,7 @@ payrollRoutes.post("/final-settlements", requirePermission("payroll.manage"), as
   const body = await readJsonBody(c.req.raw);
   const employeeId = readString(body.employee_id);
   if (!employeeId) return fail(c, 400, "VALIDATION_ERROR", "Employee is required.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "manage"))) return fail(c, 403, "FORBIDDEN", "You do not have payroll access to this employee.");
   const id = crypto.randomUUID();
   await c.env.DB.prepare("INSERT INTO final_settlements (id, employee_id, payroll_period_id, final_salary_amount, pending_advance_amount, pending_deduction_amount, leave_encashment_amount, asset_recovery_amount, net_settlement_amount, status, reason, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, employeeId, optionalString(body.payroll_period_id), num(body.final_salary_amount), num(body.pending_advance_amount), num(body.pending_deduction_amount), num(body.leave_encashment_amount), num(body.asset_recovery_amount), num(body.net_settlement_amount), FINAL_SETTLEMENT_STATUSES.has(readString(body.status).toUpperCase()) ? readString(body.status).toUpperCase() : "DRAFT", optionalString(body.reason), c.get("currentUser").id).run();
   const saved = await c.env.DB.prepare("SELECT * FROM final_settlements WHERE id = ?").bind(id).first();
@@ -1029,6 +1136,7 @@ payrollRoutes.patch("/final-settlements/:id", requirePermission("payroll.manage"
   const id = routeParam(c, "id");
   const old = await c.env.DB.prepare("SELECT * FROM final_settlements WHERE id = ?").bind(id).first<Record<string, unknown>>();
   if (!old) return fail(c, 404, "NOT_FOUND", "Final settlement was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Final settlement was not found.");
   const body = await readJsonBody(c.req.raw);
   const status = readString(body.status ?? old.status).toUpperCase();
   await c.env.DB.prepare("UPDATE final_settlements SET payroll_period_id = ?, final_salary_amount = ?, pending_advance_amount = ?, pending_deduction_amount = ?, leave_encashment_amount = ?, asset_recovery_amount = ?, net_settlement_amount = ?, status = ?, reason = ?, updated_at = ? WHERE id = ?").bind(optionalString(body.payroll_period_id ?? old.payroll_period_id), num(body.final_salary_amount, old.final_salary_amount == null ? null : Number(old.final_salary_amount)), num(body.pending_advance_amount, old.pending_advance_amount == null ? null : Number(old.pending_advance_amount)), num(body.pending_deduction_amount, old.pending_deduction_amount == null ? null : Number(old.pending_deduction_amount)), num(body.leave_encashment_amount, old.leave_encashment_amount == null ? null : Number(old.leave_encashment_amount)), num(body.asset_recovery_amount, old.asset_recovery_amount == null ? null : Number(old.asset_recovery_amount)), num(body.net_settlement_amount, old.net_settlement_amount == null ? null : Number(old.net_settlement_amount)), FINAL_SETTLEMENT_STATUSES.has(status) ? status : old.status, optionalString(body.reason ?? old.reason), isoNow(), id).run();

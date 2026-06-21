@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
@@ -614,6 +615,9 @@ leaveRoutes.delete("/workflows/:id/steps/:stepId", requirePermission("leave.work
 leaveRoutes.get("/requests", requirePermission("leave.view"), async (c) => {
   const conditions: string[] = [];
   const params: BindValue[] = [];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "leave", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const search = readString(c.req.query("search"));
   if (search) {
     conditions.push("(e.employee_no LIKE ? OR e.full_name LIKE ?)");
@@ -667,6 +671,7 @@ leaveRoutes.get("/requests", requirePermission("leave.view"), async (c) => {
 leaveRoutes.get("/requests/:id", requirePermission("leave.view"), async (c) => {
   const request = await getRequest(c.env.DB, routeParam(c, "id"));
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   return ok(c, { request });
 });
 
@@ -681,6 +686,7 @@ leaveRoutes.post("/requests", async (c) => {
   if (!employeeId || !leaveTypeId || !startDate || !endDate) return fail(c, 400, "VALIDATION_ERROR", "Employee, leave type, start date, and end date are required.");
   const employee = await getEmployee(c.env.DB, employeeId);
   if (!employee) return fail(c, 400, "INVALID_EMPLOYEE", "Employee was not found or is archived.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "leave", has(c, "leave.manage") ? "manage" : "view"))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
   const type = await c.env.DB.prepare("SELECT * FROM leave_types WHERE id = ? AND is_active = 1").bind(leaveTypeId).first<Record<string, unknown>>();
   if (!type) return fail(c, 400, "INVALID_LEAVE_TYPE", "Leave type was not found or is disabled.");
   if (await hasOverlap(c, employeeId, startDate, endDate)) return fail(c, 409, "OVERLAPPING_LEAVE", "An active leave request already overlaps this date range.");
@@ -782,6 +788,7 @@ async function submitRequest(c: Context<AppBindings>, id: string) {
   if (!hasAny(c, ["leave.request", "leave.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to submit leave requests.");
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", has(c, "leave.manage") ? "manage" : "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   if (request.status !== "DRAFT") return fail(c, 409, "INVALID_STATUS", "Only draft leave requests can be submitted.");
   if (request.document_status === "REQUIRED_PENDING") return fail(c, 400, "DOCUMENT_REQUIRED", "Required supporting document must be attached before submission.");
   await generateTimeline(c, request);
@@ -821,6 +828,7 @@ leaveRoutes.post("/requests/:id/approve", async (c) => {
   const id = routeParam(c, "id");
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   const approval = await currentApproval(c, id);
   if (!approval) return fail(c, 409, "NO_PENDING_APPROVAL", "No approval step is pending.");
   if (!(await canActOnApproval(c, approval, request))) return fail(c, 403, "FORBIDDEN", "You are not the current approver for this step.");
@@ -843,6 +851,7 @@ leaveRoutes.post("/requests/:id/reject", requirePermission("leave.approve"), asy
   if (!note) return fail(c, 400, "REASON_REQUIRED", "Reject reason is required.");
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   const approval = await currentApproval(c, id);
   if (!approval) return fail(c, 409, "NO_PENDING_APPROVAL", "No approval step is pending.");
   if (!(await canActOnApproval(c, approval, request))) return fail(c, 403, "FORBIDDEN", "You are not the current approver for this step.");
@@ -862,6 +871,7 @@ leaveRoutes.post("/requests/:id/cancel", async (c) => {
   if (!reason) return fail(c, 400, "REASON_REQUIRED", "Cancellation reason is required.");
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", has(c, "leave.manage") ? "manage" : "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   if (request.status === "CANCELLED" || request.status === "REJECTED") return fail(c, 409, "INVALID_STATUS", "This leave request cannot be cancelled.");
   if (request.status === "APPROVED") await updateBalance(c, request, "cancel_approved");
   if (request.status === "PENDING_APPROVAL" || request.status === "SUBMITTED") await updateBalance(c, request, "pending_release");
@@ -876,6 +886,7 @@ leaveRoutes.patch("/requests/:id", async (c) => {
   const id = routeParam(c, "id");
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", has(c, "leave.manage") ? "manage" : "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   if (request.status !== "DRAFT") return fail(c, 409, "INVALID_STATUS", "Only draft requests can be edited.");
   const body = await readJsonBody(c.req.raw);
   await c.env.DB.prepare("UPDATE leave_requests SET reason = ?, updated_at = ? WHERE id = ?").bind(optionalString(body.reason), new Date().toISOString(), id).run();
@@ -884,11 +895,15 @@ leaveRoutes.patch("/requests/:id", async (c) => {
 });
 
 leaveRoutes.get("/requests/:id/timeline", requirePermission("leave.view"), async (c) => {
+  const request = await getRequest(c.env.DB, routeParam(c, "id"));
+  if (!request || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   const rows = await c.env.DB.prepare("SELECT a.*, u.name AS approver_name, actor.name AS action_by_name FROM leave_request_approvals a LEFT JOIN users u ON u.id = a.approver_user_id LEFT JOIN users actor ON actor.id = a.action_by_user_id WHERE a.leave_request_id = ? ORDER BY a.step_order").bind(routeParam(c, "id")).all();
   return ok(c, { timeline: rows.results });
 });
 
 leaveRoutes.get("/requests/:id/days", requirePermission("leave.view"), async (c) => {
+  const request = await getRequest(c.env.DB, routeParam(c, "id"));
+  if (!request || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   const rows = await c.env.DB.prepare("SELECT * FROM leave_request_days WHERE leave_request_id = ? ORDER BY leave_date").bind(routeParam(c, "id")).all();
   return ok(c, { days: rows.results });
 });
@@ -911,6 +926,7 @@ async function recalculateDocumentStatus(c: Context<AppBindings>, request: Recor
 leaveRoutes.get("/requests/:id/documents", requirePermission("leave.view"), async (c) => {
   const request = await getRequest(c.env.DB, routeParam(c, "id"));
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   const rows = await c.env.DB
     .prepare(
       `SELECT lrd.*, ed.employee_id, ed.document_number, ed.issue_date, ed.expiry_date, ed.status AS employee_document_status,
@@ -937,6 +953,7 @@ leaveRoutes.post("/requests/:id/documents/attach", async (c) => {
   const id = routeParam(c, "id");
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", has(c, "leave.manage") ? "manage" : "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   const body = await readJsonBody(c.req.raw);
   const employeeDocumentId = readString(body.employee_document_id);
   if (!employeeDocumentId) return fail(c, 400, "VALIDATION_ERROR", "Employee document is required.");
@@ -956,6 +973,7 @@ leaveRoutes.delete("/requests/:id/documents/:documentId", async (c) => {
   const id = routeParam(c, "id");
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", has(c, "leave.manage") ? "manage" : "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   const attachment = await c.env.DB.prepare("SELECT * FROM leave_request_documents WHERE leave_request_id = ? AND employee_document_id = ?").bind(id, routeParam(c, "documentId")).first();
   if (!attachment) return fail(c, 404, "NOT_FOUND", "Leave document attachment was not found.");
   await c.env.DB.prepare("DELETE FROM leave_request_documents WHERE leave_request_id = ? AND employee_document_id = ?").bind(id, routeParam(c, "documentId")).run();
@@ -967,25 +985,29 @@ leaveRoutes.delete("/requests/:id/documents/:documentId", async (c) => {
 leaveRoutes.get("/dashboard", requirePermission("leave.view"), async (c) => {
   const now = new Date();
   const monthStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "leave", "view", "e");
+  const scopedEmployeeSql = `SELECT e.id FROM employees e WHERE ${scope.sql}`;
   const rows = await c.env.DB.prepare(
     `SELECT
       (SELECT COUNT(*) FROM leave_request_approvals WHERE status = 'PENDING' AND approver_user_id = ?) AS pending_approvals,
-      (SELECT COUNT(*) FROM leave_requests WHERE created_at >= ?) AS requests_this_month,
-      (SELECT COUNT(*) FROM leave_requests WHERE status = 'APPROVED' AND approved_at >= ?) AS approved_this_month,
-      (SELECT COUNT(*) FROM leave_requests WHERE status = 'APPROVED' AND start_date <= date('now') AND end_date >= date('now')) AS employees_currently_on_leave,
-      (SELECT COUNT(*) FROM leave_requests WHERE status IN ('PENDING_APPROVAL','APPROVED') AND start_date > date('now')) AS upcoming_leave,
-      (SELECT COUNT(*) FROM leave_requests WHERE document_status = 'REQUIRED_PENDING') AS missing_required_documents`
-  ).bind(c.get("currentUser").id, monthStart, monthStart).first();
+      (SELECT COUNT(*) FROM leave_requests WHERE employee_id IN (${scopedEmployeeSql}) AND created_at >= ?) AS requests_this_month,
+      (SELECT COUNT(*) FROM leave_requests WHERE employee_id IN (${scopedEmployeeSql}) AND status = 'APPROVED' AND approved_at >= ?) AS approved_this_month,
+      (SELECT COUNT(*) FROM leave_requests WHERE employee_id IN (${scopedEmployeeSql}) AND status = 'APPROVED' AND start_date <= date('now') AND end_date >= date('now')) AS employees_currently_on_leave,
+      (SELECT COUNT(*) FROM leave_requests WHERE employee_id IN (${scopedEmployeeSql}) AND status IN ('PENDING_APPROVAL','APPROVED') AND start_date > date('now')) AS upcoming_leave,
+      (SELECT COUNT(*) FROM leave_requests WHERE employee_id IN (${scopedEmployeeSql}) AND document_status = 'REQUIRED_PENDING') AS missing_required_documents`
+  ).bind(c.get("currentUser").id, ...scope.params, monthStart, ...scope.params, monthStart, ...scope.params, ...scope.params, ...scope.params).first();
   return ok(c, rows ?? {});
 });
 
 leaveRoutes.get("/reports", requirePermission("leave.reports.view"), async (c) => {
-  const rows = await c.env.DB.prepare("SELECT status, COUNT(*) AS count, SUM(requested_days) AS days FROM leave_requests GROUP BY status").all();
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "leave", "view", "e");
+  const rows = await c.env.DB.prepare("SELECT lr.status, COUNT(*) AS count, SUM(lr.requested_days) AS days FROM leave_requests lr INNER JOIN employees e ON e.id = lr.employee_id WHERE " + scope.sql + " GROUP BY lr.status").bind(...scope.params).all();
   return ok(c, { reports: rows.results });
 });
 
 leaveRoutes.get("/reports/export.csv", requirePermission("leave.reports.export"), async (c) => {
-  const rows = (await c.env.DB.prepare(`SELECT ${selectColumns()} FROM leave_requests lr INNER JOIN employees e ON e.id = lr.employee_id INNER JOIN leave_types lt ON lt.id = lr.leave_type_id LEFT JOIN leave_policies lp ON lp.id = lr.policy_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id LEFT JOIN leave_request_approvals pending ON pending.id = (SELECT id FROM leave_request_approvals WHERE leave_request_id = lr.id AND status = 'PENDING' ORDER BY step_order LIMIT 1) ORDER BY lr.created_at DESC`).all<Record<string, unknown>>()).results;
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "leave", "view", "e");
+  const rows = (await c.env.DB.prepare(`SELECT ${selectColumns()} FROM leave_requests lr INNER JOIN employees e ON e.id = lr.employee_id INNER JOIN leave_types lt ON lt.id = lr.leave_type_id LEFT JOIN leave_policies lp ON lp.id = lr.policy_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id LEFT JOIN leave_request_approvals pending ON pending.id = (SELECT id FROM leave_request_approvals WHERE leave_request_id = lr.id AND status = 'PENDING' ORDER BY step_order LIMIT 1) WHERE ${scope.sql} ORDER BY lr.created_at DESC`).bind(...scope.params).all<Record<string, unknown>>()).results;
   const csv = [["Employee No", "Employee Name", "Leave Type", "Start", "End", "Days", "Status", "Document Status"].join(","), ...rows.map((row) => [row.employee_no, row.employee_name, row.leave_type_name, row.start_date, row.end_date, row.requested_days, row.status, row.document_status].map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
   await auditLeave(c, { action: "leave.report_exported", entityType: "leave_report", entityId: "requests", newValue: { rows: rows.length } });
   return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="leave-requests.csv"' } });
@@ -996,22 +1018,28 @@ async function employeeRequests(c: Context<AppBindings>, employeeId: string) {
   return rows.results;
 }
 
-employeeLeaveRoutes.get("/:employeeId/leave/requests", requirePermission("employees.leave.view"), async (c) => ok(c, { requests: await employeeRequests(c, routeParam(c, "employeeId")) }));
+employeeLeaveRoutes.get("/:employeeId/leave/requests", requirePermission("employees.leave.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  return ok(c, { requests: await employeeRequests(c, routeParam(c, "employeeId")) });
+});
 
 employeeLeaveRoutes.get("/:employeeId/leave/balances", requirePermission("employees.leave.view"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const year = Number(c.req.query("period_year") ?? new Date().getUTCFullYear());
   const rows = await c.env.DB.prepare("SELECT lb.*, lt.name AS leave_type_name, lt.code AS leave_type_code FROM leave_balances lb INNER JOIN leave_types lt ON lt.id = lb.leave_type_id WHERE lb.employee_id = ? AND lb.period_year = ? ORDER BY lt.sort_order, lt.name").bind(employeeId, year).all();
   return ok(c, { balances: rows.results });
 });
 
 employeeLeaveRoutes.get("/:employeeId/leave/calendar", requirePermission("employees.leave.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const rows = await c.env.DB.prepare("SELECT lrd.*, lr.status, lt.name AS leave_type_name FROM leave_request_days lrd INNER JOIN leave_requests lr ON lr.id = lrd.leave_request_id INNER JOIN leave_types lt ON lt.id = lr.leave_type_id WHERE lr.employee_id = ? AND lr.status IN ('PENDING_APPROVAL','APPROVED') ORDER BY lrd.leave_date").bind(routeParam(c, "employeeId")).all();
   return ok(c, { calendar: rows.results });
 });
 
 employeeLeaveRoutes.get("/:employeeId/leave/summary", requirePermission("employees.leave.view"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const [requests, balances, calendar] = await Promise.all([
     employeeRequests(c, employeeId),
     c.env.DB.prepare("SELECT lb.*, lt.name AS leave_type_name, lt.code AS leave_type_code FROM leave_balances lb INNER JOIN leave_types lt ON lt.id = lb.leave_type_id WHERE lb.employee_id = ? ORDER BY lb.period_year DESC, lt.sort_order").bind(employeeId).all(),

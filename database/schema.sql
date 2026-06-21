@@ -68,6 +68,77 @@ CREATE TABLE IF NOT EXISTS user_roles (
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
 
+CREATE TABLE IF NOT EXISTS role_mapping_rules (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  default_role_id TEXT NOT NULL,
+  employee_type TEXT,
+  employment_type TEXT,
+  department_id TEXT,
+  position_id TEXT,
+  location_id TEXT,
+  job_level_id TEXT,
+  default_scope_type TEXT NOT NULL DEFAULT 'SELF_ONLY' CHECK (default_scope_type IN ('SELF_ONLY', 'OWN_TEAM', 'OWN_DEPARTMENT', 'SELECTED_DEPARTMENTS', 'OWN_LOCATION', 'SELECTED_LOCATIONS', 'ALL_LOCATIONS', 'WHOLE_COMPANY')),
+  allowed_department_ids_json TEXT,
+  allowed_location_ids_json TEXT,
+  include_sub_departments INTEGER NOT NULL DEFAULT 0 CHECK (include_sub_departments IN (0, 1)),
+  include_reporting_chain INTEGER NOT NULL DEFAULT 0 CHECK (include_reporting_chain IN (0, 1)),
+  can_view INTEGER NOT NULL DEFAULT 1 CHECK (can_view IN (0, 1)),
+  can_manage INTEGER NOT NULL DEFAULT 0 CHECK (can_manage IN (0, 1)),
+  priority INTEGER NOT NULL DEFAULT 100,
+  is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  created_by_user_id TEXT,
+  updated_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (default_role_id) REFERENCES roles(id),
+  FOREIGN KEY (department_id) REFERENCES departments(id),
+  FOREIGN KEY (position_id) REFERENCES positions(id),
+  FOREIGN KEY (location_id) REFERENCES locations(id),
+  FOREIGN KEY (job_level_id) REFERENCES job_levels(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_role_mapping_rules_active_priority ON role_mapping_rules(is_active, priority);
+CREATE INDEX IF NOT EXISTS idx_role_mapping_rules_role ON role_mapping_rules(default_role_id);
+CREATE INDEX IF NOT EXISTS idx_role_mapping_rules_criteria ON role_mapping_rules(employee_type, employment_type, department_id, position_id, location_id, job_level_id);
+
+CREATE TABLE IF NOT EXISTS access_scope_rules (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  scope_owner_type TEXT NOT NULL CHECK (scope_owner_type IN ('ROLE', 'USER', 'ROLE_MAPPING_RULE')),
+  role_id TEXT,
+  user_id TEXT,
+  role_mapping_rule_id TEXT,
+  module_key TEXT,
+  scope_type TEXT NOT NULL DEFAULT 'OWN_DEPARTMENT' CHECK (scope_type IN ('SELF_ONLY', 'OWN_TEAM', 'OWN_DEPARTMENT', 'SELECTED_DEPARTMENTS', 'OWN_LOCATION', 'SELECTED_LOCATIONS', 'ALL_LOCATIONS', 'WHOLE_COMPANY')),
+  allowed_department_ids_json TEXT,
+  allowed_location_ids_json TEXT,
+  include_sub_departments INTEGER NOT NULL DEFAULT 0 CHECK (include_sub_departments IN (0, 1)),
+  include_reporting_chain INTEGER NOT NULL DEFAULT 0 CHECK (include_reporting_chain IN (0, 1)),
+  can_view INTEGER NOT NULL DEFAULT 1 CHECK (can_view IN (0, 1)),
+  can_manage INTEGER NOT NULL DEFAULT 0 CHECK (can_manage IN (0, 1)),
+  is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  created_by_user_id TEXT,
+  updated_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  CHECK (
+    (scope_owner_type = 'ROLE' AND role_id IS NOT NULL AND user_id IS NULL)
+    OR (scope_owner_type = 'USER' AND user_id IS NOT NULL AND role_id IS NULL)
+    OR (scope_owner_type = 'ROLE_MAPPING_RULE' AND role_mapping_rule_id IS NOT NULL AND role_id IS NULL AND user_id IS NULL)
+  ),
+  FOREIGN KEY (role_id) REFERENCES roles(id),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (role_mapping_rule_id) REFERENCES role_mapping_rules(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_access_scope_rules_owner ON access_scope_rules(scope_owner_type, role_id, user_id, role_mapping_rule_id);
+CREATE INDEX IF NOT EXISTS idx_access_scope_rules_module ON access_scope_rules(module_key);
+CREATE INDEX IF NOT EXISTS idx_access_scope_rules_active ON access_scope_rules(is_active);
+CREATE INDEX IF NOT EXISTS idx_access_scope_rules_scope_type ON access_scope_rules(scope_type);
+
 CREATE TABLE IF NOT EXISTS system_settings (
   key TEXT PRIMARY KEY,
   value_json TEXT NOT NULL,

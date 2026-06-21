@@ -21,9 +21,10 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import type { EmployeeUserAccessPreview } from "../types/auth";
 import type { Employee, EmployeeContact, EmployeeContactInput, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
 
-const profileTabs = ["Overview", "Personal Info", "Job Info", "Contacts", "Payroll", "Attendance", "Roster", "Leave", "Documents", "Assets & Uniforms", "Notes", "Audit Log"] as const;
+const profileTabs = ["Overview", "Personal Info", "Job Info", "Contacts", "User Access", "Payroll", "Attendance", "Roster", "Leave", "Documents", "Assets & Uniforms", "Notes", "Audit Log"] as const;
 type ProfileTab = (typeof profileTabs)[number];
 
 function tone(status?: string) {
@@ -44,6 +45,7 @@ export function EmployeeProfilePage() {
   const [onboarding, setOnboarding] = useState<OnboardingTask[]>([]);
   const [jobHistory, setJobHistory] = useState<Record<string, unknown>[]>([]);
   const [audit, setAudit] = useState<Record<string, unknown>[]>([]);
+  const [userAccess, setUserAccess] = useState<EmployeeUserAccessPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contactModal, setContactModal] = useState<{ mode: "create" | "edit"; contact?: EmployeeContact } | null>(null);
   const [statusModalOpen, setStatusModalOpen] = useState(false);
@@ -63,6 +65,8 @@ export function EmployeeProfilePage() {
   const canAssets = permissions.has("employees.assets.view") || permissions.has("assets.view");
   const canNotes = permissions.has("employee_notes.view");
   const canAudit = permissions.has("employees.audit.view") || permissions.has("audit.view");
+  const canViewUserAccess = permissions.has("role_mappings.view");
+  const canApplyUserAccess = permissions.has("role_mappings.apply");
   const canUploadPhoto = permissions.has("documents.upload");
   const canClearPhoto = permissions.has("documents.archive");
 
@@ -80,6 +84,13 @@ export function EmployeeProfilePage() {
         setJobHistory((await api.listEmployeeJobHistory(token, id)).job_history);
       } catch {
         setJobHistory([]);
+      }
+      if (canViewUserAccess) {
+        try {
+          setUserAccess((await api.getEmployeeUserAccess(token, id)).preview);
+        } catch {
+          setUserAccess(null);
+        }
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load Employee 360 profile.");
@@ -154,6 +165,16 @@ export function EmployeeProfilePage() {
     }
   }
 
+  async function applyUserAccessMapping(mappingId?: string | null) {
+    if (!token || !employee) return;
+    try {
+      setUserAccess((await api.applyEmployeeRoleMapping(token, employee.id, mappingId)).preview);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to apply user access mapping.");
+    }
+  }
+
   if (!canView) {
     return <Panel><EmptyState title="Employee profile unavailable" description="Your account needs employees.view permission." /></Panel>;
   }
@@ -214,6 +235,7 @@ export function EmployeeProfilePage() {
           ]} /> : null}
           {activeTab === "Job Info" ? <JobInfo employee={employee} jobHistory={jobHistory} /> : null}
           {activeTab === "Contacts" ? <Contacts contacts={contacts} canManage={canContacts} onAdd={() => setContactModal({ mode: "create" })} onEdit={(contact) => setContactModal({ mode: "edit", contact })} onArchive={(contact) => void archiveContact(contact)} /> : null}
+          {activeTab === "User Access" ? canViewUserAccess ? <UserAccessPanel preview={userAccess} canApply={canApplyUserAccess} onApply={(mappingId) => void applyUserAccessMapping(mappingId)} /> : <EmptyState title="User access unavailable" description="Your account needs role_mappings.view permission." /> : null}
           {activeTab === "Payroll" ? (canPayroll ? <EmployeePayrollPanel employee={employee} /> : <Panel><EmptyState title="Payroll unavailable" description="Your account needs employee payroll access." /></Panel>) : null}
           {activeTab === "Attendance" ? canAttendance ? <EmployeeAttendancePanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Attendance unavailable" description="Your account needs employees.attendance.view permission." /> : null}
           {activeTab === "Roster" ? canRoster ? <EmployeeRosterPanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Roster unavailable" description="Your account needs employees.roster.view permission." /> : null}
@@ -280,6 +302,49 @@ function Overview({
       <div className="xl:col-span-2"><OnboardingTable tasks={onboarding} completed={completed} onTask={onTask} /></div>
       <Placeholder title="Alerts" items={["Missing documents", "Expiring documents", "Attendance issues", "Pending leave", "Asset clearance"]} />
       <div className="xl:col-span-3"><AuditTable audit={audit.slice(0, 6)} /></div>
+    </div>
+  );
+}
+
+function UserAccessPanel({ preview, canApply, onApply }: { preview: EmployeeUserAccessPreview | null; canApply: boolean; onApply: (mappingId?: string | null) => void }) {
+  if (!preview) return <EmptyState title="User access loading" description="Fetching linked user roles and access scopes." />;
+  const mapping = preview.suggested_role_mapping;
+  const listIds = (value?: string[]) => value?.length ? value.join(", ") : "-";
+  const scopeSource = (scope: EmployeeUserAccessPreview["assigned_scopes"][number]) => {
+    if (scope.scope_owner_type === "ROLE") return "Role";
+    if (scope.scope_owner_type === "ROLE_MAPPING_RULE") return "Mapping template";
+    return scope.role_mapping_rule_id ? "Applied mapping" : "Manual user scope";
+  };
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Summary title="Linked user" rows={[["Status", preview.linked_user ? "Linked" : "No linked user"], ["Email", preview.linked_user?.email ?? "-"]]} />
+        <Summary title="Suggested role" rows={[["Role", preview.suggested_role?.name ?? "-"], ["Mapping", mapping?.name ?? "-"], ["Priority", mapping ? String(mapping.priority) : "-"]]} />
+        <Summary title="Suggested scope" rows={[["Scope", preview.suggested_scope?.scope_type ?? "-"], ["Departments", listIds(preview.suggested_scope?.allowed_department_ids)], ["Locations", listIds(preview.suggested_scope?.allowed_location_ids)], ["Manage", preview.suggested_scope?.can_manage ? "Yes" : "No"]]} />
+      </div>
+      <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+        Roles define permissions. Access scopes define the employee, department, and location records those permissions can reach. Role mapping templates are copied to the linked user when applied.
+      </div>
+      <div className="flex justify-end">
+        {canApply && preview.linked_user && mapping ? <Button size="sm" onClick={() => onApply(mapping.id)}>Apply suggested mapping</Button> : null}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-md border">
+          <div className="border-b px-3 py-2 text-sm font-semibold">Assigned roles</div>
+          <div className="divide-y">{preview.assigned_roles.length ? preview.assigned_roles.map((role) => <div key={role.id} className="px-3 py-2 text-sm">{role.name}</div>) : <div className="px-3 py-4 text-sm text-muted-foreground">No roles assigned.</div>}</div>
+        </div>
+        <div className="rounded-md border">
+          <div className="border-b px-3 py-2 text-sm font-semibold">Assigned scopes</div>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[760px]">
+              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Source</TableHead><TableHead>Scope</TableHead><TableHead>Module</TableHead><TableHead>Departments</TableHead><TableHead>Locations</TableHead><TableHead>Rights</TableHead></TableRow></TableHeader>
+              <TableBody>{preview.assigned_scopes.map((scope) => <TableRow key={scope.id}><TableCell>{scope.name}</TableCell><TableCell>{scopeSource(scope)}</TableCell><TableCell>{scope.scope_type}</TableCell><TableCell>{scope.module_key ?? "All"}</TableCell><TableCell>{listIds(scope.allowed_department_ids)}</TableCell><TableCell>{listIds(scope.allowed_location_ids)}</TableCell><TableCell>{scope.can_manage ? "Manage" : scope.can_view ? "View" : "-"}</TableCell></TableRow>)}</TableBody>
+            </Table>
+            {!preview.assigned_scopes.length ? <div className="px-3 py-4 text-sm text-muted-foreground">No user-specific scopes assigned.</div> : null}
+          </div>
+        </div>
+      </div>
+      {!preview.linked_user ? <EmptyState title="No linked system user" description="Role mapping can be applied after this employee is linked to a user account." /> : null}
     </div>
   );
 }

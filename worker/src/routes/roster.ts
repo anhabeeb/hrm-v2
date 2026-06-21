@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
+import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
@@ -256,6 +257,7 @@ async function readAssignmentInput(c: Context<AppBindings>, body: Record<string,
   if (!inWeek(input.roster_date, String(period.week_start_date))) return { input, error: "Roster date must be inside the selected roster week." };
   const employee = await c.env.DB.prepare("SELECT e.*, s.include_in_roster FROM employees e INNER JOIN employee_statuses s ON s.id = e.status_id WHERE e.id = ? AND e.archived_at IS NULL").bind(input.employee_id).first<Record<string, unknown>>();
   if (!employee) return { input, error: "Employee was not found or is archived." };
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), input.employee_id, "roster", "manage"))) return { input, error: "You do not have roster access to this employee." };
   if (!bool(employee.roster_eligible, true) || !bool(employee.include_in_roster, true)) return { input, error: "Employee is not roster eligible." };
   if (input.status === "SCHEDULED" && !input.shift_template_id && (!input.custom_start_time || !input.custom_end_time)) return { input, error: "Scheduled assignments require a shift template or custom start/end times." };
   if (input.shift_template_id && (!existing || input.shift_template_id !== existing.shift_template_id)) {
@@ -319,6 +321,9 @@ async function getWeeklyData(c: Context<AppBindings>) {
   const departmentId = optionalString(c.req.query("department_id"));
   const period = await findPeriod(c, weekStart, locationId, departmentId);
   const { conditions, params } = employeeFilters(c);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "roster", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const employees = (await c.env.DB.prepare(
     `SELECT e.id AS employee_id, e.employee_no, e.full_name, d.name AS department_name, p.title AS position_title,
       l.name AS location_name, jl.name AS job_level_name, e.roster_eligible
@@ -556,7 +561,8 @@ rosterRoutes.post("/weekly/clear", requirePermission("roster.manage"), async (c)
   if (!period) return fail(c, 404, "NOT_FOUND", "Roster period was not found.");
   const editError = await canEditPeriod(c, period, reason);
   if (editError) return fail(c, 403, "PUBLISHED_ROSTER_LOCKED", editError);
-  await c.env.DB.prepare("UPDATE roster_assignments SET status = 'UNASSIGNED', shift_template_id = NULL, custom_start_time = NULL, custom_end_time = NULL, notes = NULL, source = 'SYSTEM', updated_by_user_id = ?, updated_at = ? WHERE roster_period_id = ?").bind(c.get("currentUser").id, new Date().toISOString(), period.id).run();
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "roster", "manage", "e");
+  await c.env.DB.prepare(`UPDATE roster_assignments SET status = 'UNASSIGNED', shift_template_id = NULL, custom_start_time = NULL, custom_end_time = NULL, notes = NULL, source = 'SYSTEM', updated_by_user_id = ?, updated_at = ? WHERE roster_period_id = ? AND employee_id IN (SELECT e.id FROM employees e WHERE ${scope.sql})`).bind(c.get("currentUser").id, new Date().toISOString(), period.id, ...scope.params).run();
   await auditRoster(c, { action: "roster.week.cleared", entityType: "roster_period", entityId: String(period.id), reason });
   await publishRoster(c, "roster.week.cleared", "roster_period", String(period.id), "cleared");
   return ok(c, { cleared: true });
@@ -609,6 +615,9 @@ rosterRoutes.get("/assignments", requirePermission("roster.view"), async (c) => 
   const weekStart = readString(c.req.query("week_start_date"));
   const conditions: string[] = [];
   const params: BindValue[] = [];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "roster", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   if (weekStart && isDate(weekStart)) { conditions.push("ra.roster_date BETWEEN ? AND ?"); params.push(weekStart, weekEnd(weekStart)); }
   const employeeId = readString(c.req.query("employee_id"));
   if (employeeId) { conditions.push("ra.employee_id = ?"); params.push(employeeId); }
@@ -619,12 +628,14 @@ rosterRoutes.get("/assignments", requirePermission("roster.view"), async (c) => 
 rosterRoutes.get("/assignments/:id", requirePermission("roster.view"), async (c) => {
   const assignment = await getAssignment(c, routeParam(c, "id"));
   if (!assignment) return fail(c, 404, "NOT_FOUND", "Roster assignment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(assignment.employee_id), "roster", "view"))) return fail(c, 404, "NOT_FOUND", "Roster assignment was not found.");
   return ok(c, { assignment });
 });
 
 rosterRoutes.patch("/assignments/:id", requirePermission("roster.manage"), async (c) => {
   const old = await getAssignment(c, routeParam(c, "id"));
   if (!old) return fail(c, 404, "NOT_FOUND", "Roster assignment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "roster", "manage"))) return fail(c, 404, "NOT_FOUND", "Roster assignment was not found.");
   const period = await getPeriod(c, String(old.roster_period_id));
   if (!period) return fail(c, 404, "NOT_FOUND", "Roster period was not found.");
   const body = await readJsonBody(c.req.raw);
@@ -656,15 +667,17 @@ rosterRoutes.get("/dashboard", requirePermission("roster.view"), async (c) => {
   const day = new Date(`${today}T00:00:00Z`).getUTCDay();
   const mondayOffset = day === 0 ? -6 : 1 - day;
   const monday = addDays(today, mondayOffset);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "roster", "view", "e");
+  const scopedEmployeeSql = `SELECT e.id FROM employees e WHERE ${scope.sql}`;
   const row = await c.env.DB.prepare(
     `SELECT
       (SELECT status FROM roster_periods WHERE week_start_date = ? AND status != 'ARCHIVED' ORDER BY updated_at DESC LIMIT 1) AS current_week_status,
-      (SELECT COUNT(DISTINCT employee_id) FROM roster_assignments WHERE roster_date BETWEEN ? AND ? AND status = 'SCHEDULED') AS employees_scheduled_this_week,
-      (SELECT COUNT(*) FROM roster_assignments WHERE roster_date BETWEEN ? AND ? AND status = 'UNASSIGNED') AS unassigned_assignments_this_week,
-      (SELECT COUNT(*) FROM roster_assignments WHERE roster_date BETWEEN ? AND ? AND status = 'LEAVE') AS employees_on_leave_this_week,
-      (SELECT COUNT(*) FROM roster_assignments WHERE roster_date BETWEEN ? AND ? AND status = 'OFF') AS off_day_count,
+      (SELECT COUNT(DISTINCT employee_id) FROM roster_assignments WHERE employee_id IN (${scopedEmployeeSql}) AND roster_date BETWEEN ? AND ? AND status = 'SCHEDULED') AS employees_scheduled_this_week,
+      (SELECT COUNT(*) FROM roster_assignments WHERE employee_id IN (${scopedEmployeeSql}) AND roster_date BETWEEN ? AND ? AND status = 'UNASSIGNED') AS unassigned_assignments_this_week,
+      (SELECT COUNT(*) FROM roster_assignments WHERE employee_id IN (${scopedEmployeeSql}) AND roster_date BETWEEN ? AND ? AND status = 'LEAVE') AS employees_on_leave_this_week,
+      (SELECT COUNT(*) FROM roster_assignments WHERE employee_id IN (${scopedEmployeeSql}) AND roster_date BETWEEN ? AND ? AND status = 'OFF') AS off_day_count,
       (SELECT published_at FROM roster_periods WHERE status = 'PUBLISHED' ORDER BY published_at DESC LIMIT 1) AS recently_published_at`
-  ).bind(monday, monday, weekEnd(monday), monday, weekEnd(monday), monday, weekEnd(monday), monday, weekEnd(monday)).first();
+  ).bind(monday, ...scope.params, monday, weekEnd(monday), ...scope.params, monday, weekEnd(monday), ...scope.params, monday, weekEnd(monday), ...scope.params, monday, weekEnd(monday)).first();
   return ok(c, { ...(row ?? {}), roster_conflicts: 0 });
 });
 
@@ -676,7 +689,10 @@ rosterRoutes.get("/reports", requirePermission("roster.reports.view"), async (c)
   const statusFilter = ASSIGNMENT_STATUSES.has(status) ? status : "";
   const conditions = ["e.archived_at IS NULL"];
   const params: BindValue[] = [from, to];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "roster", "view", "e");
+  conditions.push(scope.sql);
   if (statusFilter) params.push(statusFilter);
+  params.push(...scope.params);
   const search = readString(c.req.query("search"));
   if (search) { conditions.push("(e.employee_no LIKE ? OR e.full_name LIKE ?)"); params.push(`%${search}%`, `%${search}%`); }
   const departmentId = readString(c.req.query("department_id"));
@@ -708,6 +724,9 @@ rosterRoutes.get("/reports/export.csv", requirePermission("roster.reports.export
   const to = weekStart && isDate(weekStart) ? weekEnd(weekStart) : new Date().toISOString().slice(0, 10);
   const conditions = ["ra.roster_date BETWEEN ? AND ?"];
   const params: BindValue[] = [from, to];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "roster", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const status = readString(c.req.query("status")).toUpperCase();
   if (ASSIGNMENT_STATUSES.has(status)) { conditions.push("ra.status = ?"); params.push(status); }
   const search = readString(c.req.query("search"));
@@ -724,11 +743,13 @@ rosterRoutes.get("/reports/export.csv", requirePermission("roster.reports.export
 });
 
 employeeRosterRoutes.get("/:employeeId/roster/assignments", requireAnyPermission(["employees.roster.view", "roster.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "roster", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const rows = await c.env.DB.prepare(`${rosterAssignmentSelect("WHERE ra.employee_id = ?")} ORDER BY ra.roster_date DESC LIMIT 120`).bind(routeParam(c, "employeeId")).all();
   return ok(c, { assignments: rows.results });
 });
 
 employeeRosterRoutes.get("/:employeeId/roster/current-week", requireAnyPermission(["employees.roster.view", "roster.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "roster", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const today = new Date().toISOString().slice(0, 10);
   const day = new Date(`${today}T00:00:00Z`).getUTCDay();
   const monday = addDays(today, day === 0 ? -6 : 1 - day);
@@ -737,12 +758,14 @@ employeeRosterRoutes.get("/:employeeId/roster/current-week", requireAnyPermissio
 });
 
 employeeRosterRoutes.get("/:employeeId/roster/history", requireAnyPermission(["employees.roster.view", "roster.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "roster", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const rows = await c.env.DB.prepare("SELECT * FROM roster_assignment_history WHERE employee_id = ? ORDER BY created_at DESC LIMIT 100").bind(routeParam(c, "employeeId")).all();
   return ok(c, { history: rows.results });
 });
 
 employeeRosterRoutes.get("/:employeeId/roster/summary", requireAnyPermission(["employees.roster.view", "roster.view"]), async (c) => {
   const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "roster", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const [assignments, history] = await Promise.all([
     c.env.DB.prepare(`${rosterAssignmentSelect("WHERE ra.employee_id = ?")} ORDER BY ra.roster_date DESC LIMIT 120`).bind(employeeId).all<Record<string, unknown>>(),
     c.env.DB.prepare("SELECT * FROM roster_assignment_history WHERE employee_id = ? ORDER BY created_at DESC LIMIT 50").bind(employeeId).all()

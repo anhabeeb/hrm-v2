@@ -26,13 +26,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { cn } from "../lib/utils";
-import type { AccessUser, Permission, Role, UserStatus } from "../types/auth";
+import type { AccessScopeRule, AccessScopeType, AccessUser, Permission, Role, RoleMappingRule, UserStatus } from "../types/auth";
+import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 
-type Tab = "users" | "roles" | "permissions";
+type Tab = "users" | "roles" | "permissions" | "role_mappings" | "access_scopes";
 type UserModalMode = "create" | "edit" | "assign";
 type RoleModalMode = "create" | "edit" | "permissions" | "view";
+type ScopeModalMode = "create" | "edit";
+type MappingModalMode = "create" | "edit";
 
 const MODULE_LABELS: Record<string, string> = {
+  access_scopes: "Access Scopes",
+  role_mappings: "Role Mapping",
   dashboard: "Dashboard",
   users: "Users",
   roles: "Roles",
@@ -45,8 +50,22 @@ const MODULE_LABELS: Record<string, string> = {
   assets: "Assets",
   reports: "Reports",
   settings: "Settings",
+  self_service: "Self-Service",
   audit: "Audit"
 };
+
+const SCOPE_TYPE_LABELS: Record<AccessScopeType, string> = {
+  SELF_ONLY: "Self only",
+  OWN_TEAM: "Own team",
+  OWN_DEPARTMENT: "Own department",
+  SELECTED_DEPARTMENTS: "Selected departments",
+  OWN_LOCATION: "Own location",
+  SELECTED_LOCATIONS: "Selected locations",
+  ALL_LOCATIONS: "All locations",
+  WHOLE_COMPANY: "Whole company"
+};
+
+const ACCESS_SCOPE_MODULES = ["employees", "documents", "leave", "attendance", "payroll", "roster", "assets", "reports", "dashboard", "self_service"];
 
 function statusTone(status: UserStatus) {
   if (status === "ACTIVE") return "success" as const;
@@ -73,6 +92,12 @@ export function UsersAccessPage() {
   const [users, setUsers] = useState<AccessUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [roleMappings, setRoleMappings] = useState<RoleMappingRule[]>([]);
+  const [accessScopes, setAccessScopes] = useState<AccessScopeRule[]>([]);
+  const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
+  const [locations, setLocations] = useState<OrganizationLocation[]>([]);
+  const [positions, setPositions] = useState<OrganizationPosition[]>([]);
+  const [jobLevels, setJobLevels] = useState<OrganizationJobLevel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -84,23 +109,46 @@ export function UsersAccessPage() {
   const [permissionQuery, setPermissionQuery] = useState("");
   const [permissionModuleFilter, setPermissionModuleFilter] = useState("ALL");
   const [permissionCriticalFilter, setPermissionCriticalFilter] = useState("ALL");
+  const [mappingQuery, setMappingQuery] = useState("");
+  const [scopeQuery, setScopeQuery] = useState("");
+  const [scopeModuleFilter, setScopeModuleFilter] = useState("ALL");
+  const [scopeOwnerFilter, setScopeOwnerFilter] = useState("ALL");
 
   const [userModal, setUserModal] = useState<{ mode: UserModalMode; user?: AccessUser } | null>(null);
   const [roleModal, setRoleModal] = useState<{ mode: RoleModalMode; role?: Role } | null>(null);
+  const [mappingModal, setMappingModal] = useState<{ mode: MappingModalMode; mapping?: RoleMappingRule } | null>(null);
+  const [scopeModal, setScopeModal] = useState<{ mode: ScopeModalMode; scope?: AccessScopeRule } | null>(null);
+  const canViewMappings = Boolean(currentUser?.permissions.includes("role_mappings.view"));
+  const canManageMappings = Boolean(currentUser?.permissions.includes("role_mappings.manage"));
+  const canViewScopes = Boolean(currentUser?.permissions.includes("access_scopes.view"));
+  const canManageScopes = Boolean(currentUser?.permissions.includes("access_scopes.manage"));
 
   async function loadAccessData() {
     if (!token) return;
     setLoading(true);
     setError("");
     try {
-      const [userResult, roleResult, permissionResult] = await Promise.all([
+      const needsOrgRefs = canViewScopes || canViewMappings;
+      const [userResult, roleResult, permissionResult, mappingResult, scopeResult, departmentResult, locationResult, positionResult, jobLevelResult] = await Promise.all([
         api.listUsers(token),
         api.listRoles(token),
-        api.listPermissions(token)
+        api.listPermissions(token),
+        canViewMappings ? api.listRoleMappings(token) : Promise.resolve({ role_mappings: [] }),
+        canViewScopes ? api.listAccessScopes(token) : Promise.resolve({ access_scopes: [] }),
+        needsOrgRefs ? api.listDepartments(token) : Promise.resolve({ departments: [] }),
+        needsOrgRefs ? api.listLocations(token) : Promise.resolve({ locations: [] }),
+        needsOrgRefs ? api.listPositions(token) : Promise.resolve({ positions: [] }),
+        needsOrgRefs ? api.listJobLevels(token) : Promise.resolve({ job_levels: [] })
       ]);
       setUsers(userResult.users);
       setRoles(roleResult.roles);
       setPermissions(permissionResult.permissions);
+      setRoleMappings(mappingResult.role_mappings);
+      setAccessScopes(scopeResult.access_scopes);
+      setDepartments(departmentResult.departments);
+      setLocations(locationResult.locations);
+      setPositions(positionResult.positions);
+      setJobLevels(jobLevelResult.job_levels);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Users & Access could not be loaded.");
     } finally {
@@ -110,7 +158,7 @@ export function UsersAccessPage() {
 
   useEffect(() => {
     void loadAccessData();
-  }, [token]);
+  }, [token, canViewScopes, canViewMappings]);
 
   const activeOwnerCount = users.filter((accessUser) => accessUser.is_owner && accessUser.status === "ACTIVE").length;
   const ownerRole = roles.find((role) => role.is_owner_role);
@@ -138,6 +186,37 @@ export function UsersAccessPage() {
       return matchesQuery && matchesModule && matchesCritical;
     });
   }, [permissions, permissionQuery, permissionModuleFilter, permissionCriticalFilter]);
+
+  const filteredRoleMappings = useMemo(() => {
+    return roleMappings.filter((mapping) => {
+      return !mappingQuery || includesText(
+        mapping.name,
+        mapping.description,
+        mapping.role_name,
+        mapping.employee_type,
+        mapping.employment_type,
+        mapping.department_name,
+        mapping.position_title,
+        mapping.location_name,
+        mapping.job_level_name,
+        mapping.default_scope_type
+      )(mappingQuery);
+    });
+  }, [roleMappings, mappingQuery]);
+
+  const filteredAccessScopes = useMemo(() => {
+    return accessScopes.filter((scope) => {
+      const ownerLabel = scope.scope_owner_type === "ROLE"
+        ? scope.role_name
+        : scope.scope_owner_type === "USER"
+          ? `${scope.user_name ?? ""} ${scope.user_email ?? ""}`
+          : `${scope.role_mapping_name ?? ""} ${scope.role_mapping_role_name ?? ""}`;
+      const matchesQuery = !scopeQuery || includesText(scope.name, scope.description, ownerLabel, scope.scope_type)(scopeQuery);
+      const matchesModule = scopeModuleFilter === "ALL" || (scope.module_key ?? "ALL_MODULES") === scopeModuleFilter;
+      const matchesOwner = scopeOwnerFilter === "ALL" || scope.scope_owner_type === scopeOwnerFilter;
+      return matchesQuery && matchesModule && matchesOwner;
+    });
+  }, [accessScopes, scopeQuery, scopeModuleFilter, scopeOwnerFilter]);
 
   async function runAction(action: () => Promise<unknown>, successMessage: string) {
     if (!token) return;
@@ -183,6 +262,18 @@ export function UsersAccessPage() {
               Role
             </Button>
           ) : null}
+          {activeTab === "role_mappings" && canManageMappings ? (
+            <Button size="sm" onClick={() => setMappingModal({ mode: "create" })}>
+              <Plus className="h-4 w-4" />
+              Mapping
+            </Button>
+          ) : null}
+          {activeTab === "access_scopes" && canManageScopes ? (
+            <Button size="sm" onClick={() => setScopeModal({ mode: "create" })}>
+              <Plus className="h-4 w-4" />
+              Scope
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -191,7 +282,7 @@ export function UsersAccessPage() {
 
       <Panel className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-          {(["users", "roles", "permissions"] as Tab[]).map((tab) => (
+          {(["users", "roles", "permissions", ...(canViewMappings ? ["role_mappings" as const] : []), ...(canViewScopes ? ["access_scopes" as const] : [])] as Tab[]).map((tab) => (
             <Button
               key={tab}
               variant={activeTab === tab ? "primary" : "ghost"}
@@ -199,7 +290,7 @@ export function UsersAccessPage() {
               onClick={() => setActiveTab(tab)}
               className="capitalize"
             >
-              {tab}
+              {MODULE_LABELS[tab] ?? tab}
             </Button>
           ))}
         </div>
@@ -265,6 +356,42 @@ export function UsersAccessPage() {
             onCriticalFilterChange={setPermissionCriticalFilter}
           />
         ) : null}
+
+        {activeTab === "role_mappings" ? (
+          <RoleMappingsTable
+            mappings={filteredRoleMappings}
+            loading={loading}
+            query={mappingQuery}
+            canManage={canManageMappings}
+            onQueryChange={setMappingQuery}
+            onEdit={(mapping) => setMappingModal({ mode: "edit", mapping })}
+            onAction={(mapping, action) => {
+              if (window.confirm(`${action} role mapping ${mapping.name}?`)) {
+                void runAction(() => api.roleMappingAction(token ?? "", mapping.id, action), `Role mapping ${action} action completed.`);
+              }
+            }}
+          />
+        ) : null}
+
+        {activeTab === "access_scopes" ? (
+          <AccessScopesTable
+            scopes={filteredAccessScopes}
+            loading={loading}
+            query={scopeQuery}
+            moduleFilter={scopeModuleFilter}
+            ownerFilter={scopeOwnerFilter}
+            canManage={canManageScopes}
+            onQueryChange={setScopeQuery}
+            onModuleFilterChange={setScopeModuleFilter}
+            onOwnerFilterChange={setScopeOwnerFilter}
+            onEdit={(scope) => setScopeModal({ mode: "edit", scope })}
+            onAction={(scope, action) => {
+              if (window.confirm(`${action} access scope ${scope.name}?`)) {
+                void runAction(() => api.accessScopeAction(token ?? "", scope.id, action), `Access scope ${action} action completed.`);
+              }
+            }}
+          />
+        ) : null}
       </Panel>
 
       {userModal ? (
@@ -309,6 +436,48 @@ export function UsersAccessPage() {
               }
               setRoleModal(null);
             }, "Role saved.")
+          }
+        />
+      ) : null}
+
+      {mappingModal ? (
+        <RoleMappingModal
+          mode={mappingModal.mode}
+          mapping={mappingModal.mapping}
+          roles={roles}
+          departments={departments}
+          locations={locations}
+          positions={positions}
+          jobLevels={jobLevels}
+          onClose={() => setMappingModal(null)}
+          onSubmit={(input) =>
+            runAction(async () => {
+              if (!token) return;
+              if (mappingModal.mode === "create") await api.createRoleMapping(token, input);
+              else if (mappingModal.mapping) await api.updateRoleMapping(token, mappingModal.mapping.id, input);
+              setMappingModal(null);
+            }, "Role mapping saved.")
+          }
+        />
+      ) : null}
+
+      {scopeModal ? (
+        <AccessScopeModal
+          mode={scopeModal.mode}
+          scope={scopeModal.scope}
+          roles={roles}
+          users={users}
+          roleMappings={roleMappings}
+          departments={departments}
+          locations={locations}
+          onClose={() => setScopeModal(null)}
+          onSubmit={(input) =>
+            runAction(async () => {
+              if (!token) return;
+              if (scopeModal.mode === "create") await api.createAccessScope(token, input);
+              else if (scopeModal.scope) await api.updateAccessScope(token, scopeModal.scope.id, input);
+              setScopeModal(null);
+            }, "Access scope saved.")
           }
         />
       ) : null}
@@ -577,6 +746,87 @@ function PermissionsTable(props: PermissionsTableProps) {
   );
 }
 
+function RoleMappingsTable(props: {
+  mappings: RoleMappingRule[];
+  loading: boolean;
+  query: string;
+  canManage: boolean;
+  onQueryChange: (value: string) => void;
+  onEdit: (mapping: RoleMappingRule) => void;
+  onAction: (mapping: RoleMappingRule, action: "enable" | "disable") => void;
+}) {
+  return (
+    <div>
+      <FilterBar><SearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search role mappings" /></FilterBar>
+      <div className="border-b bg-sky-50 px-4 py-3 text-sm text-sky-950">
+        <div className="font-medium">Roles decide what the user can do. Scopes decide which employees, departments, and locations the user can access.</div>
+        <div className="mt-1 text-xs">Examples: Employee Self-Service + SELF_ONLY, Store Manager + OWN_LOCATION, Finance Payroll Manager + SELECTED_LOCATIONS, HR Manager + WHOLE_COMPANY, HR Head + WHOLE_COMPANY. Higher priority rules win when multiple mappings match.</div>
+      </div>
+      {props.loading ? <LoadingRow text="Loading role mappings" /> : null}
+      {!props.loading && props.mappings.length === 0 ? <EmptyState title="No role mappings found" description="Create access templates that suggest roles and data scopes for employee-linked users." /> : null}
+      {!props.loading && props.mappings.length > 0 ? (
+        <div className="overflow-x-auto">
+          <Table className="min-w-[1120px]">
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Suggested role</TableHead><TableHead>Matching criteria</TableHead><TableHead>Suggested scope</TableHead><TableHead>Priority</TableHead><TableHead>Status</TableHead><TableHead className="w-[120px] text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableBody>{props.mappings.map((mapping) => (
+              <TableRow key={mapping.id}>
+                <TableCell><div className="font-medium">{mapping.name}</div><div className="truncate text-xs text-muted-foreground">{mapping.description ?? "No description"}</div></TableCell>
+                <TableCell>{mapping.role_name ?? mapping.default_role_id}</TableCell>
+                <TableCell><div className="flex flex-wrap gap-1">{mapping.employee_type ? <Badge>{mapping.employee_type}</Badge> : null}{mapping.employment_type ? <Badge>{mapping.employment_type}</Badge> : null}{mapping.department_name ? <Badge>{mapping.department_name}</Badge> : null}{mapping.position_title ? <Badge>{mapping.position_title}</Badge> : null}{mapping.location_name ? <Badge>{mapping.location_name}</Badge> : null}{mapping.job_level_name ? <Badge>{mapping.job_level_name}</Badge> : null}{!mapping.employee_type && !mapping.employment_type && !mapping.department_id && !mapping.position_id && !mapping.location_id && !mapping.job_level_id ? <Badge tone="warning">Fallback</Badge> : null}</div></TableCell>
+                <TableCell><div className="flex flex-wrap gap-1"><Badge tone={mapping.default_scope_type === "WHOLE_COMPANY" ? "warning" : undefined}>{SCOPE_TYPE_LABELS[mapping.default_scope_type]}</Badge>{mapping.can_view ? <Badge tone="success">View</Badge> : null}{mapping.can_manage ? <Badge tone="warning">Manage</Badge> : null}</div></TableCell>
+                <TableCell>{mapping.priority}</TableCell>
+                <TableCell>{mapping.is_active ? <Badge tone="success">Active</Badge> : <Badge tone="danger">Inactive</Badge>}</TableCell>
+                <TableCell><div className="flex justify-end gap-1"><IconAction title="Edit mapping" onClick={() => props.onEdit(mapping)} icon={<Edit className="h-4 w-4" />} disabled={!props.canManage} /><IconAction title={mapping.is_active ? "Disable mapping" : "Enable mapping"} onClick={() => props.onAction(mapping, mapping.is_active ? "disable" : "enable")} icon={mapping.is_active ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />} disabled={!props.canManage} /></div></TableCell>
+              </TableRow>
+            ))}</TableBody>
+          </Table>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AccessScopesTable(props: {
+  scopes: AccessScopeRule[];
+  loading: boolean;
+  query: string;
+  moduleFilter: string;
+  ownerFilter: string;
+  canManage: boolean;
+  onQueryChange: (value: string) => void;
+  onModuleFilterChange: (value: string) => void;
+  onOwnerFilterChange: (value: string) => void;
+  onEdit: (scope: AccessScopeRule) => void;
+  onAction: (scope: AccessScopeRule, action: "enable" | "disable") => void;
+}) {
+  return (
+    <div>
+      <FilterBar>
+        <SearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search scopes" />
+        <Select value={props.moduleFilter} onChange={props.onModuleFilterChange}><option value="ALL">All modules</option><option value="ALL_MODULES">All-module rules</option>{ACCESS_SCOPE_MODULES.map((module) => <option key={module} value={module}>{MODULE_LABELS[module] ?? module}</option>)}</Select>
+        <Select value={props.ownerFilter} onChange={props.onOwnerFilterChange}><option value="ALL">All owners</option><option value="ROLE">Role</option><option value="USER">User</option><option value="ROLE_MAPPING_RULE">Role mapping</option></Select>
+      </FilterBar>
+      <div className="border-b bg-sky-50 px-4 py-3 text-sm text-sky-950">
+        <div className="font-medium">Roles control what a user can do. Scopes control which employees, departments, and locations the user can access.</div>
+        <div className="mt-1 text-xs">Role mapping scopes are templates. When a mapping is applied, HRM v2 copies those templates to the linked user and updates the existing mapped scope on later applies.</div>
+      </div>
+      {props.loading ? <LoadingRow text="Loading access scopes" /> : null}
+      {!props.loading && props.scopes.length === 0 ? <EmptyState title="No access scopes found" description="Create role or user scopes to limit employee data by department, location, team, or company." /> : null}
+      {!props.loading && props.scopes.length > 0 ? (
+        <div className="overflow-x-auto">
+          <Table className="min-w-[1080px]">
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Owner</TableHead><TableHead>Module</TableHead><TableHead>Scope</TableHead><TableHead>Rights</TableHead><TableHead>Status</TableHead><TableHead>Updated</TableHead><TableHead className="w-[120px] text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableBody>{props.scopes.map((scope) => {
+              const owner = scope.scope_owner_type === "ROLE" ? scope.role_name ?? scope.role_id : scope.scope_owner_type === "USER" ? `${scope.user_name ?? "User"}${scope.user_email ? ` (${scope.user_email})` : ""}` : scope.role_mapping_name ?? scope.role_mapping_rule_id ?? "Role mapping rule";
+              return <TableRow key={scope.id}><TableCell><div className="font-medium">{scope.name}</div><div className="truncate text-xs text-muted-foreground">{scope.description ?? "No description"}</div></TableCell><TableCell>{owner}</TableCell><TableCell>{scope.module_key ? MODULE_LABELS[scope.module_key] ?? scope.module_key : "All scoped modules"}</TableCell><TableCell><Badge tone={scope.scope_type === "WHOLE_COMPANY" ? "warning" : undefined}>{SCOPE_TYPE_LABELS[scope.scope_type]}</Badge></TableCell><TableCell><div className="flex flex-wrap gap-1">{scope.can_view ? <Badge tone="success">View</Badge> : null}{scope.can_manage ? <Badge tone="warning">Manage</Badge> : null}</div></TableCell><TableCell>{scope.is_active ? <Badge tone="success">Active</Badge> : <Badge tone="danger">Inactive</Badge>}</TableCell><TableCell>{formatDate(scope.updated_at)}</TableCell><TableCell><div className="flex justify-end gap-1"><IconAction title="Edit scope" onClick={() => props.onEdit(scope)} icon={<Edit className="h-4 w-4" />} disabled={!props.canManage} /><IconAction title={scope.is_active ? "Disable scope" : "Enable scope"} onClick={() => props.onAction(scope, scope.is_active ? "disable" : "enable")} icon={scope.is_active ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />} disabled={!props.canManage} /></div></TableCell></TableRow>;
+            })}</TableBody>
+          </Table>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 type UserCreateInput = { name: string; email: string; username?: string; password: string; status: UserStatus; role_ids: string[] };
 type UserUpdateInput = Omit<UserCreateInput, "password" | "status">;
 
@@ -808,6 +1058,119 @@ function RoleFormModal(props: {
       </form>
     </Modal>
   );
+}
+
+function RoleMappingModal(props: {
+  mode: MappingModalMode;
+  mapping?: RoleMappingRule;
+  roles: Role[];
+  departments: OrganizationDepartment[];
+  locations: OrganizationLocation[];
+  positions: OrganizationPosition[];
+  jobLevels: OrganizationJobLevel[];
+  onClose: () => void;
+  onSubmit: (input: Record<string, unknown>) => Promise<void>;
+}) {
+  const [name, setName] = useState(props.mapping?.name ?? "");
+  const [description, setDescription] = useState(props.mapping?.description ?? "");
+  const [defaultRoleId, setDefaultRoleId] = useState(props.mapping?.default_role_id ?? "");
+  const [employeeType, setEmployeeType] = useState(props.mapping?.employee_type ?? "");
+  const [employmentType, setEmploymentType] = useState(props.mapping?.employment_type ?? "");
+  const [departmentId, setDepartmentId] = useState(props.mapping?.department_id ?? "");
+  const [positionId, setPositionId] = useState(props.mapping?.position_id ?? "");
+  const [locationId, setLocationId] = useState(props.mapping?.location_id ?? "");
+  const [jobLevelId, setJobLevelId] = useState(props.mapping?.job_level_id ?? "");
+  const [scopeType, setScopeType] = useState<AccessScopeType>(props.mapping?.default_scope_type ?? "SELF_ONLY");
+  const [departmentIds, setDepartmentIds] = useState<string[]>(props.mapping?.allowed_department_ids ?? []);
+  const [locationIds, setLocationIds] = useState<string[]>(props.mapping?.allowed_location_ids ?? []);
+  const [includeSubDepartments, setIncludeSubDepartments] = useState(props.mapping?.include_sub_departments ?? false);
+  const [includeReportingChain, setIncludeReportingChain] = useState(props.mapping?.include_reporting_chain ?? false);
+  const [canView, setCanView] = useState(props.mapping?.can_view ?? true);
+  const [canManage, setCanManage] = useState(props.mapping?.can_manage ?? false);
+  const [priority, setPriority] = useState(String(props.mapping?.priority ?? 100));
+  const [isActive, setIsActive] = useState(props.mapping?.is_active ?? true);
+  const [validation, setValidation] = useState("");
+  const assignableRoles = props.roles.filter((role) => role.is_active && !role.is_protected);
+
+  function toggle(list: string[], value: string, setter: (next: string[]) => void) {
+    setter(list.includes(value) ? list.filter((id) => id !== value) : [...list, value]);
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setValidation("");
+    if (!name.trim()) return setValidation("Mapping name is required.");
+    if (!defaultRoleId) return setValidation("Default role is required.");
+    if (scopeType === "SELECTED_DEPARTMENTS" && departmentIds.length === 0) return setValidation("Select at least one allowed department.");
+    if (scopeType === "SELECTED_LOCATIONS" && locationIds.length === 0) return setValidation("Select at least one allowed location.");
+    await props.onSubmit({ name, description: description || null, default_role_id: defaultRoleId, employee_type: employeeType || null, employment_type: employmentType || null, department_id: departmentId || null, position_id: positionId || null, location_id: locationId || null, job_level_id: jobLevelId || null, default_scope_type: scopeType, allowed_department_ids: departmentIds, allowed_location_ids: locationIds, include_sub_departments: includeSubDepartments, include_reporting_chain: includeReportingChain, can_view: canView, can_manage: canManage, priority: Number(priority) || 100, is_active: isActive });
+  }
+  return (
+    <Modal title={props.mode === "create" ? "Create role mapping" : "Edit role mapping"} onClose={props.onClose} wide>
+      <form className="space-y-4" onSubmit={submit}>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Mapping name"><Input value={name} onChange={(event) => setName(event.target.value)} required /></Field>
+          <Field label="Default role"><Select value={defaultRoleId} onChange={setDefaultRoleId}><option value="">Select role</option>{assignableRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</Select><p className="text-xs text-muted-foreground">Protected Owner/Super Admin roles cannot be assigned through mapping.</p></Field>
+          <Field label="Employee type"><Select value={employeeType} onChange={setEmployeeType}><option value="">Any employee type</option><option value="LOCAL">Local</option><option value="FOREIGN">Foreign</option><option value="OTHER">Other</option></Select></Field>
+          <Field label="Employment type"><Select value={employmentType} onChange={setEmploymentType}><option value="">Any employment type</option><option value="FULL_TIME">Full time</option><option value="PART_TIME">Part time</option><option value="INTERN">Intern</option><option value="TEMPORARY">Temporary</option><option value="CONTRACT">Contract</option></Select></Field>
+          <Field label="Department"><Select value={departmentId} onChange={setDepartmentId}><option value="">Any department</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</Select></Field>
+          <Field label="Position"><Select value={positionId} onChange={setPositionId}><option value="">Any position</option>{props.positions.map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</Select></Field>
+          <Field label="Location/outlet"><Select value={locationId} onChange={setLocationId}><option value="">Any location</option>{props.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
+          <Field label="Job level"><Select value={jobLevelId} onChange={setJobLevelId}><option value="">Any job level</option>{props.jobLevels.map((level) => <option key={level.id} value={level.id}>{level.name}</option>)}</Select></Field>
+          <Field label="Default scope"><Select value={scopeType} onChange={(value) => setScopeType(value as AccessScopeType)}>{Object.entries(SCOPE_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
+          <Field label="Priority"><Input type="number" value={priority} onChange={(event) => setPriority(event.target.value)} /><p className="text-xs text-muted-foreground">Higher priority rules win when multiple mappings match.</p></Field>
+          <Field label="Active status"><Select value={isActive ? "ACTIVE" : "INACTIVE"} onChange={(value) => setIsActive(value === "ACTIVE")}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></Select></Field>
+          <div className="md:col-span-2"><Field label="Description"><Input value={description} onChange={(event) => setDescription(event.target.value)} /></Field></div>
+        </div>
+        {scopeType === "SELECTED_DEPARTMENTS" ? <ChecklistPanel title="Allowed departments" empty="No departments configured." items={props.departments.map((department) => ({ id: department.id, label: `${department.code} - ${department.name}` }))} selected={departmentIds} onToggle={(id) => toggle(departmentIds, id, setDepartmentIds)} /> : null}
+        {scopeType === "SELECTED_LOCATIONS" ? <ChecklistPanel title="Allowed locations" empty="No locations configured." items={props.locations.map((location) => ({ id: location.id, label: `${location.code} - ${location.name}` }))} selected={locationIds} onToggle={(id) => toggle(locationIds, id, setLocationIds)} /> : null}
+        <div className="grid gap-3 md:grid-cols-2"><Check label="Include sub-departments" checked={includeSubDepartments} onChange={setIncludeSubDepartments} /><Check label="Include reporting chain" checked={includeReportingChain} onChange={setIncludeReportingChain} /><Check label="Can view" checked={canView} onChange={setCanView} /><Check label="Can manage" checked={canManage} onChange={setCanManage} /></div>
+        {validation ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{validation}</div> : null}
+        <ModalActions onCancel={props.onClose} submitLabel="Save mapping" />
+      </form>
+    </Modal>
+  );
+}
+
+function AccessScopeModal(props: { mode: ScopeModalMode; scope?: AccessScopeRule; roles: Role[]; users: AccessUser[]; roleMappings: RoleMappingRule[]; departments: OrganizationDepartment[]; locations: OrganizationLocation[]; onClose: () => void; onSubmit: (input: Record<string, unknown>) => Promise<void> }) {
+  const [name, setName] = useState(props.scope?.name ?? "");
+  const [description, setDescription] = useState(props.scope?.description ?? "");
+  const [ownerType, setOwnerType] = useState(props.scope?.scope_owner_type ?? "ROLE");
+  const [roleId, setRoleId] = useState(props.scope?.role_id ?? "");
+  const [userId, setUserId] = useState(props.scope?.user_id ?? "");
+  const [roleMappingRuleId, setRoleMappingRuleId] = useState(props.scope?.role_mapping_rule_id ?? "");
+  const [moduleKey, setModuleKey] = useState(props.scope?.module_key ?? "");
+  const [scopeType, setScopeType] = useState<AccessScopeType>(props.scope?.scope_type ?? "OWN_DEPARTMENT");
+  const [departmentIds, setDepartmentIds] = useState<string[]>(props.scope?.allowed_department_ids ?? []);
+  const [locationIds, setLocationIds] = useState<string[]>(props.scope?.allowed_location_ids ?? []);
+  const [includeSubDepartments, setIncludeSubDepartments] = useState(props.scope?.include_sub_departments ?? false);
+  const [includeReportingChain, setIncludeReportingChain] = useState(props.scope?.include_reporting_chain ?? false);
+  const [canView, setCanView] = useState(props.scope?.can_view ?? true);
+  const [canManage, setCanManage] = useState(props.scope?.can_manage ?? false);
+  const [isActive, setIsActive] = useState(props.scope?.is_active ?? true);
+  const [validation, setValidation] = useState("");
+  const activeRoleMappings = props.roleMappings.filter((mapping) => mapping.is_active || mapping.id === roleMappingRuleId);
+  function toggle(list: string[], value: string, setter: (next: string[]) => void) { setter(list.includes(value) ? list.filter((id) => id !== value) : [...list, value]); }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setValidation("");
+    if (!name.trim()) return setValidation("Scope name is required.");
+    if (ownerType === "ROLE" && !roleId) return setValidation("Select a role owner.");
+    if (ownerType === "USER" && !userId) return setValidation("Select a user owner.");
+    if (ownerType === "ROLE_MAPPING_RULE" && !roleMappingRuleId.trim()) return setValidation("Select a role mapping rule for role-mapping scopes.");
+    if (scopeType === "SELECTED_DEPARTMENTS" && departmentIds.length === 0) return setValidation("Select at least one department.");
+    if (scopeType === "SELECTED_LOCATIONS" && locationIds.length === 0) return setValidation("Select at least one location.");
+    if (!canView && !canManage) return setValidation("Select at least view or manage access.");
+    await props.onSubmit({ name, description: description || null, scope_owner_type: ownerType, role_id: ownerType === "ROLE" ? roleId : null, user_id: ownerType === "USER" ? userId : null, role_mapping_rule_id: ownerType === "ROLE_MAPPING_RULE" ? roleMappingRuleId : null, module_key: moduleKey || null, scope_type: scopeType, allowed_department_ids: departmentIds, allowed_location_ids: locationIds, include_sub_departments: includeSubDepartments, include_reporting_chain: includeReportingChain, can_view: canView, can_manage: canManage, is_active: isActive });
+  }
+  return <Modal title={props.mode === "create" ? "Create access scope" : "Edit access scope"} onClose={props.onClose} wide><form className="space-y-4" onSubmit={submit}><div className="grid gap-3 md:grid-cols-2"><Field label="Scope name"><Input value={name} onChange={(event) => setName(event.target.value)} required /></Field><Field label="Owner type"><Select value={ownerType} onChange={(value) => setOwnerType(value as typeof ownerType)}><option value="ROLE">Role template</option><option value="USER">User override</option><option value="ROLE_MAPPING_RULE">Role mapping rule</option></Select></Field>{ownerType === "ROLE" ? <Field label="Role"><Select value={roleId} onChange={setRoleId}><option value="">Select role</option>{props.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</Select></Field> : null}{ownerType === "USER" ? <Field label="User"><Select value={userId} onChange={setUserId}><option value="">Select user</option>{props.users.map((user) => <option key={user.id} value={user.id}>{user.name} ({user.email})</option>)}</Select></Field> : null}{ownerType === "ROLE_MAPPING_RULE" ? <Field label="Role mapping rule"><Select value={roleMappingRuleId} onChange={setRoleMappingRuleId}><option value="">Select role mapping</option>{activeRoleMappings.map((mapping) => <option key={mapping.id} value={mapping.id}>{mapping.name} - {mapping.role_name ?? mapping.default_role_id}</option>)}</Select></Field> : null}<Field label="Module"><Select value={moduleKey} onChange={setModuleKey}><option value="">All scoped modules</option>{ACCESS_SCOPE_MODULES.map((module) => <option key={module} value={module}>{MODULE_LABELS[module] ?? module}</option>)}</Select></Field><Field label="Scope type"><Select value={scopeType} onChange={(value) => setScopeType(value as AccessScopeType)}>{Object.entries(SCOPE_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field><Field label="Active status"><Select value={isActive ? "ACTIVE" : "INACTIVE"} onChange={(value) => setIsActive(value === "ACTIVE")}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></Select></Field><div className="md:col-span-2"><Field label="Description"><Input value={description} onChange={(event) => setDescription(event.target.value)} /></Field></div></div>{scopeType === "SELECTED_DEPARTMENTS" ? <ChecklistPanel title="Allowed departments" empty="No departments configured." items={props.departments.map((department) => ({ id: department.id, label: `${department.code} - ${department.name}` }))} selected={departmentIds} onToggle={(id) => toggle(departmentIds, id, setDepartmentIds)} /> : null}{scopeType === "SELECTED_LOCATIONS" ? <ChecklistPanel title="Allowed locations" empty="No locations configured." items={props.locations.map((location) => ({ id: location.id, label: `${location.code} - ${location.name}` }))} selected={locationIds} onToggle={(id) => toggle(locationIds, id, setLocationIds)} /> : null}<div className="grid gap-3 md:grid-cols-2"><Check label="Include sub-departments" checked={includeSubDepartments} onChange={setIncludeSubDepartments} /><Check label="Include reporting chain" checked={includeReportingChain} onChange={setIncludeReportingChain} /><Check label="Can view scoped records" checked={canView} onChange={setCanView} /><Check label="Can manage scoped records" checked={canManage} onChange={setCanManage} /></div>{scopeType === "WHOLE_COMPANY" ? <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Whole-company access should be reserved for Owner/Super Admin or tightly controlled access templates.</div> : null}{validation ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{validation}</div> : null}<ModalActions onCancel={props.onClose} submitLabel="Save scope" /></form></Modal>;
+}
+
+function ChecklistPanel(props: { title: string; empty: string; items: Array<{ id: string; label: string }>; selected: string[]; onToggle: (id: string) => void }) {
+  return <div className="rounded-md border"><div className="border-b bg-muted/60 px-3 py-2 text-sm font-semibold">{props.title}</div>{props.items.length === 0 ? <div className="px-3 py-4 text-sm text-muted-foreground">{props.empty}</div> : null}<div className="grid max-h-56 gap-0 overflow-y-auto sm:grid-cols-2">{props.items.map((item) => <label key={item.id} className="flex items-center gap-2 border-b px-3 py-2 text-sm"><input type="checkbox" checked={props.selected.includes(item.id)} onChange={() => props.onToggle(item.id)} /><span className="truncate">{item.label}</span></label>)}</div></div>;
+}
+
+function Check(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"><input type="checkbox" checked={props.checked} onChange={(event) => props.onChange(event.target.checked)} /> {props.label}</label>;
 }
 
 function Modal(props: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) {

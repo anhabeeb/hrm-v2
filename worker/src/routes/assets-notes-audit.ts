@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
+import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
@@ -436,6 +437,9 @@ assetRoutes.post("/items/:id/archive", requirePermission("assets.manage"), async
 // Assignments
 assetRoutes.get("/assignments", requirePermission("assets.view"), async (c) => {
   const { conditions, params } = assetAssignmentFilters(c);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "assets", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const rows = await c.env.DB.prepare(
     `SELECT a.*, e.employee_no, e.full_name AS employee_name, d.name AS department_name, l.name AS location_name,
       ai.code AS asset_code, ai.name AS asset_name, ai.size, ai.variant, ac.name AS category_name, ac.type AS category_type
@@ -454,6 +458,7 @@ assetRoutes.get("/assignments", requirePermission("assets.view"), async (c) => {
 assetRoutes.get("/assignments/:id", requirePermission("assets.view"), async (c) => {
   const row = await getAssignment(c, c.req.param("id"));
   if (!row) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(row.employee_id), "assets", "view"))) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
   return ok(c, { assignment: row });
 });
 
@@ -463,6 +468,7 @@ assetRoutes.post("/assignments/issue", requirePermission("assets.issue"), async 
   const assetItemId = readString(body.asset_item_id);
   const employee = await employeeExists(c, employeeId);
   if (!employee || employee.archived_at) return fail(c, 400, "INVALID_EMPLOYEE", "Active employee is required.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "assets", "manage"))) return fail(c, 403, "FORBIDDEN", "You do not have asset access to this employee.");
   const item = await getItem(c, assetItemId);
   if (!item) return fail(c, 404, "NOT_FOUND", "Asset item was not found.");
   if (String(item.status) !== "AVAILABLE") return fail(c, 409, "ITEM_NOT_AVAILABLE", "Only available items can be issued.");
@@ -482,6 +488,7 @@ async function assignmentLifecycle(c: Context<AppBindings>, action: "RETURNED" |
   const assignmentId = readString(c.req.param("id"));
   const assignment = await getAssignment(c, assignmentId);
   if (!assignment) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(assignment.employee_id), "assets", "manage"))) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
   if (String(assignment.status) !== "ISSUED") return fail(c, 409, "INVALID_STATUS_TRANSITION", "Only issued assignments can be changed.");
   const body = await readJsonBody(c.req.raw).catch(() => ({} as Record<string, unknown>));
   const reason = optionalString(body.reason);
@@ -510,6 +517,7 @@ assetRoutes.post("/assignments/:id/write-off", requirePermission("assets.write_o
 assetRoutes.post("/assignments/:id/replace", requireAnyPermission(["assets.issue", "assets.manage"]), async (c) => {
   const assignment = await getAssignment(c, c.req.param("id"));
   if (!assignment) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(assignment.employee_id), "assets", "manage"))) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
   if (String(assignment.status) !== "ISSUED") return fail(c, 409, "INVALID_STATUS_TRANSITION", "Only issued assignments can be replaced.");
   const body = await readJsonBody(c.req.raw);
   const reason = optionalString(body.reason);
@@ -540,6 +548,7 @@ assetRoutes.post("/assignments/:id/replace", requireAnyPermission(["assets.issue
 assetRoutes.post("/assignments/:id/link-deduction", requirePermission("assets.deductions.manage"), async (c) => {
   const assignment = await getAssignment(c, c.req.param("id"));
   if (!assignment) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(assignment.employee_id), "assets", "manage"))) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
   const body = await readJsonBody(c.req.raw);
   const deductionId = optionalString(body.payroll_deduction_id);
   const adjustmentId = optionalString(body.payroll_adjustment_id);
@@ -563,11 +572,15 @@ assetRoutes.post("/assignments/:id/link-deduction", requirePermission("assets.de
 });
 
 assetRoutes.get("/assignments/:id/events", requirePermission("assets.view"), async (c) => {
+  const assignment = await getAssignment(c, c.req.param("id"));
+  if (!assignment || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(assignment.employee_id), "assets", "view"))) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
   const rows = await c.env.DB.prepare("SELECT ev.*, u.name AS event_by_name FROM employee_asset_assignment_events ev LEFT JOIN users u ON u.id = ev.event_by_user_id WHERE ev.assignment_id = ? ORDER BY ev.created_at DESC").bind(c.req.param("id")).all();
   return ok(c, { events: rows.results });
 });
 
 assetRoutes.get("/assignments/:id/attachments", requirePermission("assets.view"), async (c) => {
+  const assignment = await getAssignment(c, c.req.param("id"));
+  if (!assignment || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(assignment.employee_id), "assets", "view"))) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
   const rows = await c.env.DB.prepare(
     `SELECT aa.*, ed.id AS document_id, ed.document_number, ed.status AS document_status,
         ed.archived_at, ed.soft_deleted_at, ed.is_sensitive AS document_is_sensitive,
@@ -587,6 +600,7 @@ assetRoutes.get("/assignments/:id/attachments", requirePermission("assets.view")
 assetRoutes.post("/assignments/:id/attachments", requirePermission("assets.manage"), async (c) => {
   const assignment = await getAssignment(c, c.req.param("id"));
   if (!assignment) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(assignment.employee_id), "assets", "manage"))) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
   const body = await readJsonBody(c.req.raw);
   const employeeDocumentId = optionalString(body.employee_document_id);
   const invalidDocument = await validateActiveEmployeeDocument(c, employeeDocumentId, String(assignment.employee_id));
@@ -599,6 +613,8 @@ assetRoutes.post("/assignments/:id/attachments", requirePermission("assets.manag
 });
 
 assetRoutes.delete("/assignments/:id/attachments/:attachmentId", requirePermission("assets.manage"), async (c) => {
+  const assignment = await getAssignment(c, c.req.param("id"));
+  if (!assignment || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(assignment.employee_id), "assets", "manage"))) return fail(c, 404, "NOT_FOUND", "Asset assignment was not found.");
   const attachment = await c.env.DB.prepare("SELECT * FROM asset_assignment_attachments WHERE id = ? AND assignment_id = ?").bind(c.req.param("attachmentId"), c.req.param("id")).first();
   if (!attachment) return fail(c, 404, "NOT_FOUND", "Attachment was not found.");
   await c.env.DB.prepare("DELETE FROM asset_assignment_attachments WHERE id = ?").bind(c.req.param("attachmentId")).run();
@@ -640,6 +656,7 @@ assetRoutes.post("/deduction-rules/:id/disable", requirePermission("assets.deduc
 
 employeeAssetRoutes.get("/:employeeId/assets/summary", requireAnyPermission(["employees.assets.view", "assets.view"]), async (c) => {
   const employeeId = c.req.param("employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "assets", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const [assignments, history] = await Promise.all([
     c.env.DB.prepare("SELECT a.*, ai.code AS asset_code, ai.name AS asset_name, ai.size, ai.variant, ac.name AS category_name, ac.type AS category_type FROM employee_asset_assignments a INNER JOIN asset_items ai ON ai.id = a.asset_item_id INNER JOIN asset_categories ac ON ac.id = ai.category_id WHERE a.employee_id = ? ORDER BY a.issued_date DESC").bind(employeeId).all(),
     c.env.DB.prepare("SELECT ev.* FROM employee_asset_assignment_events ev WHERE ev.employee_id = ? ORDER BY ev.created_at DESC LIMIT 100").bind(employeeId).all()
@@ -649,30 +666,37 @@ employeeAssetRoutes.get("/:employeeId/assets/summary", requireAnyPermission(["em
 });
 
 employeeAssetRoutes.get("/:employeeId/assets/assignments", requireAnyPermission(["employees.assets.view", "assets.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("employeeId"), "assets", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const rows = await c.env.DB.prepare("SELECT a.*, ai.code AS asset_code, ai.name AS asset_name, ai.size, ai.variant, ac.name AS category_name, ac.type AS category_type FROM employee_asset_assignments a INNER JOIN asset_items ai ON ai.id = a.asset_item_id INNER JOIN asset_categories ac ON ac.id = ai.category_id WHERE a.employee_id = ? ORDER BY a.issued_date DESC").bind(c.req.param("employeeId")).all();
   return ok(c, { assignments: rows.results });
 });
 
 employeeAssetRoutes.get("/:employeeId/assets/history", requireAnyPermission(["employees.assets.view", "assets.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("employeeId"), "assets", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const rows = await c.env.DB.prepare("SELECT ev.*, ai.code AS asset_code, ai.name AS asset_name FROM employee_asset_assignment_events ev LEFT JOIN asset_items ai ON ai.id = ev.asset_item_id WHERE ev.employee_id = ? ORDER BY ev.created_at DESC").bind(c.req.param("employeeId")).all();
   return ok(c, { history: rows.results });
 });
 
 assetRoutes.get("/dashboard", requirePermission("assets.view"), async (c) => {
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "assets", "view", "e");
+  const scopedEmployeeSql = `SELECT e.id FROM employees e WHERE ${scope.sql}`;
   const row = await c.env.DB.prepare(`SELECT
-    (SELECT COUNT(*) FROM employee_asset_assignments WHERE status = 'ISSUED') AS issued_items,
-    (SELECT COUNT(*) FROM employee_asset_assignments WHERE status = 'ISSUED' AND expected_return_date IS NOT NULL) AS pending_return,
-    (SELECT COUNT(*) FROM employee_asset_assignments WHERE status = 'DAMAGED') AS damaged_items,
-    (SELECT COUNT(*) FROM employee_asset_assignments WHERE status = 'LOST') AS lost_items,
-    (SELECT COUNT(*) FROM employee_asset_assignments WHERE deduction_amount IS NOT NULL AND payroll_deduction_id IS NULL AND payroll_adjustment_id IS NULL) AS deductions_pending,
-    (SELECT COUNT(*) FROM employee_notes WHERE is_archived = 0) AS recent_notes,
-    (SELECT COUNT(*) FROM employee_notes WHERE visibility = 'RESTRICTED' AND is_archived = 0) AS restricted_notes,
-    (SELECT COUNT(*) FROM audit_logs WHERE created_at >= datetime('now', '-7 days')) AS recent_audit_activity`).first();
+    (SELECT COUNT(*) FROM employee_asset_assignments WHERE employee_id IN (${scopedEmployeeSql}) AND status = 'ISSUED') AS issued_items,
+    (SELECT COUNT(*) FROM employee_asset_assignments WHERE employee_id IN (${scopedEmployeeSql}) AND status = 'ISSUED' AND expected_return_date IS NOT NULL) AS pending_return,
+    (SELECT COUNT(*) FROM employee_asset_assignments WHERE employee_id IN (${scopedEmployeeSql}) AND status = 'DAMAGED') AS damaged_items,
+    (SELECT COUNT(*) FROM employee_asset_assignments WHERE employee_id IN (${scopedEmployeeSql}) AND status = 'LOST') AS lost_items,
+    (SELECT COUNT(*) FROM employee_asset_assignments WHERE employee_id IN (${scopedEmployeeSql}) AND deduction_amount IS NOT NULL AND payroll_deduction_id IS NULL AND payroll_adjustment_id IS NULL) AS deductions_pending,
+    (SELECT COUNT(*) FROM employee_notes WHERE employee_id IN (${scopedEmployeeSql}) AND is_archived = 0) AS recent_notes,
+    (SELECT COUNT(*) FROM employee_notes WHERE employee_id IN (${scopedEmployeeSql}) AND visibility = 'RESTRICTED' AND is_archived = 0) AS restricted_notes,
+    (SELECT COUNT(*) FROM audit_logs WHERE created_at >= datetime('now', '-7 days')) AS recent_audit_activity`).bind(...scope.params, ...scope.params, ...scope.params, ...scope.params, ...scope.params, ...scope.params, ...scope.params).first();
   return ok(c, row ?? {});
 });
 
 assetRoutes.get("/reports", requirePermission("assets.reports.view"), async (c) => {
   const { conditions, params } = assetAssignmentFilters(c);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "assets", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
   const rows = await c.env.DB.prepare(
     `SELECT a.status, a.issued_date, a.expected_return_date, a.returned_date, a.deduction_amount,
       e.employee_no, e.full_name AS employee_name, d.name AS department_name, l.name AS location_name,
@@ -692,6 +716,9 @@ assetRoutes.get("/reports", requirePermission("assets.reports.view"), async (c) 
 assetRoutes.get("/reports/export.csv", requirePermission("assets.reports.export"), async (c) => {
   const reports = await (async () => {
     const { conditions, params } = assetAssignmentFilters(c);
+    const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "assets", "view", "e");
+    conditions.push(scope.sql);
+    params.push(...scope.params);
     return c.env.DB.prepare(
       `SELECT a.status, a.issued_date, a.expected_return_date, a.returned_date, a.deduction_amount,
         e.employee_no, e.full_name AS employee_name, d.name AS department_name, l.name AS location_name,
@@ -756,6 +783,7 @@ function noteVisibilityCondition(c: Context<AppBindings>) {
 }
 
 employeeNoteRoutes.get("/:employeeId/notes", requirePermission("employee_notes.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("employeeId"), "employees", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const conditions = ["n.employee_id = ?", noteVisibilityCondition(c)];
   const params: BindValue[] = [c.req.param("employeeId")];
   const includeArchived = readString(c.req.query("include_archived")) === "true";
@@ -775,6 +803,7 @@ employeeNoteRoutes.get("/:employeeId/notes", requirePermission("employee_notes.v
 });
 
 employeeNoteRoutes.get("/:employeeId/notes/:noteId", requirePermission("employee_notes.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("employeeId"), "employees", "view"))) return fail(c, 404, "NOT_FOUND", "Employee note was not found.");
   const row = await c.env.DB.prepare("SELECT * FROM employee_notes n WHERE n.employee_id = ? AND n.id = ? AND " + noteVisibilityCondition(c)).bind(c.req.param("employeeId"), c.req.param("noteId")).first();
   if (!row) return fail(c, 404, "NOT_FOUND", "Employee note was not found.");
   if (["HR_ONLY", "RESTRICTED"].includes(String((row as Record<string, unknown>).visibility))) await audit(c, { module: "employee_notes", action: "employee_note.restricted_viewed", entityType: "employee_note", entityId: c.req.param("noteId") });
@@ -783,6 +812,7 @@ employeeNoteRoutes.get("/:employeeId/notes/:noteId", requirePermission("employee
 
 async function saveNote(c: Context<AppBindings>, noteId?: string) {
   const employeeId = readString(c.req.param("employeeId"));
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const old = noteId ? await c.env.DB.prepare("SELECT * FROM employee_notes WHERE id = ? AND employee_id = ?").bind(noteId, employeeId).first<Record<string, unknown>>() : null;
   if (noteId && !old) return fail(c, 404, "NOT_FOUND", "Employee note was not found.");
   const body = await readJsonBody(c.req.raw);
@@ -815,6 +845,7 @@ employeeNoteRoutes.post("/:employeeId/notes", requirePermission("employee_notes.
 employeeNoteRoutes.patch("/:employeeId/notes/:noteId", requirePermission("employee_notes.update"), (c) => saveNote(c, c.req.param("noteId")));
 
 employeeNoteRoutes.post("/:employeeId/notes/:noteId/archive", requirePermission("employee_notes.archive"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("employeeId"), "employees", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee note was not found.");
   const note = await c.env.DB.prepare("SELECT * FROM employee_notes WHERE id = ? AND employee_id = ?").bind(c.req.param("noteId"), c.req.param("employeeId")).first<Record<string, unknown>>();
   if (!note) return fail(c, 404, "NOT_FOUND", "Employee note was not found.");
   if (!canAccessNote(c, note)) return fail(c, 404, "NOT_FOUND", "Employee note was not found.");
@@ -829,6 +860,7 @@ employeeNoteRoutes.post("/:employeeId/notes/:noteId/archive", requirePermission(
 });
 
 employeeNoteRoutes.get("/:employeeId/notes/:noteId/versions", requirePermission("employee_notes.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("employeeId"), "employees", "view"))) return fail(c, 404, "NOT_FOUND", "Employee note was not found.");
   const access = await requireNoteAccess(c);
   if (access.response) return access.response;
   const rows = await c.env.DB.prepare("SELECT v.*, u.name AS edited_by_name FROM employee_note_versions v LEFT JOIN users u ON u.id = v.edited_by_user_id WHERE v.employee_note_id = ? ORDER BY v.version_no DESC").bind(c.req.param("noteId")).all();
@@ -836,6 +868,7 @@ employeeNoteRoutes.get("/:employeeId/notes/:noteId/versions", requirePermission(
 });
 
 employeeNoteRoutes.get("/:employeeId/notes/:noteId/attachments", requirePermission("employee_notes.view"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("employeeId"), "employees", "view"))) return fail(c, 404, "NOT_FOUND", "Employee note was not found.");
   const access = await requireNoteAccess(c);
   if (access.response) return access.response;
   const rows = await c.env.DB.prepare(
@@ -855,6 +888,7 @@ employeeNoteRoutes.get("/:employeeId/notes/:noteId/attachments", requirePermissi
 });
 
 employeeNoteRoutes.post("/:employeeId/notes/:noteId/attachments", requirePermission("employee_notes.attachments.manage"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("employeeId"), "employees", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee note was not found.");
   const access = await requireNoteAccess(c, { restrictedManage: true });
   if (access.response) return access.response;
   const body = await readJsonBody(c.req.raw);
@@ -868,6 +902,7 @@ employeeNoteRoutes.post("/:employeeId/notes/:noteId/attachments", requirePermiss
 });
 
 employeeNoteRoutes.delete("/:employeeId/notes/:noteId/attachments/:attachmentId", requirePermission("employee_notes.attachments.manage"), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("employeeId"), "employees", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee note was not found.");
   const access = await requireNoteAccess(c, { restrictedManage: true });
   if (access.response) return access.response;
   const attachment = await c.env.DB.prepare("SELECT * FROM employee_note_attachments WHERE id = ? AND employee_note_id = ?").bind(c.req.param("attachmentId"), c.req.param("noteId")).first();
@@ -888,10 +923,14 @@ auditRoutes.get("/export.csv", requirePermission("audit.export"), async (c) => {
   return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=audit-log.csv" } });
 });
 
-employeeAssetRoutes.get("/:employeeId/audit", requireAnyPermission(["employees.audit.view", "audit.view"]), async (c) => ok(c, { audit: (await auditRows(c, c.req.param("employeeId"))).results }));
+employeeAssetRoutes.get("/:employeeId/audit", requireAnyPermission(["employees.audit.view", "audit.view"]), async (c) => {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("employeeId"), "employees", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  return ok(c, { audit: (await auditRows(c, c.req.param("employeeId"))).results });
+});
 
 employeeAssetRoutes.get("/:employeeId/audit/export.csv", requirePermission("audit.export"), async (c) => {
   const employeeId = c.req.param("employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const rows = (await auditRows(c, employeeId, 5000)).results;
   const exportId = crypto.randomUUID();
   await c.env.DB.prepare("INSERT INTO employee_audit_export_logs (id, employee_id, filters_json, exported_by_user_id) VALUES (?, ?, ?, ?)").bind(exportId, employeeId, JSON.stringify(c.req.query()), c.get("currentUser").id).run();

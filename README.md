@@ -422,6 +422,49 @@ npx wrangler d1 execute hrm-v2 --remote --config worker/wrangler.toml --file dat
 npx wrangler d1 execute hrm-v2 --remote --config worker/wrangler.toml --file database/seed.sql
 ```
 
+### Existing Remote D1 Access Scope Constraint Note
+
+Fresh installs use the corrected `access_scope_rules` CHECK constraint that allows USER-owned scopes to reference their source `role_mapping_rule_id`. If the remote D1 table was already created before this correction, `CREATE TABLE IF NOT EXISTS` will not alter the existing CHECK constraint.
+
+Before applying a rebuild migration, take a D1 backup/export. Then rebuild `access_scope_rules` with the current definition from `database/schema.sql` and copy the existing rows back into the rebuilt table. Do not run this automatically on production without a verified backup.
+
+The corrected ownership CHECK is:
+
+```sql
+CHECK (
+  (scope_owner_type = 'ROLE' AND role_id IS NOT NULL AND user_id IS NULL)
+  OR (scope_owner_type = 'USER' AND user_id IS NOT NULL AND role_id IS NULL)
+  OR (scope_owner_type = 'ROLE_MAPPING_RULE' AND role_mapping_rule_id IS NOT NULL AND role_id IS NULL AND user_id IS NULL)
+)
+```
+
+Recommended manual approach:
+
+```sql
+PRAGMA foreign_keys = OFF;
+BEGIN TRANSACTION;
+ALTER TABLE access_scope_rules RENAME TO access_scope_rules_old_check;
+
+-- Recreate access_scope_rules using the current CREATE TABLE statement from database/schema.sql.
+-- Then copy the data back:
+INSERT INTO access_scope_rules (
+  id, name, description, scope_owner_type, role_id, user_id, role_mapping_rule_id, module_key,
+  scope_type, allowed_department_ids_json, allowed_location_ids_json, include_sub_departments,
+  include_reporting_chain, can_view, can_manage, is_active, created_by_user_id, updated_by_user_id,
+  created_at, updated_at
+)
+SELECT
+  id, name, description, scope_owner_type, role_id, user_id, role_mapping_rule_id, module_key,
+  scope_type, allowed_department_ids_json, allowed_location_ids_json, include_sub_departments,
+  include_reporting_chain, can_view, can_manage, is_active, created_by_user_id, updated_by_user_id,
+  created_at, updated_at
+FROM access_scope_rules_old_check;
+
+DROP TABLE access_scope_rules_old_check;
+COMMIT;
+PRAGMA foreign_keys = ON;
+```
+
 ## Deployment Commands
 
 Install and verify from the project root:

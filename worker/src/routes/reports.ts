@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { buildEmployeeScopeWhereClause } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
@@ -154,10 +155,17 @@ function maskDocumentRows(c: Context<AppBindings>, rows: ReportRow[]) {
   });
 }
 
+async function addEmployeeScope(c: Context<AppBindings>, conditions: string[], bindings: unknown[], moduleKey: string, employeeAlias = "e", employeeColumn?: string) {
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), moduleKey, "view", employeeAlias);
+  conditions.push(employeeColumn ? `${employeeColumn} IN (SELECT ${employeeAlias}.id FROM employees ${employeeAlias} WHERE ${scope.sql})` : scope.sql);
+  bindings.push(...scope.params);
+}
+
 async function employeeReport(c: Context<AppBindings>) {
   const f = filters(c);
   const conditions: string[] = [];
   const bindings: unknown[] = [];
+  await addEmployeeScope(c, conditions, bindings, "employees", "e");
   addLikeFilter(conditions, bindings, f.search, ["e.employee_no", "e.full_name", "e.display_name"]);
   addFilter(conditions, bindings, f.department_id, "e.primary_department_id = ?");
   addFilter(conditions, bindings, f.position_id, "e.primary_position_id = ?");
@@ -190,6 +198,7 @@ async function documentReport(c: Context<AppBindings>) {
   const f = filters(c);
   const conditions: string[] = [];
   const bindings: unknown[] = [];
+  await addEmployeeScope(c, conditions, bindings, "documents", "e");
   addLikeFilter(conditions, bindings, f.search, ["e.employee_no", "e.full_name", "dt.name", "ed.document_number"]);
   addFilter(conditions, bindings, f.department_id, "e.primary_department_id = ?");
   addFilter(conditions, bindings, f.position_id, "e.primary_position_id = ?");
@@ -233,6 +242,7 @@ async function attendanceReport(c: Context<AppBindings>) {
   const f = filters(c);
   const conditions: string[] = [];
   const bindings: unknown[] = [];
+  await addEmployeeScope(c, conditions, bindings, "attendance", "e");
   addLikeFilter(conditions, bindings, f.search, ["e.employee_no", "e.full_name"]);
   addFilter(conditions, bindings, f.department_id, "e.primary_department_id = ?");
   addFilter(conditions, bindings, f.position_id, "e.primary_position_id = ?");
@@ -267,6 +277,7 @@ async function leaveReport(c: Context<AppBindings>) {
   const f = filters(c);
   const conditions: string[] = [];
   const bindings: unknown[] = [];
+  await addEmployeeScope(c, conditions, bindings, "leave", "e");
   addLikeFilter(conditions, bindings, f.search, ["e.employee_no", "e.full_name"]);
   addFilter(conditions, bindings, f.department_id, "e.primary_department_id = ?");
   addFilter(conditions, bindings, f.position_id, "e.primary_position_id = ?");
@@ -305,6 +316,7 @@ async function payrollReport(c: Context<AppBindings>) {
   const f = filters(c);
   const conditions: string[] = [];
   const bindings: unknown[] = [];
+  await addEmployeeScope(c, conditions, bindings, "payroll", "e", "pre.employee_id");
   addLikeFilter(conditions, bindings, f.search, ["pre.employee_no_snapshot", "pre.employee_name_snapshot"]);
   addFilter(conditions, bindings, f.payroll_period_id, "pr.payroll_period_id = ?");
   addFilter(conditions, bindings, f.payroll_run_id, "pre.payroll_run_id = ?");
@@ -330,6 +342,7 @@ async function rosterReport(c: Context<AppBindings>) {
   const f = filters(c);
   const conditions: string[] = [];
   const bindings: unknown[] = [];
+  await addEmployeeScope(c, conditions, bindings, "roster", "e");
   addLikeFilter(conditions, bindings, f.search, ["e.employee_no", "e.full_name"]);
   addFilter(conditions, bindings, f.department_id, "rp.department_id = ?");
   addFilter(conditions, bindings, f.position_id, "e.primary_position_id = ?");
@@ -355,6 +368,7 @@ async function assetReport(c: Context<AppBindings>) {
   const f = filters(c);
   const conditions: string[] = [];
   const bindings: unknown[] = [];
+  await addEmployeeScope(c, conditions, bindings, "assets", "e");
   addLikeFilter(conditions, bindings, f.search, ["e.employee_no", "e.full_name", "ai.code", "ai.name"]);
   addFilter(conditions, bindings, f.department_id, "e.primary_department_id = ?");
   addFilter(conditions, bindings, f.position_id, "e.primary_position_id = ?");
