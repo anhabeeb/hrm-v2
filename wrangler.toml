@@ -1,5 +1,5 @@
 name = "hrm-v2"
-main = "src/index.ts"
+main = "worker/src/index.ts"
 compatibility_date = "2026-06-19"
 compatibility_flags = ["nodejs_compat"]
 

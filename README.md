@@ -386,7 +386,7 @@ Do not commit `.env`, `.env.local`, `.dev.vars`, tokens, private keys, R2 object
 
 ## Cloudflare Bindings
 
-The Worker must keep these bindings in `worker/wrangler.toml`:
+The Worker keeps these bindings in both `worker/wrangler.toml` and the root `wrangler.toml`. The root config exists so Cloudflare Workers Builds can run `npx wrangler deploy` from the repository root without workspace auto-detection errors.
 
 ```toml
 [[d1_databases]]
@@ -449,9 +449,16 @@ Worker dry-run and deployment:
 
 ```bash
 npm --workspace worker run build
+npx wrangler deploy --dry-run
 cd worker
 npx wrangler secret put JWT_SECRET
-npx wrangler deploy --dry-run
+npx wrangler deploy
+```
+
+When deploying from Cloudflare Workers Builds with repository root as the working directory, use:
+
+```bash
+npm run build
 npx wrangler deploy
 ```
 
