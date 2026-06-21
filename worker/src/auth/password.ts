@@ -1,7 +1,9 @@
 const encoder = new TextEncoder();
 const HASH_ALGORITHM = "PBKDF2";
 const DIGEST = "SHA-256";
-const ITERATIONS = 210000;
+const MIN_ITERATIONS = 100000;
+const MAX_WORKER_PBKDF2_ITERATIONS = 100000;
+const ITERATIONS = 100000;
 const KEY_LENGTH_BITS = 256;
 
 function bytesToBase64(bytes: Uint8Array) {
@@ -65,7 +67,7 @@ export async function verifyPassword(password: string, storedHash: string) {
   }
 
   const iterations = Number(iterationsText);
-  if (!Number.isInteger(iterations) || iterations < 100000) {
+  if (!Number.isInteger(iterations) || iterations < MIN_ITERATIONS || iterations > MAX_WORKER_PBKDF2_ITERATIONS) {
     return false;
   }
 

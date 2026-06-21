@@ -2,6 +2,7 @@ name = "hrm-v2"
 main = "src/index.ts"
 compatibility_date = "2026-06-19"
 compatibility_flags = ["nodejs_compat"]
+routes = [{ pattern = "hr.api.cafeasiana.com.mv", custom_domain = true }]
 
 [vars]
 CORS_ORIGIN = "https://hr.cafeasiana.com.mv"
