@@ -3,7 +3,7 @@
 Clean HRM v2 foundation with a React/Vite frontend, Cloudflare Worker API, Cloudflare D1 schema, and first Owner/Super Admin bootstrap flow.
 
 REST remains the primary API for setup, auth, users, roles, employees, documents, leave, attendance, payroll, roster, reports, and settings.
-WebSockets are prepared under `/api/v1/realtime/ws` for future live notifications and dashboard/device updates.
+WebSockets are prepared under `/api/v1/realtime/ws` for future live notifications and dashboard/device updates. 
 
 ## Local setup
 
