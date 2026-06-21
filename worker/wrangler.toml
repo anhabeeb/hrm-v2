@@ -4,7 +4,8 @@ compatibility_date = "2026-06-19"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-ENVIRONMENT = "local"
+CORS_ORIGIN = "https://hr.cafeasiana.com.mv"
+ENVIRONMENT = "production"
 
 [[d1_databases]]
 binding = "DB"
