@@ -1,0 +1,20 @@
+name = "hrm-v2-api"
+main = "src/index.ts"
+compatibility_date = "2026-06-19"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "local"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hrm-v2"
+database_id = "97f9966e-4fe5-4999-aed7-dc20d75fc89e"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[[r2_buckets]]
+binding = "DOCUMENTS_BUCKET"
+bucket_name = "hrm-v2-documents"

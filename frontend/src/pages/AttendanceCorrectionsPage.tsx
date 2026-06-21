@@ -1,0 +1,117 @@
+import { Check, Plus, Search, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AttendanceCorrectionModal } from "../components/attendance/AttendanceCorrectionModal";
+import { AttendanceNav } from "../components/attendance/AttendanceNav";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { EmptyState } from "../components/ui/empty-state";
+import { Input } from "../components/ui/input";
+import { Panel } from "../components/ui/panel";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { useAuth } from "../hooks/useAuth";
+import { ApiError, api } from "../lib/api";
+import type { AttendanceCorrection } from "../types/attendance";
+import type { Employee } from "../types/employees";
+import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
+
+function tone(status: string) {
+  if (status === "APPROVED") return "success" as const;
+  if (status === "SUBMITTED") return "warning" as const;
+  if (status === "CANCELLED") return "neutral" as const;
+  return "danger" as const;
+}
+
+export function AttendanceCorrectionsPage() {
+  const { token, user } = useAuth();
+  const permissions = new Set(user?.permissions ?? []);
+  const canView = permissions.has("attendance.view");
+  const canCorrect = permissions.has("attendance.correct") || permissions.has("attendance.manage");
+  const canApprove = permissions.has("attendance.approve_correction");
+  const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
+  const [locations, setLocations] = useState<OrganizationLocation[]>([]);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const filters = useMemo(() => ({ search, status, department_id: departmentId, location_id: locationId, date_from: dateFrom, date_to: dateTo }), [search, status, departmentId, locationId, dateFrom, dateTo]);
+
+  async function load() {
+    if (!token || !canView) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [correctionResult, employeeResult, departmentResult, locationResult] = await Promise.all([
+        api.listAttendanceCorrections(token, filters),
+        api.listEmployees(token),
+        api.listDepartments(token),
+        api.listLocations(token)
+      ]);
+      setCorrections(correctionResult.corrections);
+      setEmployees(employeeResult.employees);
+      setDepartments(departmentResult.departments);
+      setLocations(locationResult.locations);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to load correction requests.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [token, canView, filters]);
+
+  async function action(correction: AttendanceCorrection, type: "approve" | "reject" | "cancel") {
+    if (!token) return;
+    try {
+      if (type === "approve") await api.approveAttendanceCorrection(token, correction.id, window.prompt("Approval note") ?? null);
+      if (type === "reject") {
+        const note = window.prompt("Reject reason");
+        if (!note) return;
+        await api.rejectAttendanceCorrection(token, correction.id, note);
+      }
+      if (type === "cancel") await api.cancelAttendanceCorrection(token, correction.id, window.prompt("Cancellation reason") ?? null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to update correction request.");
+    }
+  }
+
+  if (!canView) return <Panel><EmptyState title="Attendance corrections unavailable" description="Your account needs attendance.view permission." /></Panel>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div><h1 className="text-lg font-semibold">Attendance Corrections</h1><p className="text-sm text-muted-foreground">Missed punch and status correction approval workflow foundation.</p></div>
+        <div className="flex flex-wrap gap-2"><AttendanceNav />{canCorrect ? <Button size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New correction</Button> : null}</div>
+      </div>
+      {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      <Panel className="overflow-hidden">
+        <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-6">
+          <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["SUBMITTED", "APPROVED", "REJECTED", "CANCELLED"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
+          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>
+          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
+          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Date from" />
+          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Date to" />
+        </div>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Date</TableHead><TableHead>Requested changes</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead><TableHead>Requested by</TableHead><TableHead>Reviewed by</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableBody>{corrections.map((correction) => <TableRow key={correction.id}><TableCell><div className="font-medium">{correction.employee_name}</div><div className="font-mono text-xs text-muted-foreground">{correction.employee_no}</div></TableCell><TableCell>{correction.attendance_date}</TableCell><TableCell>{correction.requested_status ?? "-"} · {correction.requested_clock_in ? new Date(correction.requested_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {correction.requested_clock_out ? new Date(correction.requested_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</TableCell><TableCell className="max-w-64 truncate">{correction.reason}</TableCell><TableCell><Badge tone={tone(correction.status)}>{correction.status}</Badge></TableCell><TableCell>{correction.requested_by_name ?? "-"}</TableCell><TableCell>{correction.reviewed_by_name ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{correction.status === "SUBMITTED" && canApprove ? <Button title="Approve" variant="ghost" size="icon" onClick={() => void action(correction, "approve")}><Check className="h-4 w-4" /></Button> : null}{correction.status === "SUBMITTED" && canApprove ? <Button title="Reject" variant="ghost" size="icon" onClick={() => void action(correction, "reject")}><X className="h-4 w-4" /></Button> : null}{correction.status === "SUBMITTED" && canCorrect ? <Button title="Cancel" variant="ghost" size="icon" onClick={() => void action(correction, "cancel")}><X className="h-4 w-4 text-red-600" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
+          </Table>
+        </div>
+        {loading ? <EmptyState title="Loading corrections" description="Fetching correction requests." /> : corrections.length === 0 ? <EmptyState title="No correction requests found" description="Submit a correction request or adjust filters." /> : null}
+      </Panel>
+      {modalOpen && token ? <AttendanceCorrectionModal token={token} employees={employees} onClose={() => setModalOpen(false)} onSaved={load} /> : null}
+    </div>
+  );
+}

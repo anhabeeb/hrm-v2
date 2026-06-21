@@ -1,0 +1,116 @@
+import { Eye, PauseCircle, PlayCircle, UserRound } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { PayrollNav } from "../components/payroll/PayrollNav";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { EmptyState } from "../components/ui/empty-state";
+import { Panel } from "../components/ui/panel";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { useAuth } from "../hooks/useAuth";
+import { ApiError, api } from "../lib/api";
+import type { PayrollRun, PayrollRunEmployee, PayrollRunLine } from "../types/payroll";
+
+function money(value: number | null | undefined) {
+  return Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export function PayrollRunDetailPage() {
+  const { id } = useParams();
+  const { token, user } = useAuth();
+  const permissions = new Set(user?.permissions ?? []);
+  const canView = permissions.has("payroll.view");
+  const canManage = permissions.has("payroll.manage");
+  const [run, setRun] = useState<PayrollRun | null>(null);
+  const [employees, setEmployees] = useState<PayrollRunEmployee[]>([]);
+  const [lines, setLines] = useState<PayrollRunLine[] | null>(null);
+  const [selected, setSelected] = useState<PayrollRunEmployee | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    if (!token || !canView || !id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [runResult, employeeResult] = await Promise.all([api.getPayrollRun(token, id), api.listPayrollRunEmployees(token, id)]);
+      setRun(runResult.run);
+      setEmployees(employeeResult.employees);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to load payroll run details.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [token, canView, id]);
+
+  async function showLines(employee: PayrollRunEmployee) {
+    if (!token || !id) return;
+    setSelected(employee);
+    setLines(null);
+    try {
+      setLines((await api.listPayrollRunEmployeeLines(token, id, employee.id)).lines);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to load payroll line details.");
+    }
+  }
+
+  async function holdAction(employee: PayrollRunEmployee, action: "hold" | "release") {
+    if (!token || !id) return;
+    try {
+      if (action === "hold") {
+        const reason = window.prompt("Reason for holding this payroll row");
+        if (!reason) return;
+        await api.holdPayrollRunEmployee(token, id, employee.id, reason);
+      } else if (window.confirm("Release this payroll hold?")) {
+        await api.releasePayrollRunEmployee(token, id, employee.id);
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to update payroll row.");
+    }
+  }
+
+  if (!canView) return <Panel><EmptyState title="Payroll run unavailable" description="Your account needs payroll.view permission." /></Panel>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div><h1 className="text-lg font-semibold">Payroll Run Detail</h1><p className="text-sm text-muted-foreground">{run ? `Run #${run.run_no} for ${run.period_month ?? "-"} / ${run.period_year ?? "-"}` : "Monthly payroll review table."}</p></div>
+        <PayrollNav />
+      </div>
+      {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      <Panel className="overflow-hidden">
+        <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Employee payroll review</h2><p className="text-xs text-muted-foreground">Attendance, leave, roster, advance, and net salary foundations are stored as snapshots for export.</p></div>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader><TableRow><TableHead>Employee No</TableHead><TableHead>Name</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Basic</TableHead><TableHead>Days</TableHead><TableHead>Scheduled</TableHead><TableHead>Worked</TableHead><TableHead>Absent</TableHead><TableHead>Leave</TableHead><TableHead>Unpaid leave</TableHead><TableHead>Late</TableHead><TableHead>Missed punch</TableHead><TableHead>Missed ranges</TableHead><TableHead>Earnings</TableHead><TableHead>Deductions</TableHead><TableHead>Advance</TableHead><TableHead>Attendance</TableHead><TableHead>Leave deduct.</TableHead><TableHead>Net</TableHead><TableHead>Status</TableHead><TableHead className="sticky right-0 bg-white text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableBody>{employees.map((employee) => <TableRow key={employee.id}><TableCell className="font-mono text-xs">{employee.employee_no_snapshot ?? "-"}</TableCell><TableCell className="font-medium">{employee.employee_name_snapshot}</TableCell><TableCell>{employee.department_name ?? "-"}</TableCell><TableCell>{employee.location_name ?? "-"}</TableCell><TableCell>{money(employee.basic_salary)}</TableCell><TableCell>{employee.days_in_period}</TableCell><TableCell>{employee.scheduled_work_days ?? "-"}</TableCell><TableCell>{employee.days_worked ?? "-"}</TableCell><TableCell>{employee.absent_days ?? 0}</TableCell><TableCell>{employee.leave_days ?? 0}</TableCell><TableCell>{employee.unpaid_leave_days ?? 0}</TableCell><TableCell>{employee.late_days ?? 0}</TableCell><TableCell>{employee.missed_punch_days ?? 0}</TableCell><TableCell className="max-w-[220px] truncate">{employee.missed_date_ranges_json ?? "-"}</TableCell><TableCell>{money(employee.total_earnings)}</TableCell><TableCell>{money(employee.total_deductions)}</TableCell><TableCell>{money(employee.advance_deductions)}</TableCell><TableCell>{money(employee.attendance_deductions)}</TableCell><TableCell>{money(employee.leave_deductions)}</TableCell><TableCell className="font-semibold">{money(employee.net_salary)}</TableCell><TableCell><Badge tone={employee.status === "PAID" ? "success" : employee.status === "HELD" ? "warning" : "neutral"}>{employee.status}</Badge></TableCell><TableCell className="sticky right-0 bg-white"><div className="flex justify-end gap-1"><Button title="View lines" variant="ghost" size="icon" onClick={() => void showLines(employee)}><Eye className="h-4 w-4" /></Button><Link to={`/employees/${employee.employee_id}`}><Button title="Open Employee 360" variant="ghost" size="icon"><UserRound className="h-4 w-4" /></Button></Link>{canManage && employee.status !== "HELD" ? <Button title="Hold row" variant="ghost" size="icon" onClick={() => void holdAction(employee, "hold")}><PauseCircle className="h-4 w-4" /></Button> : null}{canManage && employee.status === "HELD" ? <Button title="Release hold" variant="ghost" size="icon" onClick={() => void holdAction(employee, "release")}><PlayCircle className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
+          </Table>
+        </div>
+        {loading ? <EmptyState title="Loading payroll review rows" description="Fetching payroll run employees." /> : employees.length === 0 ? <EmptyState title="No employee rows" description="Recalculate or generate the run to create employee snapshots." /> : null}
+      </Panel>
+      {selected ? <LinesModal employee={selected} lines={lines} onClose={() => { setSelected(null); setLines(null); }} /> : null}
+    </div>
+  );
+}
+
+function LinesModal({ employee, lines, onClose }: { employee: PayrollRunEmployee; lines: PayrollRunLine[] | null; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+      <div className="w-full max-w-4xl rounded-lg border bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b px-4 py-3"><div><h2 className="text-sm font-semibold">{employee.employee_name_snapshot}</h2><p className="text-xs text-muted-foreground">Payroll lines and calculation sources.</p></div><Button variant="outline" size="sm" onClick={onClose}>Close</Button></div>
+        <div className="max-h-[70vh] overflow-auto">
+          <Table>
+            <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Category</TableHead><TableHead>Description</TableHead><TableHead>Source</TableHead><TableHead>Amount</TableHead></TableRow></TableHeader>
+            <TableBody>{(lines ?? []).map((line) => <TableRow key={line.id}><TableCell>{line.line_type}</TableCell><TableCell>{line.category ?? "-"}</TableCell><TableCell>{line.description}</TableCell><TableCell>{line.source}</TableCell><TableCell>{money(line.amount)}</TableCell></TableRow>)}</TableBody>
+          </Table>
+          {!lines ? <EmptyState title="Loading line details" description="Fetching payroll run lines." /> : lines.length === 0 ? <EmptyState title="No payroll lines" description="This row does not have line items yet." /> : null}
+        </div>
+      </div>
+    </div>
+  );
+}

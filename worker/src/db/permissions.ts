@@ -1,0 +1,149 @@
+import type { Env } from "../types";
+
+export const PERMISSIONS = [
+  { id: "perm_dashboard_view", key: "dashboard.view", module: "dashboard", description: "View dashboard overview", critical: false },
+  { id: "perm_users_view", key: "users.view", module: "users", description: "View users and access records", critical: true },
+  { id: "perm_users_create", key: "users.create", module: "users", description: "Create user accounts", critical: true },
+  { id: "perm_users_update", key: "users.update", module: "users", description: "Update user accounts", critical: true },
+  { id: "perm_users_disable", key: "users.disable", module: "users", description: "Disable or lock user accounts", critical: true },
+  { id: "perm_roles_view", key: "roles.view", module: "roles", description: "View roles", critical: true },
+  { id: "perm_roles_create", key: "roles.create", module: "roles", description: "Create roles", critical: true },
+  { id: "perm_roles_update", key: "roles.update", module: "roles", description: "Update roles", critical: true },
+  { id: "perm_roles_assign_permissions", key: "roles.assign_permissions", module: "roles", description: "Assign permissions to roles", critical: true },
+  { id: "perm_settings_view", key: "settings.view", module: "settings", description: "View system settings", critical: true },
+  { id: "perm_settings_manage", key: "settings.manage", module: "settings", description: "Manage system settings", critical: true },
+  { id: "perm_organization_view", key: "organization.view", module: "organization", description: "View organization master data", critical: false },
+  { id: "perm_organization_manage", key: "organization.manage", module: "organization", description: "Manage organization master data", critical: false },
+  { id: "perm_employees_view", key: "employees.view", module: "employees", description: "View employee records", critical: false },
+  { id: "perm_employees_create", key: "employees.create", module: "employees", description: "Create employee records", critical: false },
+  { id: "perm_employees_update", key: "employees.update", module: "employees", description: "Update employee records", critical: false },
+  { id: "perm_employees_archive", key: "employees.archive", module: "employees", description: "Archive employee records", critical: false },
+  { id: "perm_employees_status_manage", key: "employees.status.manage", module: "employees", description: "Manage employee statuses and status changes", critical: false },
+  { id: "perm_employees_numbering_manage", key: "employees.numbering.manage", module: "employees", description: "Manage employee numbering settings", critical: false },
+  { id: "perm_employees_sensitive_view", key: "employees.sensitive.view", module: "employees", description: "View sensitive employee fields", critical: false },
+  { id: "perm_employees_sensitive_update", key: "employees.sensitive.update", module: "employees", description: "Update sensitive employee fields", critical: false },
+  { id: "perm_employees_job_history_view", key: "employees.job_history.view", module: "employees", description: "View employee job history", critical: false },
+  { id: "perm_employees_job_history_manage", key: "employees.job_history.manage", module: "employees", description: "Manage employee job history", critical: false },
+  { id: "perm_employees_contacts_view", key: "employees.contacts.view", module: "employees", description: "View employee contacts", critical: false },
+  { id: "perm_employees_contacts_manage", key: "employees.contacts.manage", module: "employees", description: "Manage employee contacts", critical: false },
+  { id: "perm_employees_onboarding_manage", key: "employees.onboarding.manage", module: "employees", description: "Manage employee onboarding tasks", critical: false },
+  { id: "perm_attendance_view", key: "attendance.view", module: "attendance", description: "View attendance records", critical: false },
+  { id: "perm_attendance_manage", key: "attendance.manage", module: "attendance", description: "Manage attendance records", critical: false },
+  { id: "perm_attendance_correct", key: "attendance.correct", module: "attendance", description: "Request attendance corrections", critical: false },
+  { id: "perm_attendance_approve_correction", key: "attendance.approve_correction", module: "attendance", description: "Approve or reject attendance corrections", critical: false },
+  { id: "perm_attendance_devices_manage", key: "attendance.devices.manage", module: "attendance", description: "Manage attendance devices and raw imports", critical: false },
+  { id: "perm_attendance_settings_manage", key: "attendance.settings.manage", module: "attendance", description: "Manage attendance settings", critical: false },
+  { id: "perm_attendance_reports_view", key: "attendance.reports.view", module: "attendance", description: "View attendance reports", critical: false },
+  { id: "perm_attendance_reports_export", key: "attendance.reports.export", module: "attendance", description: "Export attendance reports", critical: false },
+  { id: "perm_employees_attendance_view", key: "employees.attendance.view", module: "employees", description: "View Employee 360 attendance information", critical: false },
+  { id: "perm_leave_view", key: "leave.view", module: "leave", description: "View leave records", critical: false },
+  { id: "perm_leave_manage", key: "leave.manage", module: "leave", description: "Manage leave records", critical: false },
+  { id: "perm_leave_request", key: "leave.request", module: "leave", description: "Create leave requests", critical: false },
+  { id: "perm_leave_approve", key: "leave.approve", module: "leave", description: "Approve or reject assigned leave requests", critical: false },
+  { id: "perm_leave_cancel", key: "leave.cancel", module: "leave", description: "Cancel leave requests", critical: false },
+  { id: "perm_leave_settings_manage", key: "leave.settings.manage", module: "leave", description: "Manage leave types and policies", critical: false },
+  { id: "perm_leave_workflow_manage", key: "leave.workflow.manage", module: "leave", description: "Manage leave approval workflows", critical: false },
+  { id: "perm_leave_reports_view", key: "leave.reports.view", module: "leave", description: "View leave reports", critical: false },
+  { id: "perm_leave_reports_export", key: "leave.reports.export", module: "leave", description: "Export leave reports", critical: false },
+  { id: "perm_employees_leave_view", key: "employees.leave.view", module: "employees", description: "View Employee 360 leave information", critical: false },
+  { id: "perm_payroll_view", key: "payroll.view", module: "payroll", description: "View payroll records", critical: false },
+  { id: "perm_payroll_manage", key: "payroll.manage", module: "payroll", description: "Manage payroll records", critical: false },
+  { id: "perm_payroll_settings_manage", key: "payroll.settings.manage", module: "payroll", description: "Manage payroll settings", critical: false },
+  { id: "perm_payroll_approve", key: "payroll.approve", module: "payroll", description: "Approve payroll runs and adjustments", critical: false },
+  { id: "perm_payroll_pay", key: "payroll.pay", module: "payroll", description: "Mark payroll runs and advances as paid", critical: false },
+  { id: "perm_payroll_reports_view", key: "payroll.reports.view", module: "payroll", description: "View payroll reports", critical: false },
+  { id: "perm_payroll_reports_export", key: "payroll.reports.export", module: "payroll", description: "Export payroll reports", critical: false },
+  { id: "perm_payroll_advances_view", key: "payroll.advances.view", module: "payroll", description: "View payroll advance payments", critical: false },
+  { id: "perm_payroll_advances_manage", key: "payroll.advances.manage", module: "payroll", description: "Manage payroll advance payments", critical: false },
+  { id: "perm_payroll_adjustments_manage", key: "payroll.adjustments.manage", module: "payroll", description: "Manage payroll adjustments", critical: false },
+  { id: "perm_payroll_components_manage", key: "payroll.components.manage", module: "payroll", description: "Manage payroll components", critical: false },
+  { id: "perm_employees_payroll_view", key: "employees.payroll.view", module: "employees", description: "View Employee 360 payroll information", critical: false },
+  { id: "perm_employees_payroll_update", key: "employees.payroll.update", module: "employees", description: "Update Employee 360 payroll profile", critical: false },
+  { id: "perm_roster_view", key: "roster.view", module: "roster", description: "View roster records", critical: false },
+  { id: "perm_roster_manage", key: "roster.manage", module: "roster", description: "Manage roster records", critical: false },
+  { id: "perm_roster_publish", key: "roster.publish", module: "roster", description: "Publish roster periods and manage published roster edits", critical: false },
+  { id: "perm_roster_settings_manage", key: "roster.settings.manage", module: "roster", description: "Manage roster settings and shift templates", critical: false },
+  { id: "perm_roster_reports_view", key: "roster.reports.view", module: "roster", description: "View roster reports", critical: false },
+  { id: "perm_roster_reports_export", key: "roster.reports.export", module: "roster", description: "Export roster reports", critical: false },
+  { id: "perm_employees_roster_view", key: "employees.roster.view", module: "employees", description: "View Employee 360 roster information", critical: false },
+  { id: "perm_documents_view", key: "documents.view", module: "documents", description: "View documents", critical: false },
+  { id: "perm_documents_upload", key: "documents.upload", module: "documents", description: "Upload documents", critical: false },
+  { id: "perm_documents_download", key: "documents.download", module: "documents", description: "Download documents", critical: false },
+  { id: "perm_documents_archive", key: "documents.archive", module: "documents", description: "Archive documents", critical: false },
+  { id: "perm_documents_delete", key: "documents.delete", module: "documents", description: "Delete documents", critical: false },
+  { id: "perm_documents_sensitive_view", key: "documents.sensitive.view", module: "documents", description: "View sensitive documents", critical: false },
+  { id: "perm_documents_sensitive_download", key: "documents.sensitive.download", module: "documents", description: "Download sensitive documents", critical: false },
+  { id: "perm_documents_settings_manage", key: "documents.settings.manage", module: "documents", description: "Manage document categories and types", critical: false },
+  { id: "perm_documents_reports_view", key: "documents.reports.view", module: "documents", description: "View document reports", critical: false },
+  { id: "perm_documents_reports_export", key: "documents.reports.export", module: "documents", description: "Export document reports", critical: false },
+  { id: "perm_documents_registry_view", key: "documents.registry.view", module: "documents", description: "View central document registry", critical: false },
+  { id: "perm_documents_required_rules_manage", key: "documents.required_rules.manage", module: "documents", description: "Manage required document rules", critical: false },
+  { id: "perm_documents_permanent_delete", key: "documents.permanent_delete", module: "documents", description: "Permanently delete document records and files", critical: false },
+  { id: "perm_assets_view", key: "assets.view", module: "assets", description: "View assets and uniforms", critical: false },
+  { id: "perm_assets_manage", key: "assets.manage", module: "assets", description: "Manage assets and uniforms", critical: false },
+  { id: "perm_assets_settings_manage", key: "assets.settings.manage", module: "assets", description: "Manage asset and uniform settings", critical: false },
+  { id: "perm_assets_issue", key: "assets.issue", module: "assets", description: "Issue assets and uniforms", critical: false },
+  { id: "perm_assets_return", key: "assets.return", module: "assets", description: "Return issued assets and uniforms", critical: false },
+  { id: "perm_assets_damage", key: "assets.damage", module: "assets", description: "Mark assets and uniforms damaged", critical: false },
+  { id: "perm_assets_lost", key: "assets.lost", module: "assets", description: "Mark assets and uniforms lost", critical: false },
+  { id: "perm_assets_write_off", key: "assets.write_off", module: "assets", description: "Write off assets and uniforms", critical: false },
+  { id: "perm_assets_deductions_manage", key: "assets.deductions.manage", module: "assets", description: "Manage asset recovery and deduction links", critical: false },
+  { id: "perm_assets_reports_view", key: "assets.reports.view", module: "assets", description: "View asset reports", critical: false },
+  { id: "perm_assets_reports_export", key: "assets.reports.export", module: "assets", description: "Export asset reports", critical: false },
+  { id: "perm_employees_assets_view", key: "employees.assets.view", module: "employees", description: "View Employee 360 assets and uniforms", critical: false },
+  { id: "perm_employee_notes_view", key: "employee_notes.view", module: "employee_notes", description: "View general employee notes", critical: false },
+  { id: "perm_employee_notes_create", key: "employee_notes.create", module: "employee_notes", description: "Create employee notes", critical: false },
+  { id: "perm_employee_notes_update", key: "employee_notes.update", module: "employee_notes", description: "Update employee notes", critical: false },
+  { id: "perm_employee_notes_archive", key: "employee_notes.archive", module: "employee_notes", description: "Archive employee notes", critical: false },
+  { id: "perm_employee_notes_restricted_view", key: "employee_notes.restricted.view", module: "employee_notes", description: "View restricted employee notes", critical: false },
+  { id: "perm_employee_notes_restricted_manage", key: "employee_notes.restricted.manage", module: "employee_notes", description: "Create or edit restricted employee notes", critical: false },
+  { id: "perm_employee_notes_attachments_manage", key: "employee_notes.attachments.manage", module: "employee_notes", description: "Manage employee note attachments", critical: false },
+  { id: "perm_employees_audit_view", key: "employees.audit.view", module: "employees", description: "View Employee 360 audit timeline", critical: false },
+  { id: "perm_reports_view", key: "reports.view", module: "reports", description: "View reports", critical: false },
+  { id: "perm_audit_view", key: "audit.view", module: "audit", description: "View audit logs", critical: true },
+  { id: "perm_audit_export", key: "audit.export", module: "audit", description: "Export audit logs", critical: false }
+] as const;
+
+export const OWNER_ROLE_NAME = "Owner/Super Admin";
+
+export async function seedSystemPermissions(db: Env["DB"]) {
+  const statements = PERMISSIONS.map((permission) =>
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .bind(permission.id, permission.key, permission.module, permission.description, permission.critical ? 1 : 0)
+  );
+  await db.batch(statements);
+}
+
+export async function ensureOwnerRole(db: Env["DB"]) {
+  const existing = await db.prepare("SELECT id FROM roles WHERE name = ?").bind(OWNER_ROLE_NAME).first<{ id: string }>();
+  const roleId = existing?.id ?? crypto.randomUUID();
+
+  if (!existing) {
+    await db
+      .prepare(
+        `INSERT INTO roles (id, name, description, is_system_role, is_protected, is_active)
+         VALUES (?, ?, ?, 1, 1, 1)`
+      )
+      .bind(roleId, OWNER_ROLE_NAME, "Protected system role with full HRM access.")
+      .run();
+  } else {
+    await db
+      .prepare("UPDATE roles SET is_system_role = 1, is_protected = 1, is_active = 1, updated_at = ? WHERE id = ?")
+      .bind(new Date().toISOString(), roleId)
+      .run();
+  }
+
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+       SELECT ?, id FROM permissions`
+    )
+    .bind(roleId)
+    .run();
+
+  return roleId;
+}
