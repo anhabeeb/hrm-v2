@@ -555,10 +555,16 @@ export const api = {
   uploadEmployeeProfilePhoto(token: string, employeeId: string, form: FormData) {
     return multipartRequest<{ document: EmployeeDocument }>(`/api/v1/employees/${employeeId}/profile-photo`, form, token);
   },
+  clearEmployeeProfilePhoto(token: string, employeeId: string) {
+    return request<{ cleared: boolean }>(`/api/v1/employees/${employeeId}/profile-photo`, { method: "DELETE" }, token);
+  },
   deleteEmployeeProfilePhoto(token: string, employeeId: string) {
     return request<{ cleared: boolean }>(`/api/v1/employees/${employeeId}/profile-photo`, { method: "DELETE" }, token);
   },
   fetchEmployeeProfilePhoto(token: string, employeeId: string) {
+    return blobRequest(`/api/v1/employees/${employeeId}/profile-photo`, token);
+  },
+  streamEmployeeProfilePhoto(token: string, employeeId: string) {
     return blobRequest(`/api/v1/employees/${employeeId}/profile-photo`, token);
   },
   listLeaveTypes(token: string) {

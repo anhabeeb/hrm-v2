@@ -1,0 +1,114 @@
+import { ImageUp, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { ApiError, api } from "../../lib/api";
+import type { Employee } from "../../types/employees";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+
+export function EmployeeProfilePhotoControls({
+  employee,
+  token,
+  canUpload,
+  canClear,
+  onChanged,
+  compact = false
+}: {
+  employee: Employee;
+  token: string;
+  canUpload: boolean;
+  canClear: boolean;
+  onChanged: () => Promise<void>;
+  compact?: boolean;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function clearPhoto() {
+    if (!employee.profile_photo_document_id || !window.confirm("Clear this employee profile photo? The document will be archived, not permanently deleted.")) return;
+    setClearing(true);
+    setError(null);
+    try {
+      await api.clearEmployeeProfilePhoto(token, employee.id);
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to clear profile photo.");
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  if (!canUpload && !canClear) return null;
+
+  return (
+    <div className={compact ? "space-y-2" : "flex flex-wrap items-center gap-2"}>
+      {error ? <div className="w-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      {canUpload ? (
+        <Button variant="outline" size="sm" onClick={() => { setError(null); setModalOpen(true); }}>
+          <ImageUp className="h-4 w-4" />
+          {employee.profile_photo_document_id ? "Change photo" : "Upload photo"}
+        </Button>
+      ) : null}
+      {canClear && employee.profile_photo_document_id ? (
+        <Button variant="outline" size="sm" disabled={clearing} onClick={() => void clearPhoto()}>
+          <Trash2 className="h-4 w-4" />
+          {clearing ? "Clearing..." : "Clear photo"}
+        </Button>
+      ) : null}
+      {modalOpen ? <ProfilePhotoModal employee={employee} token={token} onClose={() => setModalOpen(false)} onSaved={onChanged} /> : null}
+    </div>
+  );
+}
+
+function ProfilePhotoModal({ employee, token, onClose, onSaved }: { employee: Employee; token: string; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setError(null);
+    if (!file) {
+      setError("Choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+    const form = new FormData();
+    form.append("file", file);
+    setSaving(true);
+    try {
+      await api.uploadEmployeeProfilePhoto(token, employee.id, form);
+      await onSaved();
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to upload profile photo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+      <div className="w-full max-w-lg rounded-lg border bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <h2 className="text-sm font-semibold">{employee.profile_photo_document_id ? "Change profile photo" : "Upload profile photo"}</h2>
+            <p className="text-xs text-muted-foreground">{employee.full_name} - {employee.employee_no}</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+        </div>
+        <div className="space-y-3 p-4">
+          <div className="space-y-1.5">
+            <Label>Photo</Label>
+            <Input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+            <p className="text-xs text-muted-foreground">JPEG, PNG, or WebP. Maximum size follows the Profile Photo document type setting.</p>
+          </div>
+          {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+        </div>
+        <div className="flex justify-end gap-2 border-t px-4 py-3">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={saving} onClick={() => void submit()}>{saving ? "Saving..." : "Save photo"}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}

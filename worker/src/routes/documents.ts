@@ -228,6 +228,29 @@ async function publishDocument(c: Context<AppBindings>, event: "documents.change
   }
 }
 
+async function auditEmployeeProfilePhoto(c: Context<AppBindings>, input: { employeeId: string; oldValue?: unknown; newValue?: unknown; reason?: string | null }) {
+  const actor = c.get("currentUser");
+  await recordAudit(c.env.DB, {
+    actorUserId: actor.id,
+    action: "employee.profile_photo_changed",
+    module: "employees",
+    entityType: "employee",
+    entityId: input.employeeId,
+    oldValue: input.oldValue,
+    newValue: input.newValue,
+    reason: input.reason,
+    ipAddress: getClientIp(c.req.raw),
+    userAgent: c.req.header("User-Agent") ?? null
+  });
+}
+
+async function publishEmployeeProfilePhoto(c: Context<AppBindings>, employeeId: string, documentId: string | null, action: string) {
+  const actor = c.get("currentUser");
+  await publishAccessEvent(c.env, "employee.profile_photo_changed", { actor_user_id: actor.id, entity_type: "employee", entity_id: employeeId, action });
+  await publishAccessEvent(c.env, "employees.changed", { actor_user_id: actor.id, entity_type: "employee", entity_id: employeeId, action });
+  await publishAccessEvent(c.env, "documents.changed", { actor_user_id: actor.id, entity_type: "document", entity_id: documentId ?? undefined, action });
+}
+
 async function getType(db: AppBindings["Bindings"]["DB"], id: string) {
   return db.prepare("SELECT dt.*, dc.name AS category_name FROM document_types dt LEFT JOIN document_categories dc ON dc.id = dt.category_id WHERE dt.id = ?").bind(id).first<DocumentTypeRow>();
 }
@@ -878,6 +901,8 @@ employeeDocumentRoutes.post("/:employeeId/profile-photo", requirePermission("doc
   const type = await c.env.DB.prepare("SELECT * FROM document_types WHERE code = 'PROFILE_PHOTO' AND is_active = 1").first<DocumentTypeRow>();
   if (!type) return fail(c, 400, "PROFILE_PHOTO_TYPE_MISSING", "Profile Photo document type is not configured.");
   const employeeId = routeParam(c, "employeeId");
+  const employee = await c.env.DB.prepare("SELECT id, profile_photo_document_id FROM employees WHERE id = ?").bind(employeeId).first<{ id: string; profile_photo_document_id: string | null }>();
+  if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const existing = await c.env.DB.prepare(
     `SELECT ed.id
      FROM employee_documents ed
@@ -892,7 +917,8 @@ employeeDocumentRoutes.post("/:employeeId/profile-photo", requirePermission("doc
   if (documentId) {
     await c.env.DB.prepare("UPDATE employees SET profile_photo_document_id = ?, updated_at = ? WHERE id = ?").bind(documentId, new Date().toISOString(), employeeId).run();
     await auditDocument(c, { action: "document.profile_photo_updated", entityType: "document", entityId: documentId, newValue: { employee_id: employeeId, replaced: Boolean(existing) } });
-    await publishDocument(c, "employee.profile_photo_changed", documentId, "profile_photo_changed");
+    await auditEmployeeProfilePhoto(c, { employeeId, oldValue: { profile_photo_document_id: employee.profile_photo_document_id }, newValue: { profile_photo_document_id: documentId } });
+    await publishEmployeeProfilePhoto(c, employeeId, documentId, "profile_photo_changed");
   }
   return response;
 });
@@ -900,7 +926,8 @@ employeeDocumentRoutes.post("/:employeeId/profile-photo", requirePermission("doc
 employeeDocumentRoutes.delete("/:employeeId/profile-photo", requirePermission("documents.archive"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
   const type = await c.env.DB.prepare("SELECT * FROM document_types WHERE code = 'PROFILE_PHOTO'").first<DocumentTypeRow>();
-  const employee = await c.env.DB.prepare("SELECT profile_photo_document_id FROM employees WHERE id = ?").bind(employeeId).first<{ profile_photo_document_id: string | null }>();
+  const employee = await c.env.DB.prepare("SELECT id, profile_photo_document_id FROM employees WHERE id = ?").bind(employeeId).first<{ id: string; profile_photo_document_id: string | null }>();
+  if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const active = type
     ? await c.env.DB.prepare(
         `SELECT ed.id
@@ -914,22 +941,26 @@ employeeDocumentRoutes.delete("/:employeeId/profile-photo", requirePermission("d
   if (active) {
     await c.env.DB.prepare("UPDATE employee_documents SET status = 'ARCHIVED', archived_at = ?, archived_by_user_id = ?, archive_reason = ?, updated_at = ?, updated_by_user_id = ? WHERE id = ?").bind(now, c.get("currentUser").id, "Profile photo cleared", now, c.get("currentUser").id, active.id).run();
     await auditDocument(c, { action: "document.profile_photo_updated", entityType: "document", entityId: active.id, newValue: { cleared: true, archived: true }, reason: "Profile photo cleared" });
-    await publishDocument(c, "employee.profile_photo_changed", active.id, "profile_photo_changed");
   }
   await c.env.DB.prepare("UPDATE employees SET profile_photo_document_id = NULL, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), employeeId).run();
+  await auditEmployeeProfilePhoto(c, { employeeId, oldValue: { profile_photo_document_id: employee.profile_photo_document_id }, newValue: { profile_photo_document_id: null }, reason: "Profile photo cleared" });
+  await publishEmployeeProfilePhoto(c, employeeId, active?.id ?? null, "profile_photo_changed");
   return ok(c, { cleared: true });
 });
 
 employeeDocumentRoutes.get("/:employeeId/profile-photo", requirePermission("employees.view"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
-  const employee = await c.env.DB.prepare("SELECT profile_photo_document_id FROM employees WHERE id = ?").bind(employeeId).first<{ profile_photo_document_id: string | null }>();
+  const employee = await c.env.DB.prepare("SELECT id, profile_photo_document_id FROM employees WHERE id = ?").bind(employeeId).first<{ id: string; profile_photo_document_id: string | null }>();
+  if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   if (!employee?.profile_photo_document_id) return fail(c, 404, "NOT_FOUND", "Profile photo was not found.");
   const doc = await getDocument(c.env.DB, employee.profile_photo_document_id, employeeId);
   if (doc?.status !== "ACTIVE") return fail(c, 404, "NOT_FOUND", "Profile photo was not found.");
+  if (doc.document_type_code !== "PROFILE_PHOTO") return fail(c, 404, "NOT_FOUND", "Profile photo was not found.");
   if (!doc?.current_version_id) return fail(c, 404, "NOT_FOUND", "Profile photo was not found.");
   const version = await c.env.DB.prepare("SELECT * FROM employee_document_versions WHERE id = ?").bind(doc.current_version_id).first<VersionRow>();
   if (!version) return fail(c, 404, "NOT_FOUND", "Profile photo file was not found.");
+  if (!["image/jpeg", "image/png", "image/webp"].includes(version.file_mime_type)) return fail(c, 415, "UNSUPPORTED_MEDIA_TYPE", "Profile photo file type is not supported.");
   const object = await c.env.DOCUMENTS_BUCKET.get(version.r2_key);
   if (!object) return fail(c, 404, "NOT_FOUND", "Profile photo file was not found.");
-  return new Response(object.body, { headers: { "Content-Type": version.file_mime_type, "Cache-Control": "private, max-age=300" } });
+  return new Response(object.body, { headers: { "Content-Type": version.file_mime_type, "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff" } });
 });

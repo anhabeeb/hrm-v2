@@ -188,8 +188,9 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
 
 function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }: { employee: Employee; token: string; types: DocumentType[]; state: { mode: "upload" | "replace" | "photo"; document?: EmployeeDocument }; onClose: () => void; onSaved: () => Promise<void> }) {
   const activeTypes = useMemo(() => types.filter((type) => type.is_active), [types]);
-  const [documentTypeId, setDocumentTypeId] = useState(state.document?.document_type_id ?? activeTypes[0]?.id ?? "");
-  const selectedType = activeTypes.find((type) => type.id === documentTypeId);
+  const profilePhotoType = activeTypes.find((type) => type.code === "PROFILE_PHOTO");
+  const [documentTypeId, setDocumentTypeId] = useState(state.document?.document_type_id ?? (state.mode === "photo" ? profilePhotoType?.id : activeTypes[0]?.id) ?? "");
+  const selectedType = state.mode === "photo" ? profilePhotoType : activeTypes.find((type) => type.id === documentTypeId);
   const [file, setFile] = useState<File | null>(null);
   const [documentNumber, setDocumentNumber] = useState(state.document?.document_number ?? "");
   const [issueDate, setIssueDate] = useState(state.document?.issue_date ?? "");
@@ -260,7 +261,7 @@ function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }
           ) : null}
           <div className="space-y-1.5 md:col-span-2">
             <Label>File</Label>
-            <Input type="file" accept={selectedType?.allowed_file_types?.join(",")} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+            <Input type="file" accept={selectedType?.allowed_file_types?.join(",") ?? (state.mode === "photo" ? "image/jpeg,image/png,image/webp" : undefined)} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
             {selectedType ? <p className="text-xs text-muted-foreground">Max {selectedType.max_file_size_mb} MB. {selectedType.allowed_file_types?.join(", ")}</p> : null}
           </div>
           {state.mode !== "photo" ? (

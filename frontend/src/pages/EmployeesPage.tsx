@@ -345,7 +345,7 @@ function EmployeeFormModal(props: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
       <div className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-lg border bg-white shadow-xl">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <div><h2 className="text-sm font-semibold">{props.mode === "create" ? "Create employee" : "Edit employee"}</h2><p className="text-xs text-muted-foreground">Profile photo upload and linked user creation are reserved for later prompts.</p></div>
+          <div><h2 className="text-sm font-semibold">{props.mode === "create" ? "Create employee" : "Edit employee"}</h2><p className="text-xs text-muted-foreground">Profile photo is managed from Employee 360 after the employee record is saved.</p></div>
           <Button variant="ghost" size="sm" onClick={props.onClose}>Close</Button>
         </div>
         <div className="max-h-[70vh] overflow-y-auto p-4">

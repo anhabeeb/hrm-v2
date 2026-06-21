@@ -1,5 +1,5 @@
 import { Archive, ArrowLeft, CheckCircle2, Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeAttendancePanel } from "../components/attendance/EmployeeAttendancePanel";
@@ -7,6 +7,7 @@ import { EmployeeAuditPanel } from "../components/audit/EmployeeAuditPanel";
 import { EmployeeAssetsPanel } from "../components/assets/EmployeeAssetsPanel";
 import { EmployeeAvatar } from "../components/employee/EmployeeAvatar";
 import { EmployeeDocumentsPanel } from "../components/employee/EmployeeDocumentsPanel";
+import { EmployeeProfilePhotoControls } from "../components/employee/EmployeeProfilePhotoControls";
 import { EmployeeLeavePanel } from "../components/leave/EmployeeLeavePanel";
 import { EmployeeNotesPanel } from "../components/notes/EmployeeNotesPanel";
 import { EmployeePayrollPanel } from "../components/payroll/EmployeePayrollPanel";
@@ -62,6 +63,8 @@ export function EmployeeProfilePage() {
   const canAssets = permissions.has("employees.assets.view") || permissions.has("assets.view");
   const canNotes = permissions.has("employee_notes.view");
   const canAudit = permissions.has("employees.audit.view") || permissions.has("audit.view");
+  const canUploadPhoto = permissions.has("documents.upload");
+  const canClearPhoto = permissions.has("documents.archive");
 
   async function load() {
     if (!token || !id || !canView) return;
@@ -175,6 +178,7 @@ export function EmployeeProfilePage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <EmployeeProfilePhotoControls employee={employee} token={token!} canUpload={canUploadPhoto} canClear={canClearPhoto} onChanged={load} />
           <Link to="/employees"><Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>
           <Button variant="outline" size="sm" onClick={() => navigate("/employees")}><Pencil className="h-4 w-4" /> Edit</Button>
           {canStatus ? <Button variant="outline" size="sm" onClick={() => { setStatusModalError(null); setStatusModalOpen(true); }}>Change status</Button> : null}
@@ -193,7 +197,18 @@ export function EmployeeProfilePage() {
           ))}
         </div>
         <div className="p-4">
-          {activeTab === "Overview" ? <Overview employee={employee} contacts={contacts} onboarding={onboarding} completed={completed} audit={audit} onTask={canOnboarding ? updateTask : undefined} /> : null}
+          {activeTab === "Overview" ? (
+            <Overview
+              employee={employee}
+              token={token!}
+              contacts={contacts}
+              onboarding={onboarding}
+              completed={completed}
+              audit={audit}
+              photoControls={<EmployeeProfilePhotoControls employee={employee} token={token!} canUpload={canUploadPhoto} canClear={canClearPhoto} onChanged={load} compact />}
+              onTask={canOnboarding ? updateTask : undefined}
+            />
+          ) : null}
           {activeTab === "Personal Info" ? <DetailGrid rows={[
             ["Full name", employee.full_name], ["Display name", employee.display_name], ["Gender", employee.gender], ["Date of birth", employee.date_of_birth], ["Nationality", employee.nationality], ["Employee type", employee.employee_type], ["Employment type", employee.employment_type], ["Profile photo", employee.profile_photo_document_id ? "Uploaded" : "Not uploaded"]
           ]} /> : null}
@@ -225,9 +240,40 @@ export function EmployeeProfilePage() {
   );
 }
 
-function Overview({ employee, contacts, onboarding, completed, audit, onTask }: { employee: Employee; contacts: EmployeeContact[]; onboarding: OnboardingTask[]; completed: number; audit: Record<string, unknown>[]; onTask?: (task: OnboardingTask, status: OnboardingStatus) => Promise<void> }) {
+function Overview({
+  employee,
+  token,
+  contacts,
+  onboarding,
+  completed,
+  audit,
+  photoControls,
+  onTask
+}: {
+  employee: Employee;
+  token: string;
+  contacts: EmployeeContact[];
+  onboarding: OnboardingTask[];
+  completed: number;
+  audit: Record<string, unknown>[];
+  photoControls: ReactNode;
+  onTask?: (task: OnboardingTask, status: OnboardingStatus) => Promise<void>;
+}) {
   return (
     <div className="grid gap-4 xl:grid-cols-3">
+      <div className="rounded-md border">
+        <div className="border-b px-3 py-2 text-sm font-semibold">Profile photo</div>
+        <div className="flex items-center gap-3 p-3">
+          <EmployeeAvatar employee={employee} token={token} size="lg" />
+          <div className="min-w-0 space-y-2">
+            <div>
+              <p className="truncate text-sm font-medium">{employee.full_name}</p>
+              <p className="text-xs text-muted-foreground">{employee.profile_photo_document_id ? "Photo uploaded" : "Initials placeholder"}</p>
+            </div>
+            {photoControls}
+          </div>
+        </div>
+      </div>
       <Summary title="Personal summary" rows={[["Display name", employee.display_name ?? "-"], ["Employee type", employee.employee_type], ["Employment type", employee.employment_type]]} />
       <Summary title="Job summary" rows={[["Department", employee.department_name ?? "-"], ["Position", employee.position_title ?? "-"], ["Location", employee.location_name ?? "-"], ["Manager", employee.reporting_manager_name ?? "-"]]} />
       <Summary title="Contact summary" rows={[["Contacts", String(contacts.length)], ["Primary", contacts.find((c) => c.is_primary)?.value ?? "-"], ["Emergency", contacts.find((c) => c.contact_type === "EMERGENCY")?.value ?? "-"]]} />
