@@ -1,4 +1,4 @@
-import { CalendarDays, FileText, Plus, RefreshCw } from "lucide-react";
+import { CalendarDays, Download, Eye, FileText, Plus, RefreshCw } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
@@ -127,7 +127,7 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
           {activeMode === "attendance" ? <AttendanceSection data={data} token={token} reload={load} /> : null}
           {activeMode === "leave" ? <LeaveSection data={data} token={token} reload={load} /> : null}
           {activeMode === "roster" ? <RosterSelfServiceSection data={data} token={token} /> : null}
-          {activeMode === "payroll" ? <PayrollSection data={data} /> : null}
+          {activeMode === "payroll" ? <PayrollSection data={data} token={token} /> : null}
           {activeMode === "assets" ? <AssetsSection data={data} /> : null}
           {activeMode === "kyc" ? <KycSection data={data} token={token} reload={load} /> : null}
         </DataTableFrame>
@@ -417,8 +417,41 @@ function MonthlyAttendanceCalendar({ month, records }: { month: string; records:
   );
 }
 
-function PayrollSection({ data }: { data: Record<string, unknown> | null }) {
+function PayrollSection({ data, token }: { data: Record<string, unknown> | null; token: string | null }) {
+  const { user } = useAuth();
+  const permissions = new Set(user?.permissions ?? []);
   const profile = (data?.profile ?? {}) as Row;
+  const payslips = rows(data, "payslips");
+  const canDownload = Boolean(data?.payslip_download_enabled) || permissions.has("self_service.payslips.download") || permissions.has("self_service.payroll.view") || permissions.has("self_service.view");
+  const [error, setError] = useState<string | null>(null);
+
+  async function viewPayslip(row: Row) {
+    if (!token) return;
+    setError(null);
+    try {
+      const file = await api.previewSelfServicePayslip(token, String(row.id));
+      window.open(URL.createObjectURL(file.blob), "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to preview your payslip.");
+    }
+  }
+
+  async function downloadPayslip(row: Row) {
+    if (!token) return;
+    setError(null);
+    try {
+      const file = await api.downloadSelfServicePayslip(token, String(row.id));
+      const url = URL.createObjectURL(file.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.filename || `${String(row.payslip_number ?? "payslip")}.html`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to download your payslip.");
+    }
+  }
+
   return (
     <div className="space-y-4 p-4">
       <div className="grid gap-2 md:grid-cols-4">
@@ -429,7 +462,46 @@ function PayrollSection({ data }: { data: Record<string, unknown> | null }) {
           </div>
         ))}
       </div>
-      <div className="rounded-md border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">Payslip download is prepared as a future foundation.</div>
+      {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      <Panel className="overflow-hidden shadow-none">
+        <div className="flex items-center justify-between border-b px-3 py-2">
+          <h2 className="text-sm font-semibold">Payslips</h2>
+          <span className="text-xs text-muted-foreground">Self-service payslips are limited to your linked employee profile.</span>
+        </div>
+        <DataTableFrame empty={!payslips.length}>
+          <Table>
+            <TableHeader className="sticky top-0">
+              <TableRow>
+                <TableHead>Period</TableHead>
+                <TableHead>Payslip</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Version</TableHead>
+                <TableHead>Generated</TableHead>
+                <TableHead>Net salary</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {payslips.map((row) => (
+                <TableRow key={String(row.id)}>
+                  <TableCell>{text(row.period_month)}/{text(row.period_year)}</TableCell>
+                  <TableCell className="font-mono text-xs">{text(row.payslip_number)}</TableCell>
+                  <TableCell><StatusBadge value={row.status} /></TableCell>
+                  <TableCell>{text(row.version_number)}</TableCell>
+                  <TableCell>{text(row.generated_at)}</TableCell>
+                  <TableCell>{text(row.net_salary)}</TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon" title="View payslip" onClick={() => void viewPayslip(row)}><Eye className="h-4 w-4" /></Button>
+                      {canDownload ? <Button variant="ghost" size="icon" title="Download payslip" onClick={() => void downloadPayslip(row)}><Download className="h-4 w-4" /></Button> : null}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DataTableFrame>
+      </Panel>
       <SimpleTable title="Payroll run history" rows={rows(data, "runs")} columns={["period", "status", "basic_salary", "total_earnings", "total_deductions", "net_salary"]} />
       <SimpleTable title="Advances" rows={rows(data, "advances")} columns={["payment_date", "amount", "status", "notes"]} />
       <SimpleTable title="Deductions" rows={rows(data, "deductions")} columns={["deduction_type", "amount", "start_date", "end_date", "status", "reason"]} />

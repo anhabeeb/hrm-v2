@@ -13,12 +13,19 @@ import { readJsonBody, readString } from "../utils/validation";
 type BindValue = string | number | null;
 type ComponentType = "EARNING" | "DEDUCTION";
 type Prompt10PeriodStatus = "DRAFT" | "CALCULATING" | "READY_FOR_REVIEW" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "LOCKED" | "CANCELLED";
+type Prompt11PayrollStatus = Prompt10PeriodStatus | "SUBMITTED_FOR_APPROVAL" | "APPROVED" | "REJECTED" | "SENT_BACK" | "FINALIZED";
 type Prompt10RunStatus = Prompt10PeriodStatus;
+type PayrollRunLifecycleStatus = Prompt11PayrollStatus;
 type Prompt10ResultStatus = "DRAFT" | "READY_FOR_REVIEW" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "HELD" | "EXCLUDED" | "CANCELLED";
+type PayrollResultLifecycleStatus = Prompt10ResultStatus | "SUBMITTED_FOR_APPROVAL" | "APPROVED" | "FINALIZED";
 
 const PROMPT10_PERIOD_STATUSES = new Set(["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"]);
 const PROMPT10_RUN_STATUSES = new Set(["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"]);
 const PROMPT10_RESULT_STATUSES = new Set(["DRAFT", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER", "HELD", "EXCLUDED", "CANCELLED"]);
+const PROMPT11_PERIOD_STATUSES = new Set([...PROMPT10_PERIOD_STATUSES, "SUBMITTED_FOR_APPROVAL", "APPROVED", "REJECTED", "SENT_BACK", "FINALIZED"]);
+const PROMPT11_RUN_STATUSES = new Set([...PROMPT10_RUN_STATUSES, "SUBMITTED_FOR_APPROVAL", "APPROVED", "REJECTED", "SENT_BACK", "FINALIZED"]);
+const PROMPT11_RESULT_STATUSES = new Set([...PROMPT10_RESULT_STATUSES, "SUBMITTED_FOR_APPROVAL", "APPROVED", "FINALIZED"]);
+const FINALIZED_PAYROLL_STATUSES = new Set(["FINALIZED", "LOCKED", "FINALIZED_PLACEHOLDER"]);
 const LEGACY_PERIOD_STATUSES = new Set(["OPEN", "PROCESSING", "REVIEW", "APPROVED", "PAID", "CLOSED"]);
 const LEGACY_RUN_STATUSES = new Set(["PROCESSING", "REVIEW", "APPROVED", "PAID"]);
 const LEGACY_RESULT_STATUSES = new Set(["REVIEW", "APPROVED", "PAID"]);
@@ -28,14 +35,14 @@ const COMPONENT_CATEGORIES = new Set(["BASIC", "ALLOWANCE", "BENEFIT", "OVERTIME
 const CALCULATION_TYPES = new Set(["FIXED", "VARIABLE", "PERCENTAGE", "FIXED_AMOUNT", "PERCENTAGE_OF_BASIC", "PERCENTAGE_OF_GROSS", "DAILY_RATE", "HOURLY_RATE", "FORMULA_PLACEHOLDER", "MANUAL"]);
 const PAYMENT_METHODS = new Set(["CASH", "BANK_TRANSFER", "CHEQUE", "OTHER"]);
 const DAILY_RATE_MODES = new Set(["CALENDAR_DAYS", "WORKING_DAYS", "FIXED_30_DAYS"]);
-const PERIOD_STATUSES = new Set([...PROMPT10_PERIOD_STATUSES, ...LEGACY_PERIOD_STATUSES]);
-const RUN_STATUSES = new Set([...PROMPT10_RUN_STATUSES, ...LEGACY_RUN_STATUSES]);
+const PERIOD_STATUSES = new Set([...PROMPT11_PERIOD_STATUSES, ...LEGACY_PERIOD_STATUSES]);
+const RUN_STATUSES = new Set([...PROMPT11_RUN_STATUSES, ...LEGACY_RUN_STATUSES]);
 const ADVANCE_STATUSES = new Set(["REQUESTED", "APPROVED", "PAID", "DEDUCTED", "CANCELLED"]);
 const DEDUCTION_TYPES = new Set(["FIXED", "VARIABLE", "ONE_TIME", "RECURRING"]);
 const DEDUCTION_STATUSES = new Set(["ACTIVE", "INACTIVE", "APPLIED", "CANCELLED"]);
 const ADJUSTMENT_TYPES = new Set(["EARNING", "DEDUCTION"]);
 const ADJUSTMENT_STATUSES = new Set(["DRAFT", "APPROVED_PLACEHOLDER", "APPROVED", "APPLIED", "CANCELLED"]);
-const RUN_EMPLOYEE_STATUSES = new Set([...PROMPT10_RESULT_STATUSES, ...LEGACY_RESULT_STATUSES]);
+const RUN_EMPLOYEE_STATUSES = new Set([...PROMPT11_RESULT_STATUSES, ...LEGACY_RESULT_STATUSES]);
 
 export const payrollRoutes = new Hono<AppBindings>();
 export const employeePayrollRoutes = new Hono<AppBindings>();
@@ -77,9 +84,9 @@ function prompt10Status(value: unknown, fallback: Prompt10RunStatus = "DRAFT") {
   return PROMPT10_RUN_STATUSES.has(status) ? status : fallback;
 }
 
-function mapLegacyPayrollPeriodStatus(value: unknown): Prompt10PeriodStatus {
+function mapLegacyPayrollPeriodStatus(value: unknown): PayrollRunLifecycleStatus {
   const status = readString(value).toUpperCase();
-  if (PROMPT10_PERIOD_STATUSES.has(status)) return status as Prompt10PeriodStatus;
+  if (PROMPT11_PERIOD_STATUSES.has(status)) return status as PayrollRunLifecycleStatus;
   if (status === "OPEN") return "DRAFT";
   if (status === "PROCESSING") return "CALCULATING";
   if (status === "REVIEW") return "READY_FOR_REVIEW";
@@ -88,9 +95,9 @@ function mapLegacyPayrollPeriodStatus(value: unknown): Prompt10PeriodStatus {
   return "DRAFT";
 }
 
-function mapLegacyPayrollRunStatus(value: unknown): Prompt10RunStatus {
+function mapLegacyPayrollRunStatus(value: unknown): PayrollRunLifecycleStatus {
   const status = readString(value).toUpperCase();
-  if (PROMPT10_RUN_STATUSES.has(status)) return status as Prompt10RunStatus;
+  if (PROMPT11_RUN_STATUSES.has(status)) return status as PayrollRunLifecycleStatus;
   if (status === "PROCESSING") return "CALCULATING";
   if (status === "REVIEW") return "READY_FOR_REVIEW";
   if (status === "APPROVED") return "APPROVED_PLACEHOLDER";
@@ -98,9 +105,9 @@ function mapLegacyPayrollRunStatus(value: unknown): Prompt10RunStatus {
   return "DRAFT";
 }
 
-function mapLegacyPayrollResultStatus(value: unknown): Prompt10ResultStatus {
+function mapLegacyPayrollResultStatus(value: unknown): PayrollResultLifecycleStatus {
   const status = readString(value).toUpperCase();
-  if (PROMPT10_RESULT_STATUSES.has(status)) return status as Prompt10ResultStatus;
+  if (PROMPT11_RESULT_STATUSES.has(status)) return status as PayrollResultLifecycleStatus;
   if (status === "REVIEW") return "READY_FOR_REVIEW";
   if (status === "APPROVED") return "APPROVED_PLACEHOLDER";
   if (status === "PAID") return "FINALIZED_PLACEHOLDER";
@@ -271,9 +278,9 @@ async function auditPayroll(c: Context<AppBindings>, input: { action: string; en
   });
 }
 
-async function publishPayroll(c: Context<AppBindings>, event: Parameters<typeof publishAccessEvent>[1], entityType: "payroll_component" | "payroll_settings" | "payroll_profile" | "salary_history" | "payroll_increment" | "payroll_period" | "payroll_run" | "payroll_run_employee" | "payroll_advance" | "payroll_deduction" | "payroll_adjustment" | "final_settlement" | "payroll_report", entityId: string, action: string) {
-  await publishAccessEvent(c.env, event, { actor_user_id: c.get("currentUser").id, entity_type: entityType, entity_id: entityId, action });
-  if (event !== "payroll.changed") await publishAccessEvent(c.env, "payroll.changed", { actor_user_id: c.get("currentUser").id, entity_type: entityType, entity_id: entityId, action });
+async function publishPayroll(c: Context<AppBindings>, event: Parameters<typeof publishAccessEvent>[1], entityType: "payroll_component" | "payroll_settings" | "payroll_profile" | "salary_history" | "payroll_increment" | "payroll_period" | "payroll_run" | "payroll_run_employee" | "payroll_advance" | "payroll_deduction" | "payroll_adjustment" | "final_settlement" | "payroll_report" | "payroll_approval_event" | "payroll_payslip" | "payroll_payment_register", entityId: string, action: string) {
+  await publishAccessEvent(c.env, event, { actor_user_id: c.get("currentUser").id, entity_type: entityType as "payroll_run", entity_id: entityId, action });
+  if (event !== "payroll.changed") await publishAccessEvent(c.env, "payroll.changed", { actor_user_id: c.get("currentUser").id, entity_type: entityType as "payroll_run", entity_id: entityId, action });
 }
 
 async function getSettings(c: Context<AppBindings>) {
@@ -283,6 +290,12 @@ async function getSettings(c: Context<AppBindings>) {
     settings = await c.env.DB.prepare("SELECT * FROM payroll_settings WHERE id = 'payroll_settings_default'").first<Record<string, unknown>>();
   }
   return settings!;
+}
+
+async function requirePayrollModuleEnabled(c: Context<AppBindings>) {
+  const settings = await getSettings(c);
+  if (Number(settings.module_enabled ?? 1) !== 1) return fail(c, 503, "PAYROLL_MODULE_DISABLED", "Payroll module is disabled.");
+  return null;
 }
 
 async function getEmployee(c: Context<AppBindings>, employeeId: string) {
@@ -332,7 +345,7 @@ function safeProfile(profile: Record<string, unknown>, canSensitive: boolean) {
 }
 
 function canViewPayrollResultSensitive(c: Context<AppBindings>) {
-  return hasAny(c, ["payroll.results.sensitive.view", "payroll.results.update", "payroll.runs.manage", "payroll.manage", "employees.payroll.update"]);
+  return hasAny(c, ["payroll.results.sensitive.view", "payroll.reports.sensitive.view", "payroll.payment_register.sensitive.view", "payroll.results.update", "payroll.runs.manage", "payroll.manage", "employees.payroll.update"]);
 }
 
 function safePayrollResult(row: Record<string, unknown>, canSensitive: boolean) {
@@ -643,6 +656,9 @@ async function syncLegacyPayrollRunTablesForCompatibility(c: Context<AppBindings
       missed_date_ranges_json, calculation_json,
       CASE status
         WHEN 'READY_FOR_REVIEW' THEN 'REVIEW'
+        WHEN 'SUBMITTED_FOR_APPROVAL' THEN 'REVIEW'
+        WHEN 'APPROVED' THEN 'APPROVED'
+        WHEN 'FINALIZED' THEN 'APPROVED'
         WHEN 'APPROVED_PLACEHOLDER' THEN 'APPROVED'
         WHEN 'FINALIZED_PLACEHOLDER' THEN 'APPROVED'
         WHEN 'HELD' THEN 'HELD'
@@ -664,6 +680,416 @@ async function syncLegacyPayrollRunTablesForCompatibility(c: Context<AppBindings
 
 async function getRunEmployee(c: Context<AppBindings>, id: string) {
   return c.env.DB.prepare("SELECT pre.*, d.name AS department_name, p.title AS position_title, l.name AS location_name FROM payroll_employee_results pre LEFT JOIN departments d ON d.id = pre.department_id LEFT JOIN positions p ON p.id = pre.position_id LEFT JOIN locations l ON l.id = pre.location_id WHERE pre.id = ?").bind(id).first<Record<string, unknown>>();
+}
+
+async function canManagePayrollFinalization(c: Context<AppBindings>) {
+  return hasAny(c, ["payroll.finalization.manage", "payroll.finalization.finalize", "payroll.manage"]);
+}
+
+async function ensureRunAccess(c: Context<AppBindings>, runId: string, action: "view" | "manage" = "view") {
+  const run = await getScopedRun(c, runId, action);
+  if (!run) return { run: null, response: fail(c, 404, "PAYROLL_RUN_NOT_FOUND", "Payroll run not found.") };
+  return { run, response: null };
+}
+
+async function recordPayrollApprovalEvent(c: Context<AppBindings>, run: Record<string, unknown>, action: string, previousStatus: string, newStatus: string, input: { note?: string | null; reason?: string | null; metadata?: unknown } = {}) {
+  const id = crypto.randomUUID();
+  const user = c.get("currentUser");
+  await c.env.DB
+    .prepare(
+      `INSERT INTO payroll_approval_events
+       (id, payroll_period_id, payroll_run_id, action, previous_status, new_status, actor_user_id, actor_name_snapshot, note, reason, metadata_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(id, run.payroll_period_id, run.id, action, previousStatus, newStatus, user.id, user.name ?? user.email ?? "User", input.note ?? null, input.reason ?? null, input.metadata ? JSON.stringify(input.metadata) : null)
+    .run();
+  await auditPayroll(c, {
+    action,
+    entityType: "payroll_run",
+    entityId: String(run.id),
+    oldValue: { status: previousStatus },
+    newValue: { status: newStatus, note: input.note ?? null },
+    reason: input.reason ?? null
+  });
+  await publishPayroll(c, "payroll.changed", "payroll_approval_event", id, action);
+  return id;
+}
+
+async function transitionPayrollRun(c: Context<AppBindings>, run: Record<string, unknown>, nextStatus: PayrollRunLifecycleStatus, input: { note?: string | null; reason?: string | null; action: string; resultStatus?: PayrollResultLifecycleStatus; extraRunSet?: string; extraRunParams?: BindValue[] } = { action: "payroll.run.status_changed" }) {
+  const previousStatus = readString(run.status);
+  const now = isoNow();
+  const extraSet = input.extraRunSet ? `, ${input.extraRunSet}` : "";
+  const extraParams = input.extraRunParams ?? [];
+  await c.env.DB.prepare(`UPDATE payroll_runs SET status = ?, updated_at = ?${extraSet} WHERE id = ?`).bind(nextStatus, now, ...extraParams, run.id).run();
+  await c.env.DB.prepare("UPDATE payroll_periods SET status = ?, updated_at = ? WHERE id = ?").bind(nextStatus, now, run.payroll_period_id).run();
+  if (input.resultStatus) {
+    await c.env.DB
+      .prepare("UPDATE payroll_employee_results SET status = ?, updated_at = ? WHERE payroll_run_id = ? AND status NOT IN ('HELD', 'EXCLUDED', 'CANCELLED')")
+      .bind(input.resultStatus, now, run.id)
+      .run();
+  }
+  await syncLegacyPayrollRunTablesForCompatibility(c, String(run.id));
+  await recordPayrollApprovalEvent(c, run, input.action, previousStatus, nextStatus, { note: input.note, reason: input.reason });
+  await publishPayroll(c, "payroll.changed", "payroll_run", String(run.id), input.action);
+  return getRun(c, String(run.id));
+}
+
+async function submitPayrollRunForApproval(c: Context<AppBindings>, runId: string, note?: string | null) {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return { response: disabled };
+  const { run, response } = await ensureRunAccess(c, runId, "manage");
+  if (!run) return { response };
+  const status = mapLegacyPayrollRunStatus(run.status);
+  if (!["READY_FOR_REVIEW", "SENT_BACK"].includes(status)) return { response: fail(c, 400, "PAYROLL_RUN_NOT_APPROVABLE", "This payroll run is not ready for approval.") };
+  const saved = await transitionPayrollRun(c, run, "SUBMITTED_FOR_APPROVAL", { action: "payroll.run.submitted_for_approval", note: note ?? null, resultStatus: "SUBMITTED_FOR_APPROVAL" });
+  return { run: saved };
+}
+
+async function approvePayrollRun(c: Context<AppBindings>, runId: string, note?: string | null) {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return { response: disabled };
+  const { run, response } = await ensureRunAccess(c, runId, "manage");
+  if (!run) return { response };
+  const status = mapLegacyPayrollRunStatus(run.status);
+  if (status !== "SUBMITTED_FOR_APPROVAL" && !hasAny(c, ["payroll.approvals.manage", "payroll.manage"])) {
+    return { response: fail(c, 400, "PAYROLL_RUN_NOT_APPROVABLE", "Only submitted payroll runs can be approved.") };
+  }
+  const now = isoNow();
+  const saved = await transitionPayrollRun(c, run, "APPROVED", {
+    action: "payroll.run.approved",
+    note: note ?? null,
+    resultStatus: "APPROVED",
+    extraRunSet: "approved_by_user_id = ?, approved_at = ?",
+    extraRunParams: [c.get("currentUser").id, now]
+  });
+  return { run: saved };
+}
+
+async function rejectPayrollRun(c: Context<AppBindings>, runId: string, action: "reject" | "send_back", reason: string, note?: string | null) {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return { response: disabled };
+  if (!reason) return { response: fail(c, 400, "REASON_REQUIRED", "Reason is required.") };
+  const { run, response } = await ensureRunAccess(c, runId, "manage");
+  if (!run) return { response };
+  const status = mapLegacyPayrollRunStatus(run.status);
+  if (status !== "SUBMITTED_FOR_APPROVAL" && !hasAny(c, ["payroll.approvals.manage", "payroll.manage"])) {
+    return { response: fail(c, 400, "INVALID_STATUS", "Only submitted payroll runs can be rejected or sent back.") };
+  }
+  const now = isoNow();
+  const nextStatus = action === "reject" ? "REJECTED" : "SENT_BACK";
+  const saved = await transitionPayrollRun(c, run, nextStatus, {
+    action: action === "reject" ? "payroll.run.rejected" : "payroll.run.sent_back",
+    note: note ?? null,
+    reason,
+    resultStatus: "READY_FOR_REVIEW",
+    extraRunSet: "rejected_by_user_id = ?, rejected_at = ?, rejection_reason = ?",
+    extraRunParams: [c.get("currentUser").id, now, reason]
+  });
+  return { run: saved };
+}
+
+async function getFinalizationSnapshot(c: Context<AppBindings>, run: Record<string, unknown>) {
+  const results = (await c.env.DB.prepare("SELECT * FROM payroll_employee_results WHERE payroll_run_id = ? ORDER BY employee_no_snapshot").bind(run.id).all()).results;
+  const lines = (await c.env.DB.prepare("SELECT * FROM payroll_result_line_items WHERE payroll_run_employee_id IN (SELECT id FROM payroll_employee_results WHERE payroll_run_id = ?) ORDER BY payroll_run_employee_id, line_type, category").bind(run.id).all()).results;
+  return { run, results, lines, frozen_at: isoNow(), source: "payroll_employee_results/payroll_result_line_items" };
+}
+
+async function finalizePayrollRun(c: Context<AppBindings>, runId: string, note?: string | null, override = false) {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return { response: disabled };
+  const { run, response } = await ensureRunAccess(c, runId, "manage");
+  if (!run) return { response };
+  const status = mapLegacyPayrollRunStatus(run.status);
+  const canOverride = override && hasAny(c, ["payroll.override_finalized", "payroll.finalization.manage", "payroll.manage"]);
+  if (status !== "APPROVED" && status !== "APPROVED_PLACEHOLDER" && !canOverride) {
+    return { response: fail(c, 400, "PAYROLL_RUN_NOT_FINALIZABLE", "This payroll run must be approved before finalization.") };
+  }
+  const snapshot = await getFinalizationSnapshot(c, run);
+  const now = isoNow();
+  await c.env.DB
+    .prepare("UPDATE payroll_runs SET status = ?, finalized_by_user_id = ?, finalized_at = ?, locked_by_user_id = ?, locked_at = ?, finalization_note = ?, finalization_snapshot_json = ?, updated_at = ? WHERE id = ?")
+    .bind("FINALIZED", c.get("currentUser").id, now, c.get("currentUser").id, now, note ?? null, JSON.stringify(snapshot), now, run.id)
+    .run();
+  await c.env.DB
+    .prepare("UPDATE payroll_periods SET status = ?, finalized_by_user_id = ?, finalized_at = ?, locked_by_user_id = ?, locked_at = ?, finalization_note = ?, finalization_snapshot_json = ?, updated_at = ? WHERE id = ?")
+    .bind("FINALIZED", c.get("currentUser").id, now, c.get("currentUser").id, now, note ?? null, JSON.stringify(snapshot), now, run.payroll_period_id)
+    .run();
+  await c.env.DB.prepare("UPDATE payroll_employee_results SET status = ?, finalized_at = ?, updated_at = ? WHERE payroll_run_id = ? AND status NOT IN ('HELD', 'EXCLUDED', 'CANCELLED')").bind("FINALIZED", now, now, run.id).run();
+  await syncLegacyPayrollRunTablesForCompatibility(c, String(run.id));
+  await recordPayrollApprovalEvent(c, run, "payroll.run.finalized", readString(run.status), "FINALIZED", { note });
+  await publishPayroll(c, "payroll.changed", "payroll_run", String(run.id), "finalized");
+  return { run: await getRun(c, String(run.id)) };
+}
+
+async function unlockFinalizedPayrollRun(c: Context<AppBindings>, runId: string, reason: string) {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return { response: disabled };
+  if (!reason) return { response: fail(c, 400, "REASON_REQUIRED", "Reason is required.") };
+  const { run, response } = await ensureRunAccess(c, runId, "manage");
+  if (!run) return { response };
+  if (!FINALIZED_PAYROLL_STATUSES.has(mapLegacyPayrollRunStatus(run.status))) return { response: fail(c, 400, "INVALID_STATUS", "Only finalized payroll runs can be unlocked.") };
+  const now = isoNow();
+  await c.env.DB.prepare("UPDATE payroll_runs SET status = ?, unlocked_by_user_id = ?, unlocked_at = ?, unlock_reason = ?, updated_at = ? WHERE id = ?").bind("READY_FOR_REVIEW", c.get("currentUser").id, now, reason, now, run.id).run();
+  await c.env.DB.prepare("UPDATE payroll_periods SET status = ?, unlocked_by_user_id = ?, unlocked_at = ?, unlock_reason = ?, updated_at = ? WHERE id = ?").bind("READY_FOR_REVIEW", c.get("currentUser").id, now, reason, now, run.payroll_period_id).run();
+  await c.env.DB.prepare("UPDATE payroll_employee_results SET status = ?, updated_at = ? WHERE payroll_run_id = ? AND status = ?").bind("READY_FOR_REVIEW", now, run.id, "FINALIZED").run();
+  await syncLegacyPayrollRunTablesForCompatibility(c, String(run.id));
+  await recordPayrollApprovalEvent(c, run, "payroll.run.unlocked_after_finalization", readString(run.status), "READY_FOR_REVIEW", { reason });
+  await publishPayroll(c, "payroll.changed", "payroll_run", String(run.id), "unlocked_after_finalization");
+  return { run: await getRun(c, String(run.id)) };
+}
+
+function payslipNumber(run: Record<string, unknown>, result: Record<string, unknown>, version: number) {
+  return `PS-${run.period_year}${String(run.period_month).padStart(2, "0")}-${readString(result.employee_no_snapshot) || String(result.employee_id).slice(0, 8)}-V${version}`;
+}
+
+async function getPayslipSnapshotData(c: Context<AppBindings>, resultId: string) {
+  const result = await c.env.DB
+    .prepare(
+      `SELECT pre.*, pr.run_no, pr.status AS run_status, pr.finalized_at, pp.period_month, pp.period_year, pp.start_date, pp.end_date, pp.salary_payment_date,
+        d.name AS department_name, l.name AS location_name, p.title AS position_title
+       FROM payroll_employee_results pre
+       INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id
+       INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id
+       LEFT JOIN departments d ON d.id = pre.department_id
+       LEFT JOIN locations l ON l.id = pre.location_id
+       LEFT JOIN positions p ON p.id = pre.position_id
+       WHERE pre.id = ?`
+    )
+    .bind(resultId)
+    .first<Record<string, unknown>>();
+  if (!result) return null;
+  const lines = (await c.env.DB
+    .prepare("SELECT * FROM payroll_result_line_items WHERE payroll_run_employee_id = ? ORDER BY line_type, category, description")
+    .bind(resultId)
+    .all<Record<string, unknown>>()).results;
+  return {
+    company: { name: "Cafe Asiana", footer: "Confidential payroll document" },
+    employee: {
+      id: result.employee_id,
+      employee_no: result.employee_no_snapshot,
+      name: result.employee_name_snapshot,
+      department: result.department_name,
+      location: result.location_name,
+      position: result.position_title
+    },
+    period: {
+      month: result.period_month,
+      year: result.period_year,
+      start_date: result.start_date,
+      end_date: result.end_date,
+      salary_payment_date: result.salary_payment_date,
+      run_no: result.run_no
+    },
+    totals: {
+      basic_salary: result.basic_salary,
+      gross_salary: result.total_earnings,
+      total_deductions: result.total_deductions,
+      attendance_deductions: result.attendance_deductions,
+      leave_deductions: result.leave_deductions,
+      advance_deductions: result.advance_deductions,
+      net_salary: result.net_salary,
+      payable_days: result.days_worked,
+      unpaid_days: result.unpaid_leave_days,
+      absent_days: result.absent_days,
+      late_days: result.late_days,
+      missed_punch_days: result.missed_punch_days
+    },
+    lines,
+    generated_at: isoNow(),
+    source: "frozen_payroll_result"
+  };
+}
+
+function renderPayslipHtml(snapshot: Record<string, unknown>, payslipNumberValue: string) {
+  const employee = snapshot.employee as Record<string, unknown>;
+  const period = snapshot.period as Record<string, unknown>;
+  const totals = snapshot.totals as Record<string, unknown>;
+  const lines = (snapshot.lines as Record<string, unknown>[]) ?? [];
+  const rowHtml = lines.map((line) => `<tr><td>${line.line_type ?? ""}</td><td>${line.category ?? ""}</td><td>${line.description ?? ""}</td><td style="text-align:right">${Number(line.amount ?? 0).toFixed(2)}</td></tr>`).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${payslipNumberValue}</title><style>body{font-family:Arial,sans-serif;color:#0f172a;margin:32px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}table{width:100%;border-collapse:collapse;margin-top:16px}td,th{border:1px solid #cbd5e1;padding:8px;font-size:12px}th{background:#f8fafc;text-align:left}.total{font-weight:700}.note{margin-top:24px;font-size:11px;color:#64748b}</style></head><body><h1>Payslip</h1><p>${payslipNumberValue}</p><div class="meta"><div>Employee: <strong>${employee.name ?? ""}</strong></div><div>Employee No: ${employee.employee_no ?? ""}</div><div>Department: ${employee.department ?? ""}</div><div>Location: ${employee.location ?? ""}</div><div>Period: ${period.month}/${period.year}</div><div>Payment date: ${period.salary_payment_date ?? "-"}</div></div><table><thead><tr><th>Type</th><th>Category</th><th>Description</th><th>Amount</th></tr></thead><tbody>${rowHtml}</tbody><tfoot><tr><td colspan="3" class="total">Net salary</td><td class="total" style="text-align:right">${Number(totals.net_salary ?? 0).toFixed(2)}</td></tr></tfoot></table><p class="note">Confidential payroll document. Print-ready HTML foundation; PDF generation can be added later.</p></body></html>`;
+}
+
+async function generatePayslipForEmployeeResult(c: Context<AppBindings>, result: Record<string, unknown>, run: Record<string, unknown>) {
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(result.employee_id), "payroll", "manage"))) return null;
+  const snapshot = await getPayslipSnapshotData(c, String(result.id));
+  if (!snapshot) return null;
+  const existing = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE payroll_employee_result_id = ? ORDER BY version_number DESC LIMIT 1").bind(result.id).first<Record<string, unknown>>();
+  const version = Number(existing?.version_number ?? 0) + 1;
+  const numberValue = payslipNumber(run, result, version);
+  const html = renderPayslipHtml(snapshot as Record<string, unknown>, numberValue);
+  const now = isoNow();
+  if (existing) {
+    await c.env.DB
+      .prepare("UPDATE payroll_payslips SET payslip_number = ?, status = ?, regenerated_by_user_id = ?, regenerated_at = ?, version_number = ?, payslip_data_json = ?, html_snapshot = ?, updated_at = ? WHERE id = ?")
+      .bind(numberValue, "REGENERATED", c.get("currentUser").id, now, version, JSON.stringify(snapshot), html, now, existing.id)
+      .run();
+    return c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ?").bind(existing.id).first<Record<string, unknown>>();
+  }
+  const id = crypto.randomUUID();
+  await c.env.DB
+    .prepare(
+      `INSERT INTO payroll_payslips
+       (id, payslip_number, payroll_period_id, payroll_run_id, payroll_employee_result_id, employee_id, status, generated_by_user_id, generated_at, version_number, payslip_data_json, html_snapshot)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(id, numberValue, run.payroll_period_id, run.id, result.id, result.employee_id, "GENERATED", c.get("currentUser").id, now, version, JSON.stringify(snapshot), html)
+    .run();
+  return c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ?").bind(id).first<Record<string, unknown>>();
+}
+
+async function generatePayslipsForPayrollRun(c: Context<AppBindings>, runId: string) {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return { response: disabled };
+  const { run, response } = await ensureRunAccess(c, runId, "manage");
+  if (!run) return { response };
+  if (!FINALIZED_PAYROLL_STATUSES.has(mapLegacyPayrollRunStatus(run.status))) return { response: fail(c, 400, "PAYSIP_NOT_AVAILABLE", "Payslip is not available.") };
+  const conditions = ["pre.payroll_run_id = ?", "pre.status NOT IN ('EXCLUDED', 'CANCELLED')"];
+  const params: BindValue[] = [runId];
+  await addEmployeeScope(c, conditions, params, "manage", "pre.employee_id");
+  const results = (await c.env.DB.prepare(`SELECT pre.* FROM payroll_employee_results pre WHERE ${conditions.join(" AND ")} ORDER BY pre.employee_no_snapshot`).bind(...params).all<Record<string, unknown>>()).results;
+  const payslips: Record<string, unknown>[] = [];
+  for (const result of results) {
+    const payslip = await generatePayslipForEmployeeResult(c, result, run);
+    if (payslip) payslips.push(payslip);
+  }
+  await auditPayroll(c, { action: "payroll.payslips.generated", entityType: "payroll_run", entityId: runId, newValue: { count: payslips.length } });
+  await publishPayroll(c, "payroll.changed", "payroll_payslip", runId, "generated");
+  return { payslips };
+}
+
+async function canViewPayslipForEmployee(c: Context<AppBindings>, employeeId: string, selfService = false) {
+  if (selfService) {
+    const user = c.get("currentUser");
+    if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return false;
+    if (user.employee_id === employeeId) return true;
+    const linked = await c.env.DB.prepare("SELECT id FROM employees WHERE user_id = ? AND id = ? LIMIT 1").bind(user.id, employeeId).first();
+    return Boolean(linked);
+  }
+  if (!hasAny(c, ["payroll.payslips.view", "payroll.payslips.manage", "payroll.view", "employees.payroll.view"])) return false;
+  return canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "view");
+}
+
+async function listPayslips(c: Context<AppBindings>, employeeId?: string | null) {
+  const conditions = ["1 = 1"];
+  const params: BindValue[] = [];
+  if (employeeId) { conditions.push("ps.employee_id = ?"); params.push(employeeId); }
+  const runId = readString(c.req.query("payroll_run_id") ?? c.req.query("run_id"));
+  if (runId) { conditions.push("ps.payroll_run_id = ?"); params.push(runId); }
+  await addEmployeeScope(c, conditions, params, "view", "ps.employee_id");
+  return (await c.env.DB
+    .prepare(
+      `SELECT ps.*, pre.employee_no_snapshot, pre.employee_name_snapshot, pp.period_month, pp.period_year, pr.run_no
+       FROM payroll_payslips ps
+       INNER JOIN payroll_employee_results pre ON pre.id = ps.payroll_employee_result_id
+       INNER JOIN payroll_runs pr ON pr.id = ps.payroll_run_id
+       INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC`
+    )
+    .bind(...params)
+    .all<Record<string, unknown>>()).results;
+}
+
+async function getSelfServicePayslips(c: Context<AppBindings>) {
+  const user = c.get("currentUser");
+  const employeeId = user.employee_id ?? (await c.env.DB.prepare("SELECT id FROM employees WHERE user_id = ? LIMIT 1").bind(user.id).first<{ id: string }>())?.id;
+  if (!employeeId) return { response: fail(c, 403, "SELF_SERVICE_UNAVAILABLE", "This account is not linked to an employee profile.") };
+  if (!(await canViewPayslipForEmployee(c, employeeId, true))) return { response: fail(c, 403, "PAYSIP_ACCESS_DENIED", "You can only view your own payslips.") };
+  const payslips = await listPayslips(c, employeeId);
+  return { payslips };
+}
+
+function maskBankAccount(account: unknown) {
+  const text = readString(account);
+  if (!text) return null;
+  return text.length <= 4 ? "****" : `${"*".repeat(Math.max(4, text.length - 4))}${text.slice(-4)}`;
+}
+
+function safePaymentRegister(row: Record<string, unknown>, canSensitive: boolean) {
+  if (canSensitive) return row;
+  return { ...row, bank_name_snapshot: row.bank_name_snapshot ? "Restricted" : null, bank_account_name_snapshot: row.bank_account_name_snapshot ? "Restricted" : null };
+}
+
+async function preparePaymentRegisterForPayrollRun(c: Context<AppBindings>, runId: string) {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return { response: disabled };
+  const { run, response } = await ensureRunAccess(c, runId, "manage");
+  if (!run) return { response };
+  if (!FINALIZED_PAYROLL_STATUSES.has(mapLegacyPayrollRunStatus(run.status))) return { response: fail(c, 400, "PAYMENT_REGISTER_NOT_AVAILABLE", "Payment register is not available for this payroll run.") };
+  const conditions = ["pre.payroll_run_id = ?", "pre.status NOT IN ('EXCLUDED', 'CANCELLED')"];
+  const params: BindValue[] = [runId];
+  await addEmployeeScope(c, conditions, params, "manage", "pre.employee_id");
+  const results = (await c.env.DB
+    .prepare(
+      `SELECT pre.*, epp.payment_method, epp.bank_name, epp.bank_account_name, epp.bank_account_no
+       FROM payroll_employee_results pre
+       LEFT JOIN employee_payroll_profiles epp ON epp.employee_id = pre.employee_id
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY pre.employee_no_snapshot`
+    )
+    .bind(...params)
+    .all<Record<string, unknown>>()).results;
+  for (const result of results) {
+    const existing = await c.env.DB.prepare("SELECT id FROM payroll_payment_register WHERE payroll_employee_result_id = ?").bind(result.id).first();
+    if (existing) continue;
+    await c.env.DB
+      .prepare(
+        `INSERT INTO payroll_payment_register
+         (id, payroll_period_id, payroll_run_id, payroll_employee_result_id, employee_id, employee_number_snapshot, employee_name_snapshot,
+          payment_method_snapshot, bank_name_snapshot, bank_account_name_snapshot, bank_account_number_masked, net_salary_amount,
+          payment_status, prepared_by_user_id, prepared_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(crypto.randomUUID(), run.payroll_period_id, run.id, result.id, result.employee_id, result.employee_no_snapshot, result.employee_name_snapshot, result.payment_method ?? "CASH", result.bank_name ?? null, result.bank_account_name ?? null, maskBankAccount(result.bank_account_no), result.net_salary, "PREPARED", c.get("currentUser").id, isoNow())
+      .run();
+  }
+  await auditPayroll(c, { action: "payroll.payment_register.prepared", entityType: "payroll_run", entityId: runId, newValue: { count: results.length } });
+  return { payments: await listPaymentRegisters(c, runId) };
+}
+
+async function listPaymentRegisters(c: Context<AppBindings>, runId?: string | null) {
+  const conditions = ["1 = 1"];
+  const params: BindValue[] = [];
+  if (runId) { conditions.push("ppr.payroll_run_id = ?"); params.push(runId); }
+  await addEmployeeScope(c, conditions, params, "view", "ppr.employee_id");
+  const rows = (await c.env.DB.prepare(`SELECT ppr.*, pp.period_month, pp.period_year, pr.run_no FROM payroll_payment_register ppr INNER JOIN payroll_periods pp ON pp.id = ppr.payroll_period_id INNER JOIN payroll_runs pr ON pr.id = ppr.payroll_run_id WHERE ${conditions.join(" AND ")} ORDER BY pp.period_year DESC, pp.period_month DESC, ppr.employee_number_snapshot`).bind(...params).all<Record<string, unknown>>()).results;
+  return rows.map((row) => safePaymentRegister(row, hasAny(c, ["payroll.payment_register.sensitive.view", "payroll.payment_register.manage", "payroll.manage"])));
+}
+
+async function confirmManualPayrollPayment(c: Context<AppBindings>, paymentId: string, reference: string, note: string) {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return { response: disabled };
+  if (!reference || !note) return { response: fail(c, 400, "REASON_REQUIRED", "Payment confirmation reference and note are required.") };
+  const payment = await c.env.DB.prepare("SELECT * FROM payroll_payment_register WHERE id = ?").bind(paymentId).first<Record<string, unknown>>();
+  if (!payment || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(payment.employee_id), "payroll", "manage"))) return { response: fail(c, 404, "NOT_FOUND", "Payment register row was not found.") };
+  if (!["PENDING", "PREPARED"].includes(readString(payment.payment_status))) return { response: fail(c, 400, "INVALID_STATUS", "Only prepared payment rows can be manually confirmed.") };
+  const now = isoNow();
+  await c.env.DB.prepare("UPDATE payroll_payment_register SET payment_status = ?, confirmed_paid_by_user_id = ?, confirmed_paid_at = ?, confirmation_reference = ?, confirmation_note = ?, updated_at = ? WHERE id = ?").bind("MANUALLY_CONFIRMED_PAID", c.get("currentUser").id, now, reference, note, now, paymentId).run();
+  await auditPayroll(c, { action: "payroll.payment_register.manually_confirmed_paid", entityType: "payroll_payment_register", entityId: paymentId, oldValue: payment, reason: note });
+  return { payment: await c.env.DB.prepare("SELECT * FROM payroll_payment_register WHERE id = ?").bind(paymentId).first<Record<string, unknown>>() };
+}
+
+async function getPayrollHistorySummary(c: Context<AppBindings>, employeeId?: string | null) {
+  const conditions = ["pr.status IN ('FINALIZED', 'LOCKED', 'FINALIZED_PLACEHOLDER')"];
+  const params: BindValue[] = [];
+  if (employeeId) { conditions.push("pre.employee_id = ?"); params.push(employeeId); }
+  await addEmployeeScope(c, conditions, params, "view", "pre.employee_id");
+  return (await c.env.DB
+    .prepare(
+      `SELECT pp.period_month, pp.period_year, pr.id AS payroll_run_id, pr.run_no, pr.status AS run_status,
+        pre.employee_id, pre.employee_no_snapshot, pre.employee_name_snapshot, pre.department_id, pre.location_id,
+        d.name AS department_name, l.name AS location_name,
+        pre.basic_salary, pre.total_earnings, pre.total_deductions, pre.advance_deductions, pre.attendance_deductions, pre.leave_deductions, pre.net_salary, pre.status
+       FROM payroll_employee_results pre
+       INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id
+       INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id
+       LEFT JOIN departments d ON d.id = pre.department_id
+       LEFT JOIN locations l ON l.id = pre.location_id
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY pp.period_year DESC, pp.period_month DESC, pre.employee_no_snapshot`
+    )
+    .bind(...params)
+    .all<Record<string, unknown>>()).results;
 }
 
 payrollRoutes.get("/components", requireAnyPermission(["payroll.components.view", "payroll.view"]), async (c) => ok(c, { components: (await c.env.DB.prepare("SELECT * FROM payroll_components ORDER BY is_active DESC, sort_order, name").all()).results }));
@@ -815,13 +1241,14 @@ employeePayrollRoutes.get("/:employeeId/payroll/advances", requireAnyPermission(
 employeePayrollRoutes.get("/:employeeId/payroll/summary", requireAnyPermission(["employees.payroll.view", "payroll.view"]), async (c) => {
   const employeeId = routeParam(c, "employeeId");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
-  const [profile, salary, increments, advances, deductions, runs, settlements, audit] = await Promise.all([
+  const [profile, salary, increments, advances, deductions, runs, payslips, settlements, audit] = await Promise.all([
     ensureProfile(c, employeeId),
     c.env.DB.prepare("SELECT * FROM employee_salary_history WHERE employee_id = ? ORDER BY effective_date DESC LIMIT 20").bind(employeeId).all(),
     c.env.DB.prepare("SELECT * FROM employee_increments WHERE employee_id = ? ORDER BY effective_date DESC LIMIT 20").bind(employeeId).all(),
     c.env.DB.prepare("SELECT * FROM payroll_advance_payments WHERE employee_id = ? ORDER BY payment_date DESC LIMIT 20").bind(employeeId).all(),
     c.env.DB.prepare("SELECT * FROM payroll_deductions WHERE employee_id = ? ORDER BY created_at DESC LIMIT 20").bind(employeeId).all(),
     c.env.DB.prepare("SELECT pre.*, pr.run_no, pr.status AS run_status, pp.period_month, pp.period_year FROM payroll_employee_results pre INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE pre.employee_id = ? ORDER BY pp.period_year DESC, pp.period_month DESC, pr.run_no DESC LIMIT 20").bind(employeeId).all(),
+    c.env.DB.prepare("SELECT ps.*, pp.period_month, pp.period_year, pr.run_no FROM payroll_payslips ps INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id INNER JOIN payroll_runs pr ON pr.id = ps.payroll_run_id WHERE ps.employee_id = ? ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC LIMIT 20").bind(employeeId).all(),
     c.env.DB.prepare("SELECT * FROM final_settlements WHERE employee_id = ? ORDER BY created_at DESC LIMIT 20").bind(employeeId).all(),
     c.env.DB.prepare(
       `SELECT * FROM audit_logs
@@ -846,10 +1273,17 @@ employeePayrollRoutes.get("/:employeeId/payroll/summary", requireAnyPermission([
     deductions: deductions.results,
     run_history: runs.results,
     runs: runs.results,
+    payslips: payslips.results,
     final_settlements: settlements.results,
     settlements: settlements.results,
     audit: audit.results
   });
+});
+
+employeePayrollRoutes.get("/:employeeId/payslips", requireAnyPermission(["payroll.payslips.view", "payroll.payslips.manage", "employees.payroll.view", "payroll.view"]), async (c) => {
+  const employeeId = routeParam(c, "employeeId");
+  if (!(await canViewPayslipForEmployee(c, employeeId))) return fail(c, 404, "PAYSIP_ACCESS_DENIED", "You can only view your own payslips.");
+  return ok(c, { payslips: await listPayslips(c, employeeId) });
 });
 
 payrollRoutes.get("/advances", requireAnyPermission(["payroll.advances.view", "payroll.view"]), async (c) => {
@@ -1231,27 +1665,54 @@ payrollRoutes.post("/runs/generate", requireAnyPermission(["payroll.runs.calcula
 });
 
 payrollRoutes.post("/runs/:id/recalculate", requireAnyPermission(["payroll.runs.recalculate", "payroll.periods.recalculate", "payroll.runs.manage", "payroll.periods.manage", "payroll.manage"]), async (c) => {
+  const body = await readJsonBody(c.req.raw);
   const run = await getRun(c, routeParam(c, "id"));
   if (!run) return fail(c, 404, "NOT_FOUND", "Payroll run was not found.");
-  if (!["DRAFT", "READY_FOR_REVIEW"].includes(mapLegacyPayrollRunStatus(run.status))) return fail(c, 400, "INVALID_STATUS", "Only draft or ready-for-review payroll runs can be recalculated.");
+  const status = mapLegacyPayrollRunStatus(run.status);
+  if (FINALIZED_PAYROLL_STATUSES.has(status) && !hasAny(c, ["payroll.override_finalized", "payroll.manage"])) return fail(c, 423, "PAYROLL_FINALIZED", "This payroll run is finalized and locked.");
+  if (FINALIZED_PAYROLL_STATUSES.has(status) && !optionalString(body.reason)) return fail(c, 400, "REASON_REQUIRED", "Reason is required.");
+  if (!["DRAFT", "READY_FOR_REVIEW"].includes(status) && !hasAny(c, ["payroll.override_finalized", "payroll.manage"])) return fail(c, 400, "INVALID_STATUS", "Only draft or ready-for-review payroll runs can be recalculated.");
   const result = await recalculateRun(c, run, "recalculate");
   if (result.error) return fail(c, 400, "VALIDATION_ERROR", result.error);
   const saved = await getRun(c, String(run.id));
-  await auditPayroll(c, { action: "payroll.run.recalculated", entityType: "payroll_run", entityId: String(run.id), oldValue: run, newValue: saved });
+  await auditPayroll(c, { action: "payroll.run.recalculated", entityType: "payroll_run", entityId: String(run.id), oldValue: run, newValue: saved, reason: optionalString(body.reason) });
   await publishPayroll(c, "payroll.run.recalculated", "payroll_run", String(run.id), "recalculated");
   return ok(c, { run: saved });
 });
 
-payrollRoutes.post("/runs/:id/approve", requireAnyPermission(["payroll.runs.approve_placeholder", "payroll.periods.approve_placeholder", "payroll.approve_placeholder"]), async (c) => {
-  const run = await getRun(c, routeParam(c, "id"));
-  if (!run) return fail(c, 404, "NOT_FOUND", "Payroll run was not found.");
-  if (!["DRAFT", "READY_FOR_REVIEW"].includes(mapLegacyPayrollRunStatus(run.status))) return fail(c, 400, "INVALID_STATUS", "Only draft or ready-for-review payroll runs can be approved as placeholders.");
-  await c.env.DB.prepare("UPDATE payroll_runs SET status = 'APPROVED_PLACEHOLDER', approved_by_user_id = ?, approved_at = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, isoNow(), isoNow(), run.id).run();
-  await c.env.DB.prepare("UPDATE payroll_employee_results SET status = 'APPROVED_PLACEHOLDER', updated_at = ? WHERE payroll_run_id = ? AND status NOT IN ('HELD', 'EXCLUDED')").bind(isoNow(), run.id).run();
-  await syncLegacyPayrollRunTablesForCompatibility(c, String(run.id));
-  await auditPayroll(c, { action: "payroll.run.approved_placeholder", entityType: "payroll_run", entityId: String(run.id), oldValue: run });
-  await publishPayroll(c, "payroll.run.approved_placeholder", "payroll_run", String(run.id), "approved_placeholder");
-  return ok(c, { run: await getRun(c, String(run.id)) });
+payrollRoutes.get("/runs/:id/approvals", requireAnyPermission(["payroll.approvals.view", "payroll.approvals.manage", "payroll.runs.view", "payroll.view"]), async (c) => {
+  const { run, response } = await ensureRunAccess(c, routeParam(c, "id"), "view");
+  if (!run) return response!;
+  const events = (await c.env.DB.prepare("SELECT * FROM payroll_approval_events WHERE payroll_run_id = ? ORDER BY created_at ASC").bind(run.id).all()).results;
+  return ok(c, { approvals: events });
+});
+
+payrollRoutes.post("/runs/:id/submit-for-approval", requireAnyPermission(["payroll.approvals.submit", "payroll.approvals.manage", "payroll.runs.manage", "payroll.manage"]), async (c) => {
+  const body = await readJsonBody(c.req.raw);
+  const result = await submitPayrollRunForApproval(c, routeParam(c, "id"), optionalString(body.note));
+  if (result.response) return result.response;
+  return ok(c, { run: result.run });
+});
+
+payrollRoutes.post("/runs/:id/approve", requireAnyPermission(["payroll.approvals.approve", "payroll.approvals.manage", "payroll.runs.approve_placeholder", "payroll.periods.approve_placeholder", "payroll.approve_placeholder", "payroll.manage"]), async (c) => {
+  const body = await readJsonBody(c.req.raw);
+  const result = await approvePayrollRun(c, routeParam(c, "id"), optionalString(body.note));
+  if (result.response) return result.response;
+  return ok(c, { run: result.run });
+});
+
+payrollRoutes.post("/runs/:id/reject", requireAnyPermission(["payroll.approvals.reject", "payroll.approvals.manage", "payroll.manage"]), async (c) => {
+  const body = await readJsonBody(c.req.raw);
+  const result = await rejectPayrollRun(c, routeParam(c, "id"), "reject", readString(body.reason), optionalString(body.note));
+  if (result.response) return result.response;
+  return ok(c, { run: result.run });
+});
+
+payrollRoutes.post("/runs/:id/send-back", requireAnyPermission(["payroll.approvals.send_back", "payroll.approvals.manage", "payroll.manage"]), async (c) => {
+  const body = await readJsonBody(c.req.raw);
+  const result = await rejectPayrollRun(c, routeParam(c, "id"), "send_back", readString(body.reason), optionalString(body.note));
+  if (result.response) return result.response;
+  return ok(c, { run: result.run });
 });
 
 payrollRoutes.post("/runs/:id/finalize-placeholder", requireAnyPermission(["payroll.runs.finalize_placeholder", "payroll.periods.finalize_placeholder", "payroll.finalize_placeholder"]), async (c) => {
@@ -1265,6 +1726,44 @@ payrollRoutes.post("/runs/:id/finalize-placeholder", requireAnyPermission(["payr
   await auditPayroll(c, { action: "payroll.run.finalized_placeholder", entityType: "payroll_run", entityId: String(run.id), oldValue: run });
   await publishPayroll(c, "payroll.run.finalized_placeholder", "payroll_run", String(run.id), "finalized_placeholder");
   return ok(c, { run: await getRun(c, String(run.id)) });
+});
+
+payrollRoutes.post("/runs/:id/finalize", requireAnyPermission(["payroll.finalization.finalize", "payroll.finalization.manage", "payroll.manage"]), async (c) => {
+  const body = await readJsonBody(c.req.raw);
+  const result = await finalizePayrollRun(c, routeParam(c, "id"), optionalString(body.note ?? body.reason), bool(body.override, false));
+  if (result.response) return result.response;
+  return ok(c, { run: result.run });
+});
+
+payrollRoutes.post("/runs/:id/unlock-finalized", requireAnyPermission(["payroll.finalization.unlock", "payroll.unlock_after_finalization", "payroll.finalization.manage", "payroll.manage"]), async (c) => {
+  const body = await readJsonBody(c.req.raw);
+  const result = await unlockFinalizedPayrollRun(c, routeParam(c, "id"), readString(body.reason));
+  if (result.response) return result.response;
+  return ok(c, { run: result.run });
+});
+
+payrollRoutes.get("/runs/:id/finalization-status", requireAnyPermission(["payroll.finalization.view", "payroll.finalization.manage", "payroll.runs.view", "payroll.view"]), async (c) => {
+  const { run, response } = await ensureRunAccess(c, routeParam(c, "id"), "view");
+  if (!run) return response!;
+  return ok(c, { finalization: { status: run.status, finalized_at: run.finalized_at ?? null, finalized_by_user_id: run.finalized_by_user_id ?? null, locked_at: run.locked_at ?? null, locked_by_user_id: run.locked_by_user_id ?? null, finalization_note: run.finalization_note ?? null, unlocked_at: run.unlocked_at ?? null, unlock_reason: run.unlock_reason ?? null } });
+});
+
+payrollRoutes.post("/runs/:id/generate-payslips", requireAnyPermission(["payroll.payslips.generate", "payroll.payslips.manage", "payroll.manage"]), async (c) => {
+  const result = await generatePayslipsForPayrollRun(c, routeParam(c, "id"));
+  if (result.response) return result.response;
+  return ok(c, { payslips: result.payslips });
+});
+
+payrollRoutes.get("/runs/:id/payment-register", requireAnyPermission(["payroll.payment_register.view", "payroll.payment_register.manage", "payroll.view"]), async (c) => {
+  const { run, response } = await ensureRunAccess(c, routeParam(c, "id"), "view");
+  if (!run) return response!;
+  return ok(c, { payments: await listPaymentRegisters(c, String(run.id)) });
+});
+
+payrollRoutes.post("/runs/:id/prepare-payment-register", requireAnyPermission(["payroll.payment_register.prepare", "payroll.payment_register.manage", "payroll.manage"]), async (c) => {
+  const result = await preparePaymentRegisterForPayrollRun(c, routeParam(c, "id"));
+  if (result.response) return result.response;
+  return ok(c, { payments: result.payments });
 });
 
 payrollRoutes.post("/runs/:id/mark-paid", requireAnyPermission(["payroll.runs.manage", "payroll.manage"]), (c) => disabledPayrollCoreFeature(c, "PAYROLL_PAYMENT_NOT_AVAILABLE", "Payment processing is not available in Payroll Core."));
@@ -1343,6 +1842,115 @@ payrollRoutes.get("/runs/:id/employees/:runEmployeeId/lines", requireAnyPermissi
   const lines = (await c.env.DB.prepare("SELECT prl.*, pc.code AS component_code, pc.name AS component_name FROM payroll_result_line_items prl LEFT JOIN payroll_components pc ON pc.id = prl.payroll_component_id WHERE payroll_run_employee_id = ? ORDER BY line_type, category, description").bind(routeParam(c, "runEmployeeId")).all<Record<string, unknown>>()).results;
   return ok(c, { lines: lines.map((line) => safePayrollLineItem(line, canViewPayrollResultSensitive(c))) });
 });
+
+payrollRoutes.get("/payslips", requireAnyPermission(["payroll.payslips.view", "payroll.payslips.manage", "payroll.view"]), async (c) => {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return disabled;
+  return ok(c, { payslips: await listPayslips(c, readString(c.req.query("employee_id")) || null) });
+});
+
+payrollRoutes.get("/payslips/:payslipId", requireAnyPermission(["payroll.payslips.view", "payroll.payslips.manage", "payroll.view"]), async (c) => {
+  const payslip = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ?").bind(routeParam(c, "payslipId")).first<Record<string, unknown>>();
+  if (!payslip || !(await canViewPayslipForEmployee(c, String(payslip.employee_id)))) return fail(c, 404, "PAYSIP_NOT_AVAILABLE", "Payslip is not available.");
+  await auditPayroll(c, { action: "payroll.payslip.viewed", entityType: "payroll_payslip", entityId: String(payslip.id) });
+  return ok(c, { payslip });
+});
+
+payrollRoutes.post("/payslips/:payslipId/regenerate", requireAnyPermission(["payroll.payslips.regenerate", "payroll.payslips.manage", "payroll.manage"]), async (c) => {
+  const payslip = await c.env.DB.prepare("SELECT ps.*, pre.employee_id AS result_employee_id FROM payroll_payslips ps INNER JOIN payroll_employee_results pre ON pre.id = ps.payroll_employee_result_id WHERE ps.id = ?").bind(routeParam(c, "payslipId")).first<Record<string, unknown>>();
+  if (!payslip || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(payslip.employee_id), "payroll", "manage"))) return fail(c, 404, "PAYSIP_NOT_AVAILABLE", "Payslip is not available.");
+  const run = await getRun(c, String(payslip.payroll_run_id));
+  const result = await getRunEmployee(c, String(payslip.payroll_employee_result_id));
+  if (!run || !result) return fail(c, 404, "PAYSIP_NOT_AVAILABLE", "Payslip is not available.");
+  const saved = await generatePayslipForEmployeeResult(c, result, run);
+  await auditPayroll(c, { action: "payroll.payslip.regenerated", entityType: "payroll_payslip", entityId: String(payslip.id), oldValue: payslip, newValue: saved });
+  return ok(c, { payslip: saved });
+});
+
+payrollRoutes.get("/payslips/:payslipId/preview", requireAnyPermission(["payroll.payslips.view", "payroll.payslips.manage", "payroll.view"]), async (c) => {
+  const payslip = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ?").bind(routeParam(c, "payslipId")).first<Record<string, unknown>>();
+  if (!payslip || !(await canViewPayslipForEmployee(c, String(payslip.employee_id)))) return fail(c, 404, "PAYSIP_NOT_AVAILABLE", "Payslip is not available.");
+  return new Response(String(payslip.html_snapshot ?? ""), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+});
+
+payrollRoutes.get("/payslips/:payslipId/download", requireAnyPermission(["payroll.payslips.download", "payroll.payslips.manage"]), async (c) => {
+  const payslip = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ?").bind(routeParam(c, "payslipId")).first<Record<string, unknown>>();
+  if (!payslip || !(await canViewPayslipForEmployee(c, String(payslip.employee_id)))) return fail(c, 404, "PAYSIP_ACCESS_DENIED", "You can only view your own payslips.");
+  await c.env.DB.prepare("UPDATE payroll_payslips SET download_count = COALESCE(download_count, 0) + 1, last_downloaded_at = ?, updated_at = ? WHERE id = ?").bind(isoNow(), isoNow(), payslip.id).run();
+  await auditPayroll(c, { action: "payroll.payslip.downloaded", entityType: "payroll_payslip", entityId: String(payslip.id) });
+  return new Response(String(payslip.html_snapshot ?? ""), { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Disposition": `attachment; filename=${payslip.payslip_number ?? "payslip"}.html` } });
+});
+
+payrollRoutes.get("/payment-registers", requireAnyPermission(["payroll.payment_register.view", "payroll.payment_register.manage", "payroll.view"]), async (c) => {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return disabled;
+  return ok(c, { payments: await listPaymentRegisters(c) });
+});
+
+payrollRoutes.post("/payment-register/:paymentId/confirm-manual-paid", requireAnyPermission(["payroll.payment_register.confirm_manual_paid", "payroll.payment_register.manage", "payroll.manage"]), async (c) => {
+  const body = await readJsonBody(c.req.raw);
+  const result = await confirmManualPayrollPayment(c, routeParam(c, "paymentId"), readString(body.confirmation_reference ?? body.reference), readString(body.confirmation_note ?? body.note));
+  if (result.response) return result.response;
+  return ok(c, { payment: result.payment });
+});
+
+payrollRoutes.post("/payment-register/:paymentId/cancel", requireAnyPermission(["payroll.payment_register.cancel", "payroll.payment_register.manage", "payroll.manage"]), async (c) => {
+  const body = await readJsonBody(c.req.raw);
+  const reason = readString(body.reason);
+  if (!reason) return fail(c, 400, "REASON_REQUIRED", "Reason is required.");
+  const payment = await c.env.DB.prepare("SELECT * FROM payroll_payment_register WHERE id = ?").bind(routeParam(c, "paymentId")).first<Record<string, unknown>>();
+  if (!payment || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(payment.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Payment register row was not found.");
+  await c.env.DB.prepare("UPDATE payroll_payment_register SET payment_status = ?, confirmation_note = ?, updated_at = ? WHERE id = ?").bind("CANCELLED", reason, isoNow(), payment.id).run();
+  await auditPayroll(c, { action: "payroll.payment_register.cancelled", entityType: "payroll_payment_register", entityId: String(payment.id), oldValue: payment, reason });
+  return ok(c, { payment: await c.env.DB.prepare("SELECT * FROM payroll_payment_register WHERE id = ?").bind(payment.id).first() });
+});
+
+payrollRoutes.get("/history", requireAnyPermission(["payroll.history.view", "payroll.reports.view", "payroll.view"]), async (c) => {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return disabled;
+  return ok(c, { history: await getPayrollHistorySummary(c) });
+});
+
+payrollRoutes.get("/employees/:employeeId/history", requireAnyPermission(["payroll.history.employee.view", "payroll.history.view", "employees.payroll.view", "payroll.view"]), async (c) => {
+  const employeeId = routeParam(c, "employeeId");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  return ok(c, { history: await getPayrollHistorySummary(c, employeeId) });
+});
+
+payrollRoutes.get("/reports/summary", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => ok(c, { summary: await getPayrollHistorySummary(c) }));
+payrollRoutes.get("/reports/department-totals", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => {
+  const rows = await getPayrollHistorySummary(c);
+  const totals = Object.values(rows.reduce<Record<string, Record<string, unknown>>>((acc, row) => {
+    const key = String(row.department_id ?? "unassigned");
+    acc[key] ??= { department_id: row.department_id, department_name: row.department_name ?? "Unassigned", employees: 0, total_earnings: 0, total_deductions: 0, net_salary: 0 };
+    acc[key].employees = Number(acc[key].employees) + 1;
+    acc[key].total_earnings = Number(acc[key].total_earnings) + Number(row.total_earnings ?? 0);
+    acc[key].total_deductions = Number(acc[key].total_deductions) + Number(row.total_deductions ?? 0);
+    acc[key].net_salary = Number(acc[key].net_salary) + Number(row.net_salary ?? 0);
+    return acc;
+  }, {}));
+  return ok(c, { totals });
+});
+payrollRoutes.get("/reports/worksite-totals", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => {
+  const rows = await getPayrollHistorySummary(c);
+  const totals = Object.values(rows.reduce<Record<string, Record<string, unknown>>>((acc, row) => {
+    const key = String(row.location_id ?? "unassigned");
+    acc[key] ??= { location_id: row.location_id, location_name: row.location_name ?? "Unassigned", employees: 0, net_salary: 0 };
+    acc[key].employees = Number(acc[key].employees) + 1;
+    acc[key].net_salary = Number(acc[key].net_salary) + Number(row.net_salary ?? 0);
+    return acc;
+  }, {}));
+  return ok(c, { totals });
+});
+payrollRoutes.get("/reports/allowances-deductions", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => {
+  const { conditions, params } = await payrollReportFilters(c);
+  conditions.push("pr.status IN ('FINALIZED', 'LOCKED', 'FINALIZED_PLACEHOLDER')");
+  const rows = (await c.env.DB.prepare(`SELECT prli.line_type, prli.category, prli.description, SUM(prli.amount) AS amount FROM payroll_result_line_items prli INNER JOIN payroll_employee_results pre ON pre.id = prli.payroll_run_employee_id INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE ${conditions.join(" AND ")} GROUP BY prli.line_type, prli.category, prli.description ORDER BY prli.line_type, prli.category`).bind(...params).all()).results;
+  return ok(c, { reports: rows });
+});
+payrollRoutes.get("/reports/attendance-deductions", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => ok(c, { reports: (await getPayrollHistorySummary(c)).filter((row) => Number(row.attendance_deductions ?? 0) > 0) }));
+payrollRoutes.get("/reports/leave-deductions", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => ok(c, { reports: (await getPayrollHistorySummary(c)).filter((row) => Number(row.leave_deductions ?? 0) > 0) }));
+payrollRoutes.get("/reports/advance-deductions", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => ok(c, { reports: (await getPayrollHistorySummary(c)).filter((row) => Number(row.advance_deductions ?? 0) > 0) }));
 
 payrollRoutes.get("/dashboard", requireAnyPermission(["payroll.view", "payroll.periods.view", "payroll.runs.view"]), async (c) => {
   const currentPeriod = await c.env.DB.prepare("SELECT * FROM payroll_periods ORDER BY CASE status WHEN 'DRAFT' THEN 0 WHEN 'CALCULATING' THEN 1 WHEN 'READY_FOR_REVIEW' THEN 2 WHEN 'APPROVED_PLACEHOLDER' THEN 3 ELSE 4 END, period_year DESC, period_month DESC LIMIT 1").first();

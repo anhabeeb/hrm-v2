@@ -138,6 +138,7 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
         <RowsPanel title="Advance payments" rows={(summary.advances ?? []) as unknown as Record<string, unknown>[]} columns={["payment_date", "amount", "status", "notes", "paid_at"]} action={canAdvance ? <Button size="sm" onClick={() => setAdvanceForm({ amount: "", payment_date: new Date().toISOString().slice(0, 10) })}><Plus className="h-4 w-4" /> Add advance</Button> : null} />
         <RowsPanel title="Deductions" rows={(summary.deductions ?? []) as unknown as Record<string, unknown>[]} columns={["deduction_type", "amount", "status", "reason", "start_date", "end_date"]} />
         <RowsPanel title="Payroll run history" rows={(summary.runs ?? []) as unknown as Record<string, unknown>[]} columns={["employee_no_snapshot", "basic_salary", "days_worked", "total_deductions", "net_salary", "status"]} />
+        <RowsPanel title="Payslip history" rows={(summary.payslips ?? []) as unknown as Record<string, unknown>[]} columns={["period_month", "period_year", "payslip_number", "status", "version_number", "generated_at"]} />
         <RowsPanel title="Final settlements" rows={(summary.settlements ?? []) as unknown as Record<string, unknown>[]} columns={["final_salary_amount", "pending_advance_amount", "net_settlement_amount", "status", "reason"]} />
       </div>
       <RowsPanel title="Payroll audit" rows={summary.audit ?? []} columns={["action", "entity_type", "reason", "created_at"]} />

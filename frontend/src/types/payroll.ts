@@ -1,7 +1,7 @@
 export type PayrollComponentType = "EARNING" | "DEDUCTION" | "BASIC_SALARY" | "ALLOWANCE" | "FIXED_DEDUCTION" | "VARIABLE_DEDUCTION" | "ATTENDANCE_DEDUCTION" | "LEAVE_DEDUCTION" | "ADVANCE_DEDUCTION" | "ONE_TIME_DEDUCTION" | "OVERTIME_PLACEHOLDER" | "BENEFIT_PLACEHOLDER" | "ADJUSTMENT";
 export type PayrollCalculationType = "FIXED" | "VARIABLE" | "PERCENTAGE" | "FIXED_AMOUNT" | "PERCENTAGE_OF_BASIC" | "PERCENTAGE_OF_GROSS" | "DAILY_RATE" | "HOURLY_RATE" | "FORMULA_PLACEHOLDER" | "MANUAL";
-export type PayrollPeriodStatus = "DRAFT" | "CALCULATING" | "READY_FOR_REVIEW" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "LOCKED" | "CANCELLED" | "OPEN" | "PROCESSING" | "REVIEW" | "APPROVED" | "PAID" | "CLOSED";
-export type PayrollRunStatus = "DRAFT" | "CALCULATING" | "READY_FOR_REVIEW" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "LOCKED" | "CANCELLED" | "PROCESSING" | "REVIEW" | "APPROVED" | "PAID";
+export type PayrollPeriodStatus = "DRAFT" | "CALCULATING" | "READY_FOR_REVIEW" | "SUBMITTED_FOR_APPROVAL" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "REJECTED" | "SENT_BACK" | "APPROVED" | "FINALIZED" | "LOCKED" | "CANCELLED" | "OPEN" | "PROCESSING" | "REVIEW" | "PAID" | "CLOSED";
+export type PayrollRunStatus = "DRAFT" | "CALCULATING" | "READY_FOR_REVIEW" | "SUBMITTED_FOR_APPROVAL" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "REJECTED" | "SENT_BACK" | "APPROVED" | "FINALIZED" | "LOCKED" | "CANCELLED" | "PROCESSING" | "REVIEW" | "PAID";
 export type PayrollAdvanceStatus = "REQUESTED" | "APPROVED" | "PAID" | "DEDUCTED" | "CANCELLED";
 
 export interface PayrollComponent {
@@ -23,6 +23,7 @@ export interface PayrollComponent {
 
 export interface PayrollSettings {
   id: string;
+  module_enabled?: number | boolean;
   default_currency: string;
   default_daily_rate_mode: "CALENDAR_DAYS" | "WORKING_DAYS" | "FIXED_30_DAYS";
   allow_negative_net_salary: number | boolean;
@@ -125,7 +126,7 @@ export interface PayrollRunEmployee {
   missed_punch_days: number | null;
   missed_date_ranges_json: string | null;
   calculation_json?: string | null;
-  status: "DRAFT" | "READY_FOR_REVIEW" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "HELD" | "EXCLUDED" | "CANCELLED" | "REVIEW" | "APPROVED" | "PAID";
+  status: "DRAFT" | "READY_FOR_REVIEW" | "SUBMITTED_FOR_APPROVAL" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "APPROVED" | "FINALIZED" | "HELD" | "EXCLUDED" | "CANCELLED" | "REVIEW" | "PAID";
   hold_reason: string | null;
   created_at: string;
   updated_at: string;
@@ -224,6 +225,7 @@ export interface EmployeePayrollSummary {
   advances: PayrollAdvance[];
   deductions: PayrollDeduction[];
   runs: PayrollRunEmployee[];
+  payslips?: PayrollPayslip[];
   settlements: FinalSettlement[];
   audit: Record<string, unknown>[];
 }
@@ -239,4 +241,78 @@ export interface PayrollDashboard {
   attendance_deduction_candidates: number;
   leave_deduction_candidates: number;
   payroll_holds: number;
+}
+
+export interface PayrollApprovalEvent {
+  id: string;
+  payroll_period_id: string;
+  payroll_run_id: string;
+  action: string;
+  previous_status: string | null;
+  new_status: string | null;
+  actor_user_id: string | null;
+  actor_name_snapshot: string | null;
+  note: string | null;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface PayrollPayslip {
+  id: string;
+  payslip_number: string;
+  payroll_period_id: string;
+  payroll_run_id: string;
+  payroll_employee_result_id: string;
+  employee_id: string;
+  employee_no_snapshot?: string | null;
+  employee_name_snapshot?: string | null;
+  period_month?: number;
+  period_year?: number;
+  run_no?: number;
+  status: "DRAFT" | "GENERATED" | "REGENERATED" | "CANCELLED";
+  generated_at: string | null;
+  version_number: number;
+  download_count?: number;
+  last_downloaded_at?: string | null;
+  net_salary?: number;
+}
+
+export interface PayrollPaymentRegister {
+  id: string;
+  payroll_period_id: string;
+  payroll_run_id: string;
+  payroll_employee_result_id: string;
+  employee_id: string;
+  employee_number_snapshot: string | null;
+  employee_name_snapshot: string;
+  payment_method_snapshot: string | null;
+  bank_name_snapshot: string | null;
+  bank_account_name_snapshot: string | null;
+  bank_account_number_masked: string | null;
+  net_salary_amount: number;
+  payment_status: "PENDING" | "PREPARED" | "MANUALLY_CONFIRMED_PAID" | "FAILED_PLACEHOLDER" | "CANCELLED";
+  confirmation_reference: string | null;
+  confirmation_note: string | null;
+  period_month?: number;
+  period_year?: number;
+  run_no?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PayrollHistoryRow {
+  payroll_run_id: string;
+  run_no: number;
+  period_month: number;
+  period_year: number;
+  employee_id: string;
+  employee_no_snapshot: string | null;
+  employee_name_snapshot: string;
+  department_name?: string | null;
+  location_name?: string | null;
+  basic_salary: number;
+  total_earnings: number;
+  total_deductions: number;
+  net_salary: number;
+  status: string;
 }

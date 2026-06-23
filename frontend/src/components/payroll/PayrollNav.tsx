@@ -10,6 +10,9 @@ const links = [
   { label: "Deductions", to: "/payroll/deductions", permission: "payroll.deductions.view", fallback: "payroll.view" },
   { label: "Adjustments", to: "/payroll/adjustments", permission: "payroll.adjustments.view", fallback: "payroll.view" },
   { label: "Components", to: "/payroll/components", permission: "payroll.components.view", fallback: "payroll.view" },
+  { label: "Payslips", to: "/payroll/payslips", permission: "payroll.payslips.view", fallback: "payroll.view" },
+  { label: "Payment Register", to: "/payroll/payment-register", permission: "payroll.payment_register.view", fallback: "payroll.view" },
+  { label: "History", to: "/payroll/history", permission: "payroll.history.view", fallback: "payroll.reports.view" },
   { label: "Reports", to: "/payroll/reports", permission: "payroll.reports.view" },
   { label: "Settings", to: "/payroll/settings", permission: "payroll.settings.view", fallback: "payroll.settings.manage" }
 ];

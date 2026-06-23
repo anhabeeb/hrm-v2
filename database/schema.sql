@@ -1372,6 +1372,7 @@ CREATE TABLE IF NOT EXISTS payroll_components (
 
 CREATE TABLE IF NOT EXISTS payroll_settings (
   id TEXT PRIMARY KEY,
+  module_enabled INTEGER NOT NULL DEFAULT 1 CHECK (module_enabled IN (0, 1)),
   default_currency TEXT NOT NULL DEFAULT 'MVR',
   default_daily_rate_mode TEXT NOT NULL DEFAULT 'FIXED_30_DAYS' CHECK (default_daily_rate_mode IN ('CALENDAR_DAYS', 'WORKING_DAYS', 'FIXED_30_DAYS')),
   allow_negative_net_salary INTEGER NOT NULL DEFAULT 0 CHECK (allow_negative_net_salary IN (0, 1)),
@@ -1452,7 +1453,7 @@ CREATE TABLE IF NOT EXISTS payroll_periods (
   start_date TEXT NOT NULL,
   end_date TEXT NOT NULL,
   salary_payment_date TEXT,
-  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'CALCULATING', 'READY_FOR_REVIEW', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'LOCKED', 'CANCELLED', 'OPEN', 'PROCESSING', 'REVIEW', 'APPROVED', 'PAID', 'CLOSED')),
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'CALCULATING', 'READY_FOR_REVIEW', 'SUBMITTED_FOR_APPROVAL', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'REJECTED', 'SENT_BACK', 'APPROVED', 'FINALIZED', 'LOCKED', 'CANCELLED', 'OPEN', 'PROCESSING', 'REVIEW', 'PAID', 'CLOSED')),
   created_by_user_id TEXT,
   approved_by_user_id TEXT,
   approved_at TEXT,
@@ -1460,6 +1461,15 @@ CREATE TABLE IF NOT EXISTS payroll_periods (
   paid_at TEXT,
   closed_by_user_id TEXT,
   closed_at TEXT,
+  finalized_by_user_id TEXT,
+  finalized_at TEXT,
+  locked_by_user_id TEXT,
+  locked_at TEXT,
+  finalization_note TEXT,
+  finalization_snapshot_json TEXT,
+  unlocked_by_user_id TEXT,
+  unlocked_at TEXT,
+  unlock_reason TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   UNIQUE (period_month, period_year),
@@ -1476,7 +1486,7 @@ CREATE TABLE IF NOT EXISTS payroll_runs (
   id TEXT PRIMARY KEY,
   payroll_period_id TEXT NOT NULL,
   run_no INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'CALCULATING', 'READY_FOR_REVIEW', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'LOCKED', 'CANCELLED', 'PROCESSING', 'REVIEW', 'APPROVED', 'PAID')),
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'CALCULATING', 'READY_FOR_REVIEW', 'SUBMITTED_FOR_APPROVAL', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'REJECTED', 'SENT_BACK', 'APPROVED', 'FINALIZED', 'LOCKED', 'CANCELLED', 'PROCESSING', 'REVIEW', 'PAID')),
   calculation_mode TEXT NOT NULL DEFAULT 'STANDARD' CHECK (calculation_mode IN ('STANDARD', 'RECALCULATION', 'FINAL_SETTLEMENT')),
   generated_by_user_id TEXT,
   generated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -1484,6 +1494,18 @@ CREATE TABLE IF NOT EXISTS payroll_runs (
   approved_at TEXT,
   paid_by_user_id TEXT,
   paid_at TEXT,
+  rejected_by_user_id TEXT,
+  rejected_at TEXT,
+  rejection_reason TEXT,
+  finalized_by_user_id TEXT,
+  finalized_at TEXT,
+  locked_by_user_id TEXT,
+  locked_at TEXT,
+  finalization_note TEXT,
+  finalization_snapshot_json TEXT,
+  unlocked_by_user_id TEXT,
+  unlocked_at TEXT,
+  unlock_reason TEXT,
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -1523,7 +1545,7 @@ CREATE TABLE IF NOT EXISTS payroll_run_employees (
   missed_punch_days INTEGER,
   missed_date_ranges_json TEXT,
   calculation_json TEXT,
-  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'READY_FOR_REVIEW', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'HELD', 'EXCLUDED', 'CANCELLED', 'REVIEW', 'APPROVED', 'PAID')),
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'READY_FOR_REVIEW', 'SUBMITTED_FOR_APPROVAL', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'APPROVED', 'FINALIZED', 'HELD', 'EXCLUDED', 'CANCELLED', 'REVIEW', 'PAID')),
   hold_reason TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -1581,8 +1603,9 @@ CREATE TABLE IF NOT EXISTS payroll_employee_results (
   missed_punch_days INTEGER,
   missed_date_ranges_json TEXT,
   calculation_json TEXT,
-  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'READY_FOR_REVIEW', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'HELD', 'EXCLUDED', 'CANCELLED')),
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'READY_FOR_REVIEW', 'SUBMITTED_FOR_APPROVAL', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'APPROVED', 'FINALIZED', 'HELD', 'EXCLUDED', 'CANCELLED')),
   hold_reason TEXT,
+  finalized_at TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   UNIQUE (payroll_run_id, employee_id),
@@ -1611,6 +1634,97 @@ CREATE TABLE IF NOT EXISTS payroll_result_line_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_payroll_result_line_items_result ON payroll_result_line_items(payroll_run_employee_id, line_type);
+
+CREATE TABLE IF NOT EXISTS payroll_approval_events (
+  id TEXT PRIMARY KEY,
+  payroll_period_id TEXT NOT NULL,
+  payroll_run_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('SUBMITTED_FOR_APPROVAL', 'APPROVED', 'REJECTED', 'SENT_BACK', 'FINALIZED', 'UNLOCKED')),
+  previous_status TEXT,
+  new_status TEXT,
+  actor_user_id TEXT,
+  actor_name_snapshot TEXT,
+  note TEXT,
+  reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  metadata_json TEXT,
+  FOREIGN KEY (payroll_period_id) REFERENCES payroll_periods(id) ON DELETE CASCADE,
+  FOREIGN KEY (payroll_run_id) REFERENCES payroll_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_approval_events_run ON payroll_approval_events(payroll_run_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_payroll_approval_events_period ON payroll_approval_events(payroll_period_id, created_at);
+
+CREATE TABLE IF NOT EXISTS payroll_payslips (
+  id TEXT PRIMARY KEY,
+  payslip_number TEXT NOT NULL UNIQUE,
+  payroll_period_id TEXT NOT NULL,
+  payroll_run_id TEXT NOT NULL,
+  payroll_employee_result_id TEXT NOT NULL,
+  employee_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'GENERATED' CHECK (status IN ('DRAFT', 'GENERATED', 'REGENERATED', 'CANCELLED')),
+  generated_by_user_id TEXT,
+  generated_at TEXT,
+  regenerated_by_user_id TEXT,
+  regenerated_at TEXT,
+  version_number INTEGER NOT NULL DEFAULT 1 CHECK (version_number >= 1),
+  payslip_data_json TEXT NOT NULL,
+  html_snapshot TEXT,
+  pdf_object_key TEXT,
+  download_count INTEGER NOT NULL DEFAULT 0 CHECK (download_count >= 0),
+  last_downloaded_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  metadata_json TEXT,
+  UNIQUE (payroll_employee_result_id),
+  FOREIGN KEY (payroll_period_id) REFERENCES payroll_periods(id) ON DELETE CASCADE,
+  FOREIGN KEY (payroll_run_id) REFERENCES payroll_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (payroll_employee_result_id) REFERENCES payroll_employee_results(id) ON DELETE CASCADE,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (generated_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (regenerated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_payslips_run ON payroll_payslips(payroll_run_id, status);
+CREATE INDEX IF NOT EXISTS idx_payroll_payslips_employee ON payroll_payslips(employee_id, generated_at);
+CREATE INDEX IF NOT EXISTS idx_payroll_payslips_period ON payroll_payslips(payroll_period_id, status);
+
+CREATE TABLE IF NOT EXISTS payroll_payment_register (
+  id TEXT PRIMARY KEY,
+  payroll_period_id TEXT NOT NULL,
+  payroll_run_id TEXT NOT NULL,
+  payroll_employee_result_id TEXT NOT NULL UNIQUE,
+  employee_id TEXT NOT NULL,
+  employee_number_snapshot TEXT NOT NULL,
+  employee_name_snapshot TEXT NOT NULL,
+  payment_method_snapshot TEXT,
+  bank_name_snapshot TEXT,
+  bank_account_name_snapshot TEXT,
+  bank_account_number_masked TEXT,
+  net_salary_amount REAL NOT NULL DEFAULT 0,
+  payment_status TEXT NOT NULL DEFAULT 'PENDING' CHECK (payment_status IN ('PENDING', 'PREPARED', 'MANUALLY_CONFIRMED_PAID', 'FAILED_PLACEHOLDER', 'CANCELLED')),
+  prepared_by_user_id TEXT,
+  prepared_at TEXT,
+  confirmed_paid_by_user_id TEXT,
+  confirmed_paid_at TEXT,
+  confirmation_reference TEXT,
+  confirmation_note TEXT,
+  failed_reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  metadata_json TEXT,
+  FOREIGN KEY (payroll_period_id) REFERENCES payroll_periods(id) ON DELETE CASCADE,
+  FOREIGN KEY (payroll_run_id) REFERENCES payroll_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (payroll_employee_result_id) REFERENCES payroll_employee_results(id) ON DELETE CASCADE,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (prepared_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (confirmed_paid_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_payment_register_run ON payroll_payment_register(payroll_run_id, payment_status);
+CREATE INDEX IF NOT EXISTS idx_payroll_payment_register_employee ON payroll_payment_register(employee_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_payment_register_period ON payroll_payment_register(payroll_period_id, payment_status);
 
 CREATE TABLE IF NOT EXISTS payroll_advance_payments (
   id TEXT PRIMARY KEY,

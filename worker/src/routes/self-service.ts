@@ -645,13 +645,15 @@ selfServiceRoutes.get("/roster/week", async (c) => {
 selfServiceRoutes.get("/payroll", async (c) => {
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
+  const payrollSettings = await c.env.DB.prepare("SELECT module_enabled FROM payroll_settings WHERE id = 'payroll_settings_default'").first<Row>();
+  if (Number(payrollSettings?.module_enabled ?? 1) !== 1) return fail(c, 503, "PAYROLL_MODULE_DISABLED", "Payroll module is disabled.");
   const profile = await c.env.DB.prepare("SELECT employee_id, basic_salary, currency, payroll_included, payment_method, effective_from FROM employee_payroll_profiles WHERE employee_id = ?").bind(gate.employeeId).first<Row>();
   const runs = (
     await c.env.DB
       .prepare(
         `SELECT printf('%02d/%d', pp.period_month, pp.period_year) AS period,
-          pre.status, pre.basic_salary, pre.total_earnings, pre.total_deductions, pre.net_salary, pr.paid_at
-         FROM payroll_run_employees pre
+          pre.status, pre.basic_salary, pre.total_earnings, pre.total_deductions, pre.net_salary, pr.finalized_at
+         FROM payroll_employee_results pre
          JOIN payroll_runs pr ON pr.id = pre.payroll_run_id
          JOIN payroll_periods pp ON pp.id = pr.payroll_period_id
          WHERE pre.employee_id = ?
@@ -662,7 +664,80 @@ selfServiceRoutes.get("/payroll", async (c) => {
   ).results;
   const advances = (await c.env.DB.prepare("SELECT amount, payment_date, status, notes, created_at FROM payroll_advance_payments WHERE employee_id = ? ORDER BY payment_date DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results;
   const deductions = (await c.env.DB.prepare("SELECT deduction_type, amount, start_date, end_date, status, reason FROM payroll_deductions WHERE employee_id = ? ORDER BY created_at DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results;
-  return ok(c, { profile, runs, advances, deductions, payslip_download_enabled: false });
+  const payslips = (await c.env.DB.prepare("SELECT ps.id, ps.payslip_number, ps.status, ps.generated_at, ps.version_number, pp.period_month, pp.period_year, pre.net_salary FROM payroll_payslips ps INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id INNER JOIN payroll_employee_results pre ON pre.id = ps.payroll_employee_result_id WHERE ps.employee_id = ? AND ps.status IN ('GENERATED', 'REGENERATED') ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results;
+  return ok(c, { profile, runs, advances, deductions, payslips, payslip_download_enabled: hasAny(c, ["self_service.payslips.download", "self_service.payroll.view", "self_service.view"]) });
+});
+
+selfServiceRoutes.get("/payslips", async (c) => {
+  const gate = await requireLinkedEmployee(c);
+  if (gate.response) return gate.response;
+  if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view payslips.");
+  const rows = (await c.env.DB.prepare("SELECT ps.id, ps.payslip_number, ps.status, ps.generated_at, ps.version_number, pp.period_month, pp.period_year, pre.net_salary FROM payroll_payslips ps INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id INNER JOIN payroll_employee_results pre ON pre.id = ps.payroll_employee_result_id WHERE ps.employee_id = ? AND ps.status IN ('GENERATED', 'REGENERATED') ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC").bind(gate.employeeId).all<Row>()).results;
+  return ok(c, { payslips: rows });
+});
+
+selfServiceRoutes.get("/payslips/:payslipId", async (c) => {
+  const gate = await requireLinkedEmployee(c);
+  if (gate.response) return gate.response;
+  if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view payslips.");
+  const row = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ? AND employee_id = ?").bind(c.req.param("payslipId"), gate.employeeId).first<Row>();
+  if (!row) return fail(c, 404, "PAYSIP_ACCESS_DENIED", "You can only view your own payslips.");
+  await recordAudit(c.env.DB, {
+    actorUserId: c.get("currentUser").id,
+    action: "self_service.payslip.viewed",
+    module: "payroll",
+    entityType: "payroll_payslip",
+    entityId: String(row.id),
+    newValue: { employee_id: gate.employeeId },
+    oldValue: undefined,
+    reason: null,
+    ipAddress: getClientIp(c.req.raw),
+    userAgent: c.req.header("user-agent") ?? null
+  });
+  return ok(c, { payslip: row });
+});
+
+selfServiceRoutes.get("/payslips/:payslipId/preview", async (c) => {
+  const gate = await requireLinkedEmployee(c);
+  if (gate.response) return gate.response;
+  if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to preview payslips.");
+  const row = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ? AND employee_id = ?").bind(c.req.param("payslipId"), gate.employeeId).first<Row>();
+  if (!row) return fail(c, 404, "PAYSIP_ACCESS_DENIED", "You can only view your own payslips.");
+  await recordAudit(c.env.DB, {
+    actorUserId: c.get("currentUser").id,
+    action: "self_service.payslip.previewed",
+    module: "payroll",
+    entityType: "payroll_payslip",
+    entityId: String(row.id),
+    newValue: { employee_id: gate.employeeId },
+    oldValue: undefined,
+    reason: null,
+    ipAddress: getClientIp(c.req.raw),
+    userAgent: c.req.header("user-agent") ?? null
+  });
+  return new Response(String(row.html_snapshot ?? ""), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+});
+
+selfServiceRoutes.get("/payslips/:payslipId/download", async (c) => {
+  const gate = await requireLinkedEmployee(c);
+  if (gate.response) return gate.response;
+  if (!hasAny(c, ["self_service.payslips.download", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to download payslips.");
+  const row = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ? AND employee_id = ?").bind(c.req.param("payslipId"), gate.employeeId).first<Row>();
+  if (!row) return fail(c, 404, "PAYSIP_ACCESS_DENIED", "You can only download your own payslips.");
+  await c.env.DB.prepare("UPDATE payroll_payslips SET download_count = COALESCE(download_count, 0) + 1, last_downloaded_at = ?, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), new Date().toISOString(), row.id).run();
+  await recordAudit(c.env.DB, {
+    actorUserId: c.get("currentUser").id,
+    action: "self_service.payslip.downloaded",
+    module: "payroll",
+    entityType: "payroll_payslip",
+    entityId: String(row.id),
+    newValue: { employee_id: gate.employeeId },
+    oldValue: undefined,
+    reason: null,
+    ipAddress: getClientIp(c.req.raw),
+    userAgent: c.req.header("user-agent") ?? null
+  });
+  return new Response(String(row.html_snapshot ?? ""), { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Disposition": `attachment; filename=${row.payslip_number ?? "payslip"}.html` } });
 });
 
 selfServiceRoutes.get("/assets", async (c) => {

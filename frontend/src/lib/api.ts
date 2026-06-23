@@ -65,9 +65,13 @@ import type {
   EmployeePayrollSummary,
   PayrollAdjustment,
   PayrollAdvance,
+  PayrollApprovalEvent,
   PayrollComponent,
   PayrollDashboard,
   PayrollDeduction,
+  PayrollHistoryRow,
+  PayrollPaymentRegister,
+  PayrollPayslip,
   PayrollPeriod,
   PayrollRun,
   PayrollRunEmployee,
@@ -1107,8 +1111,38 @@ export const api = {
   recalculatePayrollRun(token: string, id: string) {
     return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/recalculate`, { method: "POST" }, token);
   },
-  approvePayrollRun(token: string, id: string) {
-    return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/approve`, { method: "POST" }, token);
+  listPayrollRunApprovals(token: string, id: string) {
+    return request<{ approvals: PayrollApprovalEvent[] }>(`/api/v1/payroll/runs/${id}/approvals`, {}, token);
+  },
+  submitPayrollRunForApproval(token: string, id: string, note?: string | null) {
+    return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/submit-for-approval`, { method: "POST", body: JSON.stringify({ note: note ?? null }) }, token);
+  },
+  approvePayrollRun(token: string, id: string, note?: string | null) {
+    return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/approve`, { method: "POST", body: JSON.stringify({ note: note ?? null }) }, token);
+  },
+  rejectPayrollRun(token: string, id: string, reason: string, note?: string | null) {
+    return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/reject`, { method: "POST", body: JSON.stringify({ reason, note: note ?? null }) }, token);
+  },
+  sendBackPayrollRun(token: string, id: string, reason: string, note?: string | null) {
+    return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/send-back`, { method: "POST", body: JSON.stringify({ reason, note: note ?? null }) }, token);
+  },
+  finalizePayrollRun(token: string, id: string, note?: string | null, override = false) {
+    return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/finalize`, { method: "POST", body: JSON.stringify({ note: note ?? null, override }) }, token);
+  },
+  unlockFinalizedPayrollRun(token: string, id: string, reason: string) {
+    return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/unlock-finalized`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  getPayrollFinalizationStatus(token: string, id: string) {
+    return request<{ finalization: Record<string, unknown> }>(`/api/v1/payroll/runs/${id}/finalization-status`, {}, token);
+  },
+  generatePayrollRunPayslips(token: string, id: string) {
+    return request<{ payslips: PayrollPayslip[] }>(`/api/v1/payroll/runs/${id}/generate-payslips`, { method: "POST" }, token);
+  },
+  preparePayrollRunPaymentRegister(token: string, id: string) {
+    return request<{ payments: PayrollPaymentRegister[] }>(`/api/v1/payroll/runs/${id}/prepare-payment-register`, { method: "POST" }, token);
+  },
+  listPayrollRunPaymentRegister(token: string, id: string) {
+    return request<{ payments: PayrollPaymentRegister[] }>(`/api/v1/payroll/runs/${id}/payment-register`, {}, token);
   },
   cancelPayrollRun(token: string, id: string, reason: string) {
     return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
@@ -1130,6 +1164,54 @@ export const api = {
   },
   listPayrollRunEmployeeLines(token: string, runId: string, runEmployeeId: string) {
     return request<{ lines: PayrollRunLine[] }>(`/api/v1/payroll/runs/${runId}/employees/${runEmployeeId}/lines`, {}, token);
+  },
+  listPayrollPayslips(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ payslips: PayrollPayslip[] }>(`/api/v1/payroll/payslips${query(filters)}`, {}, token);
+  },
+  getPayrollPayslip(token: string, id: string) {
+    return request<{ payslip: PayrollPayslip & Record<string, unknown> }>(`/api/v1/payroll/payslips/${id}`, {}, token);
+  },
+  regeneratePayrollPayslip(token: string, id: string) {
+    return request<{ payslip: PayrollPayslip }>(`/api/v1/payroll/payslips/${id}/regenerate`, { method: "POST" }, token);
+  },
+  previewPayrollPayslip(token: string, id: string) {
+    return blobRequest(`/api/v1/payroll/payslips/${id}/preview`, token);
+  },
+  downloadPayrollPayslip(token: string, id: string) {
+    return blobRequest(`/api/v1/payroll/payslips/${id}/download`, token);
+  },
+  listEmployeePayslips(token: string, employeeId: string) {
+    return request<{ payslips: PayrollPayslip[] }>(`/api/v1/employees/${employeeId}/payslips`, {}, token);
+  },
+  listPayrollPaymentRegisters(token: string) {
+    return request<{ payments: PayrollPaymentRegister[] }>("/api/v1/payroll/payment-registers", {}, token);
+  },
+  confirmManualPayrollPayment(token: string, id: string, input: { confirmation_reference: string; confirmation_note: string }) {
+    return request<{ payment: PayrollPaymentRegister }>(`/api/v1/payroll/payment-register/${id}/confirm-manual-paid`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  cancelPayrollPaymentRegister(token: string, id: string, reason: string) {
+    return request<{ payment: PayrollPaymentRegister }>(`/api/v1/payroll/payment-register/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  getPayrollHistory(token: string) {
+    return request<{ history: PayrollHistoryRow[] }>("/api/v1/payroll/history", {}, token);
+  },
+  getPayrollEmployeeHistory(token: string, employeeId: string) {
+    return request<{ history: PayrollHistoryRow[] }>(`/api/v1/payroll/employees/${employeeId}/history`, {}, token);
+  },
+  getPayrollSummaryReport(token: string, kind: "summary" | "department-totals" | "worksite-totals" | "allowances-deductions" | "attendance-deductions" | "leave-deductions" | "advance-deductions") {
+    return request<Record<string, unknown>>(`/api/v1/payroll/reports/${kind}`, {}, token);
+  },
+  getSelfServicePayslips(token: string) {
+    return request<{ payslips: PayrollPayslip[] }>("/api/v1/self-service/payslips", {}, token);
+  },
+  getSelfServicePayslip(token: string, id: string) {
+    return request<{ payslip: PayrollPayslip & Record<string, unknown> }>(`/api/v1/self-service/payslips/${id}`, {}, token);
+  },
+  previewSelfServicePayslip(token: string, id: string) {
+    return blobRequest(`/api/v1/self-service/payslips/${id}/preview`, token);
+  },
+  downloadSelfServicePayslip(token: string, id: string) {
+    return blobRequest(`/api/v1/self-service/payslips/${id}/download`, token);
   },
   exportPayrollRunCsv(token: string, id: string) {
     return blobRequest(`/api/v1/payroll/runs/${id}/export.csv`, token);

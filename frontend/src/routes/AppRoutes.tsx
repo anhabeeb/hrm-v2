@@ -39,6 +39,7 @@ import {
 } from "../pages/PayrollAdminPages";
 import { PayrollDashboardPage } from "../pages/PayrollDashboardPage";
 import { PayrollPeriodsPage } from "../pages/PayrollPeriodsPage";
+import { PayrollHistoryPage, PayrollPaymentRegisterPage, PayrollPayslipsPage } from "../pages/PayrollPrompt11Pages";
 import { PayrollRunDetailPage } from "../pages/PayrollRunDetailPage";
 import { PayrollRunsPage } from "../pages/PayrollRunsPage";
 import { PlaceholderModulePage } from "../pages/PlaceholderModulePage";
@@ -124,6 +125,9 @@ export function AppRoutes() {
           <Route path="payroll/deductions" element={<PayrollDeductionsPage />} />
           <Route path="payroll/adjustments" element={<PayrollAdjustmentsPage />} />
           <Route path="payroll/components" element={<PayrollComponentsPage />} />
+          <Route path="payroll/payslips" element={<PayrollPayslipsPage />} />
+          <Route path="payroll/payment-register" element={<PayrollPaymentRegisterPage />} />
+          <Route path="payroll/history" element={<PayrollHistoryPage />} />
           <Route path="payroll/settings" element={<PayrollSettingsPage />} />
           <Route path="payroll/reports" element={<PayrollReportsPage />} />
           <Route path="roster" element={<RosterWeeklyPage />} />
