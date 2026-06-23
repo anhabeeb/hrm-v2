@@ -26,6 +26,7 @@ export interface OrganizationLocation {
   address: string | null;
   phone: string | null;
   manager_employee_id: string | null;
+  manager_employee_name?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -38,6 +39,10 @@ export interface OrganizationDepartment {
   description: string | null;
   parent_department_id: string | null;
   parent_department_name?: string | null;
+  head_employee_id?: string | null;
+  head_employee_name?: string | null;
+  manager_employee_id?: string | null;
+  manager_employee_name?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -86,12 +91,15 @@ export interface LocationInput {
   island_city?: string | null;
   address?: string | null;
   phone?: string | null;
+  manager_employee_id?: string | null;
 }
 
 export interface DepartmentInput {
   code: string;
   name: string;
   parent_department_id?: string | null;
+  head_employee_id?: string | null;
+  manager_employee_id?: string | null;
   description?: string | null;
 }
 

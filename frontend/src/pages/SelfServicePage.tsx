@@ -1,18 +1,19 @@
-import { FileText, Plus, RefreshCw } from "lucide-react";
+import { CalendarDays, FileText, Plus, RefreshCw } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
+import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { cn } from "../lib/utils";
 
-type Mode = "home" | "profile" | "documents" | "attendance" | "leave" | "payroll" | "assets" | "kyc";
+type Mode = "home" | "profile" | "documents" | "attendance" | "leave" | "roster" | "payroll" | "assets" | "kyc";
 type Row = Record<string, unknown>;
 
 const nav = [
@@ -20,6 +21,7 @@ const nav = [
   { mode: "documents", label: "My Documents", to: "/self-service/documents" },
   { mode: "attendance", label: "My Attendance", to: "/self-service/attendance" },
   { mode: "leave", label: "My Leave", to: "/self-service/leave" },
+  { mode: "roster", label: "My Roster", to: "/self-service/roster" },
   { mode: "payroll", label: "My Payroll", to: "/self-service/payroll" },
   { mode: "assets", label: "My Assets", to: "/self-service/assets" },
   { mode: "kyc", label: "KYC Requests", to: "/self-service/kyc-requests" }
@@ -49,8 +51,29 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
       }
       if (activeMode === "profile") setData(await api.getSelfServiceProfile(token));
       if (activeMode === "documents") setData(await api.getSelfServiceDocuments(token));
-      if (activeMode === "attendance") setData(await api.getSelfServiceAttendance(token));
+      if (activeMode === "attendance") {
+        try {
+          setData(await api.getSelfServiceAttendance(token));
+        } catch (err) {
+          if (err instanceof ApiError && err.code === "ATTENDANCE_MODULE_DISABLED") {
+            setData({ attendance_module_enabled: false });
+          } else {
+            throw err;
+          }
+        }
+      }
       if (activeMode === "leave") setData(await api.getSelfServiceLeave(token));
+      if (activeMode === "roster") {
+        try {
+          setData(await api.getSelfServiceRoster(token));
+        } catch (err) {
+          if (err instanceof ApiError && (err.code === "ROSTER_MODULE_DISABLED" || err.code === "ROSTER_SELF_SERVICE_DISABLED")) {
+            setData({ roster_module_enabled: false });
+          } else {
+            throw err;
+          }
+        }
+      }
       if (activeMode === "payroll") setData(await api.getSelfServicePayroll(token));
       if (activeMode === "assets") setData(await api.getSelfServiceAssets(token));
       if (activeMode === "kyc") setData(await api.listSelfServiceKycRequests(token));
@@ -103,6 +126,7 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
           {activeMode === "documents" ? <DocumentsSection data={data} /> : null}
           {activeMode === "attendance" ? <AttendanceSection data={data} token={token} reload={load} /> : null}
           {activeMode === "leave" ? <LeaveSection data={data} token={token} reload={load} /> : null}
+          {activeMode === "roster" ? <RosterSelfServiceSection data={data} token={token} /> : null}
           {activeMode === "payroll" ? <PayrollSection data={data} /> : null}
           {activeMode === "assets" ? <AssetsSection data={data} /> : null}
           {activeMode === "kyc" ? <KycSection data={data} token={token} reload={load} /> : null}
@@ -176,6 +200,7 @@ function AttendanceSection({ data, token, reload }: { data: Record<string, unkno
   const [month, setMonth] = useState(currentMonth);
   const [monthData, setMonthData] = useState<Record<string, unknown> | null>(data);
   const [form, setForm] = useState({ attendance_date: "", requested_clock_in: "", requested_clock_out: "", reason: "" });
+  const attendanceEnabled = data?.attendance_module_enabled !== false;
 
   useEffect(() => {
     setMonthData(data);
@@ -183,7 +208,7 @@ function AttendanceSection({ data, token, reload }: { data: Record<string, unkno
 
   async function loadMonth(value: string) {
     setMonth(value);
-    if (!token || !value) return;
+    if (!token || !value || !attendanceEnabled) return;
     const [year, monthPart] = value.split("-").map(Number);
     const from = `${value}-01`;
     const to = new Date(Date.UTC(year, monthPart, 0)).toISOString().slice(0, 10);
@@ -197,6 +222,10 @@ function AttendanceSection({ data, token, reload }: { data: Record<string, unkno
     setOpen(false);
     setForm({ attendance_date: "", requested_clock_in: "", requested_clock_out: "", reason: "" });
     await reload();
+  }
+
+  if (!attendanceEnabled) {
+    return <div className="space-y-4 p-4"><Panel className="p-6 text-sm text-muted-foreground">Attendance module is disabled.</Panel></div>;
   }
 
   return (
@@ -277,9 +306,79 @@ function LeaveSection({ data, token, reload }: { data: Record<string, unknown> |
           <Button type="submit">Submit</Button>
         </form>
       ) : null}
-      <SimpleTable title="Leave balances" rows={rows(data, "balances")} columns={["period_year", "opening_balance", "earned_days", "used_days", "pending_days", "closing_balance"]} />
+      <SimpleTable title="Leave balance cycles" rows={rows(data, "balance_cycles")} columns={["cycle_year", "leave_type_name", "opening_balance", "accrued_days", "used_days", "pending_days", "closing_balance"]} />
+      <SimpleTable title="Leave ledger recent" rows={rows(data, "ledger_recent")} columns={["created_at", "leave_type_name", "entry_type", "days", "reason"]} />
+      <SimpleTable title="Leave balances (compatibility)" rows={rows(data, "balances")} columns={["period_year", "opening_balance", "earned_days", "used_days", "pending_days", "closing_balance"]} />
       <SimpleTable title="Leave requests" rows={rows(data, "requests")} columns={["leave_type_name", "start_date", "end_date", "total_days", "status", "document_status"]} />
       <SimpleTable title="Approval timeline" rows={rows(data, "approvals")} columns={["step_order", "step_name", "approver_type", "status", "note"]} />
+    </div>
+  );
+}
+
+function RosterSelfServiceSection({ data, token }: { data: Record<string, unknown> | null; token: string | null }) {
+  const [weekStart, setWeekStart] = useState(String(data?.week_start_date ?? new Date().toISOString().slice(0, 10)));
+  const [weekData, setWeekData] = useState<Record<string, unknown> | null>(data);
+  const enabled = data?.roster_module_enabled !== false;
+
+  useEffect(() => {
+    setWeekData(data);
+    if (data?.week_start_date) setWeekStart(String(data.week_start_date));
+  }, [data]);
+
+  async function loadWeek(value: string) {
+    setWeekStart(value);
+    if (!token || !value || !enabled) return;
+    try {
+      setWeekData(await api.getSelfServiceRosterWeek(token, { week_start_date: value }));
+    } catch {
+      setWeekData({ assignments: [] });
+    }
+  }
+
+  if (!enabled) {
+    return <div className="space-y-4 p-4"><Panel className="p-6 text-sm text-muted-foreground">Roster self-service is disabled.</Panel></div>;
+  }
+
+  const assignments = rows(weekData, "assignments");
+  return (
+    <div className="space-y-4 p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground"><CalendarDays className="h-4 w-4" /> Published roster only. Draft rosters are not visible here.</div>
+        <Input className="w-44" type="date" value={weekStart} onChange={(event) => void loadWeek(event.target.value)} />
+      </div>
+      <Panel className="overflow-hidden shadow-none">
+        <div className="flex items-center justify-between border-b px-3 py-2">
+          <h2 className="text-sm font-semibold">My weekly roster</h2>
+          <span className="text-xs text-muted-foreground">{text(weekData?.week_start_date)} to {text(weekData?.week_end_date)}</span>
+        </div>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Shift</TableHead>
+                <TableHead>Time</TableHead>
+                <TableHead>Location</TableHead>
+                <TableHead>Notes</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {assignments.map((assignment) => (
+                <TableRow key={String(assignment.id ?? assignment.roster_date)}>
+                  <TableCell>{text(assignment.roster_date)}</TableCell>
+                  <TableCell><StatusBadge value={assignment.status} /></TableCell>
+                  <TableCell>{text(assignment.shift_code ?? assignment.shift_name)}</TableCell>
+                  <TableCell>{text(assignment.custom_start_time ?? assignment.shift_start_time)} - {text(assignment.custom_end_time ?? assignment.shift_end_time)}</TableCell>
+                  <TableCell>{text(assignment.location_name)}</TableCell>
+                  <TableCell>{Number(assignment.changed_after_publish ?? 0) === 1 || assignment.status === "CHANGED_AFTER_PUBLISH" ? <Badge tone="warning">Changed after publish</Badge> : text(assignment.notes)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        {assignments.length === 0 ? <EmptyState title="No published roster for this week" description="Published roster assignments will appear here." /> : null}
+      </Panel>
     </div>
   );
 }
@@ -351,7 +450,7 @@ function KycSection({ data, token, reload }: { data: Record<string, unknown> | n
     await api.createSelfServiceKycRequest(token, {
       section: form.section,
       field_key: form.field_key,
-      requested_value: { value: form.requested_value },
+      requested_value: form.requested_value,
       reason: form.reason
     });
     setForm({ section: "contact", field_key: "", requested_value: "", reason: "" });

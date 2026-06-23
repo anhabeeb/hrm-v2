@@ -11,12 +11,14 @@ import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
-type AttendanceStatus = "PRESENT" | "ABSENT" | "LEAVE" | "SICK" | "LATE" | "HALF_DAY" | "OFF_DAY" | "HOLIDAY" | "PENDING_CORRECTION";
+type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "EARLY_LEAVE" | "HALF_DAY" | "LEAVE" | "SICK_LEAVE" | "LONG_LEAVE" | "DAY_OFF" | "PUBLIC_HOLIDAY" | "MISSING_PUNCH" | "PENDING_CORRECTION" | "CORRECTED" | "SICK" | "OFF_DAY" | "HOLIDAY";
 type AttendanceSource = "DEVICE" | "MANUAL" | "CORRECTION" | "LEAVE" | "ROSTER" | "SYSTEM";
+type LogSource = "DEVICE" | "MANUAL" | "MANUAL_IMPORT" | "API" | "BRIDGE";
 type RawSource = "DEVICE" | "MANUAL_IMPORT" | "API" | "BRIDGE";
 
-const STATUSES = new Set(["PRESENT", "ABSENT", "LEAVE", "SICK", "LATE", "HALF_DAY", "OFF_DAY", "HOLIDAY", "PENDING_CORRECTION"]);
+const STATUSES = new Set(["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED", "SICK", "OFF_DAY", "HOLIDAY"]);
 const RECORD_SOURCES = new Set(["DEVICE", "MANUAL", "CORRECTION", "LEAVE", "ROSTER", "SYSTEM"]);
+const LOG_SOURCES = new Set(["DEVICE", "MANUAL", "MANUAL_IMPORT", "API", "BRIDGE"]);
 const RAW_SOURCES = new Set(["DEVICE", "MANUAL_IMPORT", "API", "BRIDGE"]);
 const PUNCH_TYPES = new Set(["IN", "OUT", "BREAK_IN", "BREAK_OUT", "UNKNOWN"]);
 const DEVICE_TYPES = new Set(["BIOMETRIC", "MANUAL_IMPORT", "API", "BRIDGE", "OTHER"]);
@@ -57,6 +59,22 @@ function hasAny(c: Context<AppBindings>, permissions: string[]) {
   return permissions.some((permission) => has(c, permission));
 }
 
+function normalizeAttendanceStatus(value: unknown, fallback: AttendanceStatus = "PRESENT") {
+  const status = readString(value).toUpperCase();
+  if (status === "SICK") return "SICK_LEAVE";
+  if (status === "OFF_DAY") return "DAY_OFF";
+  if (status === "HOLIDAY") return "PUBLIC_HOLIDAY";
+  return (STATUSES.has(status) ? status : fallback) as AttendanceStatus;
+}
+
+function isPendingCorrection(status: unknown) {
+  return status === "PENDING" || status === "SUBMITTED";
+}
+
+function canOverrideAttendanceLock(c: Context<AppBindings>) {
+  return hasAny(c, ["attendance.lock.override", "attendance.manage"]);
+}
+
 function requireAnyPermission(permissions: string[]) {
   return createMiddleware<AppBindings>(async (c, next) => {
     if (!hasAny(c, permissions)) return fail(c, 403, "FORBIDDEN", "You do not have permission to perform this action.");
@@ -79,6 +97,22 @@ async function auditAttendance(c: Context<AppBindings>, input: { action: string;
   });
 }
 
+async function requireAttendanceModuleEnabled(c: Context<AppBindings>, next: () => Promise<void>) {
+  const path = c.req.path;
+  if (path.includes("/attendance/settings") || path.includes("/attendance/devices")) {
+    await next();
+    return;
+  }
+  const settings = await getAttendanceSettings(c);
+  if (Number(settings.module_enabled ?? 1) !== 1) {
+    return fail(c, 503, "ATTENDANCE_MODULE_DISABLED", "Attendance module is disabled.");
+  }
+  await next();
+}
+
+attendanceRoutes.use("*", requireAttendanceModuleEnabled);
+employeeAttendanceRoutes.use("*", requireAttendanceModuleEnabled);
+
 async function publishAttendance(c: Context<AppBindings>, event: "attendance.changed" | "attendance.record.created" | "attendance.record.updated" | "attendance.raw_logs.imported" | "attendance.correction.created" | "attendance.correction.approved" | "attendance.correction.rejected" | "attendance.correction.cancelled" | "attendance.device.changed" | "employee.attendance.changed" | "dashboard.attendance.changed", entityId: string, action: string, entityType: "attendance_record" | "attendance_raw_log" | "attendance_correction" | "attendance_device" | "attendance_settings" | "attendance_report" = "attendance_record") {
   await publishAccessEvent(c.env, event, { actor_user_id: c.get("currentUser").id, entity_type: entityType, entity_id: entityId, action });
   if (event !== "attendance.changed") await publishAccessEvent(c.env, "attendance.changed", { actor_user_id: c.get("currentUser").id, entity_type: entityType, entity_id: entityId, action });
@@ -92,7 +126,7 @@ function recordColumns() {
 }
 
 function leaveStatusExpression() {
-  return "CASE WHEN lower(lt.code) LIKE '%sick%' OR lower(lt.name) LIKE '%sick%' THEN 'SICK' ELSE 'LEAVE' END";
+  return "CASE WHEN lower(lt.code) LIKE '%long%' OR lower(lt.name) LIKE '%long%' THEN 'LONG_LEAVE' WHEN lower(lt.code) LIKE '%sick%' OR lower(lt.name) LIKE '%sick%' THEN 'SICK_LEAVE' ELSE 'LEAVE' END";
 }
 
 async function leaveCalendarRows(c: Context<AppBindings>, input: { employeeId?: string; from?: string; to?: string }) {
@@ -157,6 +191,14 @@ async function getEmployee(c: Context<AppBindings>, employeeId: string) {
   return c.env.DB.prepare("SELECT * FROM employees WHERE id = ? AND archived_at IS NULL").bind(employeeId).first<Record<string, unknown>>();
 }
 
+async function canViewAttendanceForEmployee(c: Context<AppBindings>, employeeId: string) {
+  return canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "attendance", "view");
+}
+
+async function canManageAttendanceForEmployee(c: Context<AppBindings>, employeeId: string) {
+  return canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "attendance", "manage");
+}
+
 async function getRecord(c: Context<AppBindings>, id: string) {
   return c.env.DB
     .prepare(
@@ -209,22 +251,104 @@ function payrollImpact(input: { status: string; late_minutes?: number | null; ea
   });
 }
 
+function dailyDerived(input: { status: AttendanceStatus; first_clock_in?: string | null; last_clock_out?: string | null; late_minutes?: number | null; early_checkout_minutes?: number | null; missed_punch?: boolean; payroll_impact_json?: string | null }) {
+  const status = normalizeAttendanceStatus(input.status);
+  const missingClockIn = !input.first_clock_in && !["LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY"].includes(status);
+  const missingClockOut = !input.last_clock_out && !["ABSENT", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY"].includes(status);
+  return {
+    calculated_status: status,
+    final_status: status,
+    missing_clock_in: missingClockIn ? 1 : 0,
+    missing_clock_out: missingClockOut ? 1 : 0,
+    is_absent: status === "ABSENT" ? 1 : 0,
+    is_late: status === "LATE" || Number(input.late_minutes ?? 0) > 0 ? 1 : 0,
+    is_early_leave: status === "EARLY_LEAVE" || Number(input.early_checkout_minutes ?? 0) > 0 ? 1 : 0,
+    is_half_day: status === "HALF_DAY" ? 1 : 0,
+    is_leave_day: ["LEAVE", "SICK_LEAVE", "LONG_LEAVE"].includes(status) ? 1 : 0,
+    is_public_holiday: status === "PUBLIC_HOLIDAY" ? 1 : 0,
+    is_day_off: status === "DAY_OFF" ? 1 : 0,
+    payroll_impact_status: input.payroll_impact_json ? "PENDING_REVIEW" : "NONE",
+    payroll_impact_minutes: Number(input.late_minutes ?? 0) + Number(input.early_checkout_minutes ?? 0),
+    payroll_impact_days: status === "ABSENT" ? 1 : status === "HALF_DAY" ? 0.5 : 0,
+    payroll_impact_reason: input.payroll_impact_json ? "Generated from attendance status." : null
+  };
+}
+
+async function requireAttendanceRecordUnlocked(c: Context<AppBindings>, record: Record<string, unknown>) {
+  if (Number(record.locked_for_payroll ?? 0) === 1 && !canOverrideAttendanceLock(c)) {
+    return fail(c, 423, "ATTENDANCE_RECORD_LOCKED", "This attendance record is locked for payroll. Override permission is required.");
+  }
+  return null;
+}
+
+function parseJsonObject(value: unknown) {
+  if (!value) return {};
+  if (typeof value === "object") return value as Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function attendanceSnapshot(record: Record<string, unknown> | null | undefined) {
+  return {
+    record_id: record?.id ?? null,
+    status: record?.status ?? null,
+    calculated_status: record?.calculated_status ?? null,
+    final_status: record?.final_status ?? null,
+    first_clock_in: record?.first_clock_in ?? null,
+    last_clock_out: record?.last_clock_out ?? null,
+    total_work_minutes: record?.total_work_minutes ?? null,
+    late_minutes: record?.late_minutes ?? null,
+    early_checkout_minutes: record?.early_checkout_minutes ?? null,
+    missed_punch: record?.missed_punch ?? null,
+    source: record?.source ?? null,
+    locked_for_payroll: record?.locked_for_payroll ?? 0
+  };
+}
+
 async function getSettings(c: Context<AppBindings>) {
   let settings = await c.env.DB.prepare("SELECT * FROM attendance_settings WHERE id = 'attendance_settings_default'").first<Record<string, unknown>>();
   if (!settings) {
-    await c.env.DB.prepare("INSERT INTO attendance_settings (id, standard_work_minutes_per_day, default_shift_start_time, default_shift_end_time, late_grace_minutes, early_checkout_grace_minutes, weekly_off_days_json) VALUES ('attendance_settings_default', 480, '09:00', '18:00', 10, 10, '[\"FRIDAY\"]')").run();
+    await c.env.DB.prepare(
+      `INSERT INTO attendance_settings (
+        id, module_enabled, default_workday_mode, standard_work_minutes_per_day,
+        default_shift_start_time, default_shift_end_time, late_grace_minutes, early_checkout_grace_minutes,
+        weekly_off_days_json, mark_absent_if_no_punch, missed_punch_requires_correction,
+        allow_manual_entries, require_reason_for_manual_entries, allow_employee_correction_requests,
+        manual_entry_requires_approval, correction_requires_approval, payroll_impact_enabled,
+        default_attendance_source, allow_manager_team_corrections, require_reason_for_correction_review,
+        overtime_tracking_enabled, lock_after_payroll_finalized, monthly_attendance_lock_day,
+        default_absent_status, attendance_source_options_json, payroll_deduction_enabled
+      ) VALUES ('attendance_settings_default', 1, 'FIXED_SHIFT', 480, '09:00', '18:00', 10, 10, '["FRIDAY"]', 1, 1, 1, 1, 1, 0, 1, 1, 'DEVICE', 0, 1, 0, 1, NULL, 'ABSENT', '["DEVICE","MANUAL","MANUAL_IMPORT","API","BRIDGE"]', 1)`
+    ).run();
     settings = await c.env.DB.prepare("SELECT * FROM attendance_settings WHERE id = 'attendance_settings_default'").first<Record<string, unknown>>();
   }
   return settings!;
 }
 
+async function getAttendanceSettings(c: Context<AppBindings>) {
+  return getSettings(c);
+}
+
+function calculateDailyAttendanceStatus(input: { missed: boolean; late: number; early: number; settings: Record<string, unknown>; leaveStatus?: AttendanceStatus | null; dayOverrideStatus?: AttendanceStatus | null }) {
+  if (input.leaveStatus) return input.leaveStatus;
+  if (input.dayOverrideStatus) return input.dayOverrideStatus;
+  if (input.missed) return Number(input.settings.missed_punch_requires_correction ?? 1) === 1 ? "PENDING_CORRECTION" : "MISSING_PUNCH";
+  if (input.early > 0) return "EARLY_LEAVE";
+  if (input.late > 0) return "LATE";
+  return "PRESENT";
+}
+
 function readRecordInput(body: Record<string, unknown>, existing?: Record<string, unknown>) {
-  const status = readString(body.status || existing?.status || "PRESENT").toUpperCase();
+  const status = normalizeAttendanceStatus(body.status || existing?.status || "PRESENT");
   const source = readString(body.source || existing?.source || "MANUAL").toUpperCase();
   return {
     employee_id: readString(body.employee_id || existing?.employee_id),
     attendance_date: readString(body.attendance_date || existing?.attendance_date),
-    status: (STATUSES.has(status) ? status : "PRESENT") as AttendanceStatus,
+    status,
     first_clock_in: optionalString(body.first_clock_in ?? existing?.first_clock_in),
     last_clock_out: optionalString(body.last_clock_out ?? existing?.last_clock_out),
     total_work_minutes: num(body.total_work_minutes, existing?.total_work_minutes == null ? null : Number(existing.total_work_minutes)),
@@ -313,6 +437,64 @@ attendanceRoutes.get("/records", requirePermission("attendance.view"), async (c)
   return ok(c, { records: rows.results });
 });
 
+attendanceRoutes.get("/daily", requireAnyPermission(["attendance.view", "attendance.logs.view"]), async (c) => {
+  const { conditions, params } = buildRecordFilters(c);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
+  const rows = await c.env.DB
+    .prepare(
+      `SELECT ${recordColumns()}
+       FROM attendance_daily_records adr
+       INNER JOIN employees e ON e.id = adr.employee_id
+       LEFT JOIN departments d ON d.id = e.primary_department_id
+       LEFT JOIN positions p ON p.id = e.primary_position_id
+       LEFT JOIN locations l ON l.id = e.primary_location_id
+       ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+       ORDER BY adr.attendance_date DESC, e.employee_no`
+    )
+    .bind(...params)
+    .all();
+  return ok(c, { records: rows.results, daily_records: rows.results });
+});
+
+attendanceRoutes.post("/daily/refresh", requireAnyPermission(["attendance.daily.refresh", "attendance.manage"]), async (c) => {
+  const body = await readJsonBody(c.req.raw);
+  const employeeId = readString(body.employee_id);
+  const from = readString(body.date_from ?? body.attendance_date);
+  const to = readString(body.date_to ?? body.attendance_date ?? from);
+  if (!employeeId || !validDate(from) || !validDate(to)) return fail(c, 400, "VALIDATION_ERROR", "Employee and valid date range are required.");
+  if (!(await canManageAttendanceForEmployee(c, employeeId))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
+  const refreshed = await refreshAttendanceRange(c, employeeId, from, to);
+  await auditAttendance(c, { action: "attendance.daily.refreshed", entityType: "attendance_record", entityId: employeeId, newValue: { date_from: from, date_to: to, refreshed } });
+  return ok(c, { refreshed });
+});
+
+attendanceRoutes.get("/payroll-impact", requireAnyPermission(["attendance.payroll_impact.view", "payroll.attendance_impacts.view", "attendance.view"]), async (c) => {
+  const impacts = await getAttendancePayrollImpact(c);
+  return ok(c, impacts);
+});
+
+async function getAttendancePayrollImpact(c: Context<AppBindings>) {
+  const { conditions, params } = buildRecordFilters(c);
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
+  conditions.push("(adr.payroll_impact_json IS NOT NULL OR adr.payroll_impact_status IS NOT NULL OR adr.status IN ('ABSENT','LATE','EARLY_LEAVE','HALF_DAY','MISSING_PUNCH'))");
+  const rows = await c.env.DB.prepare(
+    `SELECT ${recordColumns()}
+     FROM attendance_daily_records adr
+     INNER JOIN employees e ON e.id = adr.employee_id
+     LEFT JOIN departments d ON d.id = e.primary_department_id
+     LEFT JOIN positions p ON p.id = e.primary_position_id
+     LEFT JOIN locations l ON l.id = e.primary_location_id
+     WHERE ${conditions.join(" AND ")}
+     ORDER BY adr.attendance_date DESC LIMIT 1000`
+  ).bind(...params).all<Record<string, unknown>>();
+  const impacts = rows.results.map((row) => ({ ...row, payroll_impact: parseJsonObject(row.payroll_impact_json) }));
+  return { impacts, records: impacts };
+}
+
 attendanceRoutes.get("/records/:id", requirePermission("attendance.view"), async (c) => {
   const record = await getRecord(c, routeParam(c, "id"));
   if (!record) return fail(c, 404, "NOT_FOUND", "Attendance record was not found.");
@@ -326,18 +508,26 @@ attendanceRoutes.post("/records", requirePermission("attendance.manage"), async 
   const validation = validateRecord(input);
   if (validation) return fail(c, 400, "VALIDATION_ERROR", validation);
   if (!(await getEmployee(c, input.employee_id))) return fail(c, 400, "INVALID_EMPLOYEE", "Employee was not found or is archived.");
-  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), input.employee_id, "attendance", "manage"))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
+  if (!(await canManageAttendanceForEmployee(c, input.employee_id))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
   const duplicate = await c.env.DB.prepare("SELECT id FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(input.employee_id, input.attendance_date).first();
   if (duplicate) return fail(c, 409, "DUPLICATE_RECORD", "A daily attendance record already exists. Update the existing record instead.");
   const id = crypto.randomUUID();
   const total = input.total_work_minutes ?? minutesBetween(input.first_clock_in, input.last_clock_out);
+  const impact = payrollImpact({ ...input, source: input.source });
+  const derived = dailyDerived({ ...input, payroll_impact_json: impact });
   await c.env.DB
     .prepare(
       `INSERT INTO attendance_daily_records
-       (id, employee_id, attendance_date, status, first_clock_in, last_clock_out, total_work_minutes, late_minutes, early_checkout_minutes, missed_punch, source, payroll_impact_json, leave_request_id, notes, created_by_user_id, updated_by_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, employee_id, attendance_date, status, calculated_status, final_status, first_clock_in, last_clock_out, total_work_minutes, late_minutes, early_checkout_minutes, missed_punch,
+        missing_clock_in, missing_clock_out, is_absent, is_late, is_early_leave, is_half_day, is_leave_day, is_public_holiday, is_day_off,
+        source, payroll_impact_json, payroll_impact_status, payroll_impact_minutes, payroll_impact_days, payroll_impact_reason, leave_request_id, notes, created_by_user_id, updated_by_user_id, generated_by, generated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(id, input.employee_id, input.attendance_date, input.status, input.first_clock_in, input.last_clock_out, total, input.late_minutes, input.early_checkout_minutes, input.missed_punch ? 1 : 0, input.source, payrollImpact({ ...input, source: input.source }), input.leave_request_id, input.notes, c.get("currentUser").id, c.get("currentUser").id)
+    .bind(
+      id, input.employee_id, input.attendance_date, input.status, derived.calculated_status, derived.final_status, input.first_clock_in, input.last_clock_out, total, input.late_minutes, input.early_checkout_minutes, input.missed_punch ? 1 : 0,
+      derived.missing_clock_in, derived.missing_clock_out, derived.is_absent, derived.is_late, derived.is_early_leave, derived.is_half_day, derived.is_leave_day, derived.is_public_holiday, derived.is_day_off,
+      input.source, impact, derived.payroll_impact_status, derived.payroll_impact_minutes, derived.payroll_impact_days, derived.payroll_impact_reason, input.leave_request_id, input.notes, c.get("currentUser").id, c.get("currentUser").id, "MANUAL", new Date().toISOString()
+    )
     .run();
   await auditAttendance(c, { action: "attendance.record.created", entityType: "attendance_record", entityId: id, newValue: input });
   await publishAttendance(c, "attendance.record.created", id, "created");
@@ -349,7 +539,9 @@ attendanceRoutes.patch("/records/:id", requirePermission("attendance.manage"), a
   const id = routeParam(c, "id");
   const old = await getRecord(c, id);
   if (!old) return fail(c, 404, "NOT_FOUND", "Attendance record was not found.");
-  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "attendance", "manage"))) return fail(c, 404, "NOT_FOUND", "Attendance record was not found.");
+  const locked = await requireAttendanceRecordUnlocked(c, old);
+  if (locked) return locked;
+  if (!(await canManageAttendanceForEmployee(c, String(old.employee_id)))) return fail(c, 404, "NOT_FOUND", "Attendance record was not found.");
   const body = await readJsonBody(c.req.raw);
   const reason = optionalString(body.reason);
   const input = readRecordInput(body, old);
@@ -358,14 +550,23 @@ attendanceRoutes.patch("/records/:id", requirePermission("attendance.manage"), a
   const changedImportant = ["status", "first_clock_in", "last_clock_out", "late_minutes", "early_checkout_minutes", "missed_punch"].some((key) => String(old[key] ?? "") !== String((input as Record<string, unknown>)[key] ?? ""));
   if (changedImportant && !reason) return fail(c, 400, "REASON_REQUIRED", "Manual attendance updates require a reason.");
   const total = input.total_work_minutes ?? minutesBetween(input.first_clock_in, input.last_clock_out);
+  const impact = payrollImpact({ ...input, source: input.source });
+  const derived = dailyDerived({ ...input, payroll_impact_json: impact });
   await c.env.DB
     .prepare(
       `UPDATE attendance_daily_records
-       SET status = ?, first_clock_in = ?, last_clock_out = ?, total_work_minutes = ?, late_minutes = ?, early_checkout_minutes = ?,
-         missed_punch = ?, source = ?, payroll_impact_json = ?, leave_request_id = ?, notes = ?, updated_by_user_id = ?, updated_at = ?
+       SET status = ?, calculated_status = ?, final_status = ?, first_clock_in = ?, last_clock_out = ?, total_work_minutes = ?, late_minutes = ?, early_checkout_minutes = ?,
+         missed_punch = ?, missing_clock_in = ?, missing_clock_out = ?, is_absent = ?, is_late = ?, is_early_leave = ?, is_half_day = ?, is_leave_day = ?,
+         is_public_holiday = ?, is_day_off = ?, source = ?, payroll_impact_json = ?, payroll_impact_status = ?, payroll_impact_minutes = ?,
+         payroll_impact_days = ?, payroll_impact_reason = ?, correction_status = NULL, leave_request_id = ?, notes = ?, updated_by_user_id = ?, updated_at = ?
        WHERE id = ?`
     )
-    .bind(input.status, input.first_clock_in, input.last_clock_out, total, input.late_minutes, input.early_checkout_minutes, input.missed_punch ? 1 : 0, input.source, payrollImpact({ ...input, source: input.source }), input.leave_request_id, input.notes, c.get("currentUser").id, new Date().toISOString(), id)
+    .bind(
+      input.status, derived.calculated_status, derived.final_status, input.first_clock_in, input.last_clock_out, total, input.late_minutes, input.early_checkout_minutes,
+      input.missed_punch ? 1 : 0, derived.missing_clock_in, derived.missing_clock_out, derived.is_absent, derived.is_late, derived.is_early_leave, derived.is_half_day, derived.is_leave_day,
+      derived.is_public_holiday, derived.is_day_off, input.source, impact, derived.payroll_impact_status, derived.payroll_impact_minutes,
+      derived.payroll_impact_days, derived.payroll_impact_reason, input.leave_request_id, input.notes, c.get("currentUser").id, new Date().toISOString(), id
+    )
     .run();
   await auditAttendance(c, { action: "attendance.record.updated", entityType: "attendance_record", entityId: id, oldValue: old, newValue: input, reason });
   await publishAttendance(c, "attendance.record.updated", id, "updated");
@@ -374,10 +575,19 @@ attendanceRoutes.patch("/records/:id", requirePermission("attendance.manage"), a
 });
 
 async function reconcileEmployeeDate(c: Context<AppBindings>, employeeId: string, attendanceDate: string) {
-  const settings = await getSettings(c);
+  return refreshDailyAttendanceRecord(c, employeeId, attendanceDate);
+}
+
+async function refreshDailyAttendanceRecord(c: Context<AppBindings>, employeeId: string, attendanceDate: string) {
+  const settings = await getAttendanceSettings(c);
   const dayStart = `${attendanceDate}T00:00:00.000Z`;
   const dayEnd = `${attendanceDate}T23:59:59.999Z`;
-  const logs = (await c.env.DB.prepare("SELECT * FROM attendance_raw_logs WHERE employee_id = ? AND punch_time BETWEEN ? AND ? ORDER BY punch_time").bind(employeeId, dayStart, dayEnd).all<Record<string, unknown>>()).results;
+  const logs = (await c.env.DB.prepare(
+    `SELECT punch_time, punch_type, source FROM attendance_raw_logs WHERE employee_id = ? AND punch_time BETWEEN ? AND ?
+     UNION ALL
+     SELECT log_time AS punch_time, log_type AS punch_type, source FROM attendance_logs WHERE employee_id = ? AND is_archived = 0 AND log_time BETWEEN ? AND ?
+     ORDER BY punch_time`
+  ).bind(employeeId, dayStart, dayEnd, employeeId, dayStart, dayEnd).all<Record<string, unknown>>()).results;
   if (!logs.length) return null;
   const inLogs = logs.filter((row) => row.punch_type === "IN" || row.punch_type === "UNKNOWN");
   const outLogs = logs.filter((row) => row.punch_type === "OUT" || row.punch_type === "UNKNOWN");
@@ -390,16 +600,37 @@ async function reconcileEmployeeDate(c: Context<AppBindings>, employeeId: string
   const clockOutMinutes = minutesOfDay(last.slice(11, 16));
   const late = shiftStart != null && clockInMinutes != null ? Math.max(0, clockInMinutes - shiftStart - Number(settings.late_grace_minutes ?? 0)) : 0;
   const early = shiftEnd != null && clockOutMinutes != null ? Math.max(0, shiftEnd - clockOutMinutes - Number(settings.early_checkout_grace_minutes ?? 0)) : 0;
-  const status: AttendanceStatus = missed && Number(settings.missed_punch_requires_correction ?? 1) === 1 ? "PENDING_CORRECTION" : late > 0 ? "LATE" : "PRESENT";
+  const status = calculateDailyAttendanceStatus({ missed, late, early, settings });
   const existing = await c.env.DB.prepare("SELECT * FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(employeeId, attendanceDate).first<Record<string, unknown>>();
+  if (existing && Number(existing.locked_for_payroll ?? 0) === 1) return String(existing.id);
   const id = existing?.id ? String(existing.id) : crypto.randomUUID();
   const impact = payrollImpact({ status, late_minutes: late, early_checkout_minutes: early, missed_punch: missed, source: "DEVICE", notes: "Generated from raw attendance logs." });
+  const derived = dailyDerived({ status, first_clock_in: first, last_clock_out: missed ? null : last, late_minutes: late, early_checkout_minutes: early, missed_punch: missed, payroll_impact_json: impact });
   if (existing) {
-    await c.env.DB.prepare("UPDATE attendance_daily_records SET status = ?, first_clock_in = ?, last_clock_out = ?, total_work_minutes = ?, late_minutes = ?, early_checkout_minutes = ?, missed_punch = ?, source = 'DEVICE', payroll_impact_json = ?, updated_at = ? WHERE id = ?").bind(status, first, missed ? null : last, missed ? null : minutesBetween(first, last), late, early, missed ? 1 : 0, impact, new Date().toISOString(), id).run();
+    await c.env.DB.prepare(
+      `UPDATE attendance_daily_records SET status = ?, calculated_status = ?, final_status = ?, first_clock_in = ?, last_clock_out = ?, total_work_minutes = ?, late_minutes = ?, early_checkout_minutes = ?,
+       missed_punch = ?, missing_clock_in = ?, missing_clock_out = ?, is_absent = ?, is_late = ?, is_early_leave = ?, is_half_day = ?, is_leave_day = ?, is_public_holiday = ?, is_day_off = ?,
+       source = 'DEVICE', payroll_impact_json = ?, payroll_impact_status = ?, payroll_impact_minutes = ?, payroll_impact_days = ?, payroll_impact_reason = ?, generated_by = 'SYSTEM', generated_at = ?, updated_at = ? WHERE id = ?`
+    ).bind(status, derived.calculated_status, derived.final_status, first, missed ? null : last, missed ? null : minutesBetween(first, last), late, early, missed ? 1 : 0, derived.missing_clock_in, derived.missing_clock_out, derived.is_absent, derived.is_late, derived.is_early_leave, derived.is_half_day, derived.is_leave_day, derived.is_public_holiday, derived.is_day_off, impact, derived.payroll_impact_status, derived.payroll_impact_minutes, derived.payroll_impact_days, derived.payroll_impact_reason, new Date().toISOString(), new Date().toISOString(), id).run();
   } else {
-    await c.env.DB.prepare("INSERT INTO attendance_daily_records (id, employee_id, attendance_date, status, first_clock_in, last_clock_out, total_work_minutes, late_minutes, early_checkout_minutes, missed_punch, source, payroll_impact_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DEVICE', ?)").bind(id, employeeId, attendanceDate, status, first, missed ? null : last, missed ? null : minutesBetween(first, last), late, early, missed ? 1 : 0, impact).run();
+    await c.env.DB.prepare(
+      `INSERT INTO attendance_daily_records (id, employee_id, attendance_date, status, calculated_status, final_status, first_clock_in, last_clock_out, total_work_minutes, late_minutes, early_checkout_minutes, missed_punch,
+       missing_clock_in, missing_clock_out, is_absent, is_late, is_early_leave, is_half_day, is_leave_day, is_public_holiday, is_day_off, source, payroll_impact_json, payroll_impact_status, payroll_impact_minutes, payroll_impact_days, payroll_impact_reason, generated_by, generated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DEVICE', ?, ?, ?, ?, ?, 'SYSTEM', ?)`
+    ).bind(id, employeeId, attendanceDate, status, derived.calculated_status, derived.final_status, first, missed ? null : last, missed ? null : minutesBetween(first, last), late, early, missed ? 1 : 0, derived.missing_clock_in, derived.missing_clock_out, derived.is_absent, derived.is_late, derived.is_early_leave, derived.is_half_day, derived.is_leave_day, derived.is_public_holiday, derived.is_day_off, impact, derived.payroll_impact_status, derived.payroll_impact_minutes, derived.payroll_impact_days, derived.payroll_impact_reason, new Date().toISOString()).run();
   }
   return id;
+}
+
+async function refreshAttendanceRange(c: Context<AppBindings>, employeeId: string, from: string, to: string) {
+  const refreshed: string[] = [];
+  const start = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  for (let day = start; day <= end; day = new Date(day.getTime() + 86400000)) {
+    const recordId = await refreshDailyAttendanceRecord(c, employeeId, day.toISOString().slice(0, 10));
+    if (recordId) refreshed.push(recordId);
+  }
+  return refreshed;
 }
 
 attendanceRoutes.post("/records/:id/recalculate-placeholder", requirePermission("attendance.manage"), async (c) => {
@@ -562,6 +793,119 @@ attendanceRoutes.post("/raw-logs/reconcile-placeholder", requirePermission("atte
   return ok(c, { record_id: recordId });
 });
 
+function logColumns() {
+  return `al.*, e.employee_no, e.full_name AS employee_name,
+    e.primary_department_id AS department_id, d.name AS department_name,
+    e.primary_position_id AS position_id, p.title AS position_title,
+    e.primary_location_id AS location_id, l.name AS location_name,
+    ad.name AS device_name, ad.device_code`;
+}
+
+async function getAttendanceLog(c: Context<AppBindings>, id: string) {
+  return c.env.DB.prepare(
+    `SELECT ${logColumns()}
+     FROM attendance_logs al
+     LEFT JOIN employees e ON e.id = al.employee_id
+     LEFT JOIN departments d ON d.id = e.primary_department_id
+     LEFT JOIN positions p ON p.id = e.primary_position_id
+     LEFT JOIN locations l ON l.id = e.primary_location_id
+     LEFT JOIN attendance_devices ad ON ad.id = al.device_id
+     WHERE al.id = ?`
+  ).bind(id).first<Record<string, unknown>>();
+}
+
+function readAttendanceLogInput(body: Record<string, unknown>, existing?: Record<string, unknown>) {
+  const logType = readString(body.log_type ?? existing?.log_type ?? "UNKNOWN").toUpperCase();
+  const source = readString(body.source ?? existing?.source ?? "MANUAL").toUpperCase();
+  const logTime = readString(body.log_time ?? existing?.log_time);
+  return {
+    employee_id: optionalString(body.employee_id ?? existing?.employee_id),
+    device_id: optionalString(body.device_id ?? existing?.device_id),
+    external_employee_code: optionalString(body.external_employee_code ?? existing?.external_employee_code),
+    log_time: logTime,
+    attendance_date: readString(body.attendance_date ?? existing?.attendance_date) || (logTime ? logTime.slice(0, 10) : ""),
+    log_type: PUNCH_TYPES.has(logType) ? logType : "UNKNOWN",
+    source: (LOG_SOURCES.has(source) ? source : "MANUAL") as LogSource,
+    notes: optionalString(body.notes ?? existing?.notes),
+    raw_payload_json: body.raw_payload_json ? JSON.stringify(body.raw_payload_json) : optionalString(existing?.raw_payload_json)
+  };
+}
+
+attendanceRoutes.get("/logs", requireAnyPermission(["attendance.logs.view", "attendance.view"]), async (c) => {
+  const conditions = ["COALESCE(al.is_archived, 0) = 0"];
+  const params: BindValue[] = [];
+  const search = readString(c.req.query("search"));
+  if (search) {
+    conditions.push("(e.employee_no LIKE ? OR e.full_name LIKE ? OR al.external_employee_code LIKE ?)");
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  for (const [query, column] of [["employee_id", "al.employee_id"], ["department_id", "e.primary_department_id"], ["location_id", "e.primary_location_id"], ["source", "al.source"], ["log_type", "al.log_type"]] as const) {
+    const value = readString(c.req.query(query));
+    if (value) {
+      conditions.push(`${column} = ?`);
+      params.push(value);
+    }
+  }
+  addRange(c, conditions, params, "log", "al.log_time");
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
+  const rows = await c.env.DB.prepare(
+    `SELECT ${logColumns()}
+     FROM attendance_logs al
+     LEFT JOIN employees e ON e.id = al.employee_id
+     LEFT JOIN departments d ON d.id = e.primary_department_id
+     LEFT JOIN positions p ON p.id = e.primary_position_id
+     LEFT JOIN locations l ON l.id = e.primary_location_id
+     LEFT JOIN attendance_devices ad ON ad.id = al.device_id
+     WHERE ${conditions.join(" AND ")}
+     ORDER BY al.log_time DESC LIMIT 500`
+  ).bind(...params).all();
+  return ok(c, { logs: rows.results });
+});
+
+attendanceRoutes.post("/logs/manual", requireAnyPermission(["attendance.logs.manage", "attendance.manual_entries.manage", "attendance.manage"]), async (c) => {
+  const settings = await getSettings(c);
+  if (Number(settings.allow_manual_entries ?? 1) !== 1) return fail(c, 403, "MANUAL_ENTRIES_DISABLED", "Manual attendance entries are disabled.");
+  const input = readAttendanceLogInput(await readJsonBody(c.req.raw));
+  if (!input.employee_id || !input.log_time || Number.isNaN(new Date(input.log_time).getTime())) return fail(c, 400, "VALIDATION_ERROR", "Employee and valid log time are required.");
+  if (Number(settings.require_reason_for_manual_entries ?? 1) === 1 && !input.notes) return fail(c, 400, "REASON_REQUIRED", "Manual attendance entries require a reason.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), input.employee_id, "attendance", "manage"))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO attendance_logs (id, employee_id, device_id, external_employee_code, log_time, log_type, source, attendance_date, notes, raw_payload_json, created_by_user_id, updated_by_user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(id, input.employee_id, input.device_id, input.external_employee_code, input.log_time, input.log_type, input.source, input.attendance_date, input.notes, input.raw_payload_json, c.get("currentUser").id, c.get("currentUser").id).run();
+  await reconcileEmployeeDate(c, input.employee_id, input.attendance_date);
+  await auditAttendance(c, { action: "attendance.log.created", entityType: "attendance_log", entityId: id, newValue: input, reason: input.notes });
+  await publishAttendance(c, "attendance.changed", id, "log_created", "attendance_raw_log");
+  return ok(c, { log: await getAttendanceLog(c, id) }, 201);
+});
+
+attendanceRoutes.patch("/logs/:id", requireAnyPermission(["attendance.logs.manage", "attendance.manual_entries.manage", "attendance.manage"]), async (c) => {
+  const old = await getAttendanceLog(c, routeParam(c, "id"));
+  if (!old) return fail(c, 404, "NOT_FOUND", "Attendance log was not found.");
+  if (old.employee_id && !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "attendance", "manage"))) return fail(c, 404, "NOT_FOUND", "Attendance log was not found.");
+  const input = readAttendanceLogInput(await readJsonBody(c.req.raw), old);
+  if (!input.log_time || Number.isNaN(new Date(input.log_time).getTime())) return fail(c, 400, "VALIDATION_ERROR", "Valid log time is required.");
+  await c.env.DB.prepare("UPDATE attendance_logs SET employee_id = ?, device_id = ?, external_employee_code = ?, log_time = ?, log_type = ?, source = ?, attendance_date = ?, notes = ?, raw_payload_json = ?, updated_by_user_id = ?, updated_at = ? WHERE id = ?")
+    .bind(input.employee_id, input.device_id, input.external_employee_code, input.log_time, input.log_type, input.source, input.attendance_date, input.notes, input.raw_payload_json, c.get("currentUser").id, new Date().toISOString(), routeParam(c, "id")).run();
+  if (input.employee_id) await reconcileEmployeeDate(c, input.employee_id, input.attendance_date);
+  await auditAttendance(c, { action: "attendance.log.updated", entityType: "attendance_log", entityId: routeParam(c, "id"), oldValue: old, newValue: input, reason: input.notes });
+  return ok(c, { log: await getAttendanceLog(c, routeParam(c, "id")) });
+});
+
+attendanceRoutes.post("/logs/:id/archive", requireAnyPermission(["attendance.logs.manage", "attendance.manage"]), async (c) => {
+  const old = await getAttendanceLog(c, routeParam(c, "id"));
+  if (!old) return fail(c, 404, "NOT_FOUND", "Attendance log was not found.");
+  if (old.employee_id && !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "attendance", "manage"))) return fail(c, 404, "NOT_FOUND", "Attendance log was not found.");
+  const body = await readJsonBody(c.req.raw);
+  const reason = optionalString(body.reason);
+  await c.env.DB.prepare("UPDATE attendance_logs SET is_archived = 1, archived_at = ?, archived_by_user_id = ?, notes = COALESCE(?, notes), updated_at = ? WHERE id = ?").bind(new Date().toISOString(), c.get("currentUser").id, reason, new Date().toISOString(), routeParam(c, "id")).run();
+  await auditAttendance(c, { action: "attendance.log.archived", entityType: "attendance_log", entityId: routeParam(c, "id"), oldValue: old, reason });
+  return ok(c, { archived: true });
+});
+
 function correctionColumns() {
   return `acr.*, e.employee_no, e.full_name AS employee_name, d.name AS department_name, p.title AS position_title, l.name AS location_name, requester.name AS requested_by_name, reviewer.name AS reviewed_by_name`;
 }
@@ -570,7 +914,7 @@ async function getCorrection(c: Context<AppBindings>, id: string) {
   return c.env.DB.prepare(`SELECT ${correctionColumns()} FROM attendance_correction_requests acr INNER JOIN employees e ON e.id = acr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id LEFT JOIN users requester ON requester.id = acr.requested_by_user_id LEFT JOIN users reviewer ON reviewer.id = acr.reviewed_by_user_id WHERE acr.id = ?`).bind(id).first<Record<string, unknown>>();
 }
 
-attendanceRoutes.get("/corrections", requirePermission("attendance.view"), async (c) => {
+attendanceRoutes.get("/corrections", requireAnyPermission(["attendance.corrections.view", "attendance.corrections.review", "attendance.view", "attendance.corrections.manage", "attendance.manage"]), async (c) => {
   const conditions: string[] = [];
   const params: BindValue[] = [];
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
@@ -584,8 +928,12 @@ attendanceRoutes.get("/corrections", requirePermission("attendance.view"), async
   for (const [query, column] of [["status", "acr.status"], ["employee_id", "acr.employee_id"], ["department_id", "e.primary_department_id"], ["location_id", "e.primary_location_id"]] as const) {
     const value = readString(c.req.query(query));
     if (value) {
-      conditions.push(`${column} = ?`);
-      params.push(value);
+      if (query === "status" && value === "PENDING") {
+        conditions.push(`${column} IN ('PENDING','SUBMITTED')`);
+      } else {
+        conditions.push(`${column} = ?`);
+        params.push(value);
+      }
     }
   }
   addRange(c, conditions, params, "date", "acr.attendance_date");
@@ -593,7 +941,7 @@ attendanceRoutes.get("/corrections", requirePermission("attendance.view"), async
   return ok(c, { corrections: rows.results });
 });
 
-attendanceRoutes.get("/corrections/:id", requirePermission("attendance.view"), async (c) => {
+attendanceRoutes.get("/corrections/:id", requireAnyPermission(["attendance.corrections.view", "attendance.corrections.review", "attendance.view", "attendance.corrections.manage", "attendance.manage"]), async (c) => {
   const correction = await getCorrection(c, routeParam(c, "id"));
   if (!correction) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(correction.employee_id), "attendance", "view"))) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
@@ -601,7 +949,7 @@ attendanceRoutes.get("/corrections/:id", requirePermission("attendance.view"), a
 });
 
 attendanceRoutes.post("/corrections", async (c) => {
-  if (!hasAny(c, ["attendance.correct", "attendance.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to request attendance corrections.");
+  if (!hasAny(c, ["attendance.corrections.create", "attendance.correct", "attendance.corrections.manage", "attendance.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to request attendance corrections.");
   const body = await readJsonBody(c.req.raw);
   const employeeId = readString(body.employee_id);
   const attendanceDate = readString(body.attendance_date);
@@ -609,45 +957,71 @@ attendanceRoutes.post("/corrections", async (c) => {
   if (!employeeId || !validDate(attendanceDate) || !reason) return fail(c, 400, "VALIDATION_ERROR", "Employee, date, and reason are required.");
   const employee = await getEmployee(c, employeeId);
   if (!employee) return fail(c, 404, "EMPLOYEE_NOT_FOUND", "Employee was not found or is archived.");
-  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "attendance", has(c, "attendance.manage") ? "manage" : "view"))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "attendance", hasAny(c, ["attendance.corrections.manage", "attendance.manage"]) ? "manage" : "view"))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
   if (!body.requested_clock_in && !body.requested_clock_out && !body.requested_status) return fail(c, 400, "VALIDATION_ERROR", "At least one requested correction field is required.");
   const current = await c.env.DB.prepare("SELECT * FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(employeeId, attendanceDate).first<Record<string, unknown>>();
   if (clockOutBeforeIn(optionalString(body.requested_clock_in), optionalString(body.requested_clock_out))) return fail(c, 400, "VALIDATION_ERROR", "Requested clock-out cannot be before clock-in.");
-  const status = readString(body.requested_status).toUpperCase();
+  const status = body.requested_status ? normalizeAttendanceStatus(body.requested_status) : null;
   const id = crypto.randomUUID();
-  await c.env.DB.prepare("INSERT INTO attendance_correction_requests (id, employee_id, attendance_date, current_record_id, requested_clock_in, requested_clock_out, requested_status, reason, requested_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, employeeId, attendanceDate, current?.id ?? null, optionalString(body.requested_clock_in), optionalString(body.requested_clock_out), STATUSES.has(status) ? status : null, reason, c.get("currentUser").id).run();
-  if (current) await c.env.DB.prepare("UPDATE attendance_daily_records SET status = 'PENDING_CORRECTION', updated_at = ? WHERE id = ?").bind(new Date().toISOString(), current.id).run();
-  await auditAttendance(c, { action: "attendance.correction.created", entityType: "attendance_correction", entityId: id, newValue: { employeeId, attendanceDate, reason } });
+  const requested = {
+    requested_clock_in: optionalString(body.requested_clock_in),
+    requested_clock_out: optionalString(body.requested_clock_out),
+    requested_status: status
+  };
+  await c.env.DB.prepare(
+    `INSERT INTO attendance_correction_requests
+     (id, employee_id, attendance_date, current_record_id, request_type, current_values_json, requested_values_json, requested_clock_in, requested_clock_out, requested_status, reason, status, requested_by_user_id, metadata_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)`
+  ).bind(id, employeeId, attendanceDate, current?.id ?? null, readString(body.request_type) || "OTHER", JSON.stringify(attendanceSnapshot(current)), JSON.stringify(requested), requested.requested_clock_in, requested.requested_clock_out, requested.requested_status, reason, c.get("currentUser").id, JSON.stringify({ source: "admin" })).run();
+  if (current) await c.env.DB.prepare("UPDATE attendance_daily_records SET status = 'PENDING_CORRECTION', correction_status = 'PENDING', updated_at = ? WHERE id = ?").bind(new Date().toISOString(), current.id).run();
+  await auditAttendance(c, { action: "attendance.correction.created", entityType: "attendance_correction", entityId: id, newValue: { employeeId, attendanceDate, current_values: attendanceSnapshot(current), requested_values: requested, reason } });
   await publishAttendance(c, "attendance.correction.created", id, "created", "attendance_correction");
   await publishAttendance(c, "employee.attendance.changed", employeeId, "correction_created", "attendance_correction");
   return ok(c, { correction: await getCorrection(c, id) }, 201);
 });
 
-async function applyCorrection(c: Context<AppBindings>, correction: Record<string, unknown>) {
+async function applyAttendanceCorrection(c: Context<AppBindings>, correction: Record<string, unknown>) {
   const existing = correction.current_record_id ? await getRecord(c, String(correction.current_record_id)) : null;
+  if (existing && Number(existing.locked_for_payroll ?? 0) === 1 && !canOverrideAttendanceLock(c)) throw new Error("This attendance record is locked for payroll. Override permission is required.");
+  const requested = parseJsonObject(correction.requested_values_json);
   const employeeId = String(correction.employee_id);
   const attendanceDate = String(correction.attendance_date);
-  const status = String(correction.requested_status ?? existing?.status ?? "PRESENT") as AttendanceStatus;
-  const first = optionalString(correction.requested_clock_in ?? existing?.first_clock_in);
-  const last = optionalString(correction.requested_clock_out ?? existing?.last_clock_out);
+  const status = normalizeAttendanceStatus(requested.requested_status ?? correction.requested_status ?? existing?.status ?? "PRESENT");
+  const first = optionalString(requested.requested_clock_in ?? correction.requested_clock_in ?? existing?.first_clock_in);
+  const last = optionalString(requested.requested_clock_out ?? correction.requested_clock_out ?? existing?.last_clock_out);
   if (clockOutBeforeIn(first, last)) throw new Error("Requested clock-out cannot be before clock-in.");
   const total = minutesBetween(first, last);
   const id = existing?.id ? String(existing.id) : crypto.randomUUID();
   const impact = payrollImpact({ status, late_minutes: Number(existing?.late_minutes ?? 0), early_checkout_minutes: Number(existing?.early_checkout_minutes ?? 0), missed_punch: false, source: "CORRECTION", notes: String(correction.reason ?? "") });
+  const derived = dailyDerived({ status, first_clock_in: first, last_clock_out: last, late_minutes: Number(existing?.late_minutes ?? 0), early_checkout_minutes: Number(existing?.early_checkout_minutes ?? 0), missed_punch: false, payroll_impact_json: impact });
   if (existing) {
-    await c.env.DB.prepare("UPDATE attendance_daily_records SET status = ?, first_clock_in = ?, last_clock_out = ?, total_work_minutes = ?, missed_punch = 0, source = 'CORRECTION', payroll_impact_json = ?, notes = ?, updated_by_user_id = ?, updated_at = ? WHERE id = ?").bind(status, first, last, total, impact, correction.reason ?? null, c.get("currentUser").id, new Date().toISOString(), id).run();
+    await c.env.DB.prepare(
+      `UPDATE attendance_daily_records SET status = ?, calculated_status = ?, final_status = ?, first_clock_in = ?, last_clock_out = ?, total_work_minutes = ?, missed_punch = 0,
+       missing_clock_in = ?, missing_clock_out = ?, is_absent = ?, is_late = ?, is_early_leave = ?, is_half_day = ?, is_leave_day = ?, is_public_holiday = ?, is_day_off = ?,
+       correction_status = 'APPROVED', source = 'CORRECTION', payroll_impact_json = ?, payroll_impact_status = ?, payroll_impact_minutes = ?, payroll_impact_days = ?, payroll_impact_reason = ?,
+       notes = ?, updated_by_user_id = ?, updated_at = ? WHERE id = ?`
+    ).bind(status, derived.calculated_status, derived.final_status, first, last, total, derived.missing_clock_in, derived.missing_clock_out, derived.is_absent, derived.is_late, derived.is_early_leave, derived.is_half_day, derived.is_leave_day, derived.is_public_holiday, derived.is_day_off, impact, derived.payroll_impact_status, derived.payroll_impact_minutes, derived.payroll_impact_days, derived.payroll_impact_reason, correction.reason ?? null, c.get("currentUser").id, new Date().toISOString(), id).run();
   } else {
-    await c.env.DB.prepare("INSERT INTO attendance_daily_records (id, employee_id, attendance_date, status, first_clock_in, last_clock_out, total_work_minutes, missed_punch, source, payroll_impact_json, notes, created_by_user_id, updated_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'CORRECTION', ?, ?, ?, ?)").bind(id, employeeId, attendanceDate, status, first, last, total, impact, correction.reason ?? null, c.get("currentUser").id, c.get("currentUser").id).run();
+    await c.env.DB.prepare(
+      `INSERT INTO attendance_daily_records (id, employee_id, attendance_date, status, calculated_status, final_status, first_clock_in, last_clock_out, total_work_minutes, missed_punch,
+       missing_clock_in, missing_clock_out, is_absent, is_late, is_early_leave, is_half_day, is_leave_day, is_public_holiday, is_day_off,
+       correction_status, source, payroll_impact_json, payroll_impact_status, payroll_impact_minutes, payroll_impact_days, payroll_impact_reason, notes, created_by_user_id, updated_by_user_id, generated_by, generated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', 'CORRECTION', ?, ?, ?, ?, ?, ?, ?, ?, 'CORRECTION', ?)`
+    ).bind(id, employeeId, attendanceDate, status, derived.calculated_status, derived.final_status, first, last, total, derived.missing_clock_in, derived.missing_clock_out, derived.is_absent, derived.is_late, derived.is_early_leave, derived.is_half_day, derived.is_leave_day, derived.is_public_holiday, derived.is_day_off, impact, derived.payroll_impact_status, derived.payroll_impact_minutes, derived.payroll_impact_days, derived.payroll_impact_reason, correction.reason ?? null, c.get("currentUser").id, c.get("currentUser").id, new Date().toISOString()).run();
   }
   return id;
 }
 
-attendanceRoutes.post("/corrections/:id/approve", requirePermission("attendance.approve_correction"), async (c) => {
+async function applyCorrection(c: Context<AppBindings>, correction: Record<string, unknown>) {
+  return applyAttendanceCorrection(c, correction);
+}
+
+attendanceRoutes.post("/corrections/:id/approve", requireAnyPermission(["attendance.corrections.approve", "attendance.approve_correction", "attendance.corrections.manage", "attendance.manage"]), async (c) => {
   const id = routeParam(c, "id");
   const correction = await getCorrection(c, id);
   if (!correction) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(correction.employee_id), "attendance", "manage"))) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
-  if (correction.status !== "SUBMITTED") return fail(c, 409, "INVALID_STATUS", "Only submitted correction requests can be approved.");
+  if (!isPendingCorrection(correction.status)) return fail(c, 409, "INVALID_STATUS", "Only pending correction requests can be approved.");
   const body = await readJsonBody(c.req.raw);
   const reviewNote = optionalString(body.review_note ?? body.note ?? body.reason);
   let recordId: string;
@@ -656,23 +1030,23 @@ attendanceRoutes.post("/corrections/:id/approve", requirePermission("attendance.
   } catch (error) {
     return fail(c, 400, "VALIDATION_ERROR", error instanceof Error ? error.message : "Unable to apply correction.");
   }
-  await c.env.DB.prepare("UPDATE attendance_correction_requests SET status = 'APPROVED', reviewed_by_user_id = ?, reviewed_at = ?, review_note = ?, current_record_id = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, new Date().toISOString(), reviewNote, recordId, new Date().toISOString(), id).run();
+  await c.env.DB.prepare("UPDATE attendance_correction_requests SET status = 'APPROVED', reviewed_by_user_id = ?, reviewer_user_id = ?, reviewed_at = ?, review_note = ?, reviewer_note = ?, current_record_id = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, c.get("currentUser").id, new Date().toISOString(), reviewNote, reviewNote, recordId, new Date().toISOString(), id).run();
   await auditAttendance(c, { action: "attendance.correction.approved", entityType: "attendance_correction", entityId: id, oldValue: correction, newValue: { recordId }, reason: reviewNote });
   await publishAttendance(c, "attendance.correction.approved", id, "approved", "attendance_correction");
   await publishAttendance(c, "attendance.record.updated", recordId, "correction_applied");
   return ok(c, { correction: await getCorrection(c, id), record: await getRecord(c, recordId) });
 });
 
-attendanceRoutes.post("/corrections/:id/reject", requirePermission("attendance.approve_correction"), async (c) => {
+attendanceRoutes.post("/corrections/:id/reject", requireAnyPermission(["attendance.corrections.reject", "attendance.approve_correction", "attendance.corrections.manage", "attendance.manage"]), async (c) => {
   const id = routeParam(c, "id");
   const correction = await getCorrection(c, id);
   if (!correction) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(correction.employee_id), "attendance", "manage"))) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
-  if (correction.status !== "SUBMITTED") return fail(c, 409, "INVALID_STATUS", "Only submitted correction requests can be rejected.");
+  if (!isPendingCorrection(correction.status)) return fail(c, 409, "INVALID_STATUS", "Only pending correction requests can be rejected.");
   const body = await readJsonBody(c.req.raw);
   const note = optionalString(body.review_note ?? body.note ?? body.reason);
   if (!note) return fail(c, 400, "REVIEW_NOTE_REQUIRED", "Rejecting a correction requires a review note.");
-  await c.env.DB.prepare("UPDATE attendance_correction_requests SET status = 'REJECTED', reviewed_by_user_id = ?, reviewed_at = ?, review_note = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, new Date().toISOString(), note, new Date().toISOString(), id).run();
+  await c.env.DB.prepare("UPDATE attendance_correction_requests SET status = 'REJECTED', reviewed_by_user_id = ?, reviewer_user_id = ?, reviewed_at = ?, review_note = ?, reviewer_note = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, c.get("currentUser").id, new Date().toISOString(), note, note, new Date().toISOString(), id).run();
   await auditAttendance(c, { action: "attendance.correction.rejected", entityType: "attendance_correction", entityId: id, oldValue: correction, reason: note });
   await publishAttendance(c, "attendance.correction.rejected", id, "rejected", "attendance_correction");
   return ok(c, { correction: await getCorrection(c, id) });
@@ -682,9 +1056,9 @@ attendanceRoutes.post("/corrections/:id/cancel", async (c) => {
   const id = routeParam(c, "id");
   const correction = await getCorrection(c, id);
   if (!correction) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
-  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(correction.employee_id), "attendance", has(c, "attendance.manage") ? "manage" : "view"))) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
-  if (correction.status !== "SUBMITTED") return fail(c, 409, "INVALID_STATUS", "Only submitted correction requests can be cancelled.");
-  if (correction.requested_by_user_id !== c.get("currentUser").id && !has(c, "attendance.manage")) return fail(c, 403, "FORBIDDEN", "Only the requester or an attendance manager can cancel this correction.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(correction.employee_id), "attendance", hasAny(c, ["attendance.corrections.manage", "attendance.manage"]) ? "manage" : "view"))) return fail(c, 404, "NOT_FOUND", "Correction request was not found.");
+  if (!isPendingCorrection(correction.status)) return fail(c, 409, "INVALID_STATUS", "Only pending correction requests can be cancelled.");
+  if (correction.requested_by_user_id !== c.get("currentUser").id && !hasAny(c, ["attendance.corrections.cancel", "attendance.corrections.manage", "attendance.manage"])) return fail(c, 403, "FORBIDDEN", "Only the requester or an attendance manager can cancel this correction.");
   const body = await readJsonBody(c.req.raw);
   const reason = optionalString(body.reason);
   await c.env.DB.prepare("UPDATE attendance_correction_requests SET status = 'CANCELLED', review_note = ?, updated_at = ? WHERE id = ?").bind(reason, new Date().toISOString(), id).run();
@@ -699,6 +1073,8 @@ attendanceRoutes.patch("/settings", requirePermission("attendance.settings.manag
   const old = await getSettings(c);
   const body = await readJsonBody(c.req.raw);
   const input = {
+    module_enabled: bool(body.module_enabled, Boolean(old.module_enabled ?? 1)),
+    default_workday_mode: readString(body.default_workday_mode ?? old.default_workday_mode) || "FIXED_SHIFT",
     standard_work_minutes_per_day: num(body.standard_work_minutes_per_day, Number(old.standard_work_minutes_per_day ?? 480)) ?? 480,
     default_shift_start_time: optionalString(body.default_shift_start_time ?? old.default_shift_start_time),
     default_shift_end_time: optionalString(body.default_shift_end_time ?? old.default_shift_end_time),
@@ -707,10 +1083,40 @@ attendanceRoutes.patch("/settings", requirePermission("attendance.settings.manag
     weekly_off_days_json: readString(body.weekly_off_days_json ?? old.weekly_off_days_json) || "[]",
     mark_absent_if_no_punch: bool(body.mark_absent_if_no_punch, Boolean(old.mark_absent_if_no_punch)),
     missed_punch_requires_correction: bool(body.missed_punch_requires_correction, Boolean(old.missed_punch_requires_correction)),
+    allow_manual_entries: bool(body.allow_manual_entries, Boolean(old.allow_manual_entries ?? 1)),
+    require_reason_for_manual_entries: bool(body.require_reason_for_manual_entries, Boolean(old.require_reason_for_manual_entries ?? 1)),
+    allow_employee_correction_requests: bool(body.allow_employee_correction_requests, Boolean(old.allow_employee_correction_requests ?? 1)),
+    manual_entry_requires_approval: bool(body.manual_entry_requires_approval, Boolean(old.manual_entry_requires_approval ?? 0)),
+    correction_requires_approval: bool(body.correction_requires_approval, Boolean(old.correction_requires_approval ?? 1)),
+    payroll_impact_enabled: bool(body.payroll_impact_enabled, Boolean(old.payroll_impact_enabled ?? 1)),
+    default_attendance_source: readString(body.default_attendance_source ?? old.default_attendance_source) || "DEVICE",
+    allow_manager_team_corrections: bool(body.allow_manager_team_corrections, Boolean(old.allow_manager_team_corrections ?? 0)),
+    require_reason_for_correction_review: bool(body.require_reason_for_correction_review, Boolean(old.require_reason_for_correction_review ?? 1)),
+    overtime_tracking_enabled: bool(body.overtime_tracking_enabled, Boolean(old.overtime_tracking_enabled ?? 0)),
+    lock_after_payroll_finalized: bool(body.lock_after_payroll_finalized, Boolean(old.lock_after_payroll_finalized ?? 1)),
+    monthly_attendance_lock_day: num(body.monthly_attendance_lock_day, old.monthly_attendance_lock_day == null ? null : Number(old.monthly_attendance_lock_day)),
+    default_absent_status: normalizeAttendanceStatus(body.default_absent_status ?? old.default_absent_status ?? "ABSENT", "ABSENT"),
+    attendance_source_options_json: readString(body.attendance_source_options_json ?? old.attendance_source_options_json) || '["DEVICE","MANUAL","MANUAL_IMPORT","API","BRIDGE"]',
     payroll_deduction_enabled: bool(body.payroll_deduction_enabled, Boolean(old.payroll_deduction_enabled))
   };
   if (input.standard_work_minutes_per_day < 0 || input.late_grace_minutes < 0 || input.early_checkout_grace_minutes < 0) return fail(c, 400, "VALIDATION_ERROR", "Attendance setting minute values cannot be negative.");
-  await c.env.DB.prepare("UPDATE attendance_settings SET standard_work_minutes_per_day = ?, default_shift_start_time = ?, default_shift_end_time = ?, late_grace_minutes = ?, early_checkout_grace_minutes = ?, weekly_off_days_json = ?, mark_absent_if_no_punch = ?, missed_punch_requires_correction = ?, payroll_deduction_enabled = ?, updated_at = ? WHERE id = 'attendance_settings_default'").bind(input.standard_work_minutes_per_day, input.default_shift_start_time, input.default_shift_end_time, input.late_grace_minutes, input.early_checkout_grace_minutes, input.weekly_off_days_json, input.mark_absent_if_no_punch ? 1 : 0, input.missed_punch_requires_correction ? 1 : 0, input.payroll_deduction_enabled ? 1 : 0, new Date().toISOString()).run();
+  if (!["FIXED_SHIFT", "ROSTER_BASED", "FLEXIBLE"].includes(input.default_workday_mode)) return fail(c, 400, "VALIDATION_ERROR", "Default workday mode is invalid.");
+  if (!LOG_SOURCES.has(input.default_attendance_source)) return fail(c, 400, "VALIDATION_ERROR", "Default attendance source is invalid.");
+  if (input.monthly_attendance_lock_day != null && (input.monthly_attendance_lock_day < 1 || input.monthly_attendance_lock_day > 31)) return fail(c, 400, "VALIDATION_ERROR", "Monthly attendance lock day must be between 1 and 31.");
+  await c.env.DB.prepare(
+    `UPDATE attendance_settings SET module_enabled = ?, default_workday_mode = ?, standard_work_minutes_per_day = ?, default_shift_start_time = ?, default_shift_end_time = ?,
+     late_grace_minutes = ?, early_checkout_grace_minutes = ?, weekly_off_days_json = ?, mark_absent_if_no_punch = ?, missed_punch_requires_correction = ?,
+     allow_manual_entries = ?, require_reason_for_manual_entries = ?, allow_employee_correction_requests = ?, manual_entry_requires_approval = ?, correction_requires_approval = ?,
+     payroll_impact_enabled = ?, default_attendance_source = ?, allow_manager_team_corrections = ?, require_reason_for_correction_review = ?, overtime_tracking_enabled = ?,
+     lock_after_payroll_finalized = ?, monthly_attendance_lock_day = ?, default_absent_status = ?, attendance_source_options_json = ?, payroll_deduction_enabled = ?, updated_at = ?
+     WHERE id = 'attendance_settings_default'`
+  ).bind(
+    input.module_enabled ? 1 : 0, input.default_workday_mode, input.standard_work_minutes_per_day, input.default_shift_start_time, input.default_shift_end_time,
+    input.late_grace_minutes, input.early_checkout_grace_minutes, input.weekly_off_days_json, input.mark_absent_if_no_punch ? 1 : 0, input.missed_punch_requires_correction ? 1 : 0,
+    input.allow_manual_entries ? 1 : 0, input.require_reason_for_manual_entries ? 1 : 0, input.allow_employee_correction_requests ? 1 : 0, input.manual_entry_requires_approval ? 1 : 0, input.correction_requires_approval ? 1 : 0,
+    input.payroll_impact_enabled ? 1 : 0, input.default_attendance_source, input.allow_manager_team_corrections ? 1 : 0, input.require_reason_for_correction_review ? 1 : 0, input.overtime_tracking_enabled ? 1 : 0,
+    input.lock_after_payroll_finalized ? 1 : 0, input.monthly_attendance_lock_day, input.default_absent_status, input.attendance_source_options_json, input.payroll_deduction_enabled ? 1 : 0, new Date().toISOString()
+  ).run();
   await auditAttendance(c, { action: "attendance.settings.updated", entityType: "attendance_settings", entityId: "attendance_settings_default", oldValue: old, newValue: input });
   await publishAttendance(c, "attendance.changed", "attendance_settings_default", "settings_updated", "attendance_settings");
   return ok(c, { settings: await getSettings(c) });
@@ -725,7 +1131,7 @@ attendanceRoutes.get("/dashboard", requirePermission("attendance.view"), async (
     (SELECT COUNT(*) FROM attendance_daily_records WHERE employee_id IN (${scopedEmployeeSql}) AND attendance_date = ? AND status = 'ABSENT') AS absent_today,
     (SELECT COUNT(*) FROM attendance_daily_records WHERE employee_id IN (${scopedEmployeeSql}) AND attendance_date = ? AND COALESCE(late_minutes,0) > 0) AS late_today,
     (SELECT COUNT(*) FROM attendance_daily_records WHERE employee_id IN (${scopedEmployeeSql}) AND attendance_date = ? AND missed_punch = 1) AS missed_punch_today,
-    (SELECT COUNT(*) FROM attendance_correction_requests WHERE employee_id IN (${scopedEmployeeSql}) AND status = 'SUBMITTED') AS pending_corrections,
+    (SELECT COUNT(*) FROM attendance_correction_requests WHERE employee_id IN (${scopedEmployeeSql}) AND status IN ('PENDING','SUBMITTED')) AS pending_corrections,
     (SELECT COUNT(*) FROM attendance_devices WHERE status = 'ACTIVE') AS active_devices`).bind(...scope.params, today, ...scope.params, today, ...scope.params, today, ...scope.params, today, ...scope.params).first();
   return ok(c, row ?? {});
 });
@@ -780,7 +1186,11 @@ employeeAttendanceRoutes.get("/:employeeId/attendance/raw-logs", requireAnyPermi
 
 employeeAttendanceRoutes.get("/:employeeId/attendance/calendar", requireAnyPermission(["employees.attendance.view", "attendance.view"]), async (c) => {
   const employeeId = routeParam(c, "employeeId");
-  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "attendance", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  if (!(await canViewAttendanceForEmployee(c, employeeId))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  return ok(c, { calendar: await getEmployeeAttendanceCalendar(c, employeeId) });
+});
+
+async function getEmployeeAttendanceCalendar(c: Context<AppBindings>, employeeId: string) {
   const month = readString(c.req.query("month"));
   const from = readString(c.req.query("date_from")) || (month && /^\d{4}-\d{2}$/.test(month) ? `${month}-01` : "");
   const to = readString(c.req.query("date_to")) || (month && /^\d{4}-\d{2}$/.test(month) ? `${month}-31` : "");
@@ -790,8 +1200,8 @@ employeeAttendanceRoutes.get("/:employeeId/attendance/calendar", requireAnyPermi
   if (to) { conditions.push("adr.attendance_date <= ?"); params.push(to); }
   const rows = await c.env.DB.prepare(`SELECT ${recordColumns()} FROM attendance_daily_records adr INNER JOIN employees e ON e.id = adr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id WHERE ${conditions.join(" AND ")} ORDER BY adr.attendance_date`).bind(...params).all();
   const leaveRows = await leaveCalendarRows(c, { employeeId, from, to });
-  return ok(c, { calendar: [...rows.results, ...leaveRows].sort((a, b) => String(a.attendance_date ?? "").localeCompare(String(b.attendance_date ?? ""))) });
-});
+  return [...rows.results, ...leaveRows].sort((a, b) => String(a.attendance_date ?? "").localeCompare(String(b.attendance_date ?? "")));
+}
 
 employeeAttendanceRoutes.get("/:employeeId/attendance/summary", requireAnyPermission(["employees.attendance.view", "attendance.view"]), async (c) => {
   const employeeId = routeParam(c, "employeeId");

@@ -27,6 +27,9 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [salaryReason, setSalaryReason] = useState("");
+  const [incrementForm, setIncrementForm] = useState<{ amount: string; effective_date: string; reason: string } | null>(null);
+  const [advanceForm, setAdvanceForm] = useState<{ amount: string; payment_date: string } | null>(null);
 
   async function load() {
     if (!token || !canView) return;
@@ -51,11 +54,13 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
     if (form) setForm({ ...form, [key]: value });
   }
 
-  async function saveProfile() {
+  async function saveProfile(reason?: string) {
     if (!token || !form) return;
     const salaryChanged = summary?.profile.basic_salary !== form.basic_salary;
-    const reason = salaryChanged ? window.prompt("Reason for salary change") ?? undefined : undefined;
-    if (salaryChanged && !reason) return;
+    if (salaryChanged && !reason) {
+      setSalaryReason("");
+      return;
+    }
     try {
       const result = await api.updateEmployeePayrollProfile(token, employee.id, { ...form, reason });
       setForm(result.profile);
@@ -68,27 +73,29 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
     }
   }
 
-  async function addIncrement() {
+  async function addIncrement(input: { amount: string; effective_date: string; reason: string }) {
     if (!token) return;
-    const amount = Number(window.prompt("Increment amount"));
-    const effective_date = window.prompt("Effective date (YYYY-MM-DD)", new Date().toISOString().slice(0, 10));
-    const reason = window.prompt("Reason");
+    const amount = Number(input.amount);
+    const effective_date = input.effective_date;
+    const reason = input.reason;
     if (!amount || !effective_date || !reason) return;
     try {
       await api.createEmployeeIncrement(token, employee.id, { increment_amount: amount, effective_date, reason });
+      setIncrementForm(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to add increment.");
     }
   }
 
-  async function addAdvance() {
+  async function addAdvance(input: { amount: string; payment_date: string }) {
     if (!token) return;
-    const amount = Number(window.prompt("Advance amount"));
-    const payment_date = window.prompt("Payment date (YYYY-MM-DD)", new Date().toISOString().slice(0, 10));
+    const amount = Number(input.amount);
+    const payment_date = input.payment_date;
     if (!amount || !payment_date) return;
     try {
       await api.createPayrollAdvance(token, { employee_id: employee.id, amount, payment_date });
+      setAdvanceForm(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to add advance.");
@@ -106,7 +113,7 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
       <Panel className="overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div><h2 className="text-sm font-semibold">Payroll profile</h2><p className="text-xs text-muted-foreground">Sensitive bank/payment fields require payroll access.</p></div>
-          {canUpdate ? editing ? <Button size="sm" onClick={() => void saveProfile()}><Save className="h-4 w-4" /> Save profile</Button> : <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Edit className="h-4 w-4" /> Edit profile</Button> : null}
+          {canUpdate ? editing ? <Button size="sm" onClick={() => summary?.profile.basic_salary !== form.basic_salary ? setSalaryReason(" ") : void saveProfile()}><Save className="h-4 w-4" /> Save profile</Button> : <Button size="sm" variant="outline" onClick={() => setEditing(true)}><Edit className="h-4 w-4" /> Edit profile</Button> : null}
         </div>
         <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label="Basic salary"><Input disabled={!editing} type="number" min={0} value={form.basic_salary} onChange={(event) => update("basic_salary", Number(event.target.value))} /></Field>
@@ -126,16 +133,31 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
         </div>
       </Panel>
       <div className="grid gap-4 xl:grid-cols-2">
-        <RowsPanel title="Salary history" rows={summary.salary_history ?? []} columns={["effective_date", "old_basic_salary", "new_basic_salary", "reason", "created_by_name"]} action={canUpdate ? <Button size="sm" onClick={() => void addIncrement()}><Plus className="h-4 w-4" /> Add increment</Button> : null} />
+        <RowsPanel title="Salary history" rows={summary.salary_history ?? []} columns={["effective_date", "old_basic_salary", "new_basic_salary", "reason", "created_by_name"]} action={canUpdate ? <Button size="sm" onClick={() => setIncrementForm({ amount: "", effective_date: new Date().toISOString().slice(0, 10), reason: "" })}><Plus className="h-4 w-4" /> Add increment</Button> : null} />
         <RowsPanel title="Increment history" rows={summary.increments ?? []} columns={["effective_date", "old_salary", "increment_amount", "new_salary", "reason"]} />
-        <RowsPanel title="Advance payments" rows={(summary.advances ?? []) as unknown as Record<string, unknown>[]} columns={["payment_date", "amount", "status", "notes", "paid_at"]} action={canAdvance ? <Button size="sm" onClick={() => void addAdvance()}><Plus className="h-4 w-4" /> Add advance</Button> : null} />
+        <RowsPanel title="Advance payments" rows={(summary.advances ?? []) as unknown as Record<string, unknown>[]} columns={["payment_date", "amount", "status", "notes", "paid_at"]} action={canAdvance ? <Button size="sm" onClick={() => setAdvanceForm({ amount: "", payment_date: new Date().toISOString().slice(0, 10) })}><Plus className="h-4 w-4" /> Add advance</Button> : null} />
         <RowsPanel title="Deductions" rows={(summary.deductions ?? []) as unknown as Record<string, unknown>[]} columns={["deduction_type", "amount", "status", "reason", "start_date", "end_date"]} />
         <RowsPanel title="Payroll run history" rows={(summary.runs ?? []) as unknown as Record<string, unknown>[]} columns={["employee_no_snapshot", "basic_salary", "days_worked", "total_deductions", "net_salary", "status"]} />
         <RowsPanel title="Final settlements" rows={(summary.settlements ?? []) as unknown as Record<string, unknown>[]} columns={["final_salary_amount", "pending_advance_amount", "net_settlement_amount", "status", "reason"]} />
       </div>
       <RowsPanel title="Payroll audit" rows={summary.audit ?? []} columns={["action", "entity_type", "reason", "created_at"]} />
+      {salaryReason ? <SalaryReasonModal value={salaryReason === " " ? "" : salaryReason} onChange={(value) => setSalaryReason(value || " ")} onClose={() => setSalaryReason("")} onConfirm={() => { void saveProfile(salaryReason.trim()); setSalaryReason(""); }} /> : null}
+      {incrementForm ? <IncrementModal form={incrementForm} onChange={setIncrementForm} onClose={() => setIncrementForm(null)} onConfirm={() => void addIncrement(incrementForm)} /> : null}
+      {advanceForm ? <AdvanceModal form={advanceForm} onChange={setAdvanceForm} onClose={() => setAdvanceForm(null)} onConfirm={() => void addAdvance(advanceForm)} /> : null}
     </div>
   );
+}
+
+function SalaryReasonModal({ value, onChange, onClose, onConfirm }: { value: string; onChange: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">Salary change reason</h2><p className="mt-1 text-xs text-muted-foreground">A reason is required when changing basic salary.</p><Input className="mt-3" value={value} onChange={(event) => onChange(event.target.value)} placeholder="Reason" /><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" disabled={!value.trim()} onClick={onConfirm}>Save profile</Button></div></div></div>;
+}
+
+function IncrementModal({ form, onChange, onClose, onConfirm }: { form: { amount: string; effective_date: string; reason: string }; onChange: (form: { amount: string; effective_date: string; reason: string }) => void; onClose: () => void; onConfirm: () => void }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">Add salary increment</h2><div className="mt-3 grid gap-3"><Input type="number" min={0} placeholder="Increment amount" value={form.amount} onChange={(event) => onChange({ ...form, amount: event.target.value })} /><Input type="date" value={form.effective_date} onChange={(event) => onChange({ ...form, effective_date: event.target.value })} /><Input placeholder="Reason" value={form.reason} onChange={(event) => onChange({ ...form, reason: event.target.value })} /></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" disabled={!form.amount || !form.effective_date || !form.reason.trim()} onClick={onConfirm}>Add increment</Button></div></div></div>;
+}
+
+function AdvanceModal({ form, onChange, onClose, onConfirm }: { form: { amount: string; payment_date: string }; onChange: (form: { amount: string; payment_date: string }) => void; onClose: () => void; onConfirm: () => void }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">Add payroll advance</h2><div className="mt-3 grid gap-3"><Input type="number" min={0} placeholder="Advance amount" value={form.amount} onChange={(event) => onChange({ ...form, amount: event.target.value })} /><Input type="date" value={form.payment_date} onChange={(event) => onChange({ ...form, payment_date: event.target.value })} /></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" disabled={!form.amount || !form.payment_date} onClick={onConfirm}>Add advance</Button></div></div></div>;
 }
 
 function RowsPanel({ title, rows, columns, action }: { title: string; rows: Record<string, unknown>[]; columns: string[]; action?: React.ReactNode }) {

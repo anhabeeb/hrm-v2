@@ -7,6 +7,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
+import { applyLeaveBalanceChange, getLeaveApprovalChainPreview, getSelfServiceLeaveCycles } from "./leave";
 
 type Row = Record<string, unknown>;
 
@@ -57,6 +58,93 @@ function maskSelfServiceDocuments(rows: Row[]) {
 function hasAny(c: Context<AppBindings>, permissions: string[]) {
   const userPermissions = c.get("currentUser").permissions;
   return permissions.some((permission) => userPermissions.includes(permission));
+}
+
+const protectedProfileUpdateFields = new Set([
+  "salary",
+  "role",
+  "roles",
+  "access",
+  "status",
+  "employee_status",
+  "department",
+  "department_id",
+  "primary_department_id",
+  "position",
+  "position_id",
+  "primary_position_id",
+  "location",
+  "location_id",
+  "primary_location_id",
+  "worksite",
+  "reporting_manager",
+  "reporting_manager_employee_id",
+  "payroll_included",
+  "roster_eligible",
+  "internal_notes",
+  "notes_summary"
+]);
+
+function unwrapRequestedValue(value: unknown) {
+  if (value && typeof value === "object" && !Array.isArray(value) && "value" in value && Object.keys(value as Record<string, unknown>).length === 1) {
+    return (value as Record<string, unknown>).value;
+  }
+  return value;
+}
+
+async function currentProfileFieldValue(db: AppBindings["Bindings"]["DB"], employeeId: string, fieldKey: string) {
+  const allowedEmployeeFields = new Set(["display_name", "nationality", "gender", "date_of_birth", "joining_date", "confirmation_date", "contract_start_date", "contract_end_date"]);
+  if (!allowedEmployeeFields.has(fieldKey)) return null;
+  const row = await db.prepare(`SELECT ${fieldKey} AS value FROM employees WHERE id = ?`).bind(employeeId).first<{ value: unknown }>();
+  return row?.value ?? null;
+}
+
+async function getSelfServiceAttendanceSettings(c: Context<AppBindings>) {
+  const settings = await c.env.DB.prepare("SELECT * FROM attendance_settings WHERE id = 'attendance_settings_default'").first<Record<string, unknown>>();
+  return settings ?? { module_enabled: 1, allow_employee_correction_requests: 1 };
+}
+
+async function requireSelfServiceAttendanceEnabled(c: Context<AppBindings>) {
+  const settings = await getSelfServiceAttendanceSettings(c);
+  if (Number(settings.module_enabled ?? 1) !== 1) return fail(c, 503, "ATTENDANCE_MODULE_DISABLED", "Attendance module is disabled.");
+  return null;
+}
+
+async function getSelfServiceRosterSettings(c: Context<AppBindings>) {
+  const settings = await c.env.DB.prepare("SELECT * FROM roster_settings WHERE id = 'roster_settings_default'").first<Record<string, unknown>>();
+  return {
+    module_enabled: 1,
+    employee_self_service_roster_visibility_enabled: 1,
+    require_publish_before_employee_visibility: 1,
+    ...settings
+  };
+}
+
+async function requireSelfServiceRosterEnabled(c: Context<AppBindings>) {
+  const settings = await getSelfServiceRosterSettings(c);
+  if (Number(settings.module_enabled ?? 1) !== 1) return fail(c, 503, "ROSTER_MODULE_DISABLED", "Roster module is disabled.");
+  if (Number(settings.employee_self_service_roster_visibility_enabled ?? 1) !== 1) return fail(c, 403, "ROSTER_SELF_SERVICE_DISABLED", "Self-service roster visibility is disabled.");
+  return null;
+}
+
+function parseAttendanceStatus(value: unknown) {
+  const status = readString(value).toUpperCase();
+  if (status === "SICK") return "SICK_LEAVE";
+  if (status === "OFF_DAY") return "DAY_OFF";
+  if (status === "HOLIDAY") return "PUBLIC_HOLIDAY";
+  return status || null;
+}
+
+function selfServiceAttendanceSnapshot(record: Record<string, unknown> | null | undefined) {
+  return {
+    record_id: record?.id ?? null,
+    status: record?.status ?? null,
+    final_status: record?.final_status ?? null,
+    first_clock_in: record?.first_clock_in ?? null,
+    last_clock_out: record?.last_clock_out ?? null,
+    total_work_minutes: record?.total_work_minutes ?? null,
+    missed_punch: record?.missed_punch ?? null
+  };
 }
 
 function isoDate(date: Date) {
@@ -184,6 +272,7 @@ async function generateSelfServiceApprovalTimeline(c: Context<AppBindings>, requ
 }
 
 async function updateSelfServiceLeaveBalance(c: Context<AppBindings>, request: Row, mode: "pending_add" | "approve") {
+  await applyLeaveBalanceChange(c, request, mode);
   const employeeId = String(request.employee_id);
   const leaveTypeId = String(request.leave_type_id);
   const year = Number(String(request.start_date).slice(0, 4));
@@ -269,6 +358,9 @@ selfServiceRoutes.get("/documents", async (c) => {
 });
 
 selfServiceRoutes.get("/attendance", async (c) => {
+  if (!hasAny(c, ["self_service.attendance.view", "self_service.view", "attendance.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service attendance.");
+  const disabled = await requireSelfServiceAttendanceEnabled(c);
+  if (disabled) return disabled;
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
   const from = c.req.query("date_from") ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
@@ -297,10 +389,15 @@ selfServiceRoutes.get("/attendance", async (c) => {
       .bind(gate.employeeId)
       .all<Row>()
   ).results;
-  return ok(c, { records, corrections, filters: { date_from: from, date_to: to } });
+  return ok(c, { attendance_module_enabled: true, records, corrections, filters: { date_from: from, date_to: to } });
 });
 
 selfServiceRoutes.post("/attendance/corrections", async (c) => {
+  if (!hasAny(c, ["self_service.attendance_correction.request", "self_service.attendance_correction", "attendance.corrections.create"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to request attendance corrections.");
+  const disabled = await requireSelfServiceAttendanceEnabled(c);
+  if (disabled) return disabled;
+  const settings = await getSelfServiceAttendanceSettings(c);
+  if (Number(settings.allow_employee_correction_requests ?? 1) !== 1) return fail(c, 403, "ATTENDANCE_CORRECTIONS_DISABLED", "Employee attendance correction requests are disabled.");
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
   const body = await readJsonBody(c.req.raw);
@@ -309,14 +406,20 @@ selfServiceRoutes.post("/attendance/corrections", async (c) => {
   if (!attendanceDate || !reason) {
     return fail(c, 400, "VALIDATION_ERROR", "Attendance date and reason are required.");
   }
+  const current = await c.env.DB.prepare("SELECT * FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(gate.employeeId, attendanceDate).first<Record<string, unknown>>();
+  const requested = {
+    requested_clock_in: readString(body.requested_clock_in) || null,
+    requested_clock_out: readString(body.requested_clock_out) || null,
+    requested_status: parseAttendanceStatus(body.requested_status)
+  };
   const id = crypto.randomUUID();
   await c.env.DB
     .prepare(
       `INSERT INTO attendance_correction_requests
-       (id, employee_id, attendance_date, requested_clock_in, requested_clock_out, requested_status, reason, requested_by_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, employee_id, attendance_date, current_record_id, request_type, current_values_json, requested_values_json, requested_clock_in, requested_clock_out, requested_status, reason, status, requested_by_user_id, metadata_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)`
     )
-    .bind(id, gate.employeeId, attendanceDate, readString(body.requested_clock_in) || null, readString(body.requested_clock_out) || null, readString(body.requested_status) || null, reason, c.get("currentUser").id)
+    .bind(id, gate.employeeId, attendanceDate, current?.id ?? null, readString(body.request_type) || "SELF_SERVICE", JSON.stringify(selfServiceAttendanceSnapshot(current)), JSON.stringify(requested), requested.requested_clock_in, requested.requested_clock_out, requested.requested_status, reason, c.get("currentUser").id, JSON.stringify({ source: "self_service" }))
     .run();
   await recordAudit(c.env.DB, {
     actorUserId: c.get("currentUser").id,
@@ -332,10 +435,32 @@ selfServiceRoutes.post("/attendance/corrections", async (c) => {
   return ok(c, { correction_id: id }, 201);
 });
 
+selfServiceRoutes.post("/attendance/correction-requests", async (c) => {
+  if (!hasAny(c, ["self_service.attendance_correction.request", "self_service.attendance_correction", "attendance.corrections.create"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to request attendance corrections.");
+  const disabled = await requireSelfServiceAttendanceEnabled(c);
+  if (disabled) return disabled;
+  const gate = await requireLinkedEmployee(c);
+  if (gate.response) return gate.response;
+  const body = await readJsonBody(c.req.raw);
+  const attendanceDate = readString(body.attendance_date);
+  const reason = readString(body.reason);
+  if (!attendanceDate || !reason) return fail(c, 400, "VALIDATION_ERROR", "Attendance date and reason are required.");
+  const current = await c.env.DB.prepare("SELECT * FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(gate.employeeId, attendanceDate).first<Record<string, unknown>>();
+  const requested = { requested_clock_in: readString(body.requested_clock_in) || null, requested_clock_out: readString(body.requested_clock_out) || null, requested_status: parseAttendanceStatus(body.requested_status) };
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO attendance_correction_requests
+     (id, employee_id, attendance_date, current_record_id, request_type, current_values_json, requested_values_json, requested_clock_in, requested_clock_out, requested_status, reason, status, requested_by_user_id, metadata_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)`
+  ).bind(id, gate.employeeId, attendanceDate, current?.id ?? null, readString(body.request_type) || "SELF_SERVICE", JSON.stringify(selfServiceAttendanceSnapshot(current)), JSON.stringify(requested), requested.requested_clock_in, requested.requested_clock_out, requested.requested_status, reason, c.get("currentUser").id, JSON.stringify({ source: "self_service" })).run();
+  return ok(c, { correction_id: id }, 201);
+});
+
 selfServiceRoutes.get("/leave", async (c) => {
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
   const balances = (await c.env.DB.prepare("SELECT * FROM leave_balances WHERE employee_id = ? ORDER BY period_year DESC").bind(gate.employeeId).all<Row>()).results;
+  const cycles = await getSelfServiceLeaveCycles(c, gate.employeeId);
   const requests = (
     await c.env.DB
       .prepare(
@@ -356,7 +481,7 @@ selfServiceRoutes.get("/leave", async (c) => {
       .bind(gate.employeeId)
       .all<Row>()
   ).results;
-  return ok(c, { balances, requests, approvals, leave_request_enabled: c.get("currentUser").permissions.includes("self_service.leave_request") || c.get("currentUser").permissions.includes("leave.request") });
+  return ok(c, { balances, balance_cycles: cycles.balance_cycles, ledger_recent: cycles.ledger_recent, requests, approvals, leave_request_enabled: c.get("currentUser").permissions.includes("self_service.leave_request") || c.get("currentUser").permissions.includes("leave.request") });
 });
 
 selfServiceRoutes.post("/leave/requests", async (c) => {
@@ -431,11 +556,11 @@ selfServiceRoutes.post("/leave/requests", async (c) => {
     if (pending) {
       finalStatus = "PENDING_APPROVAL";
       await c.env.DB.prepare("UPDATE leave_requests SET status = 'PENDING_APPROVAL', submitted_at = ?, updated_at = ? WHERE id = ?").bind(now, now, id).run();
-      await updateSelfServiceLeaveBalance(c, { employee_id: gate.employeeId, leave_type_id: leaveTypeId, start_date: startDate, requested_days: calculated.counted }, "pending_add");
+      await updateSelfServiceLeaveBalance(c, { id, employee_id: gate.employeeId, leave_type_id: leaveTypeId, policy_id: policy?.id ?? null, start_date: startDate, requested_days: calculated.counted }, "pending_add");
     } else {
       finalStatus = "APPROVED";
       await c.env.DB.prepare("UPDATE leave_requests SET status = 'APPROVED', submitted_at = ?, approved_at = ?, updated_at = ? WHERE id = ?").bind(now, now, now, id).run();
-      await updateSelfServiceLeaveBalance(c, { employee_id: gate.employeeId, leave_type_id: leaveTypeId, start_date: startDate, requested_days: calculated.counted }, "approve");
+      await updateSelfServiceLeaveBalance(c, { id, employee_id: gate.employeeId, leave_type_id: leaveTypeId, policy_id: policy?.id ?? null, start_date: startDate, requested_days: calculated.counted }, "approve");
     }
   }
   await recordAudit(c.env.DB, {
@@ -451,7 +576,70 @@ selfServiceRoutes.post("/leave/requests", async (c) => {
   await publishAccessEvent(c.env, "self_service.changed", { actor_user_id: c.get("currentUser").id, entity_type: "leave_request", entity_id: id, action: "self_service.leave_request.submitted" });
   const request = await c.env.DB.prepare("SELECT * FROM leave_requests WHERE id = ?").bind(id).first<Row>();
   const approvals = (await c.env.DB.prepare("SELECT * FROM leave_request_approvals WHERE leave_request_id = ? ORDER BY step_order").bind(id).all<Row>()).results;
-  return ok(c, { request, approvals, document_required: documentRequired }, 201);
+  const approval_chain_preview = request ? await getLeaveApprovalChainPreview(c, { ...employee, ...request, department_id: employee.primary_department_id, position_id: employee.primary_position_id, location_id: employee.primary_location_id }) : null;
+  return ok(c, { request, approvals, document_required: documentRequired, approval_chain_preview }, 201);
+});
+
+selfServiceRoutes.get("/roster", async (c) => {
+  if (!hasAny(c, ["self_service.roster.view", "roster.self.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your roster.");
+  const disabled = await requireSelfServiceRosterEnabled(c);
+  if (disabled) return disabled;
+  const gate = await requireLinkedEmployee(c);
+  if (gate.response) return gate.response;
+  const weekStart = readString(c.req.query("week_start_date")) || isoDate(new Date());
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(weekStart) ? weekStart : isoDate(new Date());
+  const endDate = new Date(`${start}T00:00:00Z`);
+  endDate.setUTCDate(endDate.getUTCDate() + 6);
+  const end = isoDate(endDate);
+  const assignments = (
+    await c.env.DB
+      .prepare(
+        `SELECT ra.*, rp.status AS period_status, st.code AS shift_code, st.name AS shift_name,
+          st.start_time AS shift_start_time, st.end_time AS shift_end_time, st.color_label AS shift_color_label,
+          l.name AS location_name, d.name AS department_name
+         FROM roster_assignments ra
+         JOIN roster_periods rp ON rp.id = ra.roster_period_id
+         LEFT JOIN shift_templates st ON st.id = ra.shift_template_id
+         LEFT JOIN locations l ON l.id = rp.location_id
+         LEFT JOIN departments d ON d.id = rp.department_id
+         WHERE ra.employee_id = ? AND ra.roster_date BETWEEN ? AND ? AND rp.status IN ('PUBLISHED', 'LOCKED')
+         ORDER BY ra.roster_date ASC`
+      )
+      .bind(gate.employeeId, start, end)
+      .all<Row>()
+  ).results;
+  return ok(c, { week_start_date: start, week_end_date: end, assignments });
+});
+
+selfServiceRoutes.get("/roster/week", async (c) => {
+  if (!hasAny(c, ["self_service.roster.view", "roster.self.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your roster.");
+  const disabled = await requireSelfServiceRosterEnabled(c);
+  if (disabled) return disabled;
+  const gate = await requireLinkedEmployee(c);
+  if (gate.response) return gate.response;
+  const weekStart = readString(c.req.query("week_start_date")) || isoDate(new Date());
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(weekStart) ? weekStart : isoDate(new Date());
+  const endDate = new Date(`${start}T00:00:00Z`);
+  endDate.setUTCDate(endDate.getUTCDate() + 6);
+  const end = isoDate(endDate);
+  const assignments = (
+    await c.env.DB
+      .prepare(
+        `SELECT ra.*, rp.status AS period_status, st.code AS shift_code, st.name AS shift_name,
+          st.start_time AS shift_start_time, st.end_time AS shift_end_time, st.color_label AS shift_color_label,
+          l.name AS location_name, d.name AS department_name
+         FROM roster_assignments ra
+         JOIN roster_periods rp ON rp.id = ra.roster_period_id
+         LEFT JOIN shift_templates st ON st.id = ra.shift_template_id
+         LEFT JOIN locations l ON l.id = rp.location_id
+         LEFT JOIN departments d ON d.id = rp.department_id
+         WHERE ra.employee_id = ? AND ra.roster_date BETWEEN ? AND ? AND rp.status IN ('PUBLISHED', 'LOCKED')
+         ORDER BY ra.roster_date ASC`
+      )
+      .bind(gate.employeeId, start, end)
+      .all<Row>()
+  ).results;
+  return ok(c, { week_start_date: start, week_end_date: end, assignments });
 });
 
 selfServiceRoutes.get("/payroll", async (c) => {
@@ -504,7 +692,7 @@ selfServiceRoutes.get("/kyc-requests", async (c) => {
   const rows = (
     await c.env.DB
       .prepare(
-        `SELECT id, section, field_key, requested_value_json, reason, status,
+        `SELECT id, section, field_key, old_value_json, requested_value_json, reason, status,
           reviewed_at, review_note, created_at, updated_at
          FROM employee_kyc_update_requests
          WHERE employee_id = ?
@@ -523,18 +711,24 @@ selfServiceRoutes.post("/kyc-requests", async (c) => {
   const section = readString(body.section);
   const fieldKey = readString(body.field_key);
   const reason = readString(body.reason);
-  const requestedValue = body.requested_value ?? body.requested_value_json ?? body.fields;
+  const requestedValue = unwrapRequestedValue(body.requested_value ?? body.requested_value_json ?? body.fields);
   if (!section || requestedValue === undefined || requestedValue === null) {
     return fail(c, 400, "VALIDATION_ERROR", "Section and requested value are required.");
   }
+  if (!fieldKey || protectedProfileUpdateFields.has(fieldKey)) {
+    return fail(c, 400, "PROTECTED_FIELD", "This profile field cannot be changed through self-service requests.");
+  }
+  const oldValue = await currentProfileFieldValue(c.env.DB, gate.employeeId, fieldKey);
+  const oldSnapshot = { [fieldKey]: oldValue };
+  const requestedSnapshot = { [fieldKey]: requestedValue };
   const id = crypto.randomUUID();
   await c.env.DB
     .prepare(
       `INSERT INTO employee_kyc_update_requests
-       (id, employee_id, requested_by_user_id, section, field_key, requested_value_json, reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+       (id, employee_id, requested_by_user_id, section, field_key, old_value_json, requested_value_json, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(id, gate.employeeId, c.get("currentUser").id, section, fieldKey || null, JSON.stringify(requestedValue), reason || null)
+    .bind(id, gate.employeeId, c.get("currentUser").id, section, fieldKey, JSON.stringify(oldSnapshot), JSON.stringify(requestedSnapshot), reason || null)
     .run();
   await recordAudit(c.env.DB, {
     actorUserId: c.get("currentUser").id,
@@ -585,7 +779,7 @@ kycRoutes.get("/", async (c) => {
     await c.env.DB
       .prepare(
         `SELECT kr.id, kr.employee_id, e.employee_no, e.full_name AS employee_name,
-          kr.section, kr.field_key, kr.requested_value_json, kr.reason, kr.status,
+          kr.section, kr.field_key, kr.old_value_json, kr.requested_value_json, kr.reason, kr.status,
           u.name AS requested_by_name, kr.created_at, kr.reviewed_at, kr.review_note
          FROM employee_kyc_update_requests kr
          JOIN employees e ON e.id = kr.employee_id
@@ -602,8 +796,15 @@ kycRoutes.get("/", async (c) => {
 kycRoutes.post("/:id/approve", async (c) => {
   const body = await readJsonBody(c.req.raw);
   const reviewNote = readString(body.review_note);
-  const request = await c.env.DB.prepare("SELECT employee_id FROM employee_kyc_update_requests WHERE id = ?").bind(c.req.param("id")).first<{ employee_id: string }>();
+  const request = await c.env.DB.prepare("SELECT employee_id, field_key, requested_value_json FROM employee_kyc_update_requests WHERE id = ?").bind(c.req.param("id")).first<{ employee_id: string; field_key: string | null; requested_value_json: string }>();
   if (!request || !(await canAccessEmployee(c.env.DB, c.get("currentUser"), request.employee_id, "employees", "manage"))) return fail(c, 404, "NOT_FOUND", "KYC request was not found.");
+  const fieldKey = request.field_key ?? "";
+  const allowedEmployeeFields = new Set(["display_name", "nationality", "gender", "date_of_birth", "joining_date", "confirmation_date", "contract_start_date", "contract_end_date"]);
+  if (allowedEmployeeFields.has(fieldKey)) {
+    const parsed = JSON.parse(request.requested_value_json) as Record<string, unknown>;
+    const cleanValue = unwrapRequestedValue(parsed[fieldKey]);
+    await c.env.DB.prepare(`UPDATE employees SET ${fieldKey} = ?, updated_at = ? WHERE id = ?`).bind(cleanValue === undefined ? null : String(cleanValue), new Date().toISOString(), request.employee_id).run();
+  }
   await c.env.DB.prepare("UPDATE employee_kyc_update_requests SET status = 'APPROVED', reviewed_by_user_id = ?, reviewed_at = ?, review_note = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, new Date().toISOString(), reviewNote || null, new Date().toISOString(), c.req.param("id")).run();
   await recordAudit(c.env.DB, {
     actorUserId: c.get("currentUser").id,

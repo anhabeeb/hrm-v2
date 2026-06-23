@@ -33,6 +33,7 @@ export function AttendanceCalendarPage() {
   const [status, setStatus] = useState("");
   const [dateFrom, setDateFrom] = useState(new Date().toISOString().slice(0, 10));
   const [dateTo, setDateTo] = useState(new Date().toISOString().slice(0, 10));
+  const [attendanceDisabled, setAttendanceDisabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +44,7 @@ export function AttendanceCalendarPage() {
     setLoading(true);
     setError(null);
     try {
+      setAttendanceDisabled(false);
       const [calendarResult, employeeResult, departmentResult, locationResult] = await Promise.all([
         api.getAttendanceCalendar(token, filters),
         api.listEmployees(token),
@@ -54,6 +56,11 @@ export function AttendanceCalendarPage() {
       setDepartments(departmentResult.departments);
       setLocations(locationResult.locations);
     } catch (err) {
+      if (err instanceof ApiError && err.code === "ATTENDANCE_MODULE_DISABLED") {
+        setAttendanceDisabled(true);
+        setRecords([]);
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Unable to load attendance calendar.");
     } finally {
       setLoading(false);
@@ -65,6 +72,7 @@ export function AttendanceCalendarPage() {
   }, [token, canView, filters]);
 
   if (!canView) return <Panel><EmptyState title="Attendance calendar unavailable" description="Your account needs attendance.view permission." /></Panel>;
+  if (attendanceDisabled) return <div className="space-y-4"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="text-lg font-semibold">Attendance Calendar</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /></div><Panel><EmptyState title="Attendance module is disabled." description="Attendance calendar data is hidden until an administrator enables the module." /></Panel></div>;
 
   return (
     <div className="space-y-4">
@@ -79,7 +87,7 @@ export function AttendanceCalendarPage() {
           <select className="h-9 rounded-md border bg-white px-3 text-sm" value={employeeId} onChange={(event) => setEmployeeId(event.target.value)}><option value="">All employees</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name ?? employee.full_name} ({employee.employee_no})</option>)}</select>
           <select className="h-9 rounded-md border bg-white px-3 text-sm" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>
           <select className="h-9 rounded-md border bg-white px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["PRESENT", "ABSENT", "LEAVE", "SICK", "LATE", "HALF_DAY", "OFF_DAY", "HOLIDAY", "PENDING_CORRECTION"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
+          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Date from" />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Date to" />
         </div>

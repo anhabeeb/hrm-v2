@@ -12,7 +12,12 @@
     "build": "npm --workspace frontend run build && npm --workspace worker run build",
     "build:frontend": "npm --workspace frontend run build",
     "build:worker": "npm --workspace worker run build",
-    "typecheck": "npm --workspace frontend run typecheck && npm --workspace worker run typecheck"
+    "typecheck": "npm --workspace frontend run typecheck && npm --workspace worker run typecheck",
+    "verify:baseline-prompts1-5": "node scripts/verify-baseline-prompts1-5.mjs",
+    "verify:prompt8": "node scripts/verify-prompt8.mjs",
+    "verify:prompt9": "node scripts/verify-prompt9.mjs",
+    "verify:recovery-prompts6-9": "node scripts/verify-recovery-prompts6-9.mjs",
+    "verify:prompt10": "node scripts/verify-prompt10.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

@@ -12,12 +12,12 @@ import { readJsonBody, readString } from "../utils/validation";
 type BindValue = string | number | null;
 type LeaveStatus = "DRAFT" | "SUBMITTED" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "CANCELLED";
 type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED" | "SKIPPED";
-type DeductionMode = "NONE" | "FULL_DAY" | "WORKED_DAYS_ONLY" | "CUSTOM";
+type DeductionMode = "NONE" | "FULL_DAY" | "WORKED_DAYS_ONLY" | "CUSTOM" | "NO_DEDUCTION" | "DEDUCT_FROM_BASIC_SALARY" | "DEDUCT_FROM_GROSS_SALARY" | "DEDUCT_FROM_SELECTED_ALLOWANCE" | "FIXED_AMOUNT_PER_DAY" | "DAILY_RATE_FORMULA" | "DEDUCT_AFTER_ENTITLEMENT_EXHAUSTED" | "PAY_ONLY_WORKED_DAYS";
 
 const EMPLOYEE_TYPES = new Set(["LOCAL", "FOREIGN", "OTHER"]);
 const EMPLOYMENT_TYPES = new Set(["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]);
-const DEDUCTION_MODES = new Set(["NONE", "FULL_DAY", "WORKED_DAYS_ONLY", "CUSTOM"]);
-const APPROVER_TYPES = new Set(["ROLE", "USER", "REPORTING_MANAGER", "DEPARTMENT_MANAGER", "DEPARTMENT_SENIOR", "DIRECTOR", "HR_ROLE", "PERMISSION"]);
+const DEDUCTION_MODES = new Set(["NONE", "FULL_DAY", "WORKED_DAYS_ONLY", "CUSTOM", "NO_DEDUCTION", "DEDUCT_FROM_BASIC_SALARY", "DEDUCT_FROM_GROSS_SALARY", "DEDUCT_FROM_SELECTED_ALLOWANCE", "FIXED_AMOUNT_PER_DAY", "DAILY_RATE_FORMULA", "DEDUCT_AFTER_ENTITLEMENT_EXHAUSTED", "PAY_ONLY_WORKED_DAYS"]);
+const APPROVER_TYPES = new Set(["ROLE", "USER", "REPORTING_MANAGER", "DEPARTMENT_MANAGER", "DEPARTMENT_SENIOR", "DIRECTOR", "HR_ROLE", "PERMISSION", "DEPARTMENT_HEAD", "LOCATION_MANAGER", "HR_MANAGER", "FINANCE_MANAGER", "OWNER"]);
 
 export const leaveRoutes = new Hono<AppBindings>();
 export const employeeLeaveRoutes = new Hono<AppBindings>();
@@ -49,6 +49,15 @@ function has(c: Context<AppBindings>, permission: string) {
 
 function hasAny(c: Context<AppBindings>, permissions: string[]) {
   return permissions.some((permission) => has(c, permission));
+}
+
+export function permissionMatchesLegacyOrGranularLeaveKey(userPermissions: string[], legacy: string, granular: string | string[]) {
+  const granularKeys = Array.isArray(granular) ? granular : [granular];
+  return userPermissions.includes(legacy) || granularKeys.some((permission) => userPermissions.includes(permission));
+}
+
+function hasLeavePermission(c: Context<AppBindings>, legacy: string, granular: string | string[]) {
+  return permissionMatchesLegacyOrGranularLeaveKey(c.get("currentUser").permissions, legacy, granular);
 }
 
 async function auditLeave(c: Context<AppBindings>, input: { action: string; entityType: string; entityId: string; oldValue?: unknown; newValue?: unknown; reason?: string | null }) {
@@ -179,6 +188,7 @@ async function ensureBalance(c: Context<AppBindings>, employeeId: string, leaveT
 }
 
 async function updateBalance(c: Context<AppBindings>, request: Record<string, unknown>, mode: "pending_add" | "pending_release" | "approve" | "cancel_approved") {
+  await applyLeaveBalanceChange(c, request, mode);
   const employeeId = String(request.employee_id);
   const leaveTypeId = String(request.leave_type_id);
   const year = Number(String(request.start_date).slice(0, 4));
@@ -203,22 +213,15 @@ async function updateBalance(c: Context<AppBindings>, request: Record<string, un
   await publishLeave(c, "leave.balance.updated", employeeId, "balance_updated", "leave_balance");
 }
 
-async function generateDays(c: Context<AppBindings>, requestId: string, startDate: string, endDate: string, halfDayType: string | null, includeWeeklyOff: boolean) {
+async function generateDays(c: Context<AppBindings>, requestId: string, employeeId: string, startDate: string, endDate: string, halfDayType: string | null, includeWeeklyOff: boolean) {
   await c.env.DB.prepare("DELETE FROM leave_request_days WHERE leave_request_id = ?").bind(requestId).run();
-  const total = daysBetween(startDate, endDate) ?? 0;
-  const start = new Date(`${startDate}T00:00:00Z`);
+  const calculated = await calculateLeaveDays(c, { employeeId, startDate, endDate, halfDayType, includeWeeklyOff });
   const statements = [];
-  for (let index = 0; index < total; index += 1) {
-    const date = new Date(start);
-    date.setUTCDate(start.getUTCDate() + index);
-    const weekend = date.getUTCDay() === 5 || date.getUTCDay() === 6;
-    const singleHalf = total === 1 && halfDayType && halfDayType !== "NONE";
-    const dayType = singleHalf ? "HALF_DAY" : weekend ? "WEEKLY_OFF" : "FULL_DAY";
-    const counted = dayType === "WEEKLY_OFF" ? includeWeeklyOff : true;
+  for (const day of calculated?.days ?? []) {
     statements.push(
       c.env.DB
         .prepare("INSERT INTO leave_request_days (id, leave_request_id, leave_date, day_type, counted_as_leave, payroll_impact_json) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(crypto.randomUUID(), requestId, isoDate(date), dayType, counted ? 1 : 0, JSON.stringify({ foundation: "attendance/payroll integration later" }))
+        .bind(crypto.randomUUID(), requestId, day.leave_date, day.day_type, day.counted_as_leave, JSON.stringify({ leave_count: day.leave_count, foundation: "attendance/payroll integration later" }))
     );
   }
   if (statements.length) await c.env.DB.batch(statements);
@@ -237,6 +240,180 @@ async function calculateRequestedDays(c: Context<AppBindings>, startDate: string
   }
   if (total === 1 && halfDayType && halfDayType !== "NONE") counted = 0.5;
   return { total, counted };
+}
+
+export async function getAttendanceDayOverridesForRange(c: Context<AppBindings>, employeeId: string, startDate: string, endDate: string) {
+  const rows = await c.env.DB
+    .prepare(
+      `SELECT * FROM attendance_day_overrides
+       WHERE employee_id = ? AND affects_leave_calculation = 1
+         AND override_date BETWEEN ? AND ?
+       ORDER BY override_date`
+    )
+    .bind(employeeId, startDate, endDate)
+    .all<Record<string, unknown>>();
+  return rows.results;
+}
+
+export async function applyLeaveDayCountingPolicy(input: {
+  startDate: string;
+  endDate: string;
+  halfDayType: string | null;
+  includeWeeklyOff: boolean;
+  attendanceOverrides: Record<string, unknown>[];
+}) {
+  const total = daysBetween(input.startDate, input.endDate);
+  if (!total) return null;
+  const overrideByDate = new Map(input.attendanceOverrides.map((row) => [String(row.override_date), row]));
+  const start = new Date(`${input.startDate}T00:00:00Z`);
+  let counted = 0;
+  const days: Array<{ leave_date: string; day_type: string; counted_as_leave: number; leave_count: number }> = [];
+  for (let index = 0; index < total; index += 1) {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    const leaveDate = isoDate(date);
+    const override = overrideByDate.get(leaveDate);
+    const weekend = date.getUTCDay() === 5 || date.getUTCDay() === 6;
+    const singleHalf = total === 1 && input.halfDayType && input.halfDayType !== "NONE";
+    const dayType = singleHalf ? "HALF_DAY" : override ? String(override.day_type) : weekend ? "WEEKLY_OFF" : "FULL_DAY";
+    let leaveCount = singleHalf ? 0.5 : dayType === "WEEKLY_OFF" ? (input.includeWeeklyOff ? 1 : 0) : dayType === "PUBLIC_HOLIDAY" ? 0 : 1;
+    if (override?.leave_count_multiplier !== undefined && override.leave_count_multiplier !== null) leaveCount = Number(override.leave_count_multiplier);
+    counted += leaveCount;
+    days.push({ leave_date: leaveDate, day_type: dayType, counted_as_leave: leaveCount > 0 ? 1 : 0, leave_count: leaveCount });
+  }
+  return { total, counted, chargeable_days: counted, calendar_days: total, days };
+}
+
+export async function calculateLeaveDays(c: Context<AppBindings>, input: { employeeId: string; startDate: string; endDate: string; halfDayType: string | null; includeWeeklyOff: boolean }) {
+  const overrides = await getAttendanceDayOverridesForRange(c, input.employeeId, input.startDate, input.endDate);
+  return applyLeaveDayCountingPolicy({ startDate: input.startDate, endDate: input.endDate, halfDayType: input.halfDayType, includeWeeklyOff: input.includeWeeklyOff, attendanceOverrides: overrides });
+}
+
+export async function getCurrentLeaveCycle(c: Context<AppBindings>, employeeId: string, leaveTypeId: string, year: number, entitlement = 0) {
+  const existing = await c.env.DB.prepare("SELECT * FROM leave_balance_cycles WHERE employee_id = ? AND leave_type_id = ? AND cycle_year = ?").bind(employeeId, leaveTypeId, year).first<Record<string, unknown>>();
+  if (existing) return existing;
+  const id = crypto.randomUUID();
+  const start = `${year}-01-01`;
+  const end = `${year}-12-31`;
+  await c.env.DB
+    .prepare(
+      `INSERT INTO leave_balance_cycles
+       (id, employee_id, leave_type_id, cycle_year, cycle_start_date, cycle_end_date, accrued_days, closing_balance)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(id, employeeId, leaveTypeId, year, start, end, entitlement, entitlement)
+    .run();
+  return c.env.DB.prepare("SELECT * FROM leave_balance_cycles WHERE id = ?").bind(id).first<Record<string, unknown>>();
+}
+
+function cycleSnapshot(row: Record<string, unknown> | null | undefined) {
+  if (!row) return null;
+  return {
+    opening_balance: Number(row.opening_balance ?? 0),
+    accrued_days: Number(row.accrued_days ?? 0),
+    used_days: Number(row.used_days ?? 0),
+    pending_days: Number(row.pending_days ?? 0),
+    adjusted_days: Number(row.adjusted_days ?? 0),
+    carried_forward_days: Number(row.carried_forward_days ?? 0),
+    expired_days: Number(row.expired_days ?? 0),
+    closing_balance: Number(row.closing_balance ?? 0)
+  };
+}
+
+export async function refreshLeaveBalanceCycle(c: Context<AppBindings>, cycleId: string) {
+  await c.env.DB
+    .prepare(
+      `UPDATE leave_balance_cycles
+       SET closing_balance = opening_balance + accrued_days + adjusted_days + carried_forward_days - used_days - pending_days - expired_days,
+           updated_at = ?
+       WHERE id = ?`
+    )
+    .bind(new Date().toISOString(), cycleId)
+    .run();
+  return c.env.DB.prepare("SELECT * FROM leave_balance_cycles WHERE id = ?").bind(cycleId).first<Record<string, unknown>>();
+}
+
+export async function createLeaveLedgerEntry(c: Context<AppBindings>, input: { cycleId: string; employeeId: string; leaveTypeId: string; leaveRequestId?: string | null; entryType: string; days: number; before?: unknown; after?: unknown; reason?: string | null }) {
+  const id = crypto.randomUUID();
+  await c.env.DB
+    .prepare(
+      `INSERT INTO leave_balance_ledger_entries
+       (id, cycle_id, employee_id, leave_type_id, leave_request_id, entry_type, days, balance_before_json, balance_after_json, reason, created_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(id, input.cycleId, input.employeeId, input.leaveTypeId, input.leaveRequestId ?? null, input.entryType, input.days, input.before ? JSON.stringify(input.before) : null, input.after ? JSON.stringify(input.after) : null, input.reason ?? null, c.get("currentUser").id)
+    .run();
+  return id;
+}
+
+export async function applyLeaveBalanceChange(c: Context<AppBindings>, request: Record<string, unknown>, mode: "pending_add" | "pending_release" | "approve" | "cancel_approved") {
+  const employeeId = String(request.employee_id);
+  const leaveTypeId = String(request.leave_type_id);
+  const year = Number(String(request.start_date).slice(0, 4));
+  const requested = Number(request.requested_days ?? 0);
+  const policy = request.policy_id ? await c.env.DB.prepare("SELECT annual_entitlement_days FROM leave_policies WHERE id = ?").bind(String(request.policy_id)).first<{ annual_entitlement_days: number | null }>() : null;
+  const cycle = await getCurrentLeaveCycle(c, employeeId, leaveTypeId, year, Number(policy?.annual_entitlement_days ?? 0));
+  if (!cycle) return;
+  const before = cycleSnapshot(cycle);
+  let clause = "";
+  let params: BindValue[] = [];
+  let entryType = "ADJUSTMENT";
+  if (mode === "pending_add") {
+    clause = "pending_days = pending_days + ?";
+    params = [requested];
+    entryType = "PENDING_HOLD";
+  }
+  if (mode === "pending_release") {
+    clause = "pending_days = MAX(0, pending_days - ?)";
+    params = [requested];
+    entryType = "PENDING_RELEASE";
+  }
+  if (mode === "approve") {
+    clause = "pending_days = MAX(0, pending_days - ?), used_days = used_days + ?";
+    params = [requested, requested];
+    entryType = "USED";
+  }
+  if (mode === "cancel_approved") {
+    clause = "used_days = MAX(0, used_days - ?)";
+    params = [requested];
+    entryType = "USED_REVERSAL";
+  }
+  await c.env.DB.prepare(`UPDATE leave_balance_cycles SET ${clause}, updated_at = ? WHERE id = ?`).bind(...params, new Date().toISOString(), String(cycle.id)).run();
+  const after = await refreshLeaveBalanceCycle(c, String(cycle.id));
+  await createLeaveLedgerEntry(c, { cycleId: String(cycle.id), employeeId, leaveTypeId, leaveRequestId: String(request.id ?? ""), entryType, days: requested, before, after: cycleSnapshot(after), reason: mode });
+}
+
+export async function calculateLeavePayrollImpact(policy: Record<string, unknown> | null, requestedDays: number) {
+  return salaryEstimate(policy, requestedDays);
+}
+
+export async function getSelfServiceLeaveCycles(c: Context<AppBindings>, employeeId: string) {
+  const rows = await c.env.DB
+    .prepare(
+      `SELECT lbc.*, lt.name AS leave_type_name, lt.code AS leave_type_code
+       FROM leave_balance_cycles lbc
+       INNER JOIN leave_types lt ON lt.id = lbc.leave_type_id
+       WHERE lbc.employee_id = ?
+       ORDER BY lbc.cycle_year DESC, lt.sort_order, lt.name`
+    )
+    .bind(employeeId)
+    .all<Record<string, unknown>>();
+  const ledger = await c.env.DB
+    .prepare(
+      `SELECT lle.*, lt.name AS leave_type_name, lt.code AS leave_type_code
+       FROM leave_balance_ledger_entries lle
+       INNER JOIN leave_types lt ON lt.id = lle.leave_type_id
+       WHERE lle.employee_id = ?
+       ORDER BY lle.created_at DESC
+       LIMIT 20`
+    )
+    .bind(employeeId)
+    .all<Record<string, unknown>>();
+  return { balance_cycles: rows.results, ledger_recent: ledger.results };
+}
+
+export async function getEmployeeLeaveCycleSummary(c: Context<AppBindings>, employeeId: string) {
+  return getSelfServiceLeaveCycles(c, employeeId);
 }
 
 async function hasOverlap(c: Context<AppBindings>, employeeId: string, startDate: string, endDate: string, exceptId?: string) {
@@ -515,6 +692,11 @@ function readWorkflowBody(body: Record<string, unknown>) {
     applies_to_employment_type: employmentType && EMPLOYMENT_TYPES.has(employmentType) ? employmentType : null,
     department_id: optionalString(body.department_id),
     location_id: optionalString(body.location_id),
+    position_id: optionalString(body.position_id),
+    job_level_id: optionalString(body.job_level_id),
+    min_duration_days: num(body.min_duration_days),
+    max_duration_days: num(body.max_duration_days),
+    payroll_impact_only: bool(body.payroll_impact_only),
     is_default: bool(body.is_default),
     priority: num(body.priority, 100) ?? 100
   };
@@ -523,11 +705,14 @@ function readWorkflowBody(body: Record<string, unknown>) {
 leaveRoutes.get("/workflows", requirePermission("leave.view"), async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT w.*, lt.name AS leave_type_name, d.name AS department_name, l.name AS location_name,
+      p.title AS position_title, jl.name AS job_level_name,
       (SELECT COUNT(*) FROM leave_approval_steps s WHERE s.workflow_id = w.id) AS steps_count
      FROM leave_approval_workflows w
      LEFT JOIN leave_types lt ON lt.id = w.applies_to_leave_type_id
      LEFT JOIN departments d ON d.id = w.department_id
      LEFT JOIN locations l ON l.id = w.location_id
+     LEFT JOIN positions p ON p.id = w.position_id
+     LEFT JOIN job_levels jl ON jl.id = w.job_level_id
      ORDER BY w.is_active DESC, w.priority, w.name`
   ).all();
   return ok(c, { workflows: rows.results });
@@ -543,7 +728,7 @@ leaveRoutes.post("/workflows", requirePermission("leave.workflow.manage"), async
   const input = readWorkflowBody(await readJsonBody(c.req.raw));
   if (!input.name) return fail(c, 400, "VALIDATION_ERROR", "Workflow name is required.");
   const id = crypto.randomUUID();
-  await c.env.DB.prepare("INSERT INTO leave_approval_workflows (id, name, description, applies_to_leave_type_id, applies_to_employee_type, applies_to_employment_type, department_id, location_id, is_default, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.name, input.description, input.applies_to_leave_type_id, input.applies_to_employee_type, input.applies_to_employment_type, input.department_id, input.location_id, input.is_default ? 1 : 0, input.priority).run();
+  await c.env.DB.prepare("INSERT INTO leave_approval_workflows (id, name, description, applies_to_leave_type_id, applies_to_employee_type, applies_to_employment_type, department_id, location_id, position_id, job_level_id, min_duration_days, max_duration_days, payroll_impact_only, is_default, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.name, input.description, input.applies_to_leave_type_id, input.applies_to_employee_type, input.applies_to_employment_type, input.department_id, input.location_id, input.position_id, input.job_level_id, input.min_duration_days, input.max_duration_days, input.payroll_impact_only ? 1 : 0, input.is_default ? 1 : 0, input.priority).run();
   await auditLeave(c, { action: "leave.workflow.created", entityType: "leave_workflow", entityId: id, newValue: input });
   return ok(c, { workflow: { id, ...input, is_active: true } }, 201);
 });
@@ -554,7 +739,7 @@ leaveRoutes.patch("/workflows/:id", requirePermission("leave.workflow.manage"), 
   if (!old) return fail(c, 404, "NOT_FOUND", "Workflow was not found.");
   const input = readWorkflowBody(await readJsonBody(c.req.raw));
   if (!input.name) return fail(c, 400, "VALIDATION_ERROR", "Workflow name is required.");
-  await c.env.DB.prepare("UPDATE leave_approval_workflows SET name = ?, description = ?, applies_to_leave_type_id = ?, applies_to_employee_type = ?, applies_to_employment_type = ?, department_id = ?, location_id = ?, is_default = ?, priority = ?, updated_at = ? WHERE id = ?").bind(input.name, input.description, input.applies_to_leave_type_id, input.applies_to_employee_type, input.applies_to_employment_type, input.department_id, input.location_id, input.is_default ? 1 : 0, input.priority, new Date().toISOString(), id).run();
+  await c.env.DB.prepare("UPDATE leave_approval_workflows SET name = ?, description = ?, applies_to_leave_type_id = ?, applies_to_employee_type = ?, applies_to_employment_type = ?, department_id = ?, location_id = ?, position_id = ?, job_level_id = ?, min_duration_days = ?, max_duration_days = ?, payroll_impact_only = ?, is_default = ?, priority = ?, updated_at = ? WHERE id = ?").bind(input.name, input.description, input.applies_to_leave_type_id, input.applies_to_employee_type, input.applies_to_employment_type, input.department_id, input.location_id, input.position_id, input.job_level_id, input.min_duration_days, input.max_duration_days, input.payroll_impact_only ? 1 : 0, input.is_default ? 1 : 0, input.priority, new Date().toISOString(), id).run();
   await auditLeave(c, { action: "leave.workflow.updated", entityType: "leave_workflow", entityId: id, oldValue: old, newValue: input });
   return ok(c, { updated: true });
 });
@@ -675,8 +860,98 @@ leaveRoutes.get("/requests/:id", requirePermission("leave.view"), async (c) => {
   return ok(c, { request });
 });
 
+async function validateLeaveCalculationAccess(c: Context<AppBindings>, employeeId: string) {
+  const user = c.get("currentUser");
+  const canCreate = hasAny(c, ["leave.view", "leave.request", "leave.requests.create", "leave.manage", "leave.requests.manage", "self_service.leave_request"]);
+  if (!canCreate) return false;
+  if (has(c, "self_service.leave_request") && !hasAny(c, ["leave.view", "leave.request", "leave.requests.create", "leave.manage", "leave.requests.manage"])) {
+    const linked = await c.env.DB.prepare("SELECT id FROM employees WHERE user_id = ? AND archived_at IS NULL").bind(user.id).first<{ id: string }>();
+    return linked?.id === employeeId;
+  }
+  return canAccessEmployee(c.env.DB, user, employeeId, "leave", hasAny(c, ["leave.manage", "leave.requests.manage"]) ? "manage" : "view");
+}
+
+async function buildLeaveCalculation(c: Context<AppBindings>, body: Record<string, unknown>) {
+  const employeeId = readString(body.employee_id);
+  const leaveTypeId = readString(body.leave_type_id);
+  const startDate = readString(body.start_date);
+  const endDate = readString(body.end_date);
+  const halfDayType = readString(body.half_day_type) || "NONE";
+  if (!employeeId || !leaveTypeId || !startDate || !endDate) return { error: fail(c, 400, "VALIDATION_ERROR", "Employee, leave type, start date, and end date are required.") };
+  if (!(await validateLeaveCalculationAccess(c, employeeId))) return { error: fail(c, 404, "NOT_FOUND", "Employee was not found.") };
+  const employee = await getEmployee(c.env.DB, employeeId);
+  if (!employee) return { error: fail(c, 404, "NOT_FOUND", "Employee was not found.") };
+  const type = await c.env.DB.prepare("SELECT * FROM leave_types WHERE id = ? AND is_active = 1").bind(leaveTypeId).first<Record<string, unknown>>();
+  if (!type) return { error: fail(c, 400, "INVALID_LEAVE_TYPE", "Leave type was not found or is disabled.") };
+  const policy = await findPolicy(c.env.DB, employee, leaveTypeId);
+  const calculation = await calculateLeaveDays(c, { employeeId, startDate, endDate, halfDayType, includeWeeklyOff: Number(policy?.include_weekly_off_days ?? 0) === 1 });
+  if (!calculation) return { error: fail(c, 400, "INVALID_DATES", "Leave dates are invalid.") };
+  const document_required = documentRequired(policy, calculation.counted);
+  const payroll_impact = await calculateLeavePayrollImpact(policy, calculation.counted);
+  const cycle = await getCurrentLeaveCycle(c, employeeId, leaveTypeId, Number(startDate.slice(0, 4)), Number(policy?.annual_entitlement_days ?? 0));
+  const requestPreview = {
+    id: "preview",
+    employee_id: employeeId,
+    leave_type_id: leaveTypeId,
+    policy_id: policy?.id ?? null,
+    start_date: startDate,
+    end_date: endDate,
+    requested_days: calculation.counted,
+    salary_deduction_mode: payroll_impact.mode,
+    employee_type: employee.employee_type,
+    employment_type: employee.employment_type,
+    department_id: employee.primary_department_id,
+    position_id: employee.primary_position_id,
+    location_id: employee.primary_location_id,
+    job_level_id: employee.job_level_id,
+    reporting_manager_employee_id: employee.reporting_manager_employee_id
+  };
+  const approval_chain_preview = await getLeaveApprovalChainPreview(c, requestPreview);
+  return {
+    result: {
+      calendar_days: calculation.calendar_days,
+      chargeable_days: calculation.chargeable_days,
+      total_days: calculation.total,
+      requested_days: calculation.counted,
+      days: calculation.days,
+      balance_impact: {
+        cycle,
+        requested_days: calculation.counted,
+        projected_pending_days: Number(cycle?.pending_days ?? 0) + calculation.counted,
+        projected_closing_balance: Number(cycle?.closing_balance ?? 0) - calculation.counted
+      },
+      document_required,
+      document_requirements: { required: document_required, status: document_required ? "REQUIRED_PENDING" : "NOT_REQUIRED" },
+      payroll_impact,
+      approval_chain_preview
+    }
+  };
+}
+
+leaveRoutes.post("/calculate", async (c) => {
+  const built = await buildLeaveCalculation(c, await readJsonBody(c.req.raw));
+  if (built.error) return built.error;
+  return ok(c, built.result);
+});
+
+leaveRoutes.post("/validate-request", async (c) => {
+  const body = await readJsonBody(c.req.raw);
+  const built = await buildLeaveCalculation(c, body);
+  if (built.error) return built.error;
+  const employeeId = readString(body.employee_id);
+  const startDate = readString(body.start_date);
+  const endDate = readString(body.end_date);
+  const overlap = employeeId && startDate && endDate ? await hasOverlap(c, employeeId, startDate, endDate, optionalString(body.except_request_id) ?? undefined) : false;
+  return ok(c, {
+    ...built.result,
+    valid: !overlap,
+    blockers: overlap ? ["An active leave request already overlaps this date range."] : [],
+    warnings: (built.result?.approval_chain_preview?.steps ?? []).filter((step: Record<string, unknown>) => step.warning).map((step: Record<string, unknown>) => step.warning)
+  });
+});
+
 leaveRoutes.post("/requests", async (c) => {
-  if (!hasAny(c, ["leave.request", "leave.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to create leave requests.");
+  if (!hasAny(c, ["leave.request", "leave.requests.create", "leave.manage", "leave.requests.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to create leave requests.");
   const body = await readJsonBody(c.req.raw);
   const employeeId = readString(body.employee_id);
   const leaveTypeId = readString(body.leave_type_id);
@@ -692,11 +967,11 @@ leaveRoutes.post("/requests", async (c) => {
   if (await hasOverlap(c, employeeId, startDate, endDate)) return fail(c, 409, "OVERLAPPING_LEAVE", "An active leave request already overlaps this date range.");
   const policy = await findPolicy(c.env.DB, employee, leaveTypeId);
   if (halfDayType !== "NONE" && policy && Number(policy.allow_half_day) !== 1) return fail(c, 400, "HALF_DAY_NOT_ALLOWED", "Selected policy does not allow half-day leave.");
-  const calculated = await calculateRequestedDays(c, startDate, endDate, halfDayType, Number(policy?.include_weekly_off_days ?? 0) === 1);
+  const calculated = await calculateLeaveDays(c, { employeeId, startDate, endDate, halfDayType, includeWeeklyOff: Number(policy?.include_weekly_off_days ?? 0) === 1 });
   if (!calculated || calculated.counted <= 0) return fail(c, 400, "INVALID_DATES", "Leave dates must produce at least one counted leave day.");
   if (policy?.max_consecutive_days && calculated.counted > Number(policy.max_consecutive_days)) return fail(c, 400, "MAX_CONSECUTIVE_DAYS", "Requested leave exceeds the policy maximum consecutive days.");
   const docRequired = documentRequired(policy, calculated.counted);
-  const estimate = salaryEstimate(policy, calculated.counted);
+  const estimate = await calculateLeavePayrollImpact(policy, calculated.counted);
   const id = crypto.randomUUID();
   await c.env.DB
     .prepare(
@@ -708,14 +983,17 @@ leaveRoutes.post("/requests", async (c) => {
     )
     .bind(id, employeeId, leaveTypeId, policy?.id ?? null, startDate, endDate, calculated.total, calculated.counted, halfDayType, optionalString(body.reason), docRequired ? 1 : 0, docRequired ? "REQUIRED_PENDING" : "NOT_REQUIRED", estimate.mode, JSON.stringify(estimate), JSON.stringify({ include_public_holidays: Number(policy?.include_public_holidays ?? 0) === 1, include_weekly_off_days: Number(policy?.include_weekly_off_days ?? 0) === 1 }), c.get("currentUser").id)
     .run();
-  await generateDays(c, id, startDate, endDate, halfDayType, Number(policy?.include_weekly_off_days ?? 0) === 1);
+  await generateDays(c, id, employeeId, startDate, endDate, halfDayType, Number(policy?.include_weekly_off_days ?? 0) === 1);
   await auditLeave(c, { action: "leave.request.created", entityType: "leave_request", entityId: id, newValue: { employeeId, leaveTypeId, startDate, endDate } });
   await publishLeave(c, "leave.request.created", id, "created");
   const request = await getRequest(c.env.DB, id);
-  return ok(c, { request }, 201);
+  const approvalChain = request ? await getLeaveApprovalChainPreview(c, request) : null;
+  return ok(c, { request, approval_chain_preview: approvalChain }, 201);
 });
 
 async function findWorkflow(c: Context<AppBindings>, request: Record<string, unknown>) {
+  const duration = Number(request.requested_days ?? 0);
+  const hasPayrollImpact = String(request.salary_deduction_mode ?? "NONE") !== "NONE" && String(request.salary_deduction_mode ?? "NONE") !== "NO_DEDUCTION";
   const row = await c.env.DB
     .prepare(
       `SELECT * FROM leave_approval_workflows
@@ -725,10 +1003,15 @@ async function findWorkflow(c: Context<AppBindings>, request: Record<string, unk
          AND (applies_to_employment_type IS NULL OR applies_to_employment_type = ?)
          AND (department_id IS NULL OR department_id = ?)
          AND (location_id IS NULL OR location_id = ?)
-       ORDER BY CASE WHEN is_default = 1 THEN 1 ELSE 0 END ASC, priority ASC, created_at ASC
+         AND (position_id IS NULL OR position_id = ?)
+         AND (job_level_id IS NULL OR job_level_id = ?)
+         AND (min_duration_days IS NULL OR min_duration_days <= ?)
+         AND (max_duration_days IS NULL OR max_duration_days >= ?)
+         AND (payroll_impact_only = 0 OR ? = 1)
+       ORDER BY priority ASC, CASE WHEN is_default = 1 THEN 1 ELSE 0 END ASC, created_at ASC
        LIMIT 1`
     )
-    .bind(request.leave_type_id, request.employee_type, request.employment_type, request.department_id, request.location_id)
+    .bind(request.leave_type_id, request.employee_type, request.employment_type, request.department_id, request.location_id, request.position_id, request.job_level_id, duration, duration, hasPayrollImpact ? 1 : 0)
     .first<Record<string, unknown>>();
   if (row) return row;
   return c.env.DB.prepare("SELECT * FROM leave_approval_workflows WHERE is_active = 1 AND is_default = 1 ORDER BY priority LIMIT 1").first<Record<string, unknown>>();
@@ -759,11 +1042,88 @@ async function resolveApprover(c: Context<AppBindings>, step: Record<string, unk
     const row = await c.env.DB.prepare("SELECT u.id FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id WHERE u.status = 'ACTIVE' AND ur.role_id = ? LIMIT 1").bind(String(step.role_id)).first<{ id: string }>();
     return row?.id ?? null;
   }
+  if (type === "DEPARTMENT_HEAD" || type === "DEPARTMENT_MANAGER" || type === "DEPARTMENT_SENIOR") {
+    const manager = await c.env.DB
+      .prepare(
+        `SELECT e.user_id FROM departments d
+         LEFT JOIN employees e ON e.id = COALESCE(d.head_employee_id, d.manager_employee_id)
+         WHERE d.id = ? AND e.archived_at IS NULL`
+      )
+      .bind(String(request.department_id ?? ""))
+      .first<{ user_id: string | null }>();
+    if (manager?.user_id) return manager.user_id;
+    const row = await firstUserWithPermission(c, "leave.approve");
+    return row?.id ?? null;
+  }
+  if (type === "LOCATION_MANAGER" || type === "DIRECTOR") {
+    const manager = await c.env.DB
+      .prepare(
+        `SELECT e.user_id FROM locations l
+         LEFT JOIN employees e ON e.id = l.manager_employee_id
+         WHERE l.id = ? AND e.archived_at IS NULL`
+      )
+      .bind(String(request.location_id ?? ""))
+      .first<{ user_id: string | null }>();
+    if (manager?.user_id) return manager.user_id;
+    const row = await firstUserWithPermission(c, type === "DIRECTOR" ? "leave.manage" : "leave.approve");
+    return row?.id ?? null;
+  }
+  if (type === "HR_MANAGER") {
+    const row = await firstUserWithPermission(c, "leave.approve");
+    return row?.id ?? null;
+  }
+  if (type === "FINANCE_MANAGER") {
+    const row = await firstUserWithPermission(c, "payroll.approve");
+    return row?.id ?? null;
+  }
+  if (type === "OWNER") {
+    const row = await c.env.DB.prepare("SELECT id FROM users WHERE is_owner = 1 AND status = 'ACTIVE' ORDER BY created_at LIMIT 1").first<{ id: string }>();
+    return row?.id ?? null;
+  }
   if (type === "PERMISSION") {
     const row = await firstUserWithPermission(c, String(step.permission_key ?? "leave.approve"));
     return row?.id ?? null;
   }
   return null;
+}
+
+export async function getLeaveApprovalChainPreview(c: Context<AppBindings>, request: Record<string, unknown>) {
+  const workflow = await findWorkflow(c, request);
+  let steps: Record<string, unknown>[] = [];
+  if (workflow) {
+    steps = (await c.env.DB.prepare("SELECT s.*, r.name AS role_name, u.name AS user_name FROM leave_approval_steps s LEFT JOIN roles r ON r.id = s.role_id LEFT JOIN users u ON u.id = s.user_id WHERE s.workflow_id = ? ORDER BY s.step_order").bind(String(workflow.id)).all<Record<string, unknown>>()).results;
+  }
+  if (!steps.length) {
+    steps = [{ id: null, step_order: 1, step_name: "HR review required", approver_type: "PERMISSION", permission_key: "leave.approve", is_required: 1, skip_if_no_approver: 0, allow_self_approval: 0 }];
+  }
+  const preview = [];
+  let includesFinance = false;
+  let includesHr = false;
+  for (const step of steps) {
+    const approver = await resolveApprover(c, step, request);
+    const type = String(step.approver_type);
+    includesFinance = includesFinance || type === "FINANCE_MANAGER" || String(step.permission_key ?? "").startsWith("payroll.");
+    includesHr = includesHr || type === "HR_MANAGER" || type === "HR_ROLE" || String(step.permission_key ?? "").startsWith("leave.");
+    preview.push({
+      step_order: Number(step.step_order),
+      step_name: String(step.step_name),
+      approver_type: type,
+      approver_user_id: approver,
+      role_id: step.role_id ?? null,
+      role_name: step.role_name ?? null,
+      permission_key: step.permission_key ?? null,
+      is_required: Number(step.is_required ?? 1) === 1,
+      skip_if_no_approver: Number(step.skip_if_no_approver ?? 0) === 1,
+      allow_self_approval: Number(step.allow_self_approval ?? 0) === 1,
+      warning: approver ? null : Number(step.skip_if_no_approver ?? 0) === 1 ? "Approver not resolved; this step will be skipped." : "Approver not resolved; HR/admin action is required."
+    });
+  }
+  return {
+    matched_workflow: workflow ? { id: workflow.id, name: workflow.name, priority: workflow.priority } : null,
+    steps: preview,
+    includes_finance_approval: includesFinance,
+    includes_hr_approval: includesHr
+  };
 }
 
 async function generateTimeline(c: Context<AppBindings>, request: Record<string, unknown>) {
@@ -785,7 +1145,7 @@ async function generateTimeline(c: Context<AppBindings>, request: Record<string,
 }
 
 async function submitRequest(c: Context<AppBindings>, id: string) {
-  if (!hasAny(c, ["leave.request", "leave.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to submit leave requests.");
+  if (!hasAny(c, ["leave.request", "leave.requests.create", "leave.manage", "leave.requests.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to submit leave requests.");
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", has(c, "leave.manage") ? "manage" : "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
@@ -817,8 +1177,8 @@ async function currentApproval(c: Context<AppBindings>, requestId: string) {
 
 async function canActOnApproval(c: Context<AppBindings>, approval: Record<string, unknown>, request: Record<string, unknown>) {
   const actorId = c.get("currentUser").id;
-  if (!has(c, "leave.approve")) return false;
-  if (approval.approver_user_id && approval.approver_user_id !== actorId && !has(c, "leave.manage")) return false;
+  if (!hasAny(c, ["leave.approve", "leave.requests.approve", "leave.requests.reject"])) return false;
+  if (approval.approver_user_id && approval.approver_user_id !== actorId && !hasAny(c, ["leave.manage", "leave.requests.manage"])) return false;
   const step = approval.step_id ? await c.env.DB.prepare("SELECT allow_self_approval FROM leave_approval_steps WHERE id = ?").bind(String(approval.step_id)).first<{ allow_self_approval: number }>() : null;
   if (Number(step?.allow_self_approval ?? 0) !== 1 && request.employee_user_id === actorId) return false;
   return true;
@@ -844,7 +1204,8 @@ leaveRoutes.post("/requests/:id/approve", async (c) => {
   return ok(c, { request: await getRequest(c.env.DB, id) });
 });
 
-leaveRoutes.post("/requests/:id/reject", requirePermission("leave.approve"), async (c) => {
+leaveRoutes.post("/requests/:id/reject", async (c) => {
+  if (!hasAny(c, ["leave.approve", "leave.requests.reject"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to reject leave requests.");
   const id = routeParam(c, "id");
   const body = await readJsonBody(c.req.raw);
   const note = optionalString(body.note ?? body.reason);
@@ -864,7 +1225,7 @@ leaveRoutes.post("/requests/:id/reject", requirePermission("leave.approve"), asy
 });
 
 leaveRoutes.post("/requests/:id/cancel", async (c) => {
-  if (!hasAny(c, ["leave.cancel", "leave.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to cancel leave requests.");
+  if (!hasAny(c, ["leave.cancel", "leave.requests.cancel", "leave.manage", "leave.requests.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to cancel leave requests.");
   const id = routeParam(c, "id");
   const body = await readJsonBody(c.req.raw);
   const reason = optionalString(body.reason);
@@ -882,7 +1243,7 @@ leaveRoutes.post("/requests/:id/cancel", async (c) => {
 });
 
 leaveRoutes.patch("/requests/:id", async (c) => {
-  if (!hasAny(c, ["leave.request", "leave.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to update leave requests.");
+  if (!hasAny(c, ["leave.request", "leave.requests.create", "leave.manage", "leave.requests.manage"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to update leave requests.");
   const id = routeParam(c, "id");
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
@@ -1028,7 +1389,8 @@ employeeLeaveRoutes.get("/:employeeId/leave/balances", requirePermission("employ
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const year = Number(c.req.query("period_year") ?? new Date().getUTCFullYear());
   const rows = await c.env.DB.prepare("SELECT lb.*, lt.name AS leave_type_name, lt.code AS leave_type_code FROM leave_balances lb INNER JOIN leave_types lt ON lt.id = lb.leave_type_id WHERE lb.employee_id = ? AND lb.period_year = ? ORDER BY lt.sort_order, lt.name").bind(employeeId, year).all();
-  return ok(c, { balances: rows.results });
+  const cycles = await getEmployeeLeaveCycleSummary(c, employeeId);
+  return ok(c, { balances: rows.results, balance_cycles: cycles.balance_cycles, ledger_recent: cycles.ledger_recent });
 });
 
 employeeLeaveRoutes.get("/:employeeId/leave/calendar", requirePermission("employees.leave.view"), async (c) => {
@@ -1045,5 +1407,6 @@ employeeLeaveRoutes.get("/:employeeId/leave/summary", requirePermission("employe
     c.env.DB.prepare("SELECT lb.*, lt.name AS leave_type_name, lt.code AS leave_type_code FROM leave_balances lb INNER JOIN leave_types lt ON lt.id = lb.leave_type_id WHERE lb.employee_id = ? ORDER BY lb.period_year DESC, lt.sort_order").bind(employeeId).all(),
     c.env.DB.prepare("SELECT lrd.*, lr.status, lt.name AS leave_type_name FROM leave_request_days lrd INNER JOIN leave_requests lr ON lr.id = lrd.leave_request_id INNER JOIN leave_types lt ON lt.id = lr.leave_type_id WHERE lr.employee_id = ? AND lr.status IN ('PENDING_APPROVAL','APPROVED') ORDER BY lrd.leave_date").bind(employeeId).all()
   ]);
-  return ok(c, { requests, balances: balances.results, calendar: calendar.results });
+  const cycles = await getEmployeeLeaveCycleSummary(c, employeeId);
+  return ok(c, { requests, balances: balances.results, balance_cycles: cycles.balance_cycles, ledger_recent: cycles.ledger_recent, calendar: calendar.results });
 });

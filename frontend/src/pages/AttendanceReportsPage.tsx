@@ -23,6 +23,7 @@ export function AttendanceReportsPage() {
   const [locationId, setLocationId] = useState("");
   const [dateFrom, setDateFrom] = useState(new Date().toISOString().slice(0, 10));
   const [dateTo, setDateTo] = useState(new Date().toISOString().slice(0, 10));
+  const [attendanceDisabled, setAttendanceDisabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +34,7 @@ export function AttendanceReportsPage() {
     setLoading(true);
     setError(null);
     try {
+      setAttendanceDisabled(false);
       const [reportResult, departmentResult, locationResult] = await Promise.all([
         api.getAttendanceReports(token, filters),
         api.listDepartments(token),
@@ -42,6 +44,11 @@ export function AttendanceReportsPage() {
       setDepartments(departmentResult.departments);
       setLocations(locationResult.locations);
     } catch (err) {
+      if (err instanceof ApiError && err.code === "ATTENDANCE_MODULE_DISABLED") {
+        setAttendanceDisabled(true);
+        setReports([]);
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Unable to load attendance reports.");
     } finally {
       setLoading(false);
@@ -68,6 +75,7 @@ export function AttendanceReportsPage() {
   }
 
   if (!canView) return <Panel><EmptyState title="Attendance reports unavailable" description="Your account needs attendance.reports.view permission." /></Panel>;
+  if (attendanceDisabled) return <div className="space-y-4"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="text-lg font-semibold">Attendance Reports</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /></div><Panel><EmptyState title="Attendance module is disabled." description="Attendance report data and exports are hidden until an administrator enables the module." /></Panel></div>;
 
   return (
     <div className="space-y-4">

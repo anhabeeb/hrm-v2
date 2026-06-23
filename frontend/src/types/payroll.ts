@@ -1,7 +1,7 @@
-export type PayrollComponentType = "EARNING" | "DEDUCTION";
-export type PayrollCalculationType = "FIXED" | "VARIABLE" | "PERCENTAGE";
-export type PayrollPeriodStatus = "OPEN" | "PROCESSING" | "REVIEW" | "APPROVED" | "PAID" | "CLOSED" | "CANCELLED";
-export type PayrollRunStatus = "DRAFT" | "PROCESSING" | "REVIEW" | "APPROVED" | "PAID" | "CANCELLED";
+export type PayrollComponentType = "EARNING" | "DEDUCTION" | "BASIC_SALARY" | "ALLOWANCE" | "FIXED_DEDUCTION" | "VARIABLE_DEDUCTION" | "ATTENDANCE_DEDUCTION" | "LEAVE_DEDUCTION" | "ADVANCE_DEDUCTION" | "ONE_TIME_DEDUCTION" | "OVERTIME_PLACEHOLDER" | "BENEFIT_PLACEHOLDER" | "ADJUSTMENT";
+export type PayrollCalculationType = "FIXED" | "VARIABLE" | "PERCENTAGE" | "FIXED_AMOUNT" | "PERCENTAGE_OF_BASIC" | "PERCENTAGE_OF_GROSS" | "DAILY_RATE" | "HOURLY_RATE" | "FORMULA_PLACEHOLDER" | "MANUAL";
+export type PayrollPeriodStatus = "DRAFT" | "CALCULATING" | "READY_FOR_REVIEW" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "LOCKED" | "CANCELLED" | "OPEN" | "PROCESSING" | "REVIEW" | "APPROVED" | "PAID" | "CLOSED";
+export type PayrollRunStatus = "DRAFT" | "CALCULATING" | "READY_FOR_REVIEW" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "LOCKED" | "CANCELLED" | "PROCESSING" | "REVIEW" | "APPROVED" | "PAID";
 export type PayrollAdvanceStatus = "REQUESTED" | "APPROVED" | "PAID" | "DEDUCTED" | "CANCELLED";
 
 export interface PayrollComponent {
@@ -125,7 +125,7 @@ export interface PayrollRunEmployee {
   missed_punch_days: number | null;
   missed_date_ranges_json: string | null;
   calculation_json?: string | null;
-  status: "DRAFT" | "REVIEW" | "APPROVED" | "PAID" | "HELD" | "EXCLUDED";
+  status: "DRAFT" | "READY_FOR_REVIEW" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "HELD" | "EXCLUDED" | "CANCELLED" | "REVIEW" | "APPROVED" | "PAID";
   hold_reason: string | null;
   created_at: string;
   updated_at: string;
@@ -193,7 +193,7 @@ export interface PayrollAdjustment {
   adjustment_type: PayrollComponentType;
   amount: number;
   reason: string;
-  status: "DRAFT" | "APPROVED" | "APPLIED" | "CANCELLED";
+  status: "DRAFT" | "APPROVED_PLACEHOLDER" | "APPROVED" | "APPLIED" | "CANCELLED";
   approved_at: string | null;
   created_at: string;
   updated_at: string;

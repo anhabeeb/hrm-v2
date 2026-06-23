@@ -15,18 +15,27 @@ function money(value: number | null | undefined) {
   return Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function normalizeResultStatus(status: string) {
+  if (status === "REVIEW") return "READY_FOR_REVIEW";
+  if (status === "APPROVED") return "APPROVED_PLACEHOLDER";
+  if (status === "PAID") return "FINALIZED_PLACEHOLDER";
+  return status;
+}
+
 export function PayrollRunDetailPage() {
   const { id } = useParams();
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
-  const canView = permissions.has("payroll.view");
-  const canManage = permissions.has("payroll.manage");
+  const canView = permissions.has("payroll.results.view") || permissions.has("payroll.runs.view") || permissions.has("payroll.view");
+  const canManage = permissions.has("payroll.results.update") || permissions.has("payroll.runs.manage") || permissions.has("payroll.manage");
   const [run, setRun] = useState<PayrollRun | null>(null);
   const [employees, setEmployees] = useState<PayrollRunEmployee[]>([]);
   const [lines, setLines] = useState<PayrollRunLine[] | null>(null);
   const [selected, setSelected] = useState<PayrollRunEmployee | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [holdModal, setHoldModal] = useState<{ employee: PayrollRunEmployee; action: "hold" | "release" } | null>(null);
+  const [holdReason, setHoldReason] = useState("");
 
   async function load() {
     if (!token || !canView || !id) return;
@@ -58,16 +67,17 @@ export function PayrollRunDetailPage() {
     }
   }
 
-  async function holdAction(employee: PayrollRunEmployee, action: "hold" | "release") {
-    if (!token || !id) return;
+  async function confirmHoldAction() {
+    if (!token || !id || !holdModal) return;
+    if (holdModal.action === "hold" && !holdReason.trim()) {
+      setError("Hold reason is required.");
+      return;
+    }
     try {
-      if (action === "hold") {
-        const reason = window.prompt("Reason for holding this payroll row");
-        if (!reason) return;
-        await api.holdPayrollRunEmployee(token, id, employee.id, reason);
-      } else if (window.confirm("Release this payroll hold?")) {
-        await api.releasePayrollRunEmployee(token, id, employee.id);
-      }
+      if (holdModal.action === "hold") await api.holdPayrollRunEmployee(token, id, holdModal.employee.id, holdReason.trim());
+      if (holdModal.action === "release") await api.releasePayrollRunEmployee(token, id, holdModal.employee.id);
+      setHoldModal(null);
+      setHoldReason("");
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to update payroll row.");
@@ -88,12 +98,31 @@ export function PayrollRunDetailPage() {
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Employee No</TableHead><TableHead>Name</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Basic</TableHead><TableHead>Days</TableHead><TableHead>Scheduled</TableHead><TableHead>Worked</TableHead><TableHead>Absent</TableHead><TableHead>Leave</TableHead><TableHead>Unpaid leave</TableHead><TableHead>Late</TableHead><TableHead>Missed punch</TableHead><TableHead>Missed ranges</TableHead><TableHead>Earnings</TableHead><TableHead>Deductions</TableHead><TableHead>Advance</TableHead><TableHead>Attendance</TableHead><TableHead>Leave deduct.</TableHead><TableHead>Net</TableHead><TableHead>Status</TableHead><TableHead className="sticky right-0 bg-white text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{employees.map((employee) => <TableRow key={employee.id}><TableCell className="font-mono text-xs">{employee.employee_no_snapshot ?? "-"}</TableCell><TableCell className="font-medium">{employee.employee_name_snapshot}</TableCell><TableCell>{employee.department_name ?? "-"}</TableCell><TableCell>{employee.location_name ?? "-"}</TableCell><TableCell>{money(employee.basic_salary)}</TableCell><TableCell>{employee.days_in_period}</TableCell><TableCell>{employee.scheduled_work_days ?? "-"}</TableCell><TableCell>{employee.days_worked ?? "-"}</TableCell><TableCell>{employee.absent_days ?? 0}</TableCell><TableCell>{employee.leave_days ?? 0}</TableCell><TableCell>{employee.unpaid_leave_days ?? 0}</TableCell><TableCell>{employee.late_days ?? 0}</TableCell><TableCell>{employee.missed_punch_days ?? 0}</TableCell><TableCell className="max-w-[220px] truncate">{employee.missed_date_ranges_json ?? "-"}</TableCell><TableCell>{money(employee.total_earnings)}</TableCell><TableCell>{money(employee.total_deductions)}</TableCell><TableCell>{money(employee.advance_deductions)}</TableCell><TableCell>{money(employee.attendance_deductions)}</TableCell><TableCell>{money(employee.leave_deductions)}</TableCell><TableCell className="font-semibold">{money(employee.net_salary)}</TableCell><TableCell><Badge tone={employee.status === "PAID" ? "success" : employee.status === "HELD" ? "warning" : "neutral"}>{employee.status}</Badge></TableCell><TableCell className="sticky right-0 bg-white"><div className="flex justify-end gap-1"><Button title="View lines" variant="ghost" size="icon" onClick={() => void showLines(employee)}><Eye className="h-4 w-4" /></Button><Link to={`/employees/${employee.employee_id}`}><Button title="Open Employee 360" variant="ghost" size="icon"><UserRound className="h-4 w-4" /></Button></Link>{canManage && employee.status !== "HELD" ? <Button title="Hold row" variant="ghost" size="icon" onClick={() => void holdAction(employee, "hold")}><PauseCircle className="h-4 w-4" /></Button> : null}{canManage && employee.status === "HELD" ? <Button title="Release hold" variant="ghost" size="icon" onClick={() => void holdAction(employee, "release")}><PlayCircle className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
+            <TableBody>{employees.map((employee) => {
+              const displayStatus = normalizeResultStatus(employee.status);
+              return <TableRow key={employee.id}><TableCell className="font-mono text-xs">{employee.employee_no_snapshot ?? "-"}</TableCell><TableCell className="font-medium">{employee.employee_name_snapshot}</TableCell><TableCell>{employee.department_name ?? "-"}</TableCell><TableCell>{employee.location_name ?? "-"}</TableCell><TableCell>{money(employee.basic_salary)}</TableCell><TableCell>{employee.days_in_period}</TableCell><TableCell>{employee.scheduled_work_days ?? "-"}</TableCell><TableCell>{employee.days_worked ?? "-"}</TableCell><TableCell>{employee.absent_days ?? 0}</TableCell><TableCell>{employee.leave_days ?? 0}</TableCell><TableCell>{employee.unpaid_leave_days ?? 0}</TableCell><TableCell>{employee.late_days ?? 0}</TableCell><TableCell>{employee.missed_punch_days ?? 0}</TableCell><TableCell className="max-w-[220px] truncate">{employee.missed_date_ranges_json ?? "-"}</TableCell><TableCell>{money(employee.total_earnings)}</TableCell><TableCell>{money(employee.total_deductions)}</TableCell><TableCell>{money(employee.advance_deductions)}</TableCell><TableCell>{money(employee.attendance_deductions)}</TableCell><TableCell>{money(employee.leave_deductions)}</TableCell><TableCell className="font-semibold">{money(employee.net_salary)}</TableCell><TableCell><Badge tone={displayStatus === "FINALIZED_PLACEHOLDER" ? "success" : displayStatus === "HELD" ? "warning" : "neutral"}>{displayStatus}</Badge></TableCell><TableCell className="sticky right-0 bg-white"><div className="flex justify-end gap-1"><Button title="View lines" variant="ghost" size="icon" onClick={() => void showLines(employee)}><Eye className="h-4 w-4" /></Button><Link to={`/employees/${employee.employee_id}`}><Button title="Open Employee 360" variant="ghost" size="icon"><UserRound className="h-4 w-4" /></Button></Link>{canManage && displayStatus !== "HELD" ? <Button title="Hold row" variant="ghost" size="icon" onClick={() => setHoldModal({ employee, action: "hold" })}><PauseCircle className="h-4 w-4" /></Button> : null}{canManage && displayStatus === "HELD" ? <Button title="Release hold" variant="ghost" size="icon" onClick={() => setHoldModal({ employee, action: "release" })}><PlayCircle className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
+            })}</TableBody>
           </Table>
         </div>
         {loading ? <EmptyState title="Loading payroll review rows" description="Fetching payroll run employees." /> : employees.length === 0 ? <EmptyState title="No employee rows" description="Recalculate or generate the run to create employee snapshots." /> : null}
       </Panel>
       {selected ? <LinesModal employee={selected} lines={lines} onClose={() => { setSelected(null); setLines(null); }} /> : null}
+      {holdModal ? <HoldModal modal={holdModal} reason={holdReason} onReason={setHoldReason} onClose={() => { setHoldModal(null); setHoldReason(""); }} onConfirm={() => void confirmHoldAction()} /> : null}
+    </div>
+  );
+}
+
+function HoldModal({ modal, reason, onReason, onClose, onConfirm }: { modal: { employee: PayrollRunEmployee; action: "hold" | "release" }; reason: string; onReason: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+      <div className="w-full max-w-md rounded-lg border bg-white shadow-xl">
+        <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">{modal.action === "hold" ? "Hold payroll row" : "Release payroll hold"}</h2><p className="text-xs text-muted-foreground">{modal.employee.employee_name_snapshot}</p></div>
+        <div className="space-y-3 p-4">
+          <p className="text-sm text-slate-700">{modal.action === "hold" ? "Enter the reason for holding this payroll result." : "Release this held payroll result back to READY_FOR_REVIEW."}</p>
+          {modal.action === "hold" ? <input className="h-9 w-full rounded-md border px-3 text-sm" value={reason} onChange={(event) => onReason(event.target.value)} placeholder="Hold reason" /> : null}
+        </div>
+        <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={onConfirm}>Confirm</Button></div>
+      </div>
     </div>
   );
 }

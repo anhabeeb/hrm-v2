@@ -7,7 +7,7 @@ import type { RosterAssignment, RosterAssignmentStatus, ShiftTemplate } from "..
 
 type AssignmentForm = Pick<RosterAssignment, "shift_template_id" | "custom_start_time" | "custom_end_time" | "break_minutes" | "status" | "notes"> & { reason?: string };
 
-const statuses: RosterAssignmentStatus[] = ["SCHEDULED", "OFF", "LEAVE", "ABSENT_PLACEHOLDER", "UNASSIGNED"];
+const statuses: RosterAssignmentStatus[] = ["UNASSIGNED", "DRAFT", "PUBLISHED", "CHANGED_AFTER_PUBLISH", "SCHEDULED", "DAY_OFF", "OFF", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "PUBLIC_HOLIDAY", "CONFLICT", "CANCELLED", "ABSENT_PLACEHOLDER"];
 
 export function RosterAssignmentModal({
   title,
@@ -61,7 +61,7 @@ export function RosterAssignmentModal({
             </select>
           </Field>
           <Field label="Shift template">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.shift_template_id ?? ""} onChange={(event) => setForm({ ...form, shift_template_id: event.target.value || null, status: event.target.value ? "SCHEDULED" : form.status })}>
+            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.shift_template_id ?? ""} onChange={(event) => setForm({ ...form, shift_template_id: event.target.value || null, status: event.target.value ? "DRAFT" : form.status })}>
               <option value="">No template</option>
               {shiftTemplates.map((template) => <option key={template.id} value={template.id}>{template.code} - {template.name}</option>)}
             </select>

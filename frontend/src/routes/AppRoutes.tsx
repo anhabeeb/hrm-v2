@@ -34,7 +34,6 @@ import {
   PayrollAdvancesPage,
   PayrollComponentsPage,
   PayrollDeductionsPage,
-  PayrollFinalSettlementsPage,
   PayrollReportsPage,
   PayrollSettingsPage
 } from "../pages/PayrollAdminPages";
@@ -127,7 +126,6 @@ export function AppRoutes() {
           <Route path="payroll/components" element={<PayrollComponentsPage />} />
           <Route path="payroll/settings" element={<PayrollSettingsPage />} />
           <Route path="payroll/reports" element={<PayrollReportsPage />} />
-          <Route path="payroll/final-settlements" element={<PayrollFinalSettlementsPage />} />
           <Route path="roster" element={<RosterWeeklyPage />} />
           <Route path="roster/weekly" element={<RosterWeeklyPage />} />
           <Route path="roster/shift-templates" element={<RosterShiftTemplatesPage />} />
@@ -149,6 +147,7 @@ export function AppRoutes() {
           <Route path="self-service/documents" element={<SelfServicePage mode="documents" />} />
           <Route path="self-service/attendance" element={<SelfServicePage mode="attendance" />} />
           <Route path="self-service/leave" element={<SelfServicePage mode="leave" />} />
+          <Route path="self-service/roster" element={<SelfServicePage mode="roster" />} />
           <Route path="self-service/payroll" element={<SelfServicePage mode="payroll" />} />
           <Route path="self-service/assets" element={<SelfServicePage mode="assets" />} />
           <Route path="self-service/kyc-requests" element={<SelfServicePage mode="kyc" />} />

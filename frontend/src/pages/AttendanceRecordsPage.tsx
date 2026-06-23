@@ -1,6 +1,7 @@
 import { Edit, FileClock, Plus, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceCorrectionModal } from "../components/attendance/AttendanceCorrectionModal";
+import { AttendanceManualLogModal } from "../components/attendance/AttendanceManualLogModal";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { AttendanceRecordModal } from "../components/attendance/AttendanceRecordModal";
 import { Badge } from "../components/ui/badge";
@@ -11,7 +12,7 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
-import type { AttendanceRawLog, AttendanceRecord } from "../types/attendance";
+import type { AttendanceLog, AttendanceRawLog, AttendanceRecord } from "../types/attendance";
 import type { Employee } from "../types/employees";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
 
@@ -29,8 +30,10 @@ export function AttendanceRecordsPage() {
   const canManage = permissions.has("attendance.manage");
   const canCorrect = permissions.has("attendance.correct") || permissions.has("attendance.manage");
   const canDevices = permissions.has("attendance.devices.manage");
+  const canManageLogs = permissions.has("attendance.logs.manage") || permissions.has("attendance.manual_entries.manage") || permissions.has("attendance.manage");
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [rawLogs, setRawLogs] = useState<AttendanceRawLog[]>([]);
+  const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
   const [positions, setPositions] = useState<OrganizationPosition[]>([]);
@@ -48,8 +51,10 @@ export function AttendanceRecordsPage() {
   const [earlyCheckoutOnly, setEarlyCheckoutOnly] = useState(false);
   const [payrollImpact, setPayrollImpact] = useState(false);
   const [editing, setEditing] = useState<AttendanceRecord | null | undefined>(undefined);
+  const [editingLog, setEditingLog] = useState<AttendanceLog | null | undefined>(undefined);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [rawImportOpen, setRawImportOpen] = useState(false);
+  const [attendanceDisabled, setAttendanceDisabled] = useState(false);
   const [rawJson, setRawJson] = useState("[\n  {\n    \"external_employee_code\": \"EMP001\",\n    \"punch_time\": \"2026-06-20T09:00:00\",\n    \"punch_type\": \"IN\"\n  }\n]");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +86,7 @@ export function AttendanceRecordsPage() {
     setLoading(true);
     setError(null);
     try {
+      setAttendanceDisabled(false);
       const [recordResult, logResult, employeeResult, departmentResult, positionResult, locationResult] = await Promise.all([
         api.listAttendanceRecords(token, filters),
         api.listAttendanceRawLogs(token, rawLogFilters),
@@ -89,13 +95,22 @@ export function AttendanceRecordsPage() {
         api.listPositions(token),
         api.listLocations(token)
       ]);
+      const attendanceLogs = await api.listAttendanceLogs(token, { ...rawLogFilters, log_from: dateFrom ? `${dateFrom}T00:00:00` : "", log_to: dateTo ? `${dateTo}T23:59:59` : "" });
       setRecords(recordResult.records);
       setRawLogs(logResult.logs);
+      setLogs(attendanceLogs.logs);
       setEmployees(employeeResult.employees);
       setDepartments(departmentResult.departments);
       setPositions(positionResult.positions);
       setLocations(locationResult.locations);
     } catch (err) {
+      if (err instanceof ApiError && err.code === "ATTENDANCE_MODULE_DISABLED") {
+        setAttendanceDisabled(true);
+        setRecords([]);
+        setRawLogs([]);
+        setLogs([]);
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Unable to load attendance records.");
     } finally {
       setLoading(false);
@@ -129,6 +144,7 @@ export function AttendanceRecordsPage() {
   }
 
   if (!canView) return <Panel><EmptyState title="Attendance unavailable" description="Your account needs attendance.view permission." /></Panel>;
+  if (attendanceDisabled) return <div className="space-y-4"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="text-lg font-semibold">Attendance Records</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /></div><Panel><EmptyState title="Attendance module is disabled." description="Attendance records and manual actions are hidden until an administrator enables the module in Attendance Settings." /></Panel></div>;
 
   return (
     <div className="space-y-4">
@@ -139,6 +155,7 @@ export function AttendanceRecordsPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <AttendanceNav />
+          {canManageLogs ? <Button variant="outline" size="sm" onClick={() => setEditingLog(null)}><Plus className="h-4 w-4" /> Manual log</Button> : null}
           {canDevices ? <Button variant="outline" size="sm" onClick={() => setRawImportOpen(true)}><FileClock className="h-4 w-4" /> Import raw logs</Button> : null}
           {canCorrect ? <Button variant="outline" size="sm" onClick={() => setCorrectionOpen(true)}>Request correction</Button> : null}
           {canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Manual record</Button> : null}
@@ -148,7 +165,7 @@ export function AttendanceRecordsPage() {
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-8">
           <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee or number" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["PRESENT", "ABSENT", "LEAVE", "SICK", "LATE", "HALF_DAY", "OFF_DAY", "HOLIDAY", "PENDING_CORRECTION"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
+          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
           <select className="h-9 rounded-md border bg-white px-3 text-sm" value={source} onChange={(event) => setSource(event.target.value)}><option value="">All sources</option>{["DEVICE", "MANUAL", "CORRECTION", "LEAVE", "ROSTER", "SYSTEM"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
           <select className="h-9 rounded-md border bg-white px-3 text-sm" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>
           <select className="h-9 rounded-md border bg-white px-3 text-sm" value={positionId} onChange={(event) => setPositionId(event.target.value)}><option value="">All positions</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</select>
@@ -182,7 +199,17 @@ export function AttendanceRecordsPage() {
         {loading ? <EmptyState title="Loading attendance records" description="Fetching attendance data." /> : records.length === 0 ? <EmptyState title="No attendance records found" description="Create records, import raw logs, or adjust filters." /> : null}
       </Panel>
       <Panel className="overflow-hidden">
-        <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">Recent Raw Logs</h2></div>
+        <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">Recent Attendance Logs</h2></div>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Log time</TableHead><TableHead>Type</TableHead><TableHead>Source</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableBody>{logs.slice(0, 12).map((log) => <TableRow key={log.id}><TableCell>{log.employee_name ?? log.external_employee_code ?? "-"}</TableCell><TableCell>{new Date(log.log_time).toLocaleString()}</TableCell><TableCell>{log.log_type}</TableCell><TableCell>{log.source}</TableCell><TableCell className="max-w-64 truncate">{log.notes ?? "-"}</TableCell><TableCell><div className="flex justify-end">{canManageLogs ? <Button title="Edit log" variant="ghost" size="icon" onClick={() => setEditingLog(log)}><Edit className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
+          </Table>
+        </div>
+        {!loading && logs.length === 0 ? <EmptyState title="No attendance logs found" description="Manual and device-normalized logs will appear here." /> : null}
+      </Panel>
+      <Panel className="overflow-hidden">
+        <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">Recent Raw Device Logs</h2></div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Device</TableHead><TableHead>Punch time</TableHead><TableHead>Type</TableHead><TableHead>Source</TableHead><TableHead>Imported</TableHead></TableRow></TableHeader>
@@ -192,6 +219,7 @@ export function AttendanceRecordsPage() {
         {!loading && rawLogs.length === 0 ? <EmptyState title="No raw logs found" description="Raw device and import logs will appear here." /> : null}
       </Panel>
       {editing !== undefined && token ? <AttendanceRecordModal token={token} employees={employees} record={editing} onClose={() => setEditing(undefined)} onSaved={load} /> : null}
+      {editingLog !== undefined && token ? <AttendanceManualLogModal token={token} employees={employees} log={editingLog} onClose={() => setEditingLog(undefined)} onSaved={load} /> : null}
       {correctionOpen && token ? <AttendanceCorrectionModal token={token} employees={employees} onClose={() => setCorrectionOpen(false)} onSaved={load} /> : null}
       {rawImportOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">

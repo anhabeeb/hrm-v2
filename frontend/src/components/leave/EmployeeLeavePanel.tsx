@@ -6,6 +6,7 @@ import type { LeaveBalance, LeaveDay, LeaveRequest, LeaveType } from "../../type
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
+import { Input } from "../ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { LeaveRequestDetailModal } from "./LeaveRequestDetailModal";
 import { LeaveRequestModal } from "./LeaveRequestModal";
@@ -24,6 +25,8 @@ export function EmployeeLeavePanel({ token, employee, permissions }: { token: st
   const [types, setTypes] = useState<LeaveType[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [detailRequest, setDetailRequest] = useState<LeaveRequest | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<LeaveRequest | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const canCreate = permissions.has("leave.request") || permissions.has("leave.manage");
   const canCancel = permissions.has("leave.cancel") || permissions.has("leave.manage");
@@ -33,7 +36,7 @@ export function EmployeeLeavePanel({ token, employee, permissions }: { token: st
     try {
       const [summary, typeResult] = await Promise.all([api.getEmployeeLeaveSummary(token, employee.id), api.listLeaveTypes(token)]);
       setRequests(summary.requests);
-      setBalances(summary.balances);
+      setBalances(summary.balance_cycles ?? summary.balances);
       setCalendar(summary.calendar);
       setTypes(typeResult.leave_types);
     } catch (err) {
@@ -54,11 +57,11 @@ export function EmployeeLeavePanel({ token, employee, permissions }: { token: st
     }
   }
 
-  async function cancel(request: LeaveRequest) {
-    const reason = window.prompt("Cancellation reason");
-    if (!reason) return;
+  async function cancel(request: LeaveRequest, reason: string) {
     try {
       await api.cancelLeaveRequest(token, request.id, reason);
+      setCancelTarget(null);
+      setCancelReason("");
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to cancel leave request.");
@@ -74,15 +77,15 @@ export function EmployeeLeavePanel({ token, employee, permissions }: { token: st
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <div className="overflow-x-auto rounded-md border">
         <Table>
-          <TableHeader><TableRow><TableHead>Leave type</TableHead><TableHead>Year</TableHead><TableHead>Opening</TableHead><TableHead>Accrued</TableHead><TableHead>Used</TableHead><TableHead>Pending</TableHead><TableHead>Carry forward</TableHead><TableHead>Expired</TableHead><TableHead>Closing</TableHead></TableRow></TableHeader>
-          <TableBody>{balances.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.leave_type_name}</TableCell><TableCell>{row.period_year}</TableCell><TableCell>{row.opening_balance}</TableCell><TableCell>{row.accrued_days}</TableCell><TableCell>{row.used_days}</TableCell><TableCell>{row.pending_days}</TableCell><TableCell>{row.carried_forward_days}</TableCell><TableCell>{row.expired_days}</TableCell><TableCell>{row.closing_balance}</TableCell></TableRow>)}</TableBody>
+          <TableHeader><TableRow><TableHead>Leave type</TableHead><TableHead>Cycle</TableHead><TableHead>Opening</TableHead><TableHead>Accrued</TableHead><TableHead>Used</TableHead><TableHead>Pending</TableHead><TableHead>Carry forward</TableHead><TableHead>Expired</TableHead><TableHead>Closing</TableHead></TableRow></TableHeader>
+          <TableBody>{balances.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.leave_type_name}</TableCell><TableCell>{"cycle_year" in row ? (row as unknown as { cycle_year?: number }).cycle_year : row.period_year}</TableCell><TableCell>{row.opening_balance}</TableCell><TableCell>{row.accrued_days}</TableCell><TableCell>{row.used_days}</TableCell><TableCell>{row.pending_days}</TableCell><TableCell>{row.carried_forward_days}</TableCell><TableCell>{row.expired_days}</TableCell><TableCell>{row.closing_balance}</TableCell></TableRow>)}</TableBody>
         </Table>
         {balances.length === 0 ? <EmptyState title="No balance rows yet" description="Balances are created lazily when leave is requested." /> : null}
       </div>
       <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Dates</TableHead><TableHead>Days</TableHead><TableHead>Status</TableHead><TableHead>Document</TableHead><TableHead>Deduction</TableHead><TableHead>Current step</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-          <TableBody>{requests.map((request) => <TableRow key={request.id}><TableCell>{request.leave_type_name}</TableCell><TableCell>{request.start_date} to {request.end_date}</TableCell><TableCell>{request.requested_days}</TableCell><TableCell><Badge tone={tone(request.status)}>{request.status}</Badge></TableCell><TableCell>{request.document_status}</TableCell><TableCell>{request.salary_deduction_mode ?? "NONE"}</TableCell><TableCell>{request.current_approval_step ?? "-"}</TableCell><TableCell>{request.reason ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" onClick={() => setDetailRequest(request)}><Eye className="h-4 w-4" /></Button>{request.status === "DRAFT" && canCreate ? <Button variant="ghost" size="icon" onClick={() => void submit(request)}><RotateCcw className="h-4 w-4" /></Button> : null}{request.status !== "CANCELLED" && request.status !== "REJECTED" && canCancel ? <Button variant="ghost" size="icon" onClick={() => void cancel(request)}><X className="h-4 w-4 text-red-600" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
+          <TableBody>{requests.map((request) => <TableRow key={request.id}><TableCell>{request.leave_type_name}</TableCell><TableCell>{request.start_date} to {request.end_date}</TableCell><TableCell>{request.requested_days}</TableCell><TableCell><Badge tone={tone(request.status)}>{request.status}</Badge></TableCell><TableCell>{request.document_status}</TableCell><TableCell>{request.salary_deduction_mode ?? "NONE"}</TableCell><TableCell>{request.current_approval_step ?? "-"}</TableCell><TableCell>{request.reason ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" onClick={() => setDetailRequest(request)}><Eye className="h-4 w-4" /></Button>{request.status === "DRAFT" && canCreate ? <Button variant="ghost" size="icon" onClick={() => void submit(request)}><RotateCcw className="h-4 w-4" /></Button> : null}{request.status !== "CANCELLED" && request.status !== "REJECTED" && canCancel ? <Button variant="ghost" size="icon" onClick={() => setCancelTarget(request)}><X className="h-4 w-4 text-red-600" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
         </Table>
         {requests.length === 0 ? <EmptyState title="No leave requests" description="Leave request history will appear here." /> : null}
       </div>
@@ -90,6 +93,19 @@ export function EmployeeLeavePanel({ token, employee, permissions }: { token: st
         <Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Type</TableHead><TableHead>Day type</TableHead><TableHead>Counted</TableHead><TableHead>Status</TableHead><TableHead>Payroll impact</TableHead></TableRow></TableHeader><TableBody>{calendar.slice(0, 20).map((day) => <TableRow key={day.id}><TableCell>{day.leave_date}</TableCell><TableCell>{day.leave_type_name}</TableCell><TableCell>{day.day_type}</TableCell><TableCell>{day.counted_as_leave ? "Yes" : "No"}</TableCell><TableCell>{day.status}</TableCell><TableCell className="text-xs text-muted-foreground">{day.payroll_impact_json ?? "-"}</TableCell></TableRow>)}</TableBody></Table>{calendar.length === 0 ? <EmptyState title="No leave calendar rows" description="Approved and pending leave days will appear here." /> : null}</div>
       {modalOpen ? <LeaveRequestModal token={token} employees={[employee]} leaveTypes={types} employeeId={employee.id} onClose={() => setModalOpen(false)} onSaved={async (request) => { await load(); if (request.document_required) setDetailRequest(request); }} /> : null}
       {detailRequest ? <LeaveRequestDetailModal token={token} request={detailRequest} permissions={permissions} onClose={() => setDetailRequest(null)} onChanged={load} /> : null}
+      {cancelTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-md border bg-white p-4 shadow-lg">
+            <h3 className="text-sm font-semibold">Cancel leave request</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{cancelTarget.leave_type_name} from {cancelTarget.start_date} to {cancelTarget.end_date}</p>
+            <Input className="mt-3" placeholder="Cancellation reason" value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setCancelTarget(null); setCancelReason(""); }}>Close</Button>
+              <Button disabled={!cancelReason.trim()} onClick={() => void cancel(cancelTarget, cancelReason.trim())}>Cancel leave</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

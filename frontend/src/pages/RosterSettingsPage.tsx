@@ -18,8 +18,8 @@ const days: WeeklyOffRule["day_of_week"][] = ["SUNDAY", "MONDAY", "TUESDAY", "WE
 export function RosterSettingsPage() {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
-  const canView = permissions.has("roster.view");
-  const canManage = permissions.has("roster.settings.manage");
+  const canView = permissions.has("roster.view") || permissions.has("roster.settings.view") || permissions.has("roster.settings.manage");
+  const canManage = permissions.has("roster.settings.manage") || permissions.has("roster.settings.update");
   const [settings, setSettings] = useState<RosterSettings | null>(null);
   const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
   const [rules, setRules] = useState<WeeklyOffRule[]>([]);
@@ -116,6 +116,37 @@ export function RosterSettingsPage() {
               <select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_shift_template_id ?? ""} onChange={(event) => update("default_shift_template_id", event.target.value || null)}>
                 <option value="">No default</option>
                 {templates.map((template) => <option key={template.id} value={template.id}>{template.code} - {template.name}</option>)}
+              </select>
+            </Field>
+            <Toggle disabled={!canManage} label="Roster module enabled" checked={Boolean(settings.module_enabled)} onChange={(value) => update("module_enabled", value)} />
+            <Toggle disabled={!canManage} label="Allow draft roster editing" checked={Boolean(settings.allow_draft_roster_editing)} onChange={(value) => update("allow_draft_roster_editing", value)} />
+            <Toggle disabled={!canManage} label="Require publish before employee visibility" checked={Boolean(settings.require_publish_before_employee_visibility)} onChange={(value) => update("require_publish_before_employee_visibility", value)} />
+            <Toggle disabled={!canManage} label="Allow unpublish before lock" checked={Boolean(settings.allow_unpublish_before_lock)} onChange={(value) => update("allow_unpublish_before_lock", value)} />
+            <Toggle disabled={!canManage} label="Allow changes after publish" checked={Boolean(settings.allow_changes_after_publish ?? settings.allow_published_roster_edits)} onChange={(value) => update("allow_changes_after_publish", value)} />
+            <Toggle disabled={!canManage} label="Require reason after publish" checked={Boolean(settings.require_reason_for_changes_after_publish ?? settings.require_reason_for_published_edits)} onChange={(value) => update("require_reason_for_changes_after_publish", value)} />
+            <Toggle disabled={!canManage} label="Allow roster lock" checked={Boolean(settings.allow_roster_lock)} onChange={(value) => update("allow_roster_lock", value)} />
+            <Toggle disabled={!canManage} label="Lock after attendance/payroll placeholder" checked={Boolean(settings.lock_roster_after_attendance_payroll_placeholder)} onChange={(value) => update("lock_roster_after_attendance_payroll_placeholder", value)} />
+            <Toggle disabled={!canManage} label="Allow shift overlap warnings" checked={Boolean(settings.allow_shift_overlap_warnings)} onChange={(value) => update("allow_shift_overlap_warnings", value)} />
+            <Toggle disabled={!canManage} label="Block overlapping shifts by default" checked={Boolean(settings.block_overlapping_shifts_by_default)} onChange={(value) => update("block_overlapping_shifts_by_default", value)} />
+            <Toggle disabled={!canManage} label="Allow cross-worksite with permission" checked={Boolean(settings.allow_cross_worksite_assignment_with_permission)} onChange={(value) => update("allow_cross_worksite_assignment_with_permission", value)} />
+            <Toggle disabled={!canManage} label="Roster-aware attendance" checked={Boolean(settings.roster_aware_attendance_enabled)} onChange={(value) => update("roster_aware_attendance_enabled", value)} />
+            <Toggle disabled={!canManage} label="Roster-aware leave counting" checked={Boolean(settings.roster_aware_leave_counting_enabled)} onChange={(value) => update("roster_aware_leave_counting_enabled", value)} />
+            <Toggle disabled={!canManage} label="Employee self-service roster visibility" checked={Boolean(settings.employee_self_service_roster_visibility_enabled)} onChange={(value) => update("employee_self_service_roster_visibility_enabled", value)} />
+            <Toggle disabled={!canManage} label="Manager team roster visibility" checked={Boolean(settings.manager_team_roster_visibility_enabled)} onChange={(value) => update("manager_team_roster_visibility_enabled", value)} />
+            <Toggle disabled={!canManage} label="Copy previous week enabled" checked={Boolean(settings.copy_previous_week_enabled)} onChange={(value) => update("copy_previous_week_enabled", value)} />
+            <Toggle disabled={!canManage} label="Bulk assignment enabled" checked={Boolean(settings.bulk_assignment_enabled)} onChange={(value) => update("bulk_assignment_enabled", value)} />
+            <Field label="Default break minutes"><input disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" type="number" min="0" value={settings.default_break_minutes ?? 60} onChange={(event) => update("default_break_minutes", Number(event.target.value))} /></Field>
+            <Field label="Default expected work minutes"><input disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" type="number" min="0" value={settings.default_expected_work_minutes ?? 480} onChange={(event) => update("default_expected_work_minutes", Number(event.target.value))} /></Field>
+            <Field label="Default off-day handling">
+              <select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_off_day_handling_mode ?? "EXPLICIT_ONLY"} onChange={(event) => update("default_off_day_handling_mode", event.target.value)}>
+                <option value="EXPLICIT_ONLY">Explicit only</option>
+                <option value="WEEKLY_OFF_RULES">Weekly off rules</option>
+              </select>
+            </Field>
+            <Field label="Public holiday work assignment">
+              <select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.public_holiday_work_assignment_mode ?? "ALLOW_EXPLICIT_SHIFT"} onChange={(event) => update("public_holiday_work_assignment_mode", event.target.value)}>
+                <option value="ALLOW_EXPLICIT_SHIFT">Allow explicit shift</option>
+                <option value="REQUIRE_PUBLIC_HOLIDAY_TEMPLATE">Require public holiday template</option>
               </select>
             </Field>
             <Toggle disabled={!canManage} label="Allow published roster edits" checked={Boolean(settings.allow_published_roster_edits)} onChange={(value) => update("allow_published_roster_edits", value)} />

@@ -11,7 +11,7 @@ import { ApiError, api } from "../lib/api";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 import type { RosterAssignmentStatus } from "../types/roster";
 
-const statuses: RosterAssignmentStatus[] = ["SCHEDULED", "OFF", "LEAVE", "ABSENT_PLACEHOLDER", "UNASSIGNED"];
+const statuses: RosterAssignmentStatus[] = ["UNASSIGNED", "DRAFT", "PUBLISHED", "CHANGED_AFTER_PUBLISH", "SCHEDULED", "DAY_OFF", "OFF", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "PUBLIC_HOLIDAY", "CONFLICT", "CANCELLED", "ABSENT_PLACEHOLDER"];
 
 export function RosterReportsPage() {
   const { token, user } = useAuth();
@@ -27,6 +27,7 @@ export function RosterReportsPage() {
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [reports, setReports] = useState<Record<string, unknown>[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [moduleDisabled, setModuleDisabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const filters = useMemo(() => ({ week_start_date: weekStart, search, department_id: departmentId, location_id: locationId, status }), [weekStart, search, departmentId, locationId, status]);
 
@@ -34,12 +35,18 @@ export function RosterReportsPage() {
     if (!token || !canView) return;
     setLoading(true);
     setError(null);
+    setModuleDisabled(false);
     try {
       const [reportResult, departmentResult, locationResult] = await Promise.all([api.getRosterReports(token, filters), api.listDepartments(token), api.listLocations(token)]);
       setReports(reportResult.reports);
       setDepartments(departmentResult.departments);
       setLocations(locationResult.locations);
     } catch (err) {
+      if (err instanceof ApiError && err.code === "ROSTER_MODULE_DISABLED") {
+        setModuleDisabled(true);
+        setReports([]);
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Unable to load roster reports.");
     } finally {
       setLoading(false);
@@ -68,6 +75,17 @@ export function RosterReportsPage() {
   }
 
   if (!canView) return <Panel><EmptyState title="Roster reports unavailable" description="Your account needs roster.reports.view permission." /></Panel>;
+  if (moduleDisabled) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div><h1 className="text-lg font-semibold">Roster Reports</h1><p className="text-sm text-muted-foreground">Roster module is disabled.</p></div>
+          <RosterNav />
+        </div>
+        <Panel><EmptyState title="Roster module is disabled" description="Enable roster from settings before viewing roster reports." /></Panel>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

@@ -1,4 +1,4 @@
-import { CalendarDays, ClipboardCopy, Edit, Eraser, Megaphone, Save, Search } from "lucide-react";
+import { CalendarDays, ClipboardCopy, Edit, Eraser, Lock, Megaphone, Save, Search, Undo2, Unlock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
 import { RosterNav } from "../components/roster/RosterNav";
@@ -13,7 +13,8 @@ import { ApiError, api } from "../lib/api";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import type { RosterAssignment, RosterAssignmentStatus, RosterEmployeeRow, ShiftTemplate, WeeklyRoster } from "../types/roster";
 
-const statuses: RosterAssignmentStatus[] = ["UNASSIGNED", "SCHEDULED", "OFF", "LEAVE", "ABSENT_PLACEHOLDER"];
+const statuses: RosterAssignmentStatus[] = ["UNASSIGNED", "DRAFT", "PUBLISHED", "CHANGED_AFTER_PUBLISH", "SCHEDULED", "DAY_OFF", "OFF", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "PUBLIC_HOLIDAY", "CONFLICT", "CANCELLED", "ABSENT_PLACEHOLDER"];
+type RosterAction = "save-published" | "copy-previous" | "clear-week" | "unpublish" | "lock" | "unlock" | null;
 
 function mondayOf(date: Date) {
   const copy = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -27,18 +28,25 @@ function cellKey(employeeId: string, date: string) {
 }
 
 function statusTone(status: string) {
-  if (status === "SCHEDULED") return "success" as const;
-  if (status === "LEAVE" || status === "OFF") return "info" as const;
-  if (status === "ABSENT_PLACEHOLDER") return "warning" as const;
+  if (["SCHEDULED", "DRAFT", "PUBLISHED"].includes(status)) return "success" as const;
+  if (["LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "OFF", "PUBLIC_HOLIDAY"].includes(status)) return "info" as const;
+  if (["ABSENT_PLACEHOLDER", "CONFLICT", "CHANGED_AFTER_PUBLISH"].includes(status)) return "warning" as const;
   return "neutral" as const;
+}
+
+function isShiftStatus(status: unknown) {
+  return ["SCHEDULED", "DRAFT", "PUBLISHED", "CHANGED_AFTER_PUBLISH"].includes(String(status));
 }
 
 export function RosterWeeklyPage() {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("roster.view");
-  const canManage = permissions.has("roster.manage");
-  const canPublish = permissions.has("roster.publish");
+  const canManage = permissions.has("roster.manage") || permissions.has("roster.assignments.manage") || permissions.has("roster.assignments.update") || permissions.has("roster.assignments.bulk_update");
+  const canPublish = permissions.has("roster.publish") || permissions.has("roster.periods.publish");
+  const canUnpublish = permissions.has("roster.periods.unpublish") || permissions.has("roster.periods.manage") || permissions.has("roster.manage");
+  const canLock = permissions.has("roster.periods.lock") || permissions.has("roster.periods.manage");
+  const canUnlock = permissions.has("roster.periods.unlock") || permissions.has("roster.periods.manage");
   const [weekStart, setWeekStart] = useState(mondayOf(new Date()));
   const [search, setSearch] = useState("");
   const [departmentId, setDepartmentId] = useState("");
@@ -55,6 +63,10 @@ export function RosterWeeklyPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [moduleDisabled, setModuleDisabled] = useState(false);
+  const [action, setAction] = useState<RosterAction>(null);
+  const [actionReason, setActionReason] = useState("");
+  const [overwrite, setOverwrite] = useState(false);
 
   const filters = useMemo(() => ({ week_start_date: weekStart, search, department_id: departmentId, location_id: locationId }), [weekStart, search, departmentId, locationId]);
 
@@ -62,6 +74,7 @@ export function RosterWeeklyPage() {
     if (!token || !canView) return;
     setLoading(true);
     setError(null);
+    setModuleDisabled(false);
     try {
       const [weeklyResult, departmentResult, positionResult, locationResult] = await Promise.all([
         api.getWeeklyRoster(token, filters),
@@ -76,6 +89,11 @@ export function RosterWeeklyPage() {
       setDraft(weeklyResult.assignment_map ?? {});
       setDirty(new Set());
     } catch (err) {
+      if (err instanceof ApiError && err.code === "ROSTER_MODULE_DISABLED") {
+        setModuleDisabled(true);
+        setWeekly(null);
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Unable to load weekly roster.");
     } finally {
       setLoading(false);
@@ -103,11 +121,13 @@ export function RosterWeeklyPage() {
     const existing = draft[key] ?? { employee_id: employee.employee_id, roster_date: date, status: "UNASSIGNED" };
     const next: Partial<RosterAssignment> = { ...existing, employee_id: employee.employee_id, roster_date: date };
     if (value.startsWith("shift:")) {
-      next.status = "SCHEDULED";
+      next.status = weekly?.period?.status === "PUBLISHED" || weekly?.period?.status === "LOCKED" ? "CHANGED_AFTER_PUBLISH" : "DRAFT";
+      next.assignment_type = "SHIFT";
       next.shift_template_id = value.replace("shift:", "");
     } else {
       next.status = value as RosterAssignmentStatus;
       next.shift_template_id = null;
+      next.assignment_type = value === "DAY_OFF" || value === "OFF" ? "DAY_OFF" : ["LEAVE", "SICK_LEAVE", "LONG_LEAVE"].includes(value) ? "LEAVE_PLACEHOLDER" : value === "PUBLIC_HOLIDAY" ? "PUBLIC_HOLIDAY_WORK" : undefined;
     }
     setDraft((current) => ({ ...current, [key]: next }));
     setDirty((current) => new Set(current).add(key));
@@ -118,13 +138,11 @@ export function RosterWeeklyPage() {
     setEditing({ employee, date, assignment });
   }
 
-  async function save() {
+  async function saveWithReason(reason = "") {
     if (!token || !weekly || dirty.size === 0) {
       setMessage("No roster changes to save.");
       return;
     }
-    const reason = weekly.period?.status === "PUBLISHED" ? window.prompt("Reason for editing a published roster") : "";
-    if (weekly.period?.status === "PUBLISHED" && !reason) return;
     setError(null);
     setMessage(null);
     try {
@@ -135,6 +153,15 @@ export function RosterWeeklyPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to save weekly roster.");
     }
+  }
+
+  async function save() {
+    if (weekly?.period?.status === "PUBLISHED" || weekly?.period?.status === "LOCKED") {
+      setAction("save-published");
+      setActionReason("");
+      return;
+    }
+    await saveWithReason("");
   }
 
   async function publish() {
@@ -150,9 +177,8 @@ export function RosterWeeklyPage() {
   }
 
   async function copyPrevious() {
-    if (!token || !window.confirm("Copy previous week into this roster scope? Existing assignments will be preserved unless overwrite is enabled.")) return;
+    if (!token) return;
     try {
-      const overwrite = window.confirm("Overwrite existing assignments for this week?");
       const result = await api.copyPreviousRosterWeek(token, { target_week_start_date: weekStart, location_id: locationId || null, department_id: departmentId || null, overwrite_existing: overwrite });
       setMessage(`Copied ${result.copied} assignment rows from the previous week.`);
       await load();
@@ -163,10 +189,8 @@ export function RosterWeeklyPage() {
 
   async function clearWeek() {
     if (!token) return;
-    const reason = window.prompt("Reason for clearing this roster week");
-    if (!reason) return;
     try {
-      await api.clearRosterWeek(token, { week_start_date: weekStart, location_id: locationId || null, department_id: departmentId || null, reason });
+      await api.clearRosterWeek(token, { week_start_date: weekStart, location_id: locationId || null, department_id: departmentId || null, reason: actionReason });
       setMessage("Roster week cleared.");
       await load();
     } catch (err) {
@@ -174,7 +198,43 @@ export function RosterWeeklyPage() {
     }
   }
 
+  async function periodAction(next: "unpublish" | "lock" | "unlock") {
+    if (!token || !weekly?.period) return;
+    try {
+      if (next === "unpublish") await api.unpublishRosterPeriod(token, weekly.period.id, actionReason);
+      if (next === "lock") await api.lockRosterPeriod(token, weekly.period.id, actionReason || null);
+      if (next === "unlock") await api.unlockRosterPeriod(token, weekly.period.id, actionReason);
+      setMessage(`Roster ${next === "unpublish" ? "unpublished" : next === "lock" ? "locked" : "unlocked"}.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : `Unable to ${next} roster.`);
+    }
+  }
+
+  async function confirmAction() {
+    if (action === "save-published") await saveWithReason(actionReason);
+    if (action === "copy-previous") await copyPrevious();
+    if (action === "clear-week") await clearWeek();
+    if (action === "unpublish") await periodAction("unpublish");
+    if (action === "lock") await periodAction("lock");
+    if (action === "unlock") await periodAction("unlock");
+    setAction(null);
+    setActionReason("");
+    setOverwrite(false);
+  }
+
   if (!canView) return <Panel><EmptyState title="Roster unavailable" description="Your account needs roster.view permission." /></Panel>;
+  if (moduleDisabled) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div><h1 className="text-lg font-semibold">Weekly Roster</h1><p className="text-sm text-muted-foreground">Roster module is disabled.</p></div>
+          <RosterNav />
+        </div>
+        <Panel><EmptyState title="Roster module is disabled" description="Roster settings remain available to permitted admins." /></Panel>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -185,10 +245,13 @@ export function RosterWeeklyPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <RosterNav />
-          {canManage ? <Button variant="outline" size="sm" onClick={() => void copyPrevious()}><ClipboardCopy className="h-4 w-4" /> Copy previous</Button> : null}
-          {canManage ? <Button variant="outline" size="sm" onClick={() => void clearWeek()}><Eraser className="h-4 w-4" /> Clear</Button> : null}
+          {canManage ? <Button variant="outline" size="sm" onClick={() => { setAction("copy-previous"); setActionReason(""); setOverwrite(false); }}><ClipboardCopy className="h-4 w-4" /> Copy previous</Button> : null}
+          {canManage ? <Button variant="outline" size="sm" onClick={() => { setAction("clear-week"); setActionReason(""); }}><Eraser className="h-4 w-4" /> Clear</Button> : null}
           {canManage ? <Button size="sm" onClick={() => void save()}><Save className="h-4 w-4" /> Save</Button> : null}
           {canPublish ? <Button variant="outline" size="sm" onClick={() => void publish()}><Megaphone className="h-4 w-4" /> Publish</Button> : null}
+          {weekly?.period?.status === "PUBLISHED" && canUnpublish ? <Button variant="outline" size="sm" onClick={() => { setAction("unpublish"); setActionReason(""); }}><Undo2 className="h-4 w-4" /> Unpublish</Button> : null}
+          {weekly?.period?.status === "PUBLISHED" && canLock ? <Button variant="outline" size="sm" onClick={() => { setAction("lock"); setActionReason(""); }}><Lock className="h-4 w-4" /> Lock</Button> : null}
+          {weekly?.period?.status === "LOCKED" && canUnlock ? <Button variant="outline" size="sm" onClick={() => { setAction("unlock"); setActionReason(""); }}><Unlock className="h-4 w-4" /> Unlock</Button> : null}
         </div>
       </div>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
@@ -220,15 +283,25 @@ export function RosterWeeklyPage() {
                   </TableCell>
                   {(weekly?.days ?? []).map((day) => {
                     const assignment = draft[cellKey(employee.employee_id, day.date)] ?? { status: "UNASSIGNED" };
-                    const value = assignment.shift_template_id && assignment.status === "SCHEDULED" ? `shift:${assignment.shift_template_id}` : assignment.status ?? "UNASSIGNED";
+                    const value = assignment.shift_template_id && isShiftStatus(assignment.status) ? `shift:${assignment.shift_template_id}` : assignment.status ?? "UNASSIGNED";
+                    const status = String(assignment.status ?? "UNASSIGNED");
                     return (
                       <TableCell key={day.date} className="min-w-40">
                         <div className="flex items-center gap-1">
                           <select disabled={!canManage} className="h-8 w-full rounded-md border bg-white px-2 text-xs" value={value} onChange={(event) => updateCell(employee, day.date, event.target.value)}>
-                            {statuses.filter((status) => status !== "SCHEDULED").map((status) => <option key={status} value={status}>{status}</option>)}
+                            {statuses.filter((item) => !["SCHEDULED"].includes(item)).map((item) => <option key={item} value={item}>{item}</option>)}
                             {(weekly?.shift_templates ?? []).map((template) => <option key={template.id} value={`shift:${template.id}`}>{template.code}</option>)}
                           </select>
                           {canManage ? <Button title="Edit assignment details" variant="ghost" size="icon" onClick={() => openEdit(employee, day.date)}><Edit className="h-4 w-4" /></Button> : null}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          <Badge tone={statusTone(status)}>{status === "OFF" ? "DAY_OFF" : status}</Badge>
+                          {assignment.shift_code ? <Badge tone="neutral">{assignment.shift_code}</Badge> : null}
+                          {assignment.custom_start_time || assignment.shift_start_time ? <Badge tone="neutral">{assignment.custom_start_time ?? assignment.shift_start_time}-{assignment.custom_end_time ?? assignment.shift_end_time}</Badge> : null}
+                          {Number(assignment.changed_after_publish ?? 0) === 1 || status === "CHANGED_AFTER_PUBLISH" ? <Badge tone="warning">Changed</Badge> : null}
+                          {assignment.conflict_status || status === "CONFLICT" ? <Badge tone="warning">Conflict</Badge> : null}
+                          {status === "CANCELLED" ? <Badge tone="neutral">Cancelled</Badge> : null}
+                          {assignment.notes ? <Badge tone="info">Notes</Badge> : null}
                         </div>
                         {assignment.leave_indicator ? <Badge tone="warning" className="mt-1">{assignment.leave_indicator}</Badge> : null}
                         {assignment.attendance_indicator ? <Badge tone="info" className="mt-1">{assignment.attendance_indicator}</Badge> : null}
@@ -261,6 +334,45 @@ export function RosterWeeklyPage() {
           }}
         />
       ) : null}
+      {action ? (
+        <RosterActionDialog
+          action={action}
+          reason={actionReason}
+          overwrite={overwrite}
+          onReasonChange={setActionReason}
+          onOverwriteChange={setOverwrite}
+          onClose={() => setAction(null)}
+          onConfirm={() => void confirmAction()}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function RosterActionDialog({ action, reason, overwrite, onReasonChange, onOverwriteChange, onClose, onConfirm }: { action: RosterAction; reason: string; overwrite: boolean; onReasonChange: (value: string) => void; onOverwriteChange: (value: boolean) => void; onClose: () => void; onConfirm: () => void }) {
+  const copy = action === "copy-previous";
+  const requiresReason = action !== "copy-previous" && action !== "lock";
+  const title = action === "save-published" ? "Save published roster changes" : action === "copy-previous" ? "Copy previous week" : action === "clear-week" ? "Clear roster week" : action === "unpublish" ? "Unpublish roster" : action === "lock" ? "Lock roster" : "Unlock roster";
+  const description = action === "copy-previous" ? "Copy assignment rows from the previous week into this roster scope." : "This action is audited and may affect employee self-service visibility.";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+      <div className="w-full max-w-md rounded-lg border bg-white shadow-xl">
+        <div className="border-b px-4 py-3">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+        </div>
+        <div className="space-y-3 p-4">
+          {copy ? <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={overwrite} onChange={(event) => onOverwriteChange(event.target.checked)} /> Overwrite existing assignments</label> : null}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">{requiresReason ? "Reason required" : "Reason optional"}</label>
+            <textarea className="min-h-24 w-full rounded-md border bg-white px-3 py-2 text-sm" value={reason} onChange={(event) => onReasonChange(event.target.value)} placeholder="Reason for audit log" />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t px-4 py-3">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={requiresReason && !reason.trim()} onClick={onConfirm}>Confirm</Button>
+        </div>
+      </div>
     </div>
   );
 }

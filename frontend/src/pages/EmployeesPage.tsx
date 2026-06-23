@@ -59,6 +59,7 @@ export function EmployeesPage() {
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [positions, setPositions] = useState<OrganizationPosition[]>([]);
   const [jobLevels, setJobLevels] = useState<OrganizationJobLevel[]>([]);
+  const [reportingManagers, setReportingManagers] = useState<Employee[]>([]);
   const [search, setSearch] = useState("");
   const [statusId, setStatusId] = useState("all");
   const [departmentId, setDepartmentId] = useState("all");
@@ -70,6 +71,8 @@ export function EmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<{ mode: "create" | "edit"; employee?: Employee } | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<Employee | null>(null);
+  const [archiveReason, setArchiveReason] = useState("");
   const [statusModalEmployee, setStatusModalEmployee] = useState<Employee | null>(null);
   const [statusModalError, setStatusModalError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
@@ -87,20 +90,18 @@ export function EmployeesPage() {
     setLoading(true);
     setError(null);
     try {
-      const [employeesResult, statusesResult, departmentsResult, locationsResult, positionsResult, levelsResult] = await Promise.all([
+      const [employeesResult, statusesResult, assignmentOptions] = await Promise.all([
         api.listEmployees(token),
         api.listEmployeeStatuses(token),
-        api.listDepartments(token),
-        api.listLocations(token),
-        api.listPositions(token),
-        api.listJobLevels(token)
+        api.getEmployeeAssignmentOptions(token)
       ]);
       setEmployees(employeesResult.employees);
       setStatuses(statusesResult.statuses);
-      setDepartments(departmentsResult.departments);
-      setLocations(locationsResult.locations);
-      setPositions(positionsResult.positions);
-      setJobLevels(levelsResult.job_levels);
+      setDepartments(assignmentOptions.departments);
+      setLocations(assignmentOptions.locations);
+      setPositions(assignmentOptions.positions);
+      setJobLevels(assignmentOptions.job_levels);
+      setReportingManagers(assignmentOptions.reporting_managers);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load employees.");
     } finally {
@@ -148,12 +149,12 @@ export function EmployeesPage() {
     }
   }
 
-  async function archive(employee: Employee) {
+  async function archive(employee: Employee, reason: string) {
     if (!token) return;
-    const reason = window.prompt("Archive reason");
-    if (!reason) return;
     try {
       await api.archiveEmployee(token, employee.id, reason);
+      setArchiveTarget(null);
+      setArchiveReason("");
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to archive employee.");
@@ -254,7 +255,7 @@ export function EmployeesPage() {
                         <Button variant="ghost" size="icon" title="View" onClick={() => navigate(`/employees/${employee.id}`)}><Eye className="h-4 w-4" /></Button>
                         {canUpdate ? <Button variant="ghost" size="icon" title="Edit" onClick={() => setModal({ mode: "edit", employee })}><Pencil className="h-4 w-4" /></Button> : null}
                         {canStatus ? <Button variant="ghost" size="icon" title="Change status" onClick={() => { setStatusModalError(null); setStatusModalEmployee(employee); }}><Settings2 className="h-4 w-4" /></Button> : null}
-                        {canArchive ? <Button variant="ghost" size="icon" title="Archive" onClick={() => void archive(employee)}><Archive className="h-4 w-4" /></Button> : null}
+                        {canArchive ? <Button variant="ghost" size="icon" title="Archive" onClick={() => setArchiveTarget(employee)}><Archive className="h-4 w-4" /></Button> : null}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -274,11 +275,24 @@ export function EmployeesPage() {
           locations={locations}
           positions={positions}
           jobLevels={jobLevels}
-          employees={employees}
+          employees={reportingManagers}
           canNumber={canNumber}
           onClose={() => setModal(null)}
           onSave={(input) => void saveEmployee(input)}
         />
+      ) : null}
+      {archiveTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+          <div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl">
+            <h2 className="text-sm font-semibold">Archive employee</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Archive {archiveTarget.full_name}. Existing history is retained.</p>
+            <Input className="mt-3" placeholder="Archive reason" value={archiveReason} onChange={(event) => setArchiveReason(event.target.value)} />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setArchiveTarget(null); setArchiveReason(""); }}>Cancel</Button>
+              <Button size="sm" disabled={!archiveReason.trim()} onClick={() => void archive(archiveTarget, archiveReason.trim())}>Archive</Button>
+            </div>
+          </div>
+        </div>
       ) : null}
       {statusModalEmployee ? (
         <ChangeEmployeeStatusModal

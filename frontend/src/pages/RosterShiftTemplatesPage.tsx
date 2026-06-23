@@ -18,21 +18,30 @@ type ShiftForm = Partial<ShiftTemplate>;
 export function RosterShiftTemplatesPage() {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
-  const canView = permissions.has("roster.view");
-  const canManage = permissions.has("roster.settings.manage");
+  const canView = permissions.has("roster.view") || permissions.has("roster.shift_templates.view") || permissions.has("roster.shift_templates.manage");
+  const canManage = permissions.has("roster.settings.manage") || permissions.has("roster.shift_templates.manage") || permissions.has("roster.shift_templates.update");
+  const canArchive = permissions.has("roster.settings.manage") || permissions.has("roster.shift_templates.manage") || permissions.has("roster.shift_templates.archive");
+  const canRestore = permissions.has("roster.settings.manage") || permissions.has("roster.shift_templates.manage") || permissions.has("roster.shift_templates.restore");
   const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<ShiftTemplate | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [moduleDisabled, setModuleDisabled] = useState(false);
   const [loading, setLoading] = useState(true);
 
   async function load() {
     if (!token || !canView) return;
     setLoading(true);
     setError(null);
+    setModuleDisabled(false);
     try {
       setTemplates((await api.listShiftTemplates(token)).shift_templates);
     } catch (err) {
+      if (err instanceof ApiError && err.code === "ROSTER_MODULE_DISABLED") {
+        setModuleDisabled(true);
+        setTemplates([]);
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Unable to load shift templates.");
     } finally {
       setLoading(false);
@@ -57,7 +66,7 @@ export function RosterShiftTemplatesPage() {
     }
   }
 
-  async function action(template: ShiftTemplate, next: "enable" | "disable") {
+  async function action(template: ShiftTemplate, next: "enable" | "disable" | "archive" | "restore") {
     if (!token) return;
     try {
       await api.shiftTemplateAction(token, template.id, next);
@@ -68,6 +77,17 @@ export function RosterShiftTemplatesPage() {
   }
 
   if (!canView) return <Panel><EmptyState title="Shift templates unavailable" description="Your account needs roster.view permission." /></Panel>;
+  if (moduleDisabled) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div><h1 className="text-lg font-semibold">Shift Templates</h1><p className="text-sm text-muted-foreground">Roster module is disabled.</p></div>
+          <RosterNav />
+        </div>
+        <Panel><EmptyState title="Roster module is disabled" description="Enable roster from settings before managing shift templates." /></Panel>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -94,7 +114,7 @@ export function RosterShiftTemplatesPage() {
                   <TableCell><span className="inline-flex h-5 w-12 rounded border" style={{ background: template.color_label ?? "#e2e8f0" }} /></TableCell>
                   <TableCell><Badge tone={template.is_active ? "success" : "neutral"}>{template.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                   <TableCell>{template.sort_order}</TableCell>
-                  {canManage ? <TableCell><div className="flex justify-end gap-1"><Button title="Edit" variant="ghost" size="icon" onClick={() => setEditing(template)}><Edit className="h-4 w-4" /></Button><Button variant="ghost" size="sm" onClick={() => void action(template, template.is_active ? "disable" : "enable")}>{template.is_active ? "Disable" : "Enable"}</Button></div></TableCell> : null}
+                  {canManage || canArchive || canRestore ? <TableCell><div className="flex justify-end gap-1"><Button title="Edit" variant="ghost" size="icon" onClick={() => setEditing(template)} disabled={!canManage}><Edit className="h-4 w-4" /></Button>{template.is_active ? <Button variant="ghost" size="sm" disabled={!canArchive} onClick={() => void action(template, "archive")}>Archive</Button> : <Button variant="ghost" size="sm" disabled={!canRestore} onClick={() => void action(template, "restore")}>Restore</Button>}</div></TableCell> : null}
                 </TableRow>
               ))}
             </TableBody>

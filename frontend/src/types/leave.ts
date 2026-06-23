@@ -1,6 +1,6 @@
 export type LeaveStatus = "DRAFT" | "SUBMITTED" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "CANCELLED";
 export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED" | "SKIPPED";
-export type DeductionMode = "NONE" | "FULL_DAY" | "WORKED_DAYS_ONLY" | "CUSTOM";
+export type DeductionMode = "NONE" | "FULL_DAY" | "WORKED_DAYS_ONLY" | "CUSTOM" | "NO_DEDUCTION" | "DEDUCT_FROM_BASIC_SALARY" | "DEDUCT_FROM_GROSS_SALARY" | "DEDUCT_FROM_SELECTED_ALLOWANCE" | "FIXED_AMOUNT_PER_DAY" | "DAILY_RATE_FORMULA" | "DEDUCT_AFTER_ENTITLEMENT_EXHAUSTED" | "PAY_ONLY_WORKED_DAYS";
 
 export interface LeaveType {
   id: string;
@@ -62,6 +62,13 @@ export interface LeaveWorkflow {
   department_name?: string | null;
   location_id: string | null;
   location_name?: string | null;
+  position_id?: string | null;
+  position_title?: string | null;
+  job_level_id?: string | null;
+  job_level_name?: string | null;
+  min_duration_days?: number | null;
+  max_duration_days?: number | null;
+  payroll_impact_only?: number | boolean;
   is_default: number | boolean;
   is_active: number | boolean;
   priority: number;
@@ -73,7 +80,7 @@ export interface LeaveWorkflowStep {
   workflow_id: string;
   step_order: number;
   step_name: string;
-  approver_type: "ROLE" | "USER" | "REPORTING_MANAGER" | "DEPARTMENT_MANAGER" | "DEPARTMENT_SENIOR" | "DIRECTOR" | "HR_ROLE" | "PERMISSION";
+  approver_type: "ROLE" | "USER" | "REPORTING_MANAGER" | "DEPARTMENT_MANAGER" | "DEPARTMENT_SENIOR" | "DIRECTOR" | "HR_ROLE" | "PERMISSION" | "DEPARTMENT_HEAD" | "LOCATION_MANAGER" | "HR_MANAGER" | "FINANCE_MANAGER" | "OWNER";
   role_id: string | null;
   role_name?: string | null;
   user_id: string | null;
@@ -167,6 +174,13 @@ export interface LeaveBalance {
   carried_forward_days: number;
   expired_days: number;
   closing_balance: number;
+}
+
+export interface LeaveBalanceCycle extends Omit<LeaveBalance, "period_year"> {
+  cycle_year: number;
+  cycle_start_date: string;
+  cycle_end_date: string;
+  period_year?: number;
 }
 
 export interface LeaveDay {

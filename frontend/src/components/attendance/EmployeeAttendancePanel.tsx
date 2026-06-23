@@ -20,7 +20,7 @@ function tone(status: string) {
 }
 
 export function EmployeeAttendancePanel({ token, employee, permissions }: { token: string; employee: Employee; permissions: Set<string> }) {
-  const canCorrect = permissions.has("attendance.correct") || permissions.has("attendance.manage");
+  const canCorrect = permissions.has("attendance.corrections.create") || permissions.has("attendance.correct") || permissions.has("attendance.corrections.manage") || permissions.has("attendance.manage");
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [calendar, setCalendar] = useState<AttendanceRecord[]>([]);
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);

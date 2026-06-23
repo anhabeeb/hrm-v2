@@ -198,7 +198,8 @@ CREATE TABLE IF NOT EXISTS locations (
   is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
+  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+  FOREIGN KEY (manager_employee_id) REFERENCES employees(id) ON DELETE SET NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_active_code_unique ON locations(code COLLATE NOCASE) WHERE is_active = 1;
@@ -212,10 +213,14 @@ CREATE TABLE IF NOT EXISTS departments (
   name TEXT NOT NULL,
   description TEXT,
   parent_department_id TEXT,
+  head_employee_id TEXT,
+  manager_employee_id TEXT,
   is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  FOREIGN KEY (parent_department_id) REFERENCES departments(id) ON DELETE SET NULL
+  FOREIGN KEY (parent_department_id) REFERENCES departments(id) ON DELETE SET NULL,
+  FOREIGN KEY (head_employee_id) REFERENCES employees(id) ON DELETE SET NULL,
+  FOREIGN KEY (manager_employee_id) REFERENCES employees(id) ON DELETE SET NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_active_code_unique ON departments(code COLLATE NOCASE) WHERE is_active = 1;
@@ -631,7 +636,7 @@ CREATE TABLE IF NOT EXISTS leave_policies (
   carry_forward_expiry_month INTEGER,
   include_public_holidays INTEGER NOT NULL DEFAULT 0 CHECK (include_public_holidays IN (0, 1)),
   include_weekly_off_days INTEGER NOT NULL DEFAULT 0 CHECK (include_weekly_off_days IN (0, 1)),
-  salary_deduction_mode TEXT NOT NULL DEFAULT 'NONE' CHECK (salary_deduction_mode IN ('NONE', 'FULL_DAY', 'WORKED_DAYS_ONLY', 'CUSTOM')),
+  salary_deduction_mode TEXT NOT NULL DEFAULT 'NONE' CHECK (salary_deduction_mode IN ('NONE', 'FULL_DAY', 'WORKED_DAYS_ONLY', 'CUSTOM', 'NO_DEDUCTION', 'DEDUCT_FROM_BASIC_SALARY', 'DEDUCT_FROM_GROSS_SALARY', 'DEDUCT_FROM_SELECTED_ALLOWANCE', 'FIXED_AMOUNT_PER_DAY', 'DAILY_RATE_FORMULA', 'DEDUCT_AFTER_ENTITLEMENT_EXHAUSTED', 'PAY_ONLY_WORKED_DAYS')),
   deduction_pay_component TEXT,
   requires_document INTEGER NOT NULL DEFAULT 0 CHECK (requires_document IN (0, 1)),
   document_required_after_consecutive_days REAL,
@@ -685,7 +690,7 @@ CREATE TABLE IF NOT EXISTS leave_requests (
   status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'SUBMITTED', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'CANCELLED')),
   document_required INTEGER NOT NULL DEFAULT 0 CHECK (document_required IN (0, 1)),
   document_status TEXT NOT NULL DEFAULT 'NOT_REQUIRED' CHECK (document_status IN ('NOT_REQUIRED', 'REQUIRED_PENDING', 'PROVIDED')),
-  salary_deduction_mode TEXT CHECK (salary_deduction_mode IN ('NONE', 'FULL_DAY', 'WORKED_DAYS_ONLY', 'CUSTOM') OR salary_deduction_mode IS NULL),
+  salary_deduction_mode TEXT CHECK (salary_deduction_mode IN ('NONE', 'FULL_DAY', 'WORKED_DAYS_ONLY', 'CUSTOM', 'NO_DEDUCTION', 'DEDUCT_FROM_BASIC_SALARY', 'DEDUCT_FROM_GROSS_SALARY', 'DEDUCT_FROM_SELECTED_ALLOWANCE', 'FIXED_AMOUNT_PER_DAY', 'DAILY_RATE_FORMULA', 'DEDUCT_AFTER_ENTITLEMENT_EXHAUSTED', 'PAY_ONLY_WORKED_DAYS') OR salary_deduction_mode IS NULL),
   salary_deduction_estimate_json TEXT,
   public_holiday_handling_json TEXT,
   submitted_by_user_id TEXT,
@@ -727,6 +732,11 @@ CREATE TABLE IF NOT EXISTS leave_approval_workflows (
   applies_to_employment_type TEXT CHECK (applies_to_employment_type IN ('FULL_TIME', 'PART_TIME', 'INTERN', 'TEMPORARY', 'CONTRACT') OR applies_to_employment_type IS NULL),
   department_id TEXT,
   location_id TEXT,
+  position_id TEXT,
+  job_level_id TEXT,
+  min_duration_days REAL,
+  max_duration_days REAL,
+  payroll_impact_only INTEGER NOT NULL DEFAULT 0 CHECK (payroll_impact_only IN (0, 1)),
   is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
   is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
   priority INTEGER NOT NULL DEFAULT 100,
@@ -734,7 +744,9 @@ CREATE TABLE IF NOT EXISTS leave_approval_workflows (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   FOREIGN KEY (applies_to_leave_type_id) REFERENCES leave_types(id) ON DELETE SET NULL,
   FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
-  FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE SET NULL
+  FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE SET NULL,
+  FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE SET NULL,
+  FOREIGN KEY (job_level_id) REFERENCES job_levels(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_leave_workflows_match ON leave_approval_workflows(is_active, priority);
@@ -744,7 +756,7 @@ CREATE TABLE IF NOT EXISTS leave_approval_steps (
   workflow_id TEXT NOT NULL,
   step_order INTEGER NOT NULL,
   step_name TEXT NOT NULL,
-  approver_type TEXT NOT NULL CHECK (approver_type IN ('ROLE', 'USER', 'REPORTING_MANAGER', 'DEPARTMENT_MANAGER', 'DEPARTMENT_SENIOR', 'DIRECTOR', 'HR_ROLE', 'PERMISSION')),
+  approver_type TEXT NOT NULL CHECK (approver_type IN ('ROLE', 'USER', 'REPORTING_MANAGER', 'DEPARTMENT_MANAGER', 'DEPARTMENT_SENIOR', 'DIRECTOR', 'HR_ROLE', 'PERMISSION', 'DEPARTMENT_HEAD', 'LOCATION_MANAGER', 'HR_MANAGER', 'FINANCE_MANAGER', 'OWNER')),
   role_id TEXT,
   user_id TEXT,
   permission_key TEXT,
@@ -803,7 +815,7 @@ CREATE TABLE IF NOT EXISTS leave_policy_document_rules (
 CREATE TABLE IF NOT EXISTS leave_policy_deduction_rules (
   id TEXT PRIMARY KEY,
   leave_policy_id TEXT NOT NULL,
-  deduction_mode TEXT NOT NULL DEFAULT 'NONE' CHECK (deduction_mode IN ('NONE', 'FULL_DAY', 'WORKED_DAYS_ONLY', 'CUSTOM')),
+  deduction_mode TEXT NOT NULL DEFAULT 'NONE' CHECK (deduction_mode IN ('NONE', 'FULL_DAY', 'WORKED_DAYS_ONLY', 'CUSTOM', 'NO_DEDUCTION', 'DEDUCT_FROM_BASIC_SALARY', 'DEDUCT_FROM_GROSS_SALARY', 'DEDUCT_FROM_SELECTED_ALLOWANCE', 'FIXED_AMOUNT_PER_DAY', 'DAILY_RATE_FORMULA', 'DEDUCT_AFTER_ENTITLEMENT_EXHAUSTED', 'PAY_ONLY_WORKED_DAYS')),
   deduction_pay_component TEXT,
   deduction_after_days REAL,
   long_leave_threshold_days REAL,
@@ -828,6 +840,90 @@ CREATE TABLE IF NOT EXISTS leave_request_documents (
   FOREIGN KEY (document_type_id) REFERENCES document_types(id) ON DELETE SET NULL,
   FOREIGN KEY (attached_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS leave_balance_cycles (
+  id TEXT PRIMARY KEY,
+  employee_id TEXT NOT NULL,
+  leave_type_id TEXT NOT NULL,
+  cycle_year INTEGER NOT NULL,
+  cycle_start_date TEXT NOT NULL,
+  cycle_end_date TEXT NOT NULL,
+  opening_balance REAL NOT NULL DEFAULT 0,
+  accrued_days REAL NOT NULL DEFAULT 0,
+  used_days REAL NOT NULL DEFAULT 0,
+  pending_days REAL NOT NULL DEFAULT 0,
+  adjusted_days REAL NOT NULL DEFAULT 0,
+  carried_forward_days REAL NOT NULL DEFAULT 0,
+  expired_days REAL NOT NULL DEFAULT 0,
+  closing_balance REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE (employee_id, leave_type_id, cycle_year),
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_leave_balance_cycles_employee ON leave_balance_cycles(employee_id, cycle_year);
+
+CREATE TABLE IF NOT EXISTS leave_balance_ledger_entries (
+  id TEXT PRIMARY KEY,
+  cycle_id TEXT NOT NULL,
+  employee_id TEXT NOT NULL,
+  leave_type_id TEXT NOT NULL,
+  leave_request_id TEXT,
+  entry_type TEXT NOT NULL CHECK (entry_type IN ('OPENING', 'ACCRUAL', 'PENDING_HOLD', 'PENDING_RELEASE', 'USED', 'USED_REVERSAL', 'ADJUSTMENT', 'CARRY_FORWARD', 'EXPIRY')),
+  days REAL NOT NULL,
+  balance_before_json TEXT,
+  balance_after_json TEXT,
+  reason TEXT,
+  created_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (cycle_id) REFERENCES leave_balance_cycles(id) ON DELETE CASCADE,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE,
+  FOREIGN KEY (leave_request_id) REFERENCES leave_requests(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_leave_ledger_employee ON leave_balance_ledger_entries(employee_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_leave_ledger_request ON leave_balance_ledger_entries(leave_request_id);
+
+CREATE TABLE IF NOT EXISTS leave_payroll_impacts (
+  id TEXT PRIMARY KEY,
+  leave_request_id TEXT NOT NULL,
+  employee_id TEXT NOT NULL,
+  leave_type_id TEXT NOT NULL,
+  salary_deduction_mode TEXT NOT NULL CHECK (salary_deduction_mode IN ('NONE', 'FULL_DAY', 'WORKED_DAYS_ONLY', 'CUSTOM', 'NO_DEDUCTION', 'DEDUCT_FROM_BASIC_SALARY', 'DEDUCT_FROM_GROSS_SALARY', 'DEDUCT_FROM_SELECTED_ALLOWANCE', 'FIXED_AMOUNT_PER_DAY', 'DAILY_RATE_FORMULA', 'DEDUCT_AFTER_ENTITLEMENT_EXHAUSTED', 'PAY_ONLY_WORKED_DAYS')),
+  chargeable_days REAL NOT NULL DEFAULT 0,
+  estimated_amount REAL,
+  impact_json TEXT,
+  status TEXT NOT NULL DEFAULT 'ESTIMATED' CHECK (status IN ('ESTIMATED', 'APPLIED', 'IGNORED', 'REVERSED')),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (leave_request_id) REFERENCES leave_requests(id) ON DELETE CASCADE,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_leave_payroll_impacts_request ON leave_payroll_impacts(leave_request_id);
+
+CREATE TABLE IF NOT EXISTS attendance_day_overrides (
+  id TEXT PRIMARY KEY,
+  employee_id TEXT NOT NULL,
+  override_date TEXT NOT NULL,
+  day_type TEXT NOT NULL CHECK (day_type IN ('WORKING_DAY', 'WEEKLY_OFF', 'PUBLIC_HOLIDAY', 'HALF_DAY', 'CUSTOM')),
+  affects_leave_calculation INTEGER NOT NULL DEFAULT 1 CHECK (affects_leave_calculation IN (0, 1)),
+  leave_count_multiplier REAL,
+  reason TEXT,
+  created_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE (employee_id, override_date),
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_day_overrides_employee_date ON attendance_day_overrides(employee_id, override_date);
 
 CREATE TABLE IF NOT EXISTS leave_settings (
   id TEXT PRIMARY KEY,
@@ -894,21 +990,71 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_raw_logs_dedupe ON attendance_r
 CREATE INDEX IF NOT EXISTS idx_attendance_raw_logs_employee_time ON attendance_raw_logs(employee_id, punch_time);
 CREATE INDEX IF NOT EXISTS idx_attendance_raw_logs_device_time ON attendance_raw_logs(device_id, punch_time);
 
+CREATE TABLE IF NOT EXISTS attendance_logs (
+  id TEXT PRIMARY KEY,
+  employee_id TEXT,
+  device_id TEXT,
+  external_employee_code TEXT,
+  log_time TEXT NOT NULL,
+  log_type TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (log_type IN ('IN', 'OUT', 'BREAK_IN', 'BREAK_OUT', 'UNKNOWN')),
+  source TEXT NOT NULL DEFAULT 'MANUAL' CHECK (source IN ('DEVICE', 'MANUAL', 'MANUAL_IMPORT', 'API', 'BRIDGE')),
+  attendance_date TEXT NOT NULL,
+  notes TEXT,
+  raw_payload_json TEXT,
+  is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+  archived_by_user_id TEXT,
+  archived_at TEXT,
+  created_by_user_id TEXT,
+  updated_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL,
+  FOREIGN KEY (device_id) REFERENCES attendance_devices(id) ON DELETE SET NULL,
+  FOREIGN KEY (archived_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_logs_employee_date ON attendance_logs(employee_id, attendance_date);
+CREATE INDEX IF NOT EXISTS idx_attendance_logs_log_time ON attendance_logs(log_time);
+CREATE INDEX IF NOT EXISTS idx_attendance_logs_archived ON attendance_logs(is_archived, attendance_date);
+
 CREATE TABLE IF NOT EXISTS attendance_daily_records (
   id TEXT PRIMARY KEY,
   employee_id TEXT NOT NULL,
   attendance_date TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('PRESENT', 'ABSENT', 'LEAVE', 'SICK', 'LATE', 'HALF_DAY', 'OFF_DAY', 'HOLIDAY', 'PENDING_CORRECTION')),
+  status TEXT NOT NULL CHECK (status IN ('PRESENT', 'ABSENT', 'LATE', 'EARLY_LEAVE', 'HALF_DAY', 'LEAVE', 'SICK_LEAVE', 'LONG_LEAVE', 'DAY_OFF', 'PUBLIC_HOLIDAY', 'MISSING_PUNCH', 'PENDING_CORRECTION', 'CORRECTED', 'SICK', 'OFF_DAY', 'HOLIDAY')),
+  calculated_status TEXT CHECK (calculated_status IN ('PRESENT', 'ABSENT', 'LATE', 'EARLY_LEAVE', 'HALF_DAY', 'LEAVE', 'SICK_LEAVE', 'LONG_LEAVE', 'DAY_OFF', 'PUBLIC_HOLIDAY', 'MISSING_PUNCH', 'PENDING_CORRECTION', 'CORRECTED', 'SICK', 'OFF_DAY', 'HOLIDAY') OR calculated_status IS NULL),
+  final_status TEXT CHECK (final_status IN ('PRESENT', 'ABSENT', 'LATE', 'EARLY_LEAVE', 'HALF_DAY', 'LEAVE', 'SICK_LEAVE', 'LONG_LEAVE', 'DAY_OFF', 'PUBLIC_HOLIDAY', 'MISSING_PUNCH', 'PENDING_CORRECTION', 'CORRECTED', 'SICK', 'OFF_DAY', 'HOLIDAY') OR final_status IS NULL),
   first_clock_in TEXT,
   last_clock_out TEXT,
   total_work_minutes INTEGER CHECK (total_work_minutes IS NULL OR total_work_minutes >= 0),
   late_minutes INTEGER CHECK (late_minutes IS NULL OR late_minutes >= 0),
   early_checkout_minutes INTEGER CHECK (early_checkout_minutes IS NULL OR early_checkout_minutes >= 0),
   missed_punch INTEGER NOT NULL DEFAULT 0 CHECK (missed_punch IN (0, 1)),
+  missing_clock_in INTEGER NOT NULL DEFAULT 0 CHECK (missing_clock_in IN (0, 1)),
+  missing_clock_out INTEGER NOT NULL DEFAULT 0 CHECK (missing_clock_out IN (0, 1)),
+  is_absent INTEGER NOT NULL DEFAULT 0 CHECK (is_absent IN (0, 1)),
+  is_late INTEGER NOT NULL DEFAULT 0 CHECK (is_late IN (0, 1)),
+  is_early_leave INTEGER NOT NULL DEFAULT 0 CHECK (is_early_leave IN (0, 1)),
+  is_half_day INTEGER NOT NULL DEFAULT 0 CHECK (is_half_day IN (0, 1)),
+  is_leave_day INTEGER NOT NULL DEFAULT 0 CHECK (is_leave_day IN (0, 1)),
+  is_public_holiday INTEGER NOT NULL DEFAULT 0 CHECK (is_public_holiday IN (0, 1)),
+  is_day_off INTEGER NOT NULL DEFAULT 0 CHECK (is_day_off IN (0, 1)),
   source TEXT NOT NULL DEFAULT 'SYSTEM' CHECK (source IN ('DEVICE', 'MANUAL', 'CORRECTION', 'LEAVE', 'ROSTER', 'SYSTEM')),
   payroll_impact_json TEXT,
+  payroll_impact_status TEXT,
+  payroll_impact_minutes INTEGER,
+  payroll_impact_days REAL,
+  payroll_impact_reason TEXT,
   leave_request_id TEXT,
   roster_assignment_id TEXT,
+  roster_shift_id TEXT,
+  correction_status TEXT CHECK (correction_status IN ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED') OR correction_status IS NULL),
+  locked_for_payroll INTEGER NOT NULL DEFAULT 0 CHECK (locked_for_payroll IN (0, 1)),
+  generated_by TEXT,
+  generated_at TEXT,
+  metadata_json TEXT,
   notes TEXT,
   created_by_user_id TEXT,
   updated_by_user_id TEXT,
@@ -930,15 +1076,21 @@ CREATE TABLE IF NOT EXISTS attendance_correction_requests (
   employee_id TEXT NOT NULL,
   attendance_date TEXT NOT NULL,
   current_record_id TEXT,
+  request_type TEXT NOT NULL DEFAULT 'OTHER',
+  current_values_json TEXT,
+  requested_values_json TEXT,
   requested_clock_in TEXT,
   requested_clock_out TEXT,
-  requested_status TEXT CHECK (requested_status IN ('PRESENT', 'ABSENT', 'LEAVE', 'SICK', 'LATE', 'HALF_DAY', 'OFF_DAY', 'HOLIDAY', 'PENDING_CORRECTION') OR requested_status IS NULL),
+  requested_status TEXT CHECK (requested_status IN ('PRESENT', 'ABSENT', 'LATE', 'EARLY_LEAVE', 'HALF_DAY', 'LEAVE', 'SICK_LEAVE', 'LONG_LEAVE', 'DAY_OFF', 'PUBLIC_HOLIDAY', 'MISSING_PUNCH', 'PENDING_CORRECTION', 'CORRECTED', 'SICK', 'OFF_DAY', 'HOLIDAY') OR requested_status IS NULL),
   reason TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN ('SUBMITTED', 'APPROVED', 'REJECTED', 'CANCELLED')),
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SUBMITTED', 'APPROVED', 'REJECTED', 'CANCELLED')),
   requested_by_user_id TEXT NOT NULL,
   reviewed_by_user_id TEXT,
+  reviewer_user_id TEXT,
   reviewed_at TEXT,
   review_note TEXT,
+  reviewer_note TEXT,
+  metadata_json TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
@@ -952,6 +1104,8 @@ CREATE INDEX IF NOT EXISTS idx_attendance_corrections_status ON attendance_corre
 
 CREATE TABLE IF NOT EXISTS attendance_settings (
   id TEXT PRIMARY KEY,
+  module_enabled INTEGER NOT NULL DEFAULT 1 CHECK (module_enabled IN (0, 1)),
+  default_workday_mode TEXT NOT NULL DEFAULT 'FIXED_SHIFT' CHECK (default_workday_mode IN ('FIXED_SHIFT', 'ROSTER_BASED', 'FLEXIBLE')),
   standard_work_minutes_per_day INTEGER NOT NULL DEFAULT 480 CHECK (standard_work_minutes_per_day >= 0),
   default_shift_start_time TEXT,
   default_shift_end_time TEXT,
@@ -960,6 +1114,25 @@ CREATE TABLE IF NOT EXISTS attendance_settings (
   weekly_off_days_json TEXT,
   mark_absent_if_no_punch INTEGER NOT NULL DEFAULT 1 CHECK (mark_absent_if_no_punch IN (0, 1)),
   missed_punch_requires_correction INTEGER NOT NULL DEFAULT 1 CHECK (missed_punch_requires_correction IN (0, 1)),
+  allow_manual_entries INTEGER NOT NULL DEFAULT 1 CHECK (allow_manual_entries IN (0, 1)),
+  require_reason_for_manual_entries INTEGER NOT NULL DEFAULT 1 CHECK (require_reason_for_manual_entries IN (0, 1)),
+  allow_employee_correction_requests INTEGER NOT NULL DEFAULT 1 CHECK (allow_employee_correction_requests IN (0, 1)),
+  manual_entry_requires_approval INTEGER NOT NULL DEFAULT 0 CHECK (manual_entry_requires_approval IN (0, 1)),
+  correction_requires_approval INTEGER NOT NULL DEFAULT 1 CHECK (correction_requires_approval IN (0, 1)),
+  payroll_impact_enabled INTEGER NOT NULL DEFAULT 0 CHECK (payroll_impact_enabled IN (0, 1)),
+  default_attendance_source TEXT NOT NULL DEFAULT 'MANUAL' CHECK (default_attendance_source IN ('DEVICE', 'MANUAL', 'MANUAL_IMPORT', 'API', 'BRIDGE')),
+  allow_manager_team_corrections INTEGER NOT NULL DEFAULT 1 CHECK (allow_manager_team_corrections IN (0, 1)),
+  require_reason_for_correction_review INTEGER NOT NULL DEFAULT 1 CHECK (require_reason_for_correction_review IN (0, 1)),
+  overtime_tracking_enabled INTEGER NOT NULL DEFAULT 0 CHECK (overtime_tracking_enabled IN (0, 1)),
+  lock_after_payroll_finalized INTEGER NOT NULL DEFAULT 1 CHECK (lock_after_payroll_finalized IN (0, 1)),
+  monthly_attendance_lock_day INTEGER CHECK (monthly_attendance_lock_day IS NULL OR (monthly_attendance_lock_day >= 1 AND monthly_attendance_lock_day <= 31)),
+  default_absent_status TEXT NOT NULL DEFAULT 'ABSENT' CHECK (default_absent_status IN ('ABSENT', 'MISSING_PUNCH', 'PENDING_CORRECTION')),
+  attendance_source_options_json TEXT,
+  roster_integration_mode TEXT NOT NULL DEFAULT 'PLACEHOLDER' CHECK (roster_integration_mode IN ('PLACEHOLDER', 'ROSTER_REQUIRED', 'ROSTER_OPTIONAL')),
+  public_holiday_integration_mode TEXT NOT NULL DEFAULT 'DAY_OVERRIDES' CHECK (public_holiday_integration_mode IN ('DAY_OVERRIDES', 'EXTERNAL_CALENDAR')),
+  absent_deduction_enabled INTEGER NOT NULL DEFAULT 1 CHECK (absent_deduction_enabled IN (0, 1)),
+  late_deduction_enabled INTEGER NOT NULL DEFAULT 0 CHECK (late_deduction_enabled IN (0, 1)),
+  early_leave_deduction_enabled INTEGER NOT NULL DEFAULT 0 CHECK (early_leave_deduction_enabled IN (0, 1)),
   payroll_deduction_enabled INTEGER NOT NULL DEFAULT 0 CHECK (payroll_deduction_enabled IN (0, 1)),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -984,69 +1157,122 @@ CREATE TABLE IF NOT EXISTS shift_templates (
   end_time TEXT NOT NULL,
   break_minutes INTEGER NOT NULL DEFAULT 0 CHECK (break_minutes >= 0),
   total_work_minutes INTEGER CHECK (total_work_minutes IS NULL OR total_work_minutes >= 0),
+  expected_work_minutes INTEGER CHECK (expected_work_minutes IS NULL OR expected_work_minutes >= 0),
+  default_worksite_location_id TEXT,
+  department_id TEXT,
   color_label TEXT,
+  badge_color TEXT,
+  status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'ARCHIVED')),
   is_overnight INTEGER NOT NULL DEFAULT 0 CHECK (is_overnight IN (0, 1)),
+  is_day_off_template INTEGER NOT NULL DEFAULT 0 CHECK (is_day_off_template IN (0, 1)),
+  is_public_holiday_work_template INTEGER NOT NULL DEFAULT 0 CHECK (is_public_holiday_work_template IN (0, 1)),
+  payroll_impact_placeholder_json TEXT,
   is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
   sort_order INTEGER NOT NULL DEFAULT 100,
+  created_by_user_id TEXT,
+  updated_by_user_id TEXT,
+  archived_by_user_id TEXT,
+  archived_at TEXT,
+  metadata_json TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (default_worksite_location_id) REFERENCES locations(id) ON DELETE SET NULL,
+  FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (archived_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_shift_templates_active_sort ON shift_templates(is_active, sort_order);
+CREATE INDEX IF NOT EXISTS idx_shift_templates_status_sort ON shift_templates(status, sort_order);
+CREATE INDEX IF NOT EXISTS idx_shift_templates_location_department ON shift_templates(default_worksite_location_id, department_id);
 
 CREATE TABLE IF NOT EXISTS roster_periods (
   id TEXT PRIMARY KEY,
   location_id TEXT,
   department_id TEXT,
+  period_start_date TEXT,
+  period_end_date TEXT,
   week_start_date TEXT NOT NULL,
   week_end_date TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')),
+  week_label TEXT,
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'LOCKED', 'ARCHIVED')),
   created_by_user_id TEXT,
+  updated_by_user_id TEXT,
   published_by_user_id TEXT,
   published_at TEXT,
+  unpublished_by_user_id TEXT,
+  unpublished_at TEXT,
+  locked_by_user_id TEXT,
+  locked_at TEXT,
   archived_by_user_id TEXT,
   archived_at TEXT,
+  notes TEXT,
+  metadata_json TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE SET NULL,
   FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (published_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (unpublished_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (locked_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (archived_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_roster_periods_active_unique
 ON roster_periods(week_start_date, COALESCE(location_id, ''), COALESCE(department_id, ''))
-WHERE status IN ('DRAFT', 'PUBLISHED');
+WHERE status IN ('DRAFT', 'PUBLISHED', 'LOCKED');
 CREATE INDEX IF NOT EXISTS idx_roster_periods_week_status ON roster_periods(week_start_date, status);
+CREATE INDEX IF NOT EXISTS idx_roster_periods_scope_status ON roster_periods(location_id, department_id, status);
 
 CREATE TABLE IF NOT EXISTS roster_assignments (
   id TEXT PRIMARY KEY,
   roster_period_id TEXT NOT NULL,
   employee_id TEXT NOT NULL,
   roster_date TEXT NOT NULL,
+  assignment_date TEXT,
   shift_template_id TEXT,
   custom_start_time TEXT,
   custom_end_time TEXT,
+  custom_break_minutes INTEGER CHECK (custom_break_minutes IS NULL OR custom_break_minutes >= 0),
   break_minutes INTEGER CHECK (break_minutes IS NULL OR break_minutes >= 0),
-  status TEXT NOT NULL DEFAULT 'UNASSIGNED' CHECK (status IN ('SCHEDULED', 'OFF', 'LEAVE', 'ABSENT_PLACEHOLDER', 'UNASSIGNED')),
+  expected_work_minutes INTEGER CHECK (expected_work_minutes IS NULL OR expected_work_minutes >= 0),
+  location_id TEXT,
+  department_id TEXT,
+  status TEXT NOT NULL DEFAULT 'UNASSIGNED' CHECK (status IN ('SCHEDULED', 'OFF', 'LEAVE', 'ABSENT_PLACEHOLDER', 'UNASSIGNED', 'DRAFT', 'PUBLISHED', 'CHANGED_AFTER_PUBLISH', 'CANCELLED', 'DAY_OFF', 'SICK_LEAVE', 'LONG_LEAVE', 'PUBLIC_HOLIDAY', 'CONFLICT')),
+  assignment_type TEXT NOT NULL DEFAULT 'SHIFT' CHECK (assignment_type IN ('SHIFT', 'DAY_OFF', 'LEAVE_PLACEHOLDER', 'PUBLIC_HOLIDAY_WORK', 'CUSTOM_SHIFT')),
   notes TEXT,
+  conflict_status TEXT,
+  conflict_reason TEXT,
+  changed_after_publish INTEGER NOT NULL DEFAULT 0 CHECK (changed_after_publish IN (0, 1)),
+  change_reason TEXT,
+  published_snapshot_json TEXT,
   source TEXT NOT NULL DEFAULT 'MANUAL' CHECK (source IN ('MANUAL', 'COPIED', 'LEAVE_SYNC', 'SYSTEM')),
   created_by_user_id TEXT,
   updated_by_user_id TEXT,
+  cancelled_by_user_id TEXT,
+  cancelled_at TEXT,
+  metadata_json TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   UNIQUE (employee_id, roster_date),
   FOREIGN KEY (roster_period_id) REFERENCES roster_periods(id) ON DELETE CASCADE,
   FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
   FOREIGN KEY (shift_template_id) REFERENCES shift_templates(id) ON DELETE SET NULL,
+  FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE SET NULL,
+  FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
-  FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (cancelled_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_roster_assignments_period ON roster_assignments(roster_period_id, roster_date);
 CREATE INDEX IF NOT EXISTS idx_roster_assignments_employee_date ON roster_assignments(employee_id, roster_date);
 CREATE INDEX IF NOT EXISTS idx_roster_assignments_status ON roster_assignments(status, roster_date);
+CREATE INDEX IF NOT EXISTS idx_roster_assignments_scope ON roster_assignments(location_id, department_id, roster_date);
+CREATE INDEX IF NOT EXISTS idx_roster_assignments_shift_template ON roster_assignments(shift_template_id);
 
 CREATE TABLE IF NOT EXISTS roster_assignment_history (
   id TEXT PRIMARY KEY,
@@ -1067,7 +1293,29 @@ CREATE INDEX IF NOT EXISTS idx_roster_assignment_history_employee ON roster_assi
 
 CREATE TABLE IF NOT EXISTS roster_settings (
   id TEXT PRIMARY KEY,
+  module_enabled INTEGER NOT NULL DEFAULT 1 CHECK (module_enabled IN (0, 1)),
   default_week_start_day TEXT NOT NULL DEFAULT 'MONDAY' CHECK (default_week_start_day IN ('MONDAY', 'SUNDAY')),
+  roster_period_mode TEXT NOT NULL DEFAULT 'WEEKLY' CHECK (roster_period_mode IN ('WEEKLY')),
+  allow_draft_roster_editing INTEGER NOT NULL DEFAULT 1 CHECK (allow_draft_roster_editing IN (0, 1)),
+  require_publish_before_employee_visibility INTEGER NOT NULL DEFAULT 1 CHECK (require_publish_before_employee_visibility IN (0, 1)),
+  allow_unpublish_before_lock INTEGER NOT NULL DEFAULT 1 CHECK (allow_unpublish_before_lock IN (0, 1)),
+  allow_changes_after_publish INTEGER NOT NULL DEFAULT 1 CHECK (allow_changes_after_publish IN (0, 1)),
+  require_reason_for_changes_after_publish INTEGER NOT NULL DEFAULT 1 CHECK (require_reason_for_changes_after_publish IN (0, 1)),
+  allow_roster_lock INTEGER NOT NULL DEFAULT 1 CHECK (allow_roster_lock IN (0, 1)),
+  lock_roster_after_attendance_payroll_placeholder INTEGER NOT NULL DEFAULT 0 CHECK (lock_roster_after_attendance_payroll_placeholder IN (0, 1)),
+  allow_shift_overlap_warnings INTEGER NOT NULL DEFAULT 1 CHECK (allow_shift_overlap_warnings IN (0, 1)),
+  block_overlapping_shifts_by_default INTEGER NOT NULL DEFAULT 1 CHECK (block_overlapping_shifts_by_default IN (0, 1)),
+  allow_cross_worksite_assignment_with_permission INTEGER NOT NULL DEFAULT 1 CHECK (allow_cross_worksite_assignment_with_permission IN (0, 1)),
+  roster_aware_attendance_enabled INTEGER NOT NULL DEFAULT 1 CHECK (roster_aware_attendance_enabled IN (0, 1)),
+  roster_aware_leave_counting_enabled INTEGER NOT NULL DEFAULT 1 CHECK (roster_aware_leave_counting_enabled IN (0, 1)),
+  default_off_day_handling_mode TEXT NOT NULL DEFAULT 'EXPLICIT_ONLY',
+  public_holiday_work_assignment_mode TEXT NOT NULL DEFAULT 'ALLOW_EXPLICIT_SHIFT',
+  employee_self_service_roster_visibility_enabled INTEGER NOT NULL DEFAULT 1 CHECK (employee_self_service_roster_visibility_enabled IN (0, 1)),
+  manager_team_roster_visibility_enabled INTEGER NOT NULL DEFAULT 1 CHECK (manager_team_roster_visibility_enabled IN (0, 1)),
+  copy_previous_week_enabled INTEGER NOT NULL DEFAULT 1 CHECK (copy_previous_week_enabled IN (0, 1)),
+  bulk_assignment_enabled INTEGER NOT NULL DEFAULT 1 CHECK (bulk_assignment_enabled IN (0, 1)),
+  default_break_minutes INTEGER NOT NULL DEFAULT 60 CHECK (default_break_minutes >= 0),
+  default_expected_work_minutes INTEGER NOT NULL DEFAULT 480 CHECK (default_expected_work_minutes >= 0),
   allow_published_roster_edits INTEGER NOT NULL DEFAULT 1 CHECK (allow_published_roster_edits IN (0, 1)),
   require_reason_for_published_edits INTEGER NOT NULL DEFAULT 1 CHECK (require_reason_for_published_edits IN (0, 1)),
   show_leave_on_roster INTEGER NOT NULL DEFAULT 1 CHECK (show_leave_on_roster IN (0, 1)),
@@ -1107,9 +1355,9 @@ CREATE TABLE IF NOT EXISTS payroll_components (
   id TEXT PRIMARY KEY,
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('EARNING', 'DEDUCTION')),
-  category TEXT CHECK (category IN ('BASIC', 'ALLOWANCE', 'BENEFIT', 'OVERTIME', 'ADVANCE', 'ATTENDANCE', 'LEAVE', 'OTHER')),
-  calculation_type TEXT NOT NULL CHECK (calculation_type IN ('FIXED', 'VARIABLE', 'PERCENTAGE')),
+  type TEXT NOT NULL CHECK (type IN ('EARNING', 'DEDUCTION', 'BASIC_SALARY', 'ALLOWANCE', 'FIXED_DEDUCTION', 'VARIABLE_DEDUCTION', 'ATTENDANCE_DEDUCTION', 'LEAVE_DEDUCTION', 'ADVANCE_DEDUCTION', 'ONE_TIME_DEDUCTION', 'OVERTIME_PLACEHOLDER', 'BENEFIT_PLACEHOLDER', 'ADJUSTMENT')),
+  category TEXT CHECK (category IN ('BASIC', 'ALLOWANCE', 'BENEFIT', 'OVERTIME', 'ADVANCE', 'ATTENDANCE', 'LEAVE', 'OTHER', 'SALARY', 'DEDUCTION', 'ADJUSTMENT')),
+  calculation_type TEXT NOT NULL CHECK (calculation_type IN ('FIXED', 'VARIABLE', 'PERCENTAGE', 'FIXED_AMOUNT', 'PERCENTAGE_OF_BASIC', 'PERCENTAGE_OF_GROSS', 'DAILY_RATE', 'HOURLY_RATE', 'FORMULA_PLACEHOLDER', 'MANUAL')),
   default_amount REAL,
   default_percentage REAL,
   applies_to_basic_salary INTEGER NOT NULL DEFAULT 0 CHECK (applies_to_basic_salary IN (0, 1)),
@@ -1204,7 +1452,7 @@ CREATE TABLE IF NOT EXISTS payroll_periods (
   start_date TEXT NOT NULL,
   end_date TEXT NOT NULL,
   salary_payment_date TEXT,
-  status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'PROCESSING', 'REVIEW', 'APPROVED', 'PAID', 'CLOSED', 'CANCELLED')),
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'CALCULATING', 'READY_FOR_REVIEW', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'LOCKED', 'CANCELLED', 'OPEN', 'PROCESSING', 'REVIEW', 'APPROVED', 'PAID', 'CLOSED')),
   created_by_user_id TEXT,
   approved_by_user_id TEXT,
   approved_at TEXT,
@@ -1228,7 +1476,7 @@ CREATE TABLE IF NOT EXISTS payroll_runs (
   id TEXT PRIMARY KEY,
   payroll_period_id TEXT NOT NULL,
   run_no INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PROCESSING', 'REVIEW', 'APPROVED', 'PAID', 'CANCELLED')),
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'CALCULATING', 'READY_FOR_REVIEW', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'LOCKED', 'CANCELLED', 'PROCESSING', 'REVIEW', 'APPROVED', 'PAID')),
   calculation_mode TEXT NOT NULL DEFAULT 'STANDARD' CHECK (calculation_mode IN ('STANDARD', 'RECALCULATION', 'FINAL_SETTLEMENT')),
   generated_by_user_id TEXT,
   generated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -1275,7 +1523,7 @@ CREATE TABLE IF NOT EXISTS payroll_run_employees (
   missed_punch_days INTEGER,
   missed_date_ranges_json TEXT,
   calculation_json TEXT,
-  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'REVIEW', 'APPROVED', 'PAID', 'HELD', 'EXCLUDED')),
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'READY_FOR_REVIEW', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'HELD', 'EXCLUDED', 'CANCELLED', 'REVIEW', 'APPROVED', 'PAID')),
   hold_reason TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -1305,6 +1553,64 @@ CREATE TABLE IF NOT EXISTS payroll_run_lines (
 );
 
 CREATE INDEX IF NOT EXISTS idx_payroll_run_lines_employee ON payroll_run_lines(payroll_run_employee_id, line_type);
+
+CREATE TABLE IF NOT EXISTS payroll_employee_results (
+  id TEXT PRIMARY KEY,
+  payroll_run_id TEXT NOT NULL,
+  employee_id TEXT NOT NULL,
+  employee_no_snapshot TEXT NOT NULL,
+  employee_name_snapshot TEXT NOT NULL,
+  department_id TEXT,
+  position_id TEXT,
+  location_id TEXT,
+  basic_salary REAL NOT NULL DEFAULT 0 CHECK (basic_salary >= 0),
+  total_earnings REAL NOT NULL DEFAULT 0 CHECK (total_earnings >= 0),
+  total_deductions REAL NOT NULL DEFAULT 0 CHECK (total_deductions >= 0),
+  advance_deductions REAL NOT NULL DEFAULT 0 CHECK (advance_deductions >= 0),
+  attendance_deductions REAL NOT NULL DEFAULT 0 CHECK (attendance_deductions >= 0),
+  leave_deductions REAL NOT NULL DEFAULT 0 CHECK (leave_deductions >= 0),
+  other_deductions REAL NOT NULL DEFAULT 0 CHECK (other_deductions >= 0),
+  net_salary REAL NOT NULL DEFAULT 0,
+  days_in_period INTEGER NOT NULL DEFAULT 0,
+  scheduled_work_days INTEGER,
+  days_worked INTEGER,
+  absent_days INTEGER,
+  leave_days INTEGER,
+  unpaid_leave_days INTEGER,
+  late_days INTEGER,
+  missed_punch_days INTEGER,
+  missed_date_ranges_json TEXT,
+  calculation_json TEXT,
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'READY_FOR_REVIEW', 'APPROVED_PLACEHOLDER', 'FINALIZED_PLACEHOLDER', 'HELD', 'EXCLUDED', 'CANCELLED')),
+  hold_reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE (payroll_run_id, employee_id),
+  FOREIGN KEY (payroll_run_id) REFERENCES payroll_runs(id) ON DELETE CASCADE,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_employee_results_run ON payroll_employee_results(payroll_run_id, status);
+CREATE INDEX IF NOT EXISTS idx_payroll_employee_results_employee ON payroll_employee_results(employee_id);
+
+CREATE TABLE IF NOT EXISTS payroll_result_line_items (
+  id TEXT PRIMARY KEY,
+  payroll_run_employee_id TEXT NOT NULL,
+  payroll_component_id TEXT,
+  line_type TEXT NOT NULL CHECK (line_type IN ('EARNING', 'DEDUCTION')),
+  category TEXT,
+  description TEXT NOT NULL,
+  amount REAL NOT NULL CHECK (amount >= 0),
+  source TEXT NOT NULL CHECK (source IN ('PROFILE', 'ADVANCE', 'ATTENDANCE', 'LEAVE', 'ROSTER', 'MANUAL', 'SYSTEM')),
+  source_entity_type TEXT,
+  source_entity_id TEXT,
+  calculation_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (payroll_run_employee_id) REFERENCES payroll_employee_results(id) ON DELETE CASCADE,
+  FOREIGN KEY (payroll_component_id) REFERENCES payroll_components(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_result_line_items_result ON payroll_result_line_items(payroll_run_employee_id, line_type);
 
 CREATE TABLE IF NOT EXISTS payroll_advance_payments (
   id TEXT PRIMARY KEY,
@@ -1362,7 +1668,7 @@ CREATE TABLE IF NOT EXISTS payroll_adjustments (
   adjustment_type TEXT NOT NULL CHECK (adjustment_type IN ('EARNING', 'DEDUCTION')),
   amount REAL NOT NULL CHECK (amount > 0),
   reason TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'APPROVED', 'APPLIED', 'CANCELLED')),
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'APPROVED_PLACEHOLDER', 'APPROVED', 'APPLIED', 'CANCELLED')),
   created_by_user_id TEXT,
   approved_by_user_id TEXT,
   approved_at TEXT,

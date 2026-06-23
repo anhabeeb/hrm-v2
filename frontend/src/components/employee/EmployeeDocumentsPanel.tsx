@@ -34,6 +34,7 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
   const [loading, setLoading] = useState(true);
   const [uploadModal, setUploadModal] = useState<{ mode: "upload" | "replace" | "photo"; document?: EmployeeDocument } | null>(null);
   const [versions, setVersions] = useState<{ document: EmployeeDocument; rows: EmployeeDocumentVersion[] } | null>(null);
+  const [documentAction, setDocumentAction] = useState<{ document: EmployeeDocument; name: "archive" | "restore" | "soft-delete" | "permanent-delete"; reason: string } | null>(null);
 
   const canUpload = permissions.has("documents.upload");
   const canDownload = permissions.has("documents.download") || permissions.has("documents.sensitive.download");
@@ -74,23 +75,20 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
     }
   }
 
-  async function action(document: EmployeeDocument, name: "archive" | "restore" | "soft-delete") {
-    const reason = window.prompt(`${name.replace("-", " ")} reason`);
-    if (!reason) return;
+  async function action(document: EmployeeDocument, name: "archive" | "restore" | "soft-delete", reason: string) {
     try {
       await api.employeeDocumentAction(token, employee.id, document.id, name, reason);
+      setDocumentAction(null);
       await afterChange();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to update document.");
     }
   }
 
-  async function permanentlyDelete(document: EmployeeDocument) {
-    const reason = window.prompt("Permanent delete reason");
-    if (!reason) return;
-    if (!window.confirm("Permanently delete this document and all file versions?")) return;
+  async function permanentlyDelete(document: EmployeeDocument, reason: string) {
     try {
       await api.permanentlyDeleteEmployeeDocument(token, employee.id, document.id, reason);
+      setDocumentAction(null);
       await afterChange();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to permanently delete document.");
@@ -166,10 +164,10 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
                     <Button title="Versions" variant="ghost" size="icon" onClick={() => void showVersions(document)}><Eye className="h-4 w-4" /></Button>
                     {canDownload ? <Button title="Download" variant="ghost" size="icon" onClick={() => void download(document)}><Download className="h-4 w-4" /></Button> : null}
                     {canUpload && document.status === "ACTIVE" ? <Button title="Replace" variant="ghost" size="icon" onClick={() => setUploadModal({ mode: "replace", document })}><UploadCloud className="h-4 w-4" /></Button> : null}
-                    {canArchive && document.status === "ACTIVE" ? <Button title="Archive" variant="ghost" size="icon" onClick={() => void action(document, "archive")}><Archive className="h-4 w-4" /></Button> : null}
-                    {canArchive && document.status === "ARCHIVED" ? <Button title="Restore" variant="ghost" size="icon" onClick={() => void action(document, "restore")}><RotateCcw className="h-4 w-4" /></Button> : null}
-                    {canDelete && document.status !== "SOFT_DELETED" ? <Button title="Soft delete" variant="ghost" size="icon" onClick={() => void action(document, "soft-delete")}><Trash2 className="h-4 w-4" /></Button> : null}
-                    {canPermanentDelete ? <Button title="Permanent delete" variant="ghost" size="icon" onClick={() => void permanentlyDelete(document)}><Trash2 className="h-4 w-4 text-red-600" /></Button> : null}
+                    {canArchive && document.status === "ACTIVE" ? <Button title="Archive" variant="ghost" size="icon" onClick={() => setDocumentAction({ document, name: "archive", reason: "" })}><Archive className="h-4 w-4" /></Button> : null}
+                    {canArchive && document.status === "ARCHIVED" ? <Button title="Restore" variant="ghost" size="icon" onClick={() => setDocumentAction({ document, name: "restore", reason: "" })}><RotateCcw className="h-4 w-4" /></Button> : null}
+                    {canDelete && document.status !== "SOFT_DELETED" ? <Button title="Soft delete" variant="ghost" size="icon" onClick={() => setDocumentAction({ document, name: "soft-delete", reason: "" })}><Trash2 className="h-4 w-4" /></Button> : null}
+                    {canPermanentDelete ? <Button title="Permanent delete" variant="ghost" size="icon" onClick={() => setDocumentAction({ document, name: "permanent-delete", reason: "" })}><Trash2 className="h-4 w-4 text-red-600" /></Button> : null}
                   </div>
                 </TableCell>
               </TableRow>
@@ -182,6 +180,30 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
 
       {uploadModal ? <DocumentUploadModal employee={employee} token={token} types={types} state={uploadModal} onClose={() => setUploadModal(null)} onSaved={afterChange} /> : null}
       {versions ? <VersionsModal versions={versions} onClose={() => setVersions(null)} /> : null}
+      {documentAction ? (
+        <DocumentActionModal
+          action={documentAction}
+          onChange={(reason) => setDocumentAction({ ...documentAction, reason })}
+          onClose={() => setDocumentAction(null)}
+          onConfirm={() => documentAction.name === "permanent-delete" ? void permanentlyDelete(documentAction.document, documentAction.reason.trim()) : void action(documentAction.document, documentAction.name, documentAction.reason.trim())}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DocumentActionModal({ action, onChange, onClose, onConfirm }: { action: { document: EmployeeDocument; name: "archive" | "restore" | "soft-delete" | "permanent-delete"; reason: string }; onChange: (reason: string) => void; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+      <div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold">{action.name.replace("-", " ")} document</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{action.name === "permanent-delete" ? "This permanently deletes document metadata and all file versions. Use only when legally appropriate." : "This action is audit logged."}</p>
+        <Input className="mt-3" placeholder="Reason" value={action.reason} onChange={(event) => onChange(event.target.value)} />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={!action.reason.trim()} onClick={onConfirm}>Confirm</Button>
+        </div>
+      </div>
     </div>
   );
 }

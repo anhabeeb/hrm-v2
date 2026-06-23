@@ -47,6 +47,19 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_leave_cancel', 'leave.cancel', 'leave', 'Cancel leave requests', 0),
   ('perm_leave_settings_manage', 'leave.settings.manage', 'leave', 'Manage leave types and policies', 0),
   ('perm_leave_workflow_manage', 'leave.workflow.manage', 'leave', 'Manage leave approval workflows', 0),
+  ('perm_leave_requests_create', 'leave.requests.create', 'leave', 'Create leave requests with granular leave permission', 0),
+  ('perm_leave_requests_approve', 'leave.requests.approve', 'leave', 'Approve leave requests with granular leave permission', 0),
+  ('perm_leave_requests_reject', 'leave.requests.reject', 'leave', 'Reject leave requests with granular leave permission', 0),
+  ('perm_leave_requests_cancel', 'leave.requests.cancel', 'leave', 'Cancel leave requests with granular leave permission', 0),
+  ('perm_leave_requests_manage', 'leave.requests.manage', 'leave', 'Manage leave requests with granular leave permission', 0),
+  ('perm_leave_types_manage', 'leave.types.manage', 'leave', 'Manage leave types with granular leave permission', 0),
+  ('perm_leave_policies_manage', 'leave.policies.manage', 'leave', 'Manage leave policies with granular leave permission', 0),
+  ('perm_leave_approval_workflows_view', 'leave.approval_workflows.view', 'leave', 'View leave approval workflows', 0),
+  ('perm_leave_approval_workflows_manage', 'leave.approval_workflows.manage', 'leave', 'Manage leave approval workflows', 0),
+  ('perm_leave_balances_adjust', 'leave.balances.adjust', 'leave', 'Adjust leave balance cycles and ledger', 0),
+  ('perm_leave_payroll_impact_view', 'leave.payroll_impact.view', 'leave', 'View leave payroll impact estimates', 0),
+  ('perm_leave_payroll_impact_manage', 'leave.payroll_impact.manage', 'leave', 'Manage leave payroll impact records', 0),
+  ('perm_leave_requests_waive_document', 'leave.requests.waive_document', 'leave', 'Waive leave supporting document requirements', 0),
   ('perm_leave_reports_view', 'leave.reports.view', 'leave', 'View leave reports', 0),
   ('perm_leave_reports_export', 'leave.reports.export', 'leave', 'Export leave reports', 0),
   ('perm_employees_leave_view', 'employees.leave.view', 'employees', 'View Employee 360 leave information', 0),
@@ -59,14 +72,80 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_payroll_reports_export', 'payroll.reports.export', 'payroll', 'Export payroll reports', 0),
   ('perm_payroll_advances_view', 'payroll.advances.view', 'payroll', 'View payroll advance payments', 0),
   ('perm_payroll_advances_manage', 'payroll.advances.manage', 'payroll', 'Manage payroll advance payments', 0),
+  ('perm_payroll_advances_approve', 'payroll.advances.approve', 'payroll', 'Approve payroll advances in Payroll Core', 0),
+  ('perm_payroll_advances_cancel', 'payroll.advances.cancel', 'payroll', 'Cancel payroll advances in Payroll Core', 0),
   ('perm_payroll_adjustments_manage', 'payroll.adjustments.manage', 'payroll', 'Manage payroll adjustments', 0),
+  ('perm_payroll_adjustments_view', 'payroll.adjustments.view', 'payroll', 'View payroll adjustments', 0),
+  ('perm_payroll_adjustments_approve_placeholder', 'payroll.adjustments.approve_placeholder', 'payroll', 'Approve payroll adjustments as Payroll Core placeholders', 0),
   ('perm_payroll_components_manage', 'payroll.components.manage', 'payroll', 'Manage payroll components', 0),
+  ('perm_payroll_components_view', 'payroll.components.view', 'payroll', 'View payroll components', 0),
+  ('perm_payroll_deductions_view', 'payroll.deductions.view', 'payroll', 'View payroll deductions', 0),
+  ('perm_payroll_deductions_manage', 'payroll.deductions.manage', 'payroll', 'Manage payroll deductions', 0),
+  ('perm_payroll_periods_view', 'payroll.periods.view', 'payroll', 'View payroll periods', 0),
+  ('perm_payroll_periods_create', 'payroll.periods.create', 'payroll', 'Create payroll periods', 0),
+  ('perm_payroll_periods_update', 'payroll.periods.update', 'payroll', 'Update payroll periods', 0),
+  ('perm_payroll_periods_manage', 'payroll.periods.manage', 'payroll', 'Manage payroll periods', 0),
+  ('perm_payroll_periods_calculate', 'payroll.periods.calculate', 'payroll', 'Calculate payroll periods', 0),
+  ('perm_payroll_periods_recalculate', 'payroll.periods.recalculate', 'payroll', 'Recalculate payroll periods', 0),
+  ('perm_payroll_periods_cancel', 'payroll.periods.cancel', 'payroll', 'Cancel payroll periods', 0),
+  ('perm_payroll_periods_lock', 'payroll.periods.lock', 'payroll', 'Lock payroll periods', 0),
+  ('perm_payroll_periods_unlock', 'payroll.periods.unlock', 'payroll', 'Unlock payroll periods', 0),
+  ('perm_payroll_periods_approve_placeholder', 'payroll.periods.approve_placeholder', 'payroll', 'Approve payroll periods as placeholders', 0),
+  ('perm_payroll_periods_finalize_placeholder', 'payroll.periods.finalize_placeholder', 'payroll', 'Finalize payroll periods as placeholders', 0),
+  ('perm_payroll_runs_view', 'payroll.runs.view', 'payroll', 'View payroll runs', 0),
+  ('perm_payroll_runs_manage', 'payroll.runs.manage', 'payroll', 'Manage payroll runs', 0),
+  ('perm_payroll_runs_calculate', 'payroll.runs.calculate', 'payroll', 'Calculate payroll runs', 0),
+  ('perm_payroll_runs_recalculate', 'payroll.runs.recalculate', 'payroll', 'Recalculate payroll runs', 0),
+  ('perm_payroll_runs_cancel', 'payroll.runs.cancel', 'payroll', 'Cancel payroll runs', 0),
+  ('perm_payroll_runs_approve_placeholder', 'payroll.runs.approve_placeholder', 'payroll', 'Approve payroll runs as placeholders', 0),
+  ('perm_payroll_runs_finalize_placeholder', 'payroll.runs.finalize_placeholder', 'payroll', 'Finalize payroll runs as placeholders', 0),
+  ('perm_payroll_results_view', 'payroll.results.view', 'payroll', 'View payroll results', 0),
+  ('perm_payroll_results_detail_view', 'payroll.results.detail.view', 'payroll', 'View payroll result line details', 0),
+  ('perm_payroll_results_sensitive_view', 'payroll.results.sensitive.view', 'payroll', 'View sensitive payroll result values', 0),
+  ('perm_payroll_results_update', 'payroll.results.update', 'payroll', 'Update payroll result rows', 0),
+  ('perm_payroll_approve_placeholder', 'payroll.approve_placeholder', 'payroll', 'Approve payroll placeholders', 0),
+  ('perm_payroll_finalize_placeholder', 'payroll.finalize_placeholder', 'payroll', 'Finalize payroll placeholders', 0),
+  ('perm_payroll_lock', 'payroll.lock', 'payroll', 'Lock payroll core periods', 0),
+  ('perm_payroll_unlock', 'payroll.unlock', 'payroll', 'Unlock payroll core periods', 0),
+  ('perm_payroll_cutoff_override', 'payroll.cutoff.override', 'payroll', 'Override payroll cutoff rules with reason', 0),
   ('perm_employees_payroll_view', 'employees.payroll.view', 'employees', 'View Employee 360 payroll information', 0),
   ('perm_employees_payroll_update', 'employees.payroll.update', 'employees', 'Update Employee 360 payroll profile', 0),
   ('perm_roster_view', 'roster.view', 'roster', 'View roster records', 0),
   ('perm_roster_manage', 'roster.manage', 'roster', 'Manage roster records', 0),
   ('perm_roster_publish', 'roster.publish', 'roster', 'Publish roster periods and manage published roster edits', 0),
+  ('perm_roster_settings_view', 'roster.settings.view', 'roster', 'View roster settings', 0),
+  ('perm_roster_settings_update', 'roster.settings.update', 'roster', 'Update roster settings', 0),
   ('perm_roster_settings_manage', 'roster.settings.manage', 'roster', 'Manage roster settings and shift templates', 0),
+  ('perm_roster_shift_templates_view', 'roster.shift_templates.view', 'roster', 'View roster shift templates', 0),
+  ('perm_roster_shift_templates_create', 'roster.shift_templates.create', 'roster', 'Create roster shift templates', 0),
+  ('perm_roster_shift_templates_update', 'roster.shift_templates.update', 'roster', 'Update roster shift templates', 0),
+  ('perm_roster_shift_templates_archive', 'roster.shift_templates.archive', 'roster', 'Archive roster shift templates', 0),
+  ('perm_roster_shift_templates_restore', 'roster.shift_templates.restore', 'roster', 'Restore roster shift templates', 0),
+  ('perm_roster_shift_templates_manage', 'roster.shift_templates.manage', 'roster', 'Manage roster shift templates', 0),
+  ('perm_roster_periods_view', 'roster.periods.view', 'roster', 'View roster periods', 0),
+  ('perm_roster_periods_create', 'roster.periods.create', 'roster', 'Create roster periods', 0),
+  ('perm_roster_periods_update', 'roster.periods.update', 'roster', 'Update roster periods', 0),
+  ('perm_roster_periods_publish', 'roster.periods.publish', 'roster', 'Publish roster periods', 0),
+  ('perm_roster_periods_unpublish', 'roster.periods.unpublish', 'roster', 'Unpublish roster periods', 0),
+  ('perm_roster_periods_lock', 'roster.periods.lock', 'roster', 'Lock roster periods', 0),
+  ('perm_roster_periods_unlock', 'roster.periods.unlock', 'roster', 'Unlock roster periods', 0),
+  ('perm_roster_periods_archive', 'roster.periods.archive', 'roster', 'Archive roster periods', 0),
+  ('perm_roster_periods_manage', 'roster.periods.manage', 'roster', 'Manage roster periods', 0),
+  ('perm_roster_assignments_view', 'roster.assignments.view', 'roster', 'View roster assignments', 0),
+  ('perm_roster_assignments_create', 'roster.assignments.create', 'roster', 'Create roster assignments', 0),
+  ('perm_roster_assignments_update', 'roster.assignments.update', 'roster', 'Update roster assignments', 0),
+  ('perm_roster_assignments_cancel', 'roster.assignments.cancel', 'roster', 'Cancel roster assignments', 0),
+  ('perm_roster_assignments_manage', 'roster.assignments.manage', 'roster', 'Manage roster assignments', 0),
+  ('perm_roster_assignments_bulk_update', 'roster.assignments.bulk_update', 'roster', 'Bulk update roster assignments', 0),
+  ('perm_roster_assignments_copy_week', 'roster.assignments.copy_week', 'roster', 'Copy weekly roster assignments', 0),
+  ('perm_roster_assignments_edit_after_publish', 'roster.assignments.edit_after_publish', 'roster', 'Edit assignments after roster publish', 0),
+  ('perm_roster_assignments_override_lock', 'roster.assignments.override_lock', 'roster', 'Override locked roster assignments', 0),
+  ('perm_roster_assignments_cross_worksite', 'roster.assignments.cross_worksite', 'roster', 'Assign employees across worksites', 0),
+  ('perm_roster_conflicts_view', 'roster.conflicts.view', 'roster', 'View roster assignment conflicts', 0),
+  ('perm_roster_conflicts_override', 'roster.conflicts.override', 'roster', 'Override roster assignment conflicts', 0),
+  ('perm_roster_team_view', 'roster.team.view', 'roster', 'View team roster within access scope', 0),
+  ('perm_roster_all_locations_view', 'roster.all_locations.view', 'roster', 'View roster across allowed locations', 0),
+  ('perm_roster_whole_company_view', 'roster.whole_company.view', 'roster', 'View company-wide roster with matching scope', 0),
   ('perm_roster_reports_view', 'roster.reports.view', 'roster', 'View roster reports', 0),
   ('perm_roster_reports_export', 'roster.reports.export', 'roster', 'Export roster reports', 0),
   ('perm_employees_roster_view', 'employees.roster.view', 'employees', 'View Employee 360 roster information', 0),
@@ -109,6 +188,31 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_self_service_kyc_request', 'self_service.kyc_request', 'self_service', 'Submit KYC/profile update requests for own employee profile', 0),
   ('perm_self_service_leave_request', 'self_service.leave_request', 'self_service', 'Create leave requests from employee self-service', 0),
   ('perm_self_service_attendance_correction', 'self_service.attendance_correction', 'self_service', 'Request attendance corrections from employee self-service', 0),
+  ('perm_attendance_logs_view', 'attendance.logs.view', 'attendance', 'View attendance logs', 0),
+  ('perm_attendance_logs_manage', 'attendance.logs.manage', 'attendance', 'Manage attendance logs', 0),
+  ('perm_attendance_manual_entries_manage', 'attendance.manual_entries.manage', 'attendance', 'Create manual attendance entries', 0),
+  ('perm_attendance_daily_refresh', 'attendance.daily.refresh', 'attendance', 'Refresh daily attendance records', 0),
+  ('perm_attendance_payroll_impact_view', 'attendance.payroll_impact.view', 'attendance', 'View attendance payroll impact', 0),
+  ('perm_attendance_corrections_view', 'attendance.corrections.view', 'attendance', 'View attendance correction requests', 0),
+  ('perm_attendance_corrections_create', 'attendance.corrections.create', 'attendance', 'Create attendance correction requests', 0),
+  ('perm_attendance_corrections_review', 'attendance.corrections.review', 'attendance', 'Review attendance correction request details', 0),
+  ('perm_attendance_corrections_approve', 'attendance.corrections.approve', 'attendance', 'Approve attendance correction requests', 0),
+  ('perm_attendance_corrections_reject', 'attendance.corrections.reject', 'attendance', 'Reject attendance correction requests', 0),
+  ('perm_attendance_corrections_cancel', 'attendance.corrections.cancel', 'attendance', 'Cancel attendance correction requests', 0),
+  ('perm_attendance_corrections_manage', 'attendance.corrections.manage', 'attendance', 'Manage attendance correction requests', 0),
+  ('perm_attendance_lock_override', 'attendance.lock.override', 'attendance', 'Override payroll-locked attendance records with audit reason', 0),
+  ('perm_attendance_day_overrides_view', 'attendance.day_overrides.view', 'attendance', 'View attendance day overrides', 0),
+  ('perm_attendance_day_overrides_manage', 'attendance.day_overrides.manage', 'attendance', 'Manage attendance day overrides', 0),
+  ('perm_payroll_attendance_impacts_view', 'payroll.attendance_impacts.view', 'payroll', 'View payroll attendance impacts', 0),
+  ('perm_payroll_attendance_impacts_manage', 'payroll.attendance_impacts.manage', 'payroll', 'Manage payroll attendance impacts', 0),
+  ('perm_payroll_leave_deductions_view', 'payroll.leave_deductions.view', 'payroll', 'View leave deduction payroll impacts', 0),
+  ('perm_payroll_leave_deductions_manage', 'payroll.leave_deductions.manage', 'payroll', 'Manage leave deduction payroll impacts', 0),
+  ('perm_self_service_attendance_view', 'self_service.attendance.view', 'self_service', 'View own attendance in employee self-service', 0),
+  ('perm_self_service_attendance_correction_request', 'self_service.attendance_correction.request', 'self_service', 'Request own attendance corrections from employee self-service', 0),
+  ('perm_self_service_roster_view', 'self_service.roster.view', 'self_service', 'View own published roster in employee self-service', 0),
+  ('perm_roster_self_view', 'roster.self.view', 'roster', 'View own published roster', 0),
+  ('perm_attendance_roster_context_view', 'attendance.roster_context.view', 'attendance', 'Use roster schedule context in attendance views', 0),
+  ('perm_leave_roster_context_view', 'leave.roster_context.view', 'leave', 'Use roster work requirement context in leave calculation', 0),
   ('perm_audit_view', 'audit.view', 'audit', 'View audit logs', 1),
   ('perm_audit_export', 'audit.export', 'audit', 'Export audit logs', 0);
 
@@ -135,15 +239,15 @@ INSERT OR IGNORE INTO roles (id, name, description, is_system_role, is_protected
 
 WITH role_template_permissions(role_name, permission_key) AS (
   VALUES
-  ('Employee Self-Service', 'self_service.view'), ('Employee Self-Service', 'self_service.kyc_request'), ('Employee Self-Service', 'self_service.leave_request'), ('Employee Self-Service', 'self_service.attendance_correction'),
+  ('Employee Self-Service', 'self_service.view'), ('Employee Self-Service', 'self_service.kyc_request'), ('Employee Self-Service', 'self_service.leave_request'), ('Employee Self-Service', 'self_service.attendance.view'), ('Employee Self-Service', 'self_service.attendance_correction.request'), ('Employee Self-Service', 'self_service.attendance_correction'), ('Employee Self-Service', 'self_service.roster.view'),
   ('HR Staff', 'employees.view'), ('HR Staff', 'employees.create'), ('HR Staff', 'employees.update'), ('HR Staff', 'documents.view'), ('HR Staff', 'documents.upload'), ('HR Staff', 'documents.download'), ('HR Staff', 'leave.view'), ('HR Staff', 'attendance.view'), ('HR Staff', 'roster.view'), ('HR Staff', 'assets.view'), ('HR Staff', 'reports.view'),
   ('Senior HR Staff', 'employees.view'), ('Senior HR Staff', 'employees.create'), ('Senior HR Staff', 'employees.update'), ('Senior HR Staff', 'documents.view'), ('Senior HR Staff', 'documents.upload'), ('Senior HR Staff', 'documents.download'), ('Senior HR Staff', 'leave.view'), ('Senior HR Staff', 'attendance.view'), ('Senior HR Staff', 'roster.view'), ('Senior HR Staff', 'assets.view'), ('Senior HR Staff', 'reports.view'), ('Senior HR Staff', 'documents.archive'), ('Senior HR Staff', 'documents.registry.view'), ('Senior HR Staff', 'leave.manage'), ('Senior HR Staff', 'attendance.manage'), ('Senior HR Staff', 'attendance.correct'), ('Senior HR Staff', 'roster.manage'), ('Senior HR Staff', 'assets.manage'), ('Senior HR Staff', 'employee_notes.view'), ('Senior HR Staff', 'reports.export'),
   ('HR Manager', 'employees.view'), ('HR Manager', 'employees.create'), ('HR Manager', 'employees.update'), ('HR Manager', 'documents.view'), ('HR Manager', 'documents.upload'), ('HR Manager', 'documents.download'), ('HR Manager', 'leave.view'), ('HR Manager', 'attendance.view'), ('HR Manager', 'roster.view'), ('HR Manager', 'assets.view'), ('HR Manager', 'reports.view'), ('HR Manager', 'documents.archive'), ('HR Manager', 'documents.registry.view'), ('HR Manager', 'leave.manage'), ('HR Manager', 'attendance.manage'), ('HR Manager', 'attendance.correct'), ('HR Manager', 'roster.manage'), ('HR Manager', 'assets.manage'), ('HR Manager', 'employee_notes.view'), ('HR Manager', 'reports.export'), ('HR Manager', 'employees.archive'), ('HR Manager', 'employees.status.manage'), ('HR Manager', 'employees.sensitive.view'), ('HR Manager', 'employees.sensitive.update'), ('HR Manager', 'documents.sensitive.view'), ('HR Manager', 'documents.sensitive.download'), ('HR Manager', 'documents.settings.manage'), ('HR Manager', 'documents.required_rules.manage'), ('HR Manager', 'leave.settings.manage'), ('HR Manager', 'leave.workflow.manage'), ('HR Manager', 'leave.approve'), ('HR Manager', 'attendance.approve_correction'), ('HR Manager', 'roster.publish'), ('HR Manager', 'payroll.view'), ('HR Manager', 'employees.payroll.view'), ('HR Manager', 'assets.deductions.manage'), ('HR Manager', 'employee_notes.restricted.view'), ('HR Manager', 'audit.view'),
   ('HR Head / HR Admin', 'employees.view'), ('HR Head / HR Admin', 'employees.create'), ('HR Head / HR Admin', 'employees.update'), ('HR Head / HR Admin', 'employees.archive'), ('HR Head / HR Admin', 'employees.status.manage'), ('HR Head / HR Admin', 'employees.numbering.manage'), ('HR Head / HR Admin', 'employees.sensitive.view'), ('HR Head / HR Admin', 'employees.sensitive.update'), ('HR Head / HR Admin', 'employees.job_history.view'), ('HR Head / HR Admin', 'employees.job_history.manage'), ('HR Head / HR Admin', 'employees.contacts.view'), ('HR Head / HR Admin', 'employees.contacts.manage'), ('HR Head / HR Admin', 'employees.onboarding.manage'), ('HR Head / HR Admin', 'employees.audit.view'), ('HR Head / HR Admin', 'documents.view'), ('HR Head / HR Admin', 'documents.upload'), ('HR Head / HR Admin', 'documents.download'), ('HR Head / HR Admin', 'documents.archive'), ('HR Head / HR Admin', 'documents.delete'), ('HR Head / HR Admin', 'documents.sensitive.view'), ('HR Head / HR Admin', 'documents.sensitive.download'), ('HR Head / HR Admin', 'documents.settings.manage'), ('HR Head / HR Admin', 'documents.reports.view'), ('HR Head / HR Admin', 'documents.reports.export'), ('HR Head / HR Admin', 'documents.registry.view'), ('HR Head / HR Admin', 'documents.required_rules.manage'), ('HR Head / HR Admin', 'leave.view'), ('HR Head / HR Admin', 'leave.manage'), ('HR Head / HR Admin', 'leave.request'), ('HR Head / HR Admin', 'leave.approve'), ('HR Head / HR Admin', 'leave.cancel'), ('HR Head / HR Admin', 'leave.settings.manage'), ('HR Head / HR Admin', 'leave.workflow.manage'), ('HR Head / HR Admin', 'leave.reports.view'), ('HR Head / HR Admin', 'leave.reports.export'), ('HR Head / HR Admin', 'attendance.view'), ('HR Head / HR Admin', 'attendance.manage'), ('HR Head / HR Admin', 'attendance.correct'), ('HR Head / HR Admin', 'attendance.approve_correction'), ('HR Head / HR Admin', 'attendance.devices.manage'), ('HR Head / HR Admin', 'attendance.settings.manage'), ('HR Head / HR Admin', 'attendance.reports.view'), ('HR Head / HR Admin', 'attendance.reports.export'), ('HR Head / HR Admin', 'roster.view'), ('HR Head / HR Admin', 'roster.manage'), ('HR Head / HR Admin', 'roster.publish'), ('HR Head / HR Admin', 'roster.settings.manage'), ('HR Head / HR Admin', 'roster.reports.view'), ('HR Head / HR Admin', 'roster.reports.export'), ('HR Head / HR Admin', 'payroll.view'), ('HR Head / HR Admin', 'payroll.reports.view'), ('HR Head / HR Admin', 'employees.payroll.view'), ('HR Head / HR Admin', 'assets.view'), ('HR Head / HR Admin', 'assets.manage'), ('HR Head / HR Admin', 'assets.settings.manage'), ('HR Head / HR Admin', 'assets.issue'), ('HR Head / HR Admin', 'assets.return'), ('HR Head / HR Admin', 'assets.damage'), ('HR Head / HR Admin', 'assets.lost'), ('HR Head / HR Admin', 'assets.write_off'), ('HR Head / HR Admin', 'assets.deductions.manage'), ('HR Head / HR Admin', 'assets.reports.view'), ('HR Head / HR Admin', 'assets.reports.export'), ('HR Head / HR Admin', 'employee_notes.view'), ('HR Head / HR Admin', 'employee_notes.create'), ('HR Head / HR Admin', 'employee_notes.update'), ('HR Head / HR Admin', 'employee_notes.archive'), ('HR Head / HR Admin', 'employee_notes.restricted.view'), ('HR Head / HR Admin', 'employee_notes.restricted.manage'), ('HR Head / HR Admin', 'employee_notes.attachments.manage'), ('HR Head / HR Admin', 'reports.view'), ('HR Head / HR Admin', 'reports.export'), ('HR Head / HR Admin', 'audit.view'), ('HR Head / HR Admin', 'audit.export'), ('HR Head / HR Admin', 'organization.view'), ('HR Head / HR Admin', 'organization.manage'), ('HR Head / HR Admin', 'settings.view'), ('HR Head / HR Admin', 'role_mappings.view'), ('HR Head / HR Admin', 'access_scopes.view'),
   ('Finance Payroll Officer', 'payroll.view'), ('Finance Payroll Officer', 'payroll.advances.view'), ('Finance Payroll Officer', 'payroll.advances.manage'), ('Finance Payroll Officer', 'payroll.reports.view'), ('Finance Payroll Officer', 'employees.payroll.view'),
-  ('Finance Payroll Manager', 'payroll.view'), ('Finance Payroll Manager', 'payroll.manage'), ('Finance Payroll Manager', 'payroll.approve'), ('Finance Payroll Manager', 'payroll.pay'), ('Finance Payroll Manager', 'payroll.advances.view'), ('Finance Payroll Manager', 'payroll.advances.manage'), ('Finance Payroll Manager', 'payroll.adjustments.manage'), ('Finance Payroll Manager', 'payroll.reports.view'), ('Finance Payroll Manager', 'payroll.reports.export'), ('Finance Payroll Manager', 'employees.payroll.view'), ('Finance Payroll Manager', 'employees.payroll.update'),
-  ('Finance Head', 'payroll.view'), ('Finance Head', 'payroll.manage'), ('Finance Head', 'payroll.approve'), ('Finance Head', 'payroll.pay'), ('Finance Head', 'payroll.advances.view'), ('Finance Head', 'payroll.advances.manage'), ('Finance Head', 'payroll.adjustments.manage'), ('Finance Head', 'payroll.reports.view'), ('Finance Head', 'payroll.reports.export'), ('Finance Head', 'employees.payroll.view'), ('Finance Head', 'employees.payroll.update'), ('Finance Head', 'payroll.settings.manage'), ('Finance Head', 'payroll.components.manage'), ('Finance Head', 'audit.view'),
-  ('Operations Roster Manager', 'roster.view'), ('Operations Roster Manager', 'roster.manage'), ('Operations Roster Manager', 'roster.publish'), ('Operations Roster Manager', 'roster.reports.view'), ('Operations Roster Manager', 'attendance.view'), ('Operations Roster Manager', 'employees.roster.view'),
+  ('Finance Payroll Manager', 'payroll.view'), ('Finance Payroll Manager', 'payroll.manage'), ('Finance Payroll Manager', 'payroll.approve'), ('Finance Payroll Manager', 'payroll.advances.view'), ('Finance Payroll Manager', 'payroll.advances.manage'), ('Finance Payroll Manager', 'payroll.adjustments.manage'), ('Finance Payroll Manager', 'payroll.reports.view'), ('Finance Payroll Manager', 'payroll.reports.export'), ('Finance Payroll Manager', 'employees.payroll.view'), ('Finance Payroll Manager', 'employees.payroll.update'),
+  ('Finance Head', 'payroll.view'), ('Finance Head', 'payroll.manage'), ('Finance Head', 'payroll.approve'), ('Finance Head', 'payroll.advances.view'), ('Finance Head', 'payroll.advances.manage'), ('Finance Head', 'payroll.adjustments.manage'), ('Finance Head', 'payroll.reports.view'), ('Finance Head', 'payroll.reports.export'), ('Finance Head', 'employees.payroll.view'), ('Finance Head', 'employees.payroll.update'), ('Finance Head', 'payroll.settings.manage'), ('Finance Head', 'payroll.components.manage'), ('Finance Head', 'audit.view'),
+  ('Operations Roster Manager', 'roster.view'), ('Operations Roster Manager', 'roster.manage'), ('Operations Roster Manager', 'roster.publish'), ('Operations Roster Manager', 'roster.settings.view'), ('Operations Roster Manager', 'roster.shift_templates.view'), ('Operations Roster Manager', 'roster.shift_templates.manage'), ('Operations Roster Manager', 'roster.periods.view'), ('Operations Roster Manager', 'roster.periods.create'), ('Operations Roster Manager', 'roster.periods.update'), ('Operations Roster Manager', 'roster.periods.publish'), ('Operations Roster Manager', 'roster.assignments.view'), ('Operations Roster Manager', 'roster.assignments.create'), ('Operations Roster Manager', 'roster.assignments.update'), ('Operations Roster Manager', 'roster.assignments.bulk_update'), ('Operations Roster Manager', 'roster.assignments.copy_week'), ('Operations Roster Manager', 'roster.reports.view'), ('Operations Roster Manager', 'attendance.view'), ('Operations Roster Manager', 'attendance.roster_context.view'), ('Operations Roster Manager', 'leave.roster_context.view'), ('Operations Roster Manager', 'employees.roster.view'),
   ('Attendance Manager', 'attendance.view'), ('Attendance Manager', 'attendance.manage'), ('Attendance Manager', 'attendance.correct'), ('Attendance Manager', 'attendance.approve_correction'), ('Attendance Manager', 'attendance.reports.view'), ('Attendance Manager', 'employees.attendance.view'),
   ('Store / Outlet Manager', 'employees.view'), ('Store / Outlet Manager', 'attendance.view'), ('Store / Outlet Manager', 'attendance.correct'), ('Store / Outlet Manager', 'roster.view'), ('Store / Outlet Manager', 'roster.manage'), ('Store / Outlet Manager', 'leave.view'), ('Store / Outlet Manager', 'leave.approve'), ('Store / Outlet Manager', 'reports.view'), ('Store / Outlet Manager', 'employees.attendance.view'), ('Store / Outlet Manager', 'employees.roster.view'), ('Store / Outlet Manager', 'employees.leave.view'),
   ('Department Manager / Approver', 'leave.view'), ('Department Manager / Approver', 'leave.approve'), ('Department Manager / Approver', 'attendance.view'), ('Department Manager / Approver', 'roster.view'), ('Department Manager / Approver', 'employees.view')
@@ -258,6 +362,26 @@ INSERT OR IGNORE INTO leave_policy_deduction_rules (
 ) VALUES
   ('leave_deduction_unpaid_default', 'leave_policy_unpaid_default', 'FULL_DAY', 'BASIC_SALARY', 0, 1, '{"foundation":"payroll integration later"}');
 
+UPDATE leave_policies
+SET annual_entitlement_days = 30,
+    salary_deduction_mode = 'DEDUCT_AFTER_ENTITLEMENT_EXHAUSTED',
+    requires_document = 1,
+    document_required_after_consecutive_days = 2,
+    document_required_after_used_days = 15,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE id = 'leave_policy_sick_default';
+
+UPDATE leave_policy_document_rules
+SET required_after_consecutive_days = 2,
+    required_after_used_days = 15,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE id = 'leave_doc_rule_sick_default';
+
+UPDATE leave_policies
+SET salary_deduction_mode = 'PAY_ONLY_WORKED_DAYS',
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE id = 'leave_policy_unpaid_default';
+
 INSERT OR IGNORE INTO leave_approval_workflows (
   id, name, description, is_default, is_active, priority
 ) VALUES (
@@ -303,11 +427,27 @@ INSERT OR IGNORE INTO shift_templates (
   ('shift_template_off', 'OFF', 'Off Day', 'Rostered off day marker.', '00:00', '00:00', 0, 0, 'slate', 0, 1, 50);
 
 INSERT OR IGNORE INTO roster_settings (
-  id, default_week_start_day, allow_published_roster_edits,
-  require_reason_for_published_edits, show_leave_on_roster,
-  show_attendance_on_roster, default_shift_template_id
+  id, module_enabled, default_week_start_day, roster_period_mode,
+  allow_draft_roster_editing, require_publish_before_employee_visibility,
+  allow_unpublish_before_lock, allow_changes_after_publish,
+  require_reason_for_changes_after_publish, allow_roster_lock,
+  lock_roster_after_attendance_payroll_placeholder,
+  allow_shift_overlap_warnings, block_overlapping_shifts_by_default,
+  allow_cross_worksite_assignment_with_permission,
+  roster_aware_attendance_enabled, roster_aware_leave_counting_enabled,
+  default_off_day_handling_mode, public_holiday_work_assignment_mode,
+  employee_self_service_roster_visibility_enabled,
+  manager_team_roster_visibility_enabled, copy_previous_week_enabled,
+  bulk_assignment_enabled, default_break_minutes, default_expected_work_minutes,
+  allow_published_roster_edits, require_reason_for_published_edits,
+  show_leave_on_roster, show_attendance_on_roster, default_shift_template_id
 ) VALUES (
-  'roster_settings_default', 'MONDAY', 1, 1, 1, 1, 'shift_template_general'
+  'roster_settings_default', 1, 'MONDAY', 'WEEKLY',
+  1, 1, 1, 1, 1, 1, 0,
+  1, 1, 1, 1, 1,
+  'EXPLICIT_ONLY', 'ALLOW_EXPLICIT_SHIFT',
+  1, 1, 1, 1, 60, 480,
+  1, 1, 1, 1, 'shift_template_general'
 );
 
 INSERT OR IGNORE INTO payroll_components (
@@ -315,17 +455,17 @@ INSERT OR IGNORE INTO payroll_components (
   default_amount, default_percentage, applies_to_basic_salary,
   is_taxable, is_active, sort_order
 ) VALUES
-  ('pay_comp_basic_salary', 'BASIC_SALARY', 'Basic Salary', 'EARNING', 'BASIC', 'FIXED', NULL, NULL, 1, 1, 1, 10),
-  ('pay_comp_service_allowance', 'SERVICE_ALLOWANCE', 'Service Allowance', 'EARNING', 'ALLOWANCE', 'FIXED', 0, NULL, 0, 1, 1, 20),
-  ('pay_comp_food_allowance', 'FOOD_ALLOWANCE', 'Food Allowance', 'EARNING', 'ALLOWANCE', 'FIXED', 0, NULL, 0, 1, 1, 30),
-  ('pay_comp_accommodation_allowance', 'ACCOMMODATION_ALLOWANCE', 'Accommodation Allowance', 'EARNING', 'ALLOWANCE', 'FIXED', 0, NULL, 0, 1, 1, 40),
-  ('pay_comp_overtime_pay', 'OVERTIME_PAY', 'Overtime Pay', 'EARNING', 'OVERTIME', 'VARIABLE', 0, NULL, 0, 1, 1, 50),
-  ('pay_comp_benefit', 'BENEFIT', 'Benefit', 'EARNING', 'BENEFIT', 'VARIABLE', 0, NULL, 0, 1, 1, 60),
-  ('pay_comp_advance_deduction', 'ADVANCE_DEDUCTION', 'Advance Deduction', 'DEDUCTION', 'ADVANCE', 'VARIABLE', 0, NULL, 0, 0, 1, 110),
-  ('pay_comp_absence_deduction', 'ABSENCE_DEDUCTION', 'Absence Deduction', 'DEDUCTION', 'ATTENDANCE', 'VARIABLE', 0, NULL, 1, 0, 1, 120),
-  ('pay_comp_late_deduction', 'LATE_DEDUCTION', 'Late Deduction', 'DEDUCTION', 'ATTENDANCE', 'VARIABLE', 0, NULL, 1, 0, 1, 130),
-  ('pay_comp_leave_deduction', 'LEAVE_DEDUCTION', 'Leave Deduction', 'DEDUCTION', 'LEAVE', 'VARIABLE', 0, NULL, 1, 0, 1, 140),
-  ('pay_comp_other_deduction', 'OTHER_DEDUCTION', 'Other Deduction', 'DEDUCTION', 'OTHER', 'VARIABLE', 0, NULL, 0, 0, 1, 150);
+  ('pay_comp_basic_salary', 'BASIC_SALARY', 'Basic Salary', 'BASIC_SALARY', 'BASIC', 'FIXED_AMOUNT', NULL, NULL, 1, 1, 1, 10),
+  ('pay_comp_service_allowance', 'SERVICE_ALLOWANCE', 'Service Allowance', 'ALLOWANCE', 'ALLOWANCE', 'FIXED_AMOUNT', 0, NULL, 0, 1, 1, 20),
+  ('pay_comp_food_allowance', 'FOOD_ALLOWANCE', 'Food Allowance', 'ALLOWANCE', 'ALLOWANCE', 'FIXED_AMOUNT', 0, NULL, 0, 1, 1, 30),
+  ('pay_comp_accommodation_allowance', 'ACCOMMODATION_ALLOWANCE', 'Accommodation Allowance', 'ALLOWANCE', 'ALLOWANCE', 'FIXED_AMOUNT', 0, NULL, 0, 1, 1, 40),
+  ('pay_comp_overtime_pay', 'OVERTIME_PAY', 'Overtime Pay', 'OVERTIME_PLACEHOLDER', 'OVERTIME', 'MANUAL', 0, NULL, 0, 1, 1, 50),
+  ('pay_comp_benefit', 'BENEFIT', 'Benefit', 'BENEFIT_PLACEHOLDER', 'BENEFIT', 'MANUAL', 0, NULL, 0, 1, 1, 60),
+  ('pay_comp_advance_deduction', 'ADVANCE_DEDUCTION', 'Advance Deduction', 'ADVANCE_DEDUCTION', 'ADVANCE', 'MANUAL', 0, NULL, 0, 0, 1, 110),
+  ('pay_comp_absence_deduction', 'ABSENCE_DEDUCTION', 'Absence Deduction', 'ATTENDANCE_DEDUCTION', 'ATTENDANCE', 'DAILY_RATE', 0, NULL, 1, 0, 1, 120),
+  ('pay_comp_late_deduction', 'LATE_DEDUCTION', 'Late Deduction', 'ATTENDANCE_DEDUCTION', 'ATTENDANCE', 'MANUAL', 0, NULL, 1, 0, 1, 130),
+  ('pay_comp_leave_deduction', 'LEAVE_DEDUCTION', 'Leave Deduction', 'LEAVE_DEDUCTION', 'LEAVE', 'DAILY_RATE', 0, NULL, 1, 0, 1, 140),
+  ('pay_comp_other_deduction', 'OTHER_DEDUCTION', 'Other Deduction', 'VARIABLE_DEDUCTION', 'OTHER', 'MANUAL', 0, NULL, 0, 0, 1, 150);
 
 INSERT OR IGNORE INTO payroll_settings (
   id, default_currency, default_daily_rate_mode, allow_negative_net_salary,

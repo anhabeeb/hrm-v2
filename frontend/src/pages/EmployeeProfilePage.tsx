@@ -45,9 +45,13 @@ export function EmployeeProfilePage() {
   const [onboarding, setOnboarding] = useState<OnboardingTask[]>([]);
   const [jobHistory, setJobHistory] = useState<Record<string, unknown>[]>([]);
   const [audit, setAudit] = useState<Record<string, unknown>[]>([]);
+  const [profileRequests, setProfileRequests] = useState<Record<string, unknown>[]>([]);
   const [userAccess, setUserAccess] = useState<EmployeeUserAccessPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contactModal, setContactModal] = useState<{ mode: "create" | "edit"; contact?: EmployeeContact } | null>(null);
+  const [archiveReason, setArchiveReason] = useState("");
+  const [contactArchiveTarget, setContactArchiveTarget] = useState<EmployeeContact | null>(null);
+  const [contactArchiveReason, setContactArchiveReason] = useState("");
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [statusModalError, setStatusModalError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
@@ -92,6 +96,12 @@ export function EmployeeProfilePage() {
           setUserAccess(null);
         }
       }
+      try {
+        const requests = (await api.listKycRequests(token, { search: overview.employee.employee_no })).requests;
+        setProfileRequests(requests.filter((request) => request.employee_id === id));
+      } catch {
+        setProfileRequests([]);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load Employee 360 profile.");
     }
@@ -103,10 +113,9 @@ export function EmployeeProfilePage() {
 
   async function archive() {
     if (!token || !employee) return;
-    const reason = window.prompt("Archive reason");
-    if (!reason) return;
     try {
-      await api.archiveEmployee(token, employee.id, reason);
+      await api.archiveEmployee(token, employee.id, archiveReason.trim());
+      setArchiveReason("");
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to archive employee.");
@@ -155,10 +164,10 @@ export function EmployeeProfilePage() {
 
   async function archiveContact(contact: EmployeeContact) {
     if (!token || !employee) return;
-    const reason = window.prompt("Archive contact reason");
-    if (reason === null) return;
     try {
-      await api.archiveEmployeeContact(token, employee.id, contact.id, reason);
+      await api.archiveEmployeeContact(token, employee.id, contact.id, contactArchiveReason);
+      setContactArchiveTarget(null);
+      setContactArchiveReason("");
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to archive contact.");
@@ -203,7 +212,7 @@ export function EmployeeProfilePage() {
           <Link to="/employees"><Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>
           <Button variant="outline" size="sm" onClick={() => navigate("/employees")}><Pencil className="h-4 w-4" /> Edit</Button>
           {canStatus ? <Button variant="outline" size="sm" onClick={() => { setStatusModalError(null); setStatusModalOpen(true); }}>Change status</Button> : null}
-          {canArchive ? <Button variant="danger" size="sm" onClick={() => void archive()}><Archive className="h-4 w-4" /> Archive</Button> : null}
+          {canArchive ? <Button variant="danger" size="sm" onClick={() => setArchiveReason(" ")}><Archive className="h-4 w-4" /> Archive</Button> : null}
         </div>
       </div>
 
@@ -230,11 +239,11 @@ export function EmployeeProfilePage() {
               onTask={canOnboarding ? updateTask : undefined}
             />
           ) : null}
-          {activeTab === "Personal Info" ? <DetailGrid rows={[
+          {activeTab === "Personal Info" ? <div className="space-y-4"><DetailGrid rows={[
             ["Full name", employee.full_name], ["Display name", employee.display_name], ["Gender", employee.gender], ["Date of birth", employee.date_of_birth], ["Nationality", employee.nationality], ["Employee type", employee.employee_type], ["Employment type", employee.employment_type], ["Profile photo", employee.profile_photo_document_id ? "Uploaded" : "Not uploaded"]
-          ]} /> : null}
+          ]} /><ProfileUpdateRequests rows={profileRequests} /></div> : null}
           {activeTab === "Job Info" ? <JobInfo employee={employee} jobHistory={jobHistory} /> : null}
-          {activeTab === "Contacts" ? <Contacts contacts={contacts} canManage={canContacts} onAdd={() => setContactModal({ mode: "create" })} onEdit={(contact) => setContactModal({ mode: "edit", contact })} onArchive={(contact) => void archiveContact(contact)} /> : null}
+          {activeTab === "Contacts" ? <Contacts contacts={contacts} canManage={canContacts} onAdd={() => setContactModal({ mode: "create" })} onEdit={(contact) => setContactModal({ mode: "edit", contact })} onArchive={(contact) => setContactArchiveTarget(contact)} /> : null}
           {activeTab === "User Access" ? canViewUserAccess ? <UserAccessPanel preview={userAccess} canApply={canApplyUserAccess} onApply={(mappingId) => void applyUserAccessMapping(mappingId)} /> : <EmptyState title="User access unavailable" description="Your account needs role_mappings.view permission." /> : null}
           {activeTab === "Payroll" ? (canPayroll ? <EmployeePayrollPanel employee={employee} /> : <Panel><EmptyState title="Payroll unavailable" description="Your account needs employee payroll access." /></Panel>) : null}
           {activeTab === "Attendance" ? canAttendance ? <EmployeeAttendancePanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Attendance unavailable" description="Your account needs employees.attendance.view permission." /> : null}
@@ -248,6 +257,26 @@ export function EmployeeProfilePage() {
       </Panel>
 
       {contactModal ? <ContactModal contact={contactModal.contact} onClose={() => setContactModal(null)} onSave={(input) => void saveContact(input)} /> : null}
+      {archiveReason ? (
+        <ReasonModal
+          title="Archive employee"
+          description={`Archive ${employee.full_name}. Existing history is retained.`}
+          value={archiveReason.trim() === "" ? "" : archiveReason}
+          onChange={setArchiveReason}
+          onClose={() => setArchiveReason("")}
+          onConfirm={() => void archive()}
+        />
+      ) : null}
+      {contactArchiveTarget ? (
+        <ReasonModal
+          title="Archive contact"
+          description={`Archive ${contactArchiveTarget.contact_type} contact ${contactArchiveTarget.value}.`}
+          value={contactArchiveReason}
+          onChange={setContactArchiveReason}
+          onClose={() => { setContactArchiveTarget(null); setContactArchiveReason(""); }}
+          onConfirm={() => void archiveContact(contactArchiveTarget)}
+        />
+      ) : null}
       {statusModalOpen ? (
         <ChangeEmployeeStatusModal
           employee={employee}
@@ -355,6 +384,51 @@ function Summary({ title, rows }: { title: string; rows: Array<[string, string]>
 
 function DetailGrid({ rows }: { rows: Array<[string, string | null | undefined]> }) {
   return <div className="grid gap-3 md:grid-cols-3">{rows.map(([k, v]) => <div key={k} className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">{k}</p><p className="text-sm font-medium">{v || "-"}</p></div>)}</div>;
+}
+
+function parseFieldValue(json?: unknown) {
+  if (!json) return "-";
+  try {
+    const parsed = typeof json === "string" ? JSON.parse(json) : json;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return Object.entries(parsed as Record<string, unknown>).map(([key, value]) => `${key}: ${String(value ?? "-")}`).join(", ");
+    }
+    return String(parsed ?? "-");
+  } catch {
+    return String(json);
+  }
+}
+
+function ProfileUpdateRequests({ rows }: { rows: Record<string, unknown>[] }) {
+  return (
+    <div className="rounded-md border">
+      <div className="border-b px-3 py-2 text-sm font-semibold">Profile update requests</div>
+      {rows.length === 0 ? <EmptyState title="No profile update requests" description="Pending and recent self-service profile requests for this employee will appear here." /> : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader><TableRow><TableHead>Field</TableHead><TableHead>Old/current value</TableHead><TableHead>Requested value</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead><TableHead>Reviewer note</TableHead><TableHead>Created</TableHead></TableRow></TableHeader>
+            <TableBody>{rows.map((row) => <TableRow key={String(row.id)}><TableCell>{String(row.field_key ?? row.section ?? "-")}</TableCell><TableCell>{parseFieldValue(row.old_value_json)}</TableCell><TableCell>{parseFieldValue(row.requested_value_json)}</TableCell><TableCell>{String(row.reason ?? "-")}</TableCell><TableCell><Badge tone={row.status === "APPROVED" ? "success" : row.status === "REJECTED" ? "danger" : "warning"}>{String(row.status ?? "-")}</Badge></TableCell><TableCell>{String(row.review_note ?? "-")}</TableCell><TableCell>{String(row.created_at ?? "-")}</TableCell></TableRow>)}</TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReasonModal({ title, description, value, onChange, onClose, onConfirm }: { title: string; description: string; value: string; onChange: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+      <div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+        <Input className="mt-3" placeholder="Reason" value={value === " " ? "" : value} onChange={(event) => onChange(event.target.value || " ")} />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={!value.trim()} onClick={onConfirm}>Confirm</Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function JobInfo({ employee, jobHistory }: { employee: Employee; jobHistory: Record<string, unknown>[] }) {

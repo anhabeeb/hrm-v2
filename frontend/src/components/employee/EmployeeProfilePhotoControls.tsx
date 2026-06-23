@@ -22,15 +22,17 @@ export function EmployeeProfilePhotoControls({
   compact?: boolean;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function clearPhoto() {
-    if (!employee.profile_photo_document_id || !window.confirm("Clear this employee profile photo? The document will be archived, not permanently deleted.")) return;
+    if (!employee.profile_photo_document_id) return;
     setClearing(true);
     setError(null);
     try {
       await api.clearEmployeeProfilePhoto(token, employee.id);
+      setClearOpen(false);
       await onChanged();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to clear profile photo.");
@@ -51,12 +53,24 @@ export function EmployeeProfilePhotoControls({
         </Button>
       ) : null}
       {canClear && employee.profile_photo_document_id ? (
-        <Button variant="outline" size="sm" disabled={clearing} onClick={() => void clearPhoto()}>
+        <Button variant="outline" size="sm" disabled={clearing} onClick={() => setClearOpen(true)}>
           <Trash2 className="h-4 w-4" />
           {clearing ? "Clearing..." : "Clear photo"}
         </Button>
       ) : null}
       {modalOpen ? <ProfilePhotoModal employee={employee} token={token} onClose={() => setModalOpen(false)} onSaved={onChanged} /> : null}
+      {clearOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+          <div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl">
+            <h2 className="text-sm font-semibold">Clear profile photo</h2>
+            <p className="mt-1 text-xs text-muted-foreground">The Profile Photo document will be archived, not permanently deleted.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setClearOpen(false)}>Cancel</Button>
+              <Button size="sm" disabled={clearing} onClick={() => void clearPhoto()}>{clearing ? "Clearing..." : "Clear photo"}</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

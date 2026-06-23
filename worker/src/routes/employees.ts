@@ -263,6 +263,27 @@ async function entityExists(db: AppBindings["Bindings"]["DB"], table: "departmen
   return db.prepare(`SELECT id FROM ${table} WHERE id = ?`).bind(id).first<{ id: string }>();
 }
 
+async function activeEntityExists(db: AppBindings["Bindings"]["DB"], table: "departments" | "positions" | "locations" | "job_levels", id: string) {
+  return db.prepare(`SELECT id FROM ${table} WHERE id = ? AND is_active = 1`).bind(id).first<{ id: string }>();
+}
+
+async function activeEmployeeExists(db: AppBindings["Bindings"]["DB"], id: string) {
+  return db.prepare("SELECT id FROM employees WHERE id = ? AND archived_at IS NULL").bind(id).first<{ id: string }>();
+}
+
+async function createsReportingCycle(db: AppBindings["Bindings"]["DB"], employeeId: string, managerId: string) {
+  let current: string | null = managerId;
+  const visited = new Set<string>();
+  while (current) {
+    if (current === employeeId) return true;
+    if (visited.has(current)) return true;
+    visited.add(current);
+    const row: { reporting_manager_employee_id: string | null } | null = await db.prepare("SELECT reporting_manager_employee_id FROM employees WHERE id = ? AND archived_at IS NULL").bind(current).first<{ reporting_manager_employee_id: string | null }>();
+    current = row?.reporting_manager_employee_id ?? null;
+  }
+  return false;
+}
+
 async function readOrgCode(db: AppBindings["Bindings"]["DB"], table: "departments" | "locations", id: string | null) {
   if (!id) {
     return null;
@@ -339,13 +360,13 @@ async function validateEmployeeRefs(
   employeeId?: string
 ) {
   const refs = [
-    ["departments", input.primary_department_id, "Selected department was not found."],
-    ["positions", input.primary_position_id, "Selected position was not found."],
-    ["locations", input.primary_location_id, "Selected location was not found."],
-    ["job_levels", input.job_level_id, "Selected job level was not found."]
+    ["departments", input.primary_department_id, "Selected department was not found or is inactive."],
+    ["positions", input.primary_position_id, "Selected position was not found or is inactive."],
+    ["locations", input.primary_location_id, "Selected location was not found or is inactive."],
+    ["job_levels", input.job_level_id, "Selected job level was not found or is inactive."]
   ] as const;
   for (const [table, id, message] of refs) {
-    if (id && !(await entityExists(c.env.DB, table, id))) {
+    if (id && !(await activeEntityExists(c.env.DB, table, id))) {
       return fail(c, 400, "INVALID_REFERENCE", message);
     }
   }
@@ -353,8 +374,11 @@ async function validateEmployeeRefs(
     if (input.reporting_manager_employee_id === employeeId) {
       return fail(c, 400, "INVALID_MANAGER", "Reporting manager cannot be the employee.");
     }
-    if (!(await entityExists(c.env.DB, "employees", input.reporting_manager_employee_id))) {
-      return fail(c, 400, "INVALID_MANAGER", "Reporting manager was not found.");
+    if (!(await activeEmployeeExists(c.env.DB, input.reporting_manager_employee_id))) {
+      return fail(c, 400, "INVALID_MANAGER", "Reporting manager was not found or is inactive.");
+    }
+    if (employeeId && await createsReportingCycle(c.env.DB, employeeId, input.reporting_manager_employee_id)) {
+      return fail(c, 400, "INVALID_MANAGER", "Reporting manager assignment would create a reporting cycle.");
     }
   }
   if (input.user_id) {
@@ -590,6 +614,23 @@ employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
     .bind(...params)
     .all<EmployeeRow>();
   return ok(c, { employees: rows.results.map((row) => toEmployee(row, hasPermission(c, "employees.sensitive.view"))) });
+});
+
+employeeRoutes.get("/assignment-options", requirePermission("employees.view"), async (c) => {
+  const [departments, locations, positions, jobLevels, managers] = await Promise.all([
+    c.env.DB.prepare("SELECT id, code, name, parent_department_id, head_employee_id, manager_employee_id, is_active FROM departments WHERE is_active = 1 ORDER BY name").all(),
+    c.env.DB.prepare("SELECT id, code, name, type, island_city, manager_employee_id, is_active FROM locations WHERE is_active = 1 ORDER BY name").all(),
+    c.env.DB.prepare("SELECT id, code, title, department_id, level_id, is_active FROM positions WHERE is_active = 1 ORDER BY title").all(),
+    c.env.DB.prepare("SELECT id, code, name, rank_order, is_active FROM job_levels WHERE is_active = 1 ORDER BY rank_order, name").all(),
+    c.env.DB.prepare("SELECT e.id, e.employee_no, e.full_name, e.primary_department_id, e.primary_location_id, e.primary_position_id FROM employees e WHERE e.archived_at IS NULL ORDER BY e.full_name").all()
+  ]);
+  return ok(c, {
+    departments: departments.results,
+    locations: locations.results,
+    positions: positions.results,
+    job_levels: jobLevels.results,
+    reporting_managers: managers.results
+  });
 });
 
 employeeRoutes.post("/", requirePermission("employees.create"), async (c) => {

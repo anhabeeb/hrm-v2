@@ -1,5 +1,5 @@
 import type { AccessScopeRule, AccessUser, ApiEnvelope, AuthUser, BootstrapStatus, EmployeeUserAccessPreview, Permission, Role, RoleMappingRule, UserStatus } from "../types/auth";
-import type { AttendanceCorrection, AttendanceDashboard, AttendanceDevice, AttendanceRawLog, AttendanceRecord, AttendanceSettings } from "../types/attendance";
+import type { AttendanceCorrection, AttendanceDashboard, AttendanceDayOverride, AttendanceDevice, AttendanceLog, AttendancePayrollImpact, AttendanceRawLog, AttendanceRecord, AttendanceSettings } from "../types/attendance";
 import type {
   CompanyInput,
   DepartmentInput,
@@ -63,7 +63,6 @@ import type { RosterAssignment, RosterDashboard, RosterPeriod, RosterSettings, S
 import type {
   EmployeePayrollProfile,
   EmployeePayrollSummary,
-  FinalSettlement,
   PayrollAdjustment,
   PayrollAdvance,
   PayrollComponent,
@@ -207,10 +206,10 @@ export const api = {
     return request<{ correction_id: string }>("/api/v1/self-service/attendance/corrections", { method: "POST", body: JSON.stringify(input) }, token);
   },
   createSelfServiceLeaveRequest(token: string, input: Record<string, unknown>) {
-    return request<{ request: Record<string, unknown>; approvals: Record<string, unknown>[]; document_required: boolean }>("/api/v1/self-service/leave/requests", { method: "POST", body: JSON.stringify(input) }, token);
+    return request<{ request: Record<string, unknown>; approvals: Record<string, unknown>[]; document_required: boolean; approval_chain_preview?: Record<string, unknown> | null }>("/api/v1/self-service/leave/requests", { method: "POST", body: JSON.stringify(input) }, token);
   },
   getSelfServiceLeave(token: string) {
-    return request<{ balances: Record<string, unknown>[]; requests: Record<string, unknown>[]; approvals: Record<string, unknown>[]; leave_request_enabled: boolean }>("/api/v1/self-service/leave", {}, token);
+    return request<{ balances: Record<string, unknown>[]; balance_cycles: Record<string, unknown>[]; ledger_recent: Record<string, unknown>[]; requests: Record<string, unknown>[]; approvals: Record<string, unknown>[]; leave_request_enabled: boolean }>("/api/v1/self-service/leave", {}, token);
   },
   getSelfServicePayroll(token: string) {
     return request<{ profile: Record<string, unknown> | null; runs: Record<string, unknown>[]; advances: Record<string, unknown>[]; deductions: Record<string, unknown>[]; payslip_download_enabled: boolean }>("/api/v1/self-service/payroll", {}, token);
@@ -444,6 +443,9 @@ export const api = {
   },
   listEmployees(token: string) {
     return request<{ employees: Employee[] }>("/api/v1/employees", {}, token);
+  },
+  getEmployeeAssignmentOptions(token: string) {
+    return request<{ departments: OrganizationDepartment[]; locations: OrganizationLocation[]; positions: OrganizationPosition[]; job_levels: OrganizationJobLevel[]; reporting_managers: Employee[] }>("/api/v1/employees/assignment-options", {}, token);
   },
   getEmployee(token: string, id: string) {
     return request<{ employee: Employee }>(`/api/v1/employees/${id}`, {}, token);
@@ -688,6 +690,12 @@ export const api = {
   createLeaveRequest(token: string, input: Partial<LeaveRequest>) {
     return request<{ request: LeaveRequest }>("/api/v1/leave/requests", { method: "POST", body: JSON.stringify(input) }, token);
   },
+  calculateLeaveRequest(token: string, input: Record<string, unknown>) {
+    return request<Record<string, unknown>>("/api/v1/leave/calculate", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  validateLeaveRequest(token: string, input: Record<string, unknown>) {
+    return request<Record<string, unknown>>("/api/v1/leave/validate-request", { method: "POST", body: JSON.stringify(input) }, token);
+  },
   updateLeaveRequest(token: string, id: string, input: Partial<LeaveRequest>) {
     return request<{ request: LeaveRequest }>(`/api/v1/leave/requests/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
@@ -719,13 +727,13 @@ export const api = {
     return request<{ detached: boolean }>(`/api/v1/leave/requests/${id}/documents/${documentId}`, { method: "DELETE" }, token);
   },
   getEmployeeLeaveSummary(token: string, employeeId: string) {
-    return request<{ requests: LeaveRequest[]; balances: LeaveBalance[]; calendar: LeaveDay[] }>(`/api/v1/employees/${employeeId}/leave/summary`, {}, token);
+    return request<{ requests: LeaveRequest[]; balances: LeaveBalance[]; balance_cycles?: LeaveBalance[]; ledger_recent?: Record<string, unknown>[]; calendar: LeaveDay[] }>(`/api/v1/employees/${employeeId}/leave/summary`, {}, token);
   },
   listEmployeeLeaveRequests(token: string, employeeId: string) {
     return request<{ requests: LeaveRequest[] }>(`/api/v1/employees/${employeeId}/leave/requests`, {}, token);
   },
   getEmployeeLeaveBalances(token: string, employeeId: string) {
-    return request<{ balances: LeaveBalance[] }>(`/api/v1/employees/${employeeId}/leave/balances`, {}, token);
+    return request<{ balances: LeaveBalance[]; balance_cycles?: LeaveBalance[]; ledger_recent?: Record<string, unknown>[] }>(`/api/v1/employees/${employeeId}/leave/balances`, {}, token);
   },
   getEmployeeLeaveCalendar(token: string, employeeId: string) {
     return request<{ calendar: LeaveDay[] }>(`/api/v1/employees/${employeeId}/leave/calendar`, {}, token);
@@ -741,6 +749,12 @@ export const api = {
   },
   listAttendanceRecords(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ records: AttendanceRecord[] }>(`/api/v1/attendance/records${query(filters)}`, {}, token);
+  },
+  listAttendanceDailyRecords(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ records: AttendanceRecord[]; daily_records: AttendanceRecord[] }>(`/api/v1/attendance/daily${query(filters)}`, {}, token);
+  },
+  refreshAttendanceDailyRecords(token: string, input: { employee_id: string; date_from?: string; date_to?: string; attendance_date?: string }) {
+    return request<{ refreshed: string[] }>("/api/v1/attendance/daily/refresh", { method: "POST", body: JSON.stringify(input) }, token);
   },
   getAttendanceRecord(token: string, id: string) {
     return request<{ record: AttendanceRecord }>(`/api/v1/attendance/records/${id}`, {}, token);
@@ -775,6 +789,18 @@ export const api = {
   listAttendanceRawLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ logs: AttendanceRawLog[] }>(`/api/v1/attendance/raw-logs${query(filters)}`, {}, token);
   },
+  listAttendanceLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ logs: AttendanceLog[] }>(`/api/v1/attendance/logs${query(filters)}`, {}, token);
+  },
+  createManualAttendanceLog(token: string, input: Partial<AttendanceLog>) {
+    return request<{ log: AttendanceLog }>("/api/v1/attendance/logs/manual", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateAttendanceLog(token: string, id: string, input: Partial<AttendanceLog>) {
+    return request<{ log: AttendanceLog }>(`/api/v1/attendance/logs/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  archiveAttendanceLog(token: string, id: string, reason?: string | null) {
+    return request<{ archived: boolean }>(`/api/v1/attendance/logs/${id}/archive`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
+  },
   importAttendanceRawLogs(token: string, input: { logs: Record<string, unknown>[]; source?: string }) {
     return request<{ imported: number; skipped: number }>("/api/v1/attendance/raw-logs/import", { method: "POST", body: JSON.stringify(input) }, token);
   },
@@ -799,6 +825,9 @@ export const api = {
   cancelAttendanceCorrection(token: string, id: string, reason?: string | null) {
     return request<{ correction: AttendanceCorrection }>(`/api/v1/attendance/corrections/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
   },
+  getAttendancePayrollImpact(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ impacts: AttendancePayrollImpact[]; records: AttendanceRecord[] }>(`/api/v1/attendance/payroll-impact${query(filters)}`, {}, token);
+  },
   getAttendanceSettings(token: string) {
     return request<{ settings: AttendanceSettings }>("/api/v1/attendance/settings", {}, token);
   },
@@ -810,6 +839,15 @@ export const api = {
   },
   getAttendanceReports(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ reports: Record<string, unknown>[] }>(`/api/v1/attendance/reports${query(filters)}`, {}, token);
+  },
+  listAttendanceDayOverrides(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ overrides: AttendanceDayOverride[] }>(`/api/v1/attendance/day-overrides${query(filters)}`, {}, token);
+  },
+  createAttendanceDayOverride(token: string, input: Partial<AttendanceDayOverride>) {
+    return request<{ override: AttendanceDayOverride }>("/api/v1/attendance/day-overrides", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateAttendanceDayOverride(token: string, id: string, input: Partial<AttendanceDayOverride>) {
+    return request<{ override: AttendanceDayOverride }>(`/api/v1/attendance/day-overrides/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   exportAttendanceReportCsv(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return blobRequest(`/api/v1/attendance/reports/export.csv${query(filters)}`, token);
@@ -838,7 +876,7 @@ export const api = {
   updateShiftTemplate(token: string, id: string, input: Partial<ShiftTemplate>) {
     return request<{ shift_template: ShiftTemplate }>(`/api/v1/roster/shift-templates/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
-  shiftTemplateAction(token: string, id: string, action: "enable" | "disable") {
+  shiftTemplateAction(token: string, id: string, action: "enable" | "disable" | "archive" | "restore") {
     return request<{ enabled: boolean }>(`/api/v1/roster/shift-templates/${id}/${action}`, { method: "POST" }, token);
   },
   getRosterSettings(token: string) {
@@ -874,6 +912,15 @@ export const api = {
   publishRosterPeriod(token: string, id: string) {
     return request<{ period: RosterPeriod }>(`/api/v1/roster/periods/${id}/publish`, { method: "POST" }, token);
   },
+  unpublishRosterPeriod(token: string, id: string, reason: string) {
+    return request<{ period: RosterPeriod }>(`/api/v1/roster/periods/${id}/unpublish`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  lockRosterPeriod(token: string, id: string, reason?: string | null) {
+    return request<{ period: RosterPeriod }>(`/api/v1/roster/periods/${id}/lock`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
+  },
+  unlockRosterPeriod(token: string, id: string, reason: string) {
+    return request<{ period: RosterPeriod }>(`/api/v1/roster/periods/${id}/unlock`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
   archiveRosterPeriod(token: string, id: string) {
     return request<{ archived: boolean }>(`/api/v1/roster/periods/${id}/archive`, { method: "POST" }, token);
   },
@@ -895,11 +942,23 @@ export const api = {
   getRosterAssignment(token: string, id: string) {
     return request<{ assignment: RosterAssignment }>(`/api/v1/roster/assignments/${id}`, {}, token);
   },
+  createRosterAssignment(token: string, input: Partial<RosterAssignment> & { reason?: string }) {
+    return request<{ assignment: RosterAssignment; warning?: string | null; warnings?: string[] }>("/api/v1/roster/assignments", { method: "POST", body: JSON.stringify(input) }, token);
+  },
   updateRosterAssignment(token: string, id: string, input: Partial<RosterAssignment> & { reason?: string }) {
     return request<{ assignment: RosterAssignment; warning?: string | null }>(`/api/v1/roster/assignments/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
+  cancelRosterAssignment(token: string, id: string, reason: string) {
+    return request<{ assignment: RosterAssignment }>(`/api/v1/roster/assignments/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
   batchRosterAssignments(token: string, input: Record<string, unknown>) {
     return request<{ assignments: RosterAssignment[] }>("/api/v1/roster/assignments/batch", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  bulkRosterAssignments(token: string, input: Record<string, unknown>) {
+    return request<{ assignments: RosterAssignment[] }>("/api/v1/roster/assignments/bulk", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  copyRosterAssignmentsWeek(token: string, input: Record<string, unknown>) {
+    return request<{ period: RosterPeriod; copied: number }>("/api/v1/roster/assignments/copy-week", { method: "POST", body: JSON.stringify(input) }, token);
   },
   getEmployeeRosterSummary(token: string, employeeId: string) {
     return request<{ summary: Record<string, number>; assignments: RosterAssignment[]; history: Record<string, unknown>[] }>(`/api/v1/employees/${employeeId}/roster/summary`, {}, token);
@@ -921,6 +980,12 @@ export const api = {
   },
   exportRosterReportCsv(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return blobRequest(`/api/v1/roster/reports/export.csv${query(filters)}`, token);
+  },
+  getSelfServiceRoster(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ week_start_date: string; week_end_date: string; assignments: RosterAssignment[] }>(`/api/v1/self-service/roster${query(filters)}`, {}, token);
+  },
+  getSelfServiceRosterWeek(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ week_start_date: string; week_end_date: string; assignments: RosterAssignment[] }>(`/api/v1/self-service/roster/week${query(filters)}`, {}, token);
   },
   listPayrollComponents(token: string) {
     return request<{ components: PayrollComponent[] }>("/api/v1/payroll/components", {}, token);
@@ -981,9 +1046,6 @@ export const api = {
   },
   approvePayrollAdvance(token: string, id: string) {
     return request<{ advance: PayrollAdvance }>(`/api/v1/payroll/advances/${id}/approve`, { method: "POST" }, token);
-  },
-  markPayrollAdvancePaid(token: string, id: string) {
-    return request<{ advance: PayrollAdvance }>(`/api/v1/payroll/advances/${id}/mark-paid`, { method: "POST" }, token);
   },
   cancelPayrollAdvance(token: string, id: string, reason: string) {
     return request<{ advance: PayrollAdvance }>(`/api/v1/payroll/advances/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
@@ -1048,9 +1110,6 @@ export const api = {
   approvePayrollRun(token: string, id: string) {
     return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/approve`, { method: "POST" }, token);
   },
-  markPayrollRunPaid(token: string, id: string) {
-    return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/mark-paid`, { method: "POST" }, token);
-  },
   cancelPayrollRun(token: string, id: string, reason: string) {
     return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
   },
@@ -1083,15 +1142,6 @@ export const api = {
   },
   exportPayrollReportCsv(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return blobRequest(`/api/v1/payroll/reports/export.csv${query(filters)}`, token);
-  },
-  listFinalSettlements(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<{ settlements: FinalSettlement[] }>(`/api/v1/payroll/final-settlements${query(filters)}`, {}, token);
-  },
-  createFinalSettlement(token: string, input: Partial<FinalSettlement>) {
-    return request<{ settlement: FinalSettlement }>("/api/v1/payroll/final-settlements", { method: "POST", body: JSON.stringify(input) }, token);
-  },
-  updateFinalSettlement(token: string, id: string, input: Partial<FinalSettlement>) {
-    return request<{ settlement: FinalSettlement }>(`/api/v1/payroll/final-settlements/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   listAssetCategories(token: string) {
     return request<{ categories: AssetCategory[] }>("/api/v1/assets/categories", {}, token);

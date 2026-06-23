@@ -37,6 +37,7 @@ interface LocationRow {
   address: string | null;
   phone: string | null;
   manager_employee_id: string | null;
+  manager_employee_name?: string | null;
   is_active: number;
   created_at: string;
   updated_at: string;
@@ -49,6 +50,10 @@ interface DepartmentRow {
   description: string | null;
   parent_department_id: string | null;
   parent_department_name?: string | null;
+  head_employee_id: string | null;
+  head_employee_name?: string | null;
+  manager_employee_id: string | null;
+  manager_employee_name?: string | null;
   is_active: number;
   created_at: string;
   updated_at: string;
@@ -301,6 +306,10 @@ async function rowExists(db: AppBindings["Bindings"]["DB"], table: "departments"
   return db.prepare(`SELECT id FROM ${table} WHERE id = ?`).bind(id).first<{ id: string }>();
 }
 
+async function activeEmployeeExists(db: AppBindings["Bindings"]["DB"], id: string) {
+  return db.prepare("SELECT id FROM employees WHERE id = ? AND archived_at IS NULL").bind(id).first<{ id: string }>();
+}
+
 organizationRoutes.get("/locations", requirePermission("organization.view"), async (c) => {
   const conditions: string[] = [];
   const params: BindValue[] = [];
@@ -315,13 +324,13 @@ organizationRoutes.get("/locations", requirePermission("organization.view"), asy
     conditions.push("type = ?");
     params.push(type);
   }
-  const sql = `SELECT * FROM locations ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY is_active DESC, name`;
+  const sql = `SELECT l.*, m.full_name AS manager_employee_name FROM locations l LEFT JOIN employees m ON m.id = l.manager_employee_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY l.is_active DESC, l.name`;
   const rows = await c.env.DB.prepare(sql).bind(...params).all<LocationRow>();
   return ok(c, { locations: rows.results.map(toLocation) });
 });
 
 organizationRoutes.get("/locations/:id", requirePermission("organization.view"), async (c) => {
-  const row = await c.env.DB.prepare("SELECT * FROM locations WHERE id = ?").bind(c.req.param("id")).first<LocationRow>();
+  const row = await c.env.DB.prepare("SELECT l.*, m.full_name AS manager_employee_name FROM locations l LEFT JOIN employees m ON m.id = l.manager_employee_id WHERE l.id = ?").bind(c.req.param("id")).first<LocationRow>();
   if (!row) {
     return fail(c, 404, "NOT_FOUND", "Location was not found.");
   }
@@ -342,16 +351,20 @@ organizationRoutes.post("/locations", requirePermission("organization.manage"), 
   if (await activeCodeExists(c.env.DB, "locations", code)) {
     return fail(c, 409, "DUPLICATE_CODE", "An active location with this code already exists.");
   }
+  const managerEmployeeId = optionalString(body.manager_employee_id);
+  if (managerEmployeeId && !(await activeEmployeeExists(c.env.DB, managerEmployeeId))) {
+    return fail(c, 400, "INVALID_MANAGER", "Location manager must be an active employee.");
+  }
   const company = await getCompany(c.env.DB);
   const id = crypto.randomUUID();
   await c.env.DB
     .prepare(
-      `INSERT INTO locations (id, company_id, code, name, type, island_city, address, phone)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO locations (id, company_id, code, name, type, island_city, address, phone, manager_employee_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(id, company?.id ?? null, code, name, type, optionalString(body.island_city), optionalString(body.address), optionalString(body.phone))
+    .bind(id, company?.id ?? null, code, name, type, optionalString(body.island_city), optionalString(body.address), optionalString(body.phone), managerEmployeeId)
     .run();
-  const row = await c.env.DB.prepare("SELECT * FROM locations WHERE id = ?").bind(id).first<LocationRow>();
+  const row = await c.env.DB.prepare("SELECT l.*, m.full_name AS manager_employee_name FROM locations l LEFT JOIN employees m ON m.id = l.manager_employee_id WHERE l.id = ?").bind(id).first<LocationRow>();
   await auditOrganization(c, { action: "organization.location.created", entityType: "location", entityId: id, newValue: row });
   await publishOrganization(c, "locations.changed", "location", id, "created");
   return ok(c, { location: row ? toLocation(row) : null }, 201);
@@ -375,11 +388,15 @@ organizationRoutes.patch("/locations/:id", requirePermission("organization.manag
   if (existing.is_active === 1 && (await activeCodeExists(c.env.DB, "locations", code, existing.id))) {
     return fail(c, 409, "DUPLICATE_CODE", "An active location with this code already exists.");
   }
+  const managerEmployeeId = optionalString(body.manager_employee_id);
+  if (managerEmployeeId && !(await activeEmployeeExists(c.env.DB, managerEmployeeId))) {
+    return fail(c, 400, "INVALID_MANAGER", "Location manager must be an active employee.");
+  }
   await c.env.DB
-    .prepare("UPDATE locations SET code = ?, name = ?, type = ?, island_city = ?, address = ?, phone = ?, updated_at = ? WHERE id = ?")
-    .bind(code, name, type, optionalString(body.island_city), optionalString(body.address), optionalString(body.phone), new Date().toISOString(), existing.id)
+    .prepare("UPDATE locations SET code = ?, name = ?, type = ?, island_city = ?, address = ?, phone = ?, manager_employee_id = ?, updated_at = ? WHERE id = ?")
+    .bind(code, name, type, optionalString(body.island_city), optionalString(body.address), optionalString(body.phone), managerEmployeeId, new Date().toISOString(), existing.id)
     .run();
-  const row = await c.env.DB.prepare("SELECT * FROM locations WHERE id = ?").bind(existing.id).first<LocationRow>();
+  const row = await c.env.DB.prepare("SELECT l.*, m.full_name AS manager_employee_name FROM locations l LEFT JOIN employees m ON m.id = l.manager_employee_id WHERE l.id = ?").bind(existing.id).first<LocationRow>();
   await auditOrganization(c, { action: "organization.location.updated", entityType: "location", entityId: existing.id, oldValue: existing, newValue: row });
   await publishOrganization(c, "locations.changed", "location", existing.id, "updated");
   return ok(c, { location: row ? toLocation(row) : null });
@@ -431,9 +448,11 @@ organizationRoutes.get("/departments", requirePermission("organization.view"), a
   }
   const rows = await c.env.DB
     .prepare(
-      `SELECT d.*, p.name AS parent_department_name
+      `SELECT d.*, p.name AS parent_department_name, h.full_name AS head_employee_name, m.full_name AS manager_employee_name
        FROM departments d
        LEFT JOIN departments p ON p.id = d.parent_department_id
+       LEFT JOIN employees h ON h.id = d.head_employee_id
+       LEFT JOIN employees m ON m.id = d.manager_employee_id
        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
        ORDER BY d.is_active DESC, d.name`
     )
@@ -444,7 +463,7 @@ organizationRoutes.get("/departments", requirePermission("organization.view"), a
 
 organizationRoutes.get("/departments/:id", requirePermission("organization.view"), async (c) => {
   const row = await c.env.DB
-    .prepare("SELECT d.*, p.name AS parent_department_name FROM departments d LEFT JOIN departments p ON p.id = d.parent_department_id WHERE d.id = ?")
+    .prepare("SELECT d.*, p.name AS parent_department_name, h.full_name AS head_employee_name, m.full_name AS manager_employee_name FROM departments d LEFT JOIN departments p ON p.id = d.parent_department_id LEFT JOIN employees h ON h.id = d.head_employee_id LEFT JOIN employees m ON m.id = d.manager_employee_id WHERE d.id = ?")
     .bind(c.req.param("id"))
     .first<DepartmentRow>();
   if (!row) {
@@ -467,10 +486,14 @@ organizationRoutes.post("/departments", requirePermission("organization.manage")
   if (parentId && !(await rowExists(c.env.DB, "departments", parentId))) {
     return fail(c, 400, "INVALID_PARENT", "Parent department was not found.");
   }
+  const headEmployeeId = optionalString(body.head_employee_id);
+  const managerEmployeeId = optionalString(body.manager_employee_id);
+  if (headEmployeeId && !(await activeEmployeeExists(c.env.DB, headEmployeeId))) return fail(c, 400, "INVALID_MANAGER", "Department head must be an active employee.");
+  if (managerEmployeeId && !(await activeEmployeeExists(c.env.DB, managerEmployeeId))) return fail(c, 400, "INVALID_MANAGER", "Department manager must be an active employee.");
   const id = crypto.randomUUID();
   await c.env.DB
-    .prepare("INSERT INTO departments (id, code, name, description, parent_department_id) VALUES (?, ?, ?, ?, ?)")
-    .bind(id, code, name, optionalString(body.description), parentId)
+    .prepare("INSERT INTO departments (id, code, name, description, parent_department_id, head_employee_id, manager_employee_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, code, name, optionalString(body.description), parentId, headEmployeeId, managerEmployeeId)
     .run();
   const row = await c.env.DB.prepare("SELECT * FROM departments WHERE id = ?").bind(id).first<DepartmentRow>();
   await auditOrganization(c, { action: "organization.department.created", entityType: "department", entityId: id, newValue: row });
@@ -499,9 +522,13 @@ organizationRoutes.patch("/departments/:id", requirePermission("organization.man
   if (existing.is_active === 1 && (await activeCodeExists(c.env.DB, "departments", code, existing.id))) {
     return fail(c, 409, "DUPLICATE_CODE", "An active department with this code already exists.");
   }
+  const headEmployeeId = optionalString(body.head_employee_id);
+  const managerEmployeeId = optionalString(body.manager_employee_id);
+  if (headEmployeeId && !(await activeEmployeeExists(c.env.DB, headEmployeeId))) return fail(c, 400, "INVALID_MANAGER", "Department head must be an active employee.");
+  if (managerEmployeeId && !(await activeEmployeeExists(c.env.DB, managerEmployeeId))) return fail(c, 400, "INVALID_MANAGER", "Department manager must be an active employee.");
   await c.env.DB
-    .prepare("UPDATE departments SET code = ?, name = ?, description = ?, parent_department_id = ?, updated_at = ? WHERE id = ?")
-    .bind(code, name, optionalString(body.description), parentId, new Date().toISOString(), existing.id)
+    .prepare("UPDATE departments SET code = ?, name = ?, description = ?, parent_department_id = ?, head_employee_id = ?, manager_employee_id = ?, updated_at = ? WHERE id = ?")
+    .bind(code, name, optionalString(body.description), parentId, headEmployeeId, managerEmployeeId, new Date().toISOString(), existing.id)
     .run();
   const row = await c.env.DB.prepare("SELECT * FROM departments WHERE id = ?").bind(existing.id).first<DepartmentRow>();
   await auditOrganization(c, { action: "organization.department.updated", entityType: "department", entityId: existing.id, oldValue: existing, newValue: row });

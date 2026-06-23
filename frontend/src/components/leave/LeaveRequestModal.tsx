@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../../lib/api";
 import type { Employee } from "../../types/employees";
 import type { LeaveRequest, LeaveType } from "../../types/leave";
@@ -48,8 +48,23 @@ export function LeaveRequestModal({
     reason: ""
   });
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const days = useMemo(() => estimateDays(form.start_date, form.end_date, form.half_day_type), [form]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!form.employee_id || !form.leave_type_id || !form.start_date || !form.end_date) {
+      setPreview(null);
+      setPreviewError(null);
+      return;
+    }
+    api.calculateLeaveRequest(token, form)
+      .then((result) => { if (!cancelled) { setPreview(result); setPreviewError(null); } })
+      .catch((err) => { if (!cancelled) { setPreview(null); setPreviewError(err instanceof ApiError ? err.message : "Unable to calculate leave preview."); } });
+    return () => { cancelled = true; };
+  }, [token, form.employee_id, form.leave_type_id, form.start_date, form.end_date, form.half_day_type]);
 
   async function submit() {
     setSaving(true);
@@ -97,12 +112,38 @@ export function LeaveRequestModal({
           </div>
           <div className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">Estimated requested days</p><p className="text-lg font-semibold">{days}</p></div>
           <div className="space-y-1.5 md:col-span-2"><Label>Reason</Label><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></div>
+          <ApprovalPreview preview={preview} error={previewError} />
         </div>
         {error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" disabled={saving} onClick={() => void submit()}>{saving ? "Saving..." : "Create draft"}</Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ApprovalPreview({ preview, error }: { preview: Record<string, unknown> | null; error: string | null }) {
+  const chain = preview?.approval_chain_preview as { steps?: Array<Record<string, unknown>> } | undefined;
+  const payroll = preview?.payroll_impact as Record<string, unknown> | undefined;
+  if (error) return <div className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div>;
+  if (!preview) return <div className="md:col-span-2 rounded-md border px-3 py-2 text-sm text-muted-foreground">Choose employee, leave type, and dates to preview balance, payroll, document, and approval impact.</div>;
+  return (
+    <div className="md:col-span-2 rounded-md border">
+      <div className="border-b px-3 py-2 text-sm font-semibold">Approval and impact preview</div>
+      <div className="grid gap-2 p-3 text-sm md:grid-cols-3">
+        <div><span className="text-muted-foreground">Chargeable days</span><div className="font-medium">{String(preview.chargeable_days ?? preview.requested_days ?? "-")}</div></div>
+        <div><span className="text-muted-foreground">Document</span><div className="font-medium">{preview.document_required ? "Required" : "Not required"}</div></div>
+        <div><span className="text-muted-foreground">Payroll impact</span><div className="font-medium">{String(payroll?.mode ?? "NONE")}</div></div>
+      </div>
+      <div className="border-t px-3 py-2">
+        {(chain?.steps ?? []).length ? (chain?.steps ?? []).map((step) => (
+          <div key={`${step.step_order}-${step.step_name}`} className="flex items-center justify-between gap-3 py-1 text-sm">
+            <span>{String(step.step_order)}. {String(step.step_name)} <span className="text-muted-foreground">({String(step.approver_type)})</span></span>
+            <span className={step.warning ? "text-amber-700" : "text-emerald-700"}>{step.warning ? String(step.warning) : step.approver_user_id ? "Resolved" : "Configured"}</span>
+          </div>
+        )) : <div className="text-sm text-muted-foreground">No approval steps resolved yet.</div>}
       </div>
     </div>
   );
