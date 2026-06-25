@@ -31,6 +31,7 @@ import { roleMappingRoutes } from "./routes/role-mappings";
 import { roleRoutes } from "./routes/roles";
 import { employeeRosterRoutes, rosterRoutes } from "./routes/roster";
 import { kycRoutes, selfServiceRoutes } from "./routes/self-service";
+import { syncRoutes } from "./routes/sync";
 import { userRoutes } from "./routes/users";
 import type { AppBindings } from "./types";
 import { fail } from "./utils/http";
@@ -120,6 +121,7 @@ app.route("/api/v1/self-service", selfServiceDocumentComplianceRoutes);
 app.route("/api/v1/kyc-requests", kycRoutes);
 app.route("/api/v1/migration", migrationRoutes);
 app.route("/api/v1/realtime", realtimeRoutes);
+app.route("/api/v1/sync", syncRoutes);
 
 app.notFound((c) => fail(c, 404, "NOT_FOUND", "Route not found."));
 

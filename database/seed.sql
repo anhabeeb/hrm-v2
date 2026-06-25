@@ -1656,13 +1656,19 @@ INSERT OR IGNORE INTO module_control_settings (
   ('module_audit_security', 'audit_security', 'Audit & Security', 1, 1, '["users","roles"]', '{"summary":"Audit, security events, and production controls."}', 'ACTIVE', '{"seeded_prompt":"21"}');
 
 INSERT OR IGNORE INTO security_settings (
-  id, session_timeout_minutes, idle_timeout_minutes, password_policy_min_length,
+  id, session_timeout_minutes, idle_timeout_enabled, idle_timeout_minutes, warn_before_logout_seconds,
+  extend_session_on_activity, apply_idle_timeout_to_admin, apply_idle_timeout_to_self_service,
+  stricter_timeout_for_sensitive_pages, sensitive_page_idle_timeout_minutes, audit_timeout_logout,
+  password_policy_min_length,
   password_policy_require_number, password_policy_require_symbol, pbkdf2_iterations_expected,
   audit_failed_permission_checks, audit_sensitive_views, audit_sensitive_exports, metadata_json
 ) VALUES (
-  'security_settings_default', 480, NULL, 8,
+  'security_settings_default', 480, 1, 15, 60,
+  1, 1, 1,
+  1, 10, 1,
+  8,
   0, 0, 100000,
-  1, 1, 1, '{"seeded_prompt":"21","mfa":"placeholder_only"}'
+  1, 1, 1, '{"seeded_prompt":"post-production-cache-timeout","mfa":"placeholder_only","cache_mode":"server_authoritative_indexeddb_assisted"}'
 );
 
 INSERT OR IGNORE INTO data_retention_settings (

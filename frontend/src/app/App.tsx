@@ -1,10 +1,13 @@
 import { AuthProvider } from "../hooks/useAuth";
+import { IdleTimeoutProvider } from "../hooks/useIdleTimeout";
 import { AppRoutes } from "../routes/AppRoutes";
 
 export function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <IdleTimeoutProvider>
+        <AppRoutes />
+      </IdleTimeoutProvider>
     </AuthProvider>
   );
 }

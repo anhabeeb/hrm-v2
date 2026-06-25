@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { getUserAccessScopes } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { createSyncChangeLogEntry, syncWriteMetadata } from "../db/sync";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
@@ -951,7 +952,16 @@ async function patchSingletonTable(c: Context<AppBindings>, table: string, id: s
   await c.env.DB.prepare(`UPDATE ${table} SET ${assignments}, updated_at = ? WHERE id = ?`).bind(...Object.values(input).map((value) => (typeof value === "boolean" ? (value ? 1 : 0) : value as BindValue)), now(), id).run();
   const updated = await c.env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(id).first<Record<string, unknown>>();
   await audit(c, auditAction, table, id, oldValue, updated, readString(body.reason) || null);
-  return ok(c, { settings: updated });
+  const changedEntry = await createSyncChangeLogEntry(c.env.DB, {
+    tableName: table,
+    entityType: table,
+    rowId: id,
+    action: "UPDATE",
+    moduleKey: table === "security_settings" ? "admin_settings" : "settings",
+    changedByUserId: c.get("currentUser").id,
+    metadata: { audit_action: auditAction }
+  });
+  return ok(c, { settings: updated, ...syncWriteMetadata({ tableName: table, entityType: table, rowId: id, action: "UPDATE", moduleKey: table === "security_settings" ? "admin_settings" : "settings" }, changedEntry.version) });
 }
 
 adminRoutes.get("/settings-hub", requireAnyPermission(["admin.settings_hub.view", "settings.view"]), async (c) => {
@@ -1111,7 +1121,9 @@ adminRoutes.get("/security-settings", requireAnyPermission(["admin.security_sett
 
 adminRoutes.patch("/security-settings", requireAnyPermission(["admin.security_settings.update", "admin.security_settings.manage"]), (c) =>
   patchSingletonTable(c, "security_settings", "security_settings_default", [
-    "session_timeout_minutes", "idle_timeout_minutes", "password_policy_min_length", "password_policy_require_number", "password_policy_require_symbol",
+    "session_timeout_minutes", "idle_timeout_enabled", "idle_timeout_minutes", "warn_before_logout_seconds", "extend_session_on_activity",
+    "apply_idle_timeout_to_admin", "apply_idle_timeout_to_self_service", "stricter_timeout_for_sensitive_pages",
+    "sensitive_page_idle_timeout_minutes", "audit_timeout_logout", "password_policy_min_length", "password_policy_require_number", "password_policy_require_symbol",
     "login_attempt_limit_placeholder", "account_lockout_minutes_placeholder", "require_password_change_placeholder", "force_logout_all_sessions_placeholder",
     "protected_admin_mfa_placeholder_enabled", "audit_failed_permission_checks", "audit_sensitive_views", "audit_sensitive_exports"
   ], "admin.security_settings.updated")

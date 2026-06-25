@@ -160,6 +160,9 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
 
   const envelope = (await response.json()) as ApiEnvelope<T>;
   if (!response.ok || !envelope.ok || !envelope.data) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code: envelope.error?.code ?? "UNAUTHENTICATED" } }));
+    }
     throw new ApiError(envelope.error?.message ?? "Request failed.", envelope.error?.code ?? "REQUEST_FAILED", response.status);
   }
 
@@ -177,6 +180,9 @@ async function multipartRequest<T>(path: string, body: FormData, token?: string 
 
   const envelope = (await response.json()) as ApiEnvelope<T>;
   if (!response.ok || !envelope.ok || !envelope.data) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code: envelope.error?.code ?? "UNAUTHENTICATED" } }));
+    }
     throw new ApiError(envelope.error?.message ?? "Request failed.", envelope.error?.code ?? "REQUEST_FAILED", response.status);
   }
 
@@ -196,6 +202,9 @@ async function blobRequest(path: string, token: string) {
       code = envelope.error?.code ?? code;
     } catch {
       // The endpoint may return a plain response when the failure is not API-shaped.
+    }
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code } }));
     }
     throw new ApiError(message, code, response.status);
   }
@@ -236,6 +245,27 @@ export const api = {
   },
   logout(token: string) {
     return request<{ logged_out: boolean }>("/api/v1/auth/logout", { method: "POST" }, token);
+  },
+  getAuthSessionSettings(token: string) {
+    return request<{ settings: Record<string, unknown>; server_session_expiry_supported: boolean; current_version: number | string }>("/api/v1/auth/session-settings", {}, token);
+  },
+  recordSessionTimeout(token: string) {
+    return request<{ recorded: boolean }>("/api/v1/auth/session-timeout", { method: "POST" }, token);
+  },
+  getSyncBootstrap(token: string) {
+    return request<{ user: AuthUser; module_visibility: Record<string, boolean>; settings_summary: Record<string, unknown>; current_version: number | string; cache_schema_version: number }>("/api/v1/sync/bootstrap", {}, token);
+  },
+  getSyncModule(token: string, moduleKey: string) {
+    return request<{ module_key: string; current_version: number | string; data: Record<string, unknown>; note: string }>(`/api/v1/sync/module/${moduleKey}`, {}, token);
+  },
+  getSyncEntity(token: string, entityType: string, entityId: string) {
+    return request<{ entity_type: string; entity_id: string; current_version: number | string; data: Record<string, unknown>; note: string }>(`/api/v1/sync/entity/${entityType}/${entityId}`, {}, token);
+  },
+  getSyncChanges(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ current_version: number | string; changes: Record<string, unknown>[] }>(`/api/v1/sync/changes${query(filters)}`, {}, token);
+  },
+  pullSyncEntities(token: string, input: Record<string, unknown>) {
+    return request<{ records: Record<string, unknown>[]; current_version: number | string }>("/api/v1/sync/pull-entities", { method: "POST", body: JSON.stringify(input) }, token);
   },
   getMainDashboard(token: string) {
     return request<Record<string, unknown>>("/api/v1/dashboard", {}, token);

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { signJwt, requireJwtSecret } from "../auth/jwt";
 import { verifyPassword } from "../auth/password";
+import { expireSessionForIdleTimeout, getSecuritySessionSettings } from "../auth/session";
 import { recordAudit } from "../db/audit";
 import { getUserByEmail, toAuthUser } from "../db/users";
 import { requireAuth } from "../middleware/auth";
@@ -56,6 +57,25 @@ authRoutes.post("/login", async (c) => {
 
 authRoutes.get("/me", requireAuth, async (c) => {
   return ok(c, { user: c.get("currentUser") });
+});
+
+authRoutes.get("/session-settings", requireAuth, async (c) => {
+  const settings = await getSecuritySessionSettings(c.env.DB);
+  return ok(c, {
+    settings,
+    server_session_expiry_supported: false,
+    current_version: Date.now(),
+    note: "Server validates JWT max session expiry. Idle timeout is client-enforced with audited timeout logout."
+  });
+});
+
+authRoutes.post("/session-timeout", requireAuth, async (c) => {
+  await expireSessionForIdleTimeout(c.env.DB, {
+    user: c.get("currentUser"),
+    ipAddress: getClientIp(c.req.raw),
+    userAgent: c.req.header("User-Agent") ?? null
+  });
+  return ok(c, { recorded: true });
 });
 
 authRoutes.post("/logout", requireAuth, async (c) => {

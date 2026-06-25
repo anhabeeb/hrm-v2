@@ -33,6 +33,7 @@
     "verify:prompt21": "node scripts/verify-prompt21.mjs",
     "verify:prompt22": "node scripts/verify-prompt22.mjs",
     "verify:prompt23": "node scripts/verify-prompt23.mjs",
+    "verify:cache-timeout": "node scripts/verify-post-production-cache-timeout.mjs",
     "smoke:production-readiness": "node scripts/run-production-smoke-checks.mjs",
     "audit:remote-schema": "node scripts/audit-remote-d1-schema.mjs",
     "generate:remote-schema-repair": "node scripts/generate-remote-d1-repair.mjs",

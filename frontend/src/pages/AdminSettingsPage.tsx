@@ -17,12 +17,14 @@ import { useEffect, useMemo, useState } from "react";
 import { NavLink, useSearchParams } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { clearCurrentBrowserCache, getFrontendCacheDiagnostics, preserveSafeUiPreferences } from "../lib/cache/hrmCache";
 
 type Row = Record<string, unknown>;
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
@@ -36,6 +38,7 @@ const tabs = [
   { key: "permission-risks", label: "Permission Risks", icon: FileWarning },
   { key: "scope-review", label: "Scope Review", icon: Link },
   { key: "security-settings", label: "Security Settings", icon: Lock },
+  { key: "cache-sync", label: "Cache & Sync", icon: Database },
   { key: "health", label: "Health", icon: Activity },
   { key: "remote-schema", label: "Remote Schema", icon: Database },
   { key: "data-transfer", label: "Data Transfer", icon: Download },
@@ -150,6 +153,8 @@ export function AdminSettingsPage() {
   const [permissionRisks, setPermissionRisks] = useState<Row[]>([]);
   const [scopeReview, setScopeReview] = useState<Row[]>([]);
   const [securitySettings, setSecuritySettings] = useState<Row>({});
+  const [cacheDiagnostics, setCacheDiagnostics] = useState<Row>({});
+  const [cacheClearConfirm, setCacheClearConfirm] = useState(false);
   const [health, setHealth] = useState<Row>({});
   const [remoteSchema, setRemoteSchema] = useState<Row>({});
   const [retention, setRetention] = useState<Row>({});
@@ -220,6 +225,7 @@ export function AdminSettingsPage() {
       setPermissionRisks(riskData.findings);
       setScopeReview(scopeData.review);
       setSecuritySettings(securityData.settings ?? {});
+      setCacheDiagnostics(await getFrontendCacheDiagnostics());
       setHealth(healthData.health);
       setRemoteSchema(remoteData.remote_schema_tools);
       setRetention(retentionData.settings ?? {});
@@ -276,6 +282,14 @@ export function AdminSettingsPage() {
       await api.updateAdminSecuritySettings(token, {
         session_timeout_minutes: Number(securitySettings.session_timeout_minutes ?? 480),
         idle_timeout_minutes: securitySettings.idle_timeout_minutes ? Number(securitySettings.idle_timeout_minutes) : null,
+        idle_timeout_enabled: boolInput(securitySettings.idle_timeout_enabled ?? 1),
+        warn_before_logout_seconds: Number(securitySettings.warn_before_logout_seconds ?? 60),
+        extend_session_on_activity: boolInput(securitySettings.extend_session_on_activity ?? 1),
+        apply_idle_timeout_to_admin: boolInput(securitySettings.apply_idle_timeout_to_admin ?? 1),
+        apply_idle_timeout_to_self_service: boolInput(securitySettings.apply_idle_timeout_to_self_service ?? 1),
+        stricter_timeout_for_sensitive_pages: boolInput(securitySettings.stricter_timeout_for_sensitive_pages ?? 1),
+        sensitive_page_idle_timeout_minutes: Number(securitySettings.sensitive_page_idle_timeout_minutes ?? 10),
+        audit_timeout_logout: boolInput(securitySettings.audit_timeout_logout ?? 1),
         password_policy_min_length: Number(securitySettings.password_policy_min_length ?? 8),
         audit_failed_permission_checks: boolInput(securitySettings.audit_failed_permission_checks),
         audit_sensitive_views: boolInput(securitySettings.audit_sensitive_views),
@@ -323,6 +337,13 @@ export function AdminSettingsPage() {
     });
   }
 
+  async function clearLocalCache() {
+    setCacheClearConfirm(false);
+    await clearCurrentBrowserCache();
+    setCacheDiagnostics(await getFrontendCacheDiagnostics());
+    setMessage("Current browser cache cleared.");
+  }
+
   if (!canView) {
     return <Panel><EmptyState title="Admin controls unavailable" description="Your account needs admin settings or settings view permission." /></Panel>;
   }
@@ -365,8 +386,13 @@ export function AdminSettingsPage() {
             { label: "Modules", value: hubStatus.modules_total },
             { label: "Disabled", value: hubStatus.modules_disabled },
             { label: "Warnings", value: hubStatus.warnings, tone: Number(hubStatus.warnings ?? 0) > 0 ? "warning" : "success" },
-            { label: "Permission risks", value: hubStatus.permission_risks, tone: Number(hubStatus.permission_risks ?? 0) > 0 ? "warning" : "success" }
+            { label: "Permission risks", value: hubStatus.permission_risks, tone: Number(hubStatus.permission_risks ?? 0) > 0 ? "warning" : "success" },
+            { label: "Idle timeout", value: boolInput(securitySettings.idle_timeout_enabled ?? 1) ? `${text(securitySettings.idle_timeout_minutes ?? 15)} minutes` : "Disabled", tone: boolInput(securitySettings.idle_timeout_enabled ?? 1) ? "success" : "warning" },
+            { label: "Cache mode", value: "Server authoritative", tone: "info" },
+            { label: "Cache schema", value: cacheDiagnostics.cache_schema_version ?? "-", tone: "info" },
+            { label: "Sensitive cache entries", value: cacheDiagnostics.sensitive_entries ?? 0, tone: Number(cacheDiagnostics.sensitive_entries ?? 0) > 0 ? "warning" : "success" }
           ]} />
+          {!boolInput(securitySettings.idle_timeout_enabled ?? 1) ? <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Idle timeout is disabled. Production security posture is stronger with the default 15-minute idle timeout enabled.</div> : null}
           <RowsTable rows={hub.sections} columns={["title", "module_key", "enabled", "module_status", "warnings_count", "href"]} empty="No settings sections available." />
         </div>
       ) : null}
@@ -407,11 +433,58 @@ export function AdminSettingsPage() {
 
       {active === "security-settings" ? (
         <Panel className="space-y-4 p-4">
-          <div className="grid gap-3 md:grid-cols-3"><Input type="number" value={text(securitySettings.session_timeout_minutes)} onChange={(e) => setSecuritySettings({ ...securitySettings, session_timeout_minutes: e.target.value })} /><Input type="number" placeholder="Idle timeout" value={text(securitySettings.idle_timeout_minutes)} onChange={(e) => setSecuritySettings({ ...securitySettings, idle_timeout_minutes: e.target.value })} /><Input type="number" value={text(securitySettings.password_policy_min_length)} onChange={(e) => setSecuritySettings({ ...securitySettings, password_policy_min_length: e.target.value })} /></div>
-          <div className="flex flex-wrap gap-4 text-sm"><label><input type="checkbox" checked={boolInput(securitySettings.audit_failed_permission_checks)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_failed_permission_checks: e.target.checked })} /> Audit failed permission checks</label><label><input type="checkbox" checked={boolInput(securitySettings.audit_sensitive_views)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_sensitive_views: e.target.checked })} /> Audit sensitive views</label><label><input type="checkbox" checked={boolInput(securitySettings.audit_sensitive_exports)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_sensitive_exports: e.target.checked })} /> Audit sensitive exports</label></div>
+          <div>
+            <h2 className="text-sm font-semibold">Session and idle timeout</h2>
+            <p className="text-xs text-muted-foreground">Default idle logout is 15 minutes. The warning dialog appears before logout and sensitive IndexedDB cache is cleared.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="grid gap-1 text-sm font-medium">Max session minutes<Input type="number" value={text(securitySettings.session_timeout_minutes)} onChange={(e) => setSecuritySettings({ ...securitySettings, session_timeout_minutes: e.target.value })} /></label>
+            <label className="grid gap-1 text-sm font-medium">Idle timeout minutes<Input type="number" value={text(securitySettings.idle_timeout_minutes ?? 15)} onChange={(e) => setSecuritySettings({ ...securitySettings, idle_timeout_minutes: e.target.value })} /></label>
+            <label className="grid gap-1 text-sm font-medium">Warning seconds<Input type="number" value={text(securitySettings.warn_before_logout_seconds ?? 60)} onChange={(e) => setSecuritySettings({ ...securitySettings, warn_before_logout_seconds: e.target.value })} /></label>
+            <label className="grid gap-1 text-sm font-medium">Sensitive page timeout minutes<Input type="number" value={text(securitySettings.sensitive_page_idle_timeout_minutes ?? 10)} onChange={(e) => setSecuritySettings({ ...securitySettings, sensitive_page_idle_timeout_minutes: e.target.value })} /></label>
+            <label className="grid gap-1 text-sm font-medium">Password min length<Input type="number" value={text(securitySettings.password_policy_min_length)} onChange={(e) => setSecuritySettings({ ...securitySettings, password_policy_min_length: e.target.value })} /></label>
+          </div>
+          <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.idle_timeout_enabled ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, idle_timeout_enabled: e.target.checked })} /> Idle timeout enabled</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.extend_session_on_activity ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, extend_session_on_activity: e.target.checked })} /> Extend session on activity</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.apply_idle_timeout_to_admin ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, apply_idle_timeout_to_admin: e.target.checked })} /> Apply to admin</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.apply_idle_timeout_to_self_service ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, apply_idle_timeout_to_self_service: e.target.checked })} /> Apply to self-service</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.stricter_timeout_for_sensitive_pages ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, stricter_timeout_for_sensitive_pages: e.target.checked })} /> Stricter sensitive-page timeout</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.audit_timeout_logout ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_timeout_logout: e.target.checked })} /> Audit timeout logout</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.audit_failed_permission_checks)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_failed_permission_checks: e.target.checked })} /> Audit failed permission checks</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.audit_sensitive_views)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_sensitive_views: e.target.checked })} /> Audit sensitive views</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.audit_sensitive_exports)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_sensitive_exports: e.target.checked })} /> Audit sensitive exports</label>
+          </div>
           <div className="rounded-md border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">PBKDF2 expected value is display-only and remains locked at 100000. MFA and force logout controls are placeholders only.</div>
           <Button size="sm" onClick={() => void saveSecuritySettings()}>Save security settings</Button>
         </Panel>
+      ) : null}
+
+      {active === "cache-sync" ? (
+        <div className="space-y-4">
+          <Panel className="space-y-3 p-4">
+            <div>
+              <h2 className="text-sm font-semibold">Server-authoritative hybrid cache</h2>
+              <p className="text-xs text-muted-foreground">HRM frontend cache is server-authoritative and IndexedDB-assisted. Cloudflare Worker API and D1 remain the source of truth.</p>
+            </div>
+            <SummaryGrid items={[
+              { label: "Cache schema", value: cacheDiagnostics.cache_schema_version ?? "-" },
+              { label: "App cache version", value: cacheDiagnostics.app_cache_version ?? "-" },
+              { label: "Total entries", value: cacheDiagnostics.total_entries ?? 0 },
+              { label: "Sensitive entries", value: cacheDiagnostics.sensitive_entries ?? 0, tone: Number(cacheDiagnostics.sensitive_entries ?? 0) > 0 ? "warning" : "success" },
+              { label: "Expired entries", value: cacheDiagnostics.expired_entries ?? 0 },
+              { label: "Last bootstrap", value: cacheDiagnostics.last_bootstrap_time ?? "-" },
+              { label: "Last clear", value: cacheDiagnostics.last_cache_clear_time ?? "-" },
+              { label: "Sync cursor", value: cacheDiagnostics.sync_cursor ?? "-" }
+            ]} />
+            <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">Admins can clear only this browser's local cache. Server data and other users' browsers are not affected. {text(preserveSafeUiPreferences().preserved_keys)}</div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => void getFrontendCacheDiagnostics().then(setCacheDiagnostics)}>Refresh diagnostics</Button>
+              <Button size="sm" variant="outline" onClick={() => setCacheClearConfirm(true)}>Clear current browser cache</Button>
+            </div>
+          </Panel>
+          <JsonPanel title="Cache diagnostics" data={cacheDiagnostics} />
+        </div>
       ) : null}
 
       {active === "health" ? <div className="space-y-4"><Button size="sm" onClick={() => runAction("System health refreshed.", async () => { if (token) setHealth((await api.refreshSystemHealth(token)).health); })}>Refresh health</Button><JsonPanel title="System health summary" data={health} /></div> : null}
@@ -427,6 +500,7 @@ export function AdminSettingsPage() {
       {active === "environment" ? <div className="space-y-4"><Button size="sm" onClick={() => runAction("Environment safety checked.", async () => { if (token) setEnvironment((await api.runEnvironmentSafety(token)).environment_safety); })}>Run environment safety check</Button><JsonPanel title="Environment safety" data={environment} /></div> : null}
       {active === "alerts" ? <div className="space-y-4"><Button size="sm" onClick={() => runAction("Admin alerts refreshed.", async () => { if (token) setAlerts((await api.refreshAdminSystemAlerts(token)).alerts); })}>Refresh admin alerts</Button><RowsTable rows={alerts} columns={["severity", "status", "alert_type", "module_key", "title", "message", "created_at"]} empty="No admin alerts." /></div> : null}
       {active === "reports" ? <div className="space-y-4"><Panel className="flex flex-wrap gap-2 p-4"><select className="h-9 rounded-md border bg-white px-3 text-sm" value={reportKey} onChange={(e) => setReportKey(e.target.value)}>{reportOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select><Button size="sm" onClick={() => void loadReport()}>Load report</Button></Panel><RowsTable rows={reportRows} columns={Object.keys(reportRows[0] ?? { status: "", message: "" }).slice(0, 8)} empty="No report rows loaded." /></div> : null}
+      <ConfirmDialog open={cacheClearConfirm} title="Clear local cache?" description="This clears the current browser's IndexedDB HRM cache only. Server records are not changed." confirmLabel="Clear cache" cancelLabel="Cancel" onConfirm={() => void clearLocalCache()} onCancel={() => setCacheClearConfirm(false)} />
     </div>
   );
 }

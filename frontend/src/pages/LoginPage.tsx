@@ -1,5 +1,5 @@
 import { LogIn } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -13,7 +13,16 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const message = sessionStorage.getItem("hrm_v2_login_message");
+    if (message) {
+      setNotice(message);
+      sessionStorage.removeItem("hrm_v2_login_message");
+    }
+  }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,6 +64,7 @@ export function LoginPage() {
               required
             />
           </div>
+          {notice ? <div className="rounded-md border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">{notice}</div> : null}
           {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
           <Button type="submit" className="w-full" disabled={submitting}>
             {submitting ? "Signing in" : "Sign in"}

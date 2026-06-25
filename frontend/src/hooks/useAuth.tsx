@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
+import { clearCacheOnPermissionChange, clearSensitiveIndexedDbCaches, permissionScopeHash } from "../lib/cache/hrmCache";
 import type { AuthUser, BootstrapStatus } from "../types/auth";
 
 const TOKEN_KEY = "hrm_v2_token";
+const USER_SECURITY_SIGNATURE_KEY = "hrm_v2_user_security_signature";
 
 interface AuthContextValue {
   token: string | null;
@@ -24,13 +26,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const persistSession = useCallback((nextToken: string, nextUser: AuthUser) => {
+    const nextSignature = permissionScopeHash({ permissions: nextUser.permissions, roles: nextUser.roles, employeeId: nextUser.employee_id });
+    const previousSignature = localStorage.getItem(USER_SECURITY_SIGNATURE_KEY);
+    if (previousSignature && previousSignature !== nextSignature) {
+      void clearCacheOnPermissionChange(nextUser.id);
+    }
     localStorage.setItem(TOKEN_KEY, nextToken);
+    localStorage.setItem(USER_SECURITY_SIGNATURE_KEY, nextSignature);
     setToken(nextToken);
     setUser(nextUser);
   }, []);
 
   const clearSession = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_SECURITY_SIGNATURE_KEY);
+    void clearSensitiveIndexedDbCaches();
     setToken(null);
     setUser(null);
   }, []);

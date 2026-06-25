@@ -286,7 +286,15 @@ CREATE TABLE IF NOT EXISTS security_settings (
   id TEXT PRIMARY KEY,
   company_id TEXT,
   session_timeout_minutes INTEGER NOT NULL DEFAULT 480 CHECK (session_timeout_minutes > 0),
-  idle_timeout_minutes INTEGER CHECK (idle_timeout_minutes IS NULL OR idle_timeout_minutes > 0),
+  idle_timeout_enabled INTEGER NOT NULL DEFAULT 1 CHECK (idle_timeout_enabled IN (0, 1)),
+  idle_timeout_minutes INTEGER NOT NULL DEFAULT 15 CHECK (idle_timeout_minutes > 0),
+  warn_before_logout_seconds INTEGER NOT NULL DEFAULT 60 CHECK (warn_before_logout_seconds > 0),
+  extend_session_on_activity INTEGER NOT NULL DEFAULT 1 CHECK (extend_session_on_activity IN (0, 1)),
+  apply_idle_timeout_to_admin INTEGER NOT NULL DEFAULT 1 CHECK (apply_idle_timeout_to_admin IN (0, 1)),
+  apply_idle_timeout_to_self_service INTEGER NOT NULL DEFAULT 1 CHECK (apply_idle_timeout_to_self_service IN (0, 1)),
+  stricter_timeout_for_sensitive_pages INTEGER NOT NULL DEFAULT 1 CHECK (stricter_timeout_for_sensitive_pages IN (0, 1)),
+  sensitive_page_idle_timeout_minutes INTEGER NOT NULL DEFAULT 10 CHECK (sensitive_page_idle_timeout_minutes > 0),
+  audit_timeout_logout INTEGER NOT NULL DEFAULT 1 CHECK (audit_timeout_logout IN (0, 1)),
   password_policy_min_length INTEGER NOT NULL DEFAULT 8 CHECK (password_policy_min_length >= 8),
   password_policy_require_number INTEGER NOT NULL DEFAULT 0 CHECK (password_policy_require_number IN (0, 1)),
   password_policy_require_symbol INTEGER NOT NULL DEFAULT 0 CHECK (password_policy_require_symbol IN (0, 1)),
@@ -324,6 +332,32 @@ CREATE TABLE IF NOT EXISTS system_health_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_system_health_snapshots_checked_at ON system_health_snapshots(checked_at);
 CREATE INDEX IF NOT EXISTS idx_system_health_snapshots_status ON system_health_snapshots(status);
+
+CREATE TABLE IF NOT EXISTS sync_change_log (
+  id TEXT PRIMARY KEY,
+  version INTEGER NOT NULL UNIQUE,
+  table_name TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  row_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('INSERT', 'UPDATE', 'DELETE', 'ARCHIVE')),
+  module_key TEXT,
+  employee_id TEXT,
+  company_id TEXT,
+  worksite_id TEXT,
+  department_id TEXT,
+  changed_by_user_id TEXT,
+  changed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  metadata_json TEXT,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL,
+  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+  FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+  FOREIGN KEY (changed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sync_change_log_version ON sync_change_log(version);
+CREATE INDEX IF NOT EXISTS idx_sync_change_log_module ON sync_change_log(module_key, version);
+CREATE INDEX IF NOT EXISTS idx_sync_change_log_entity ON sync_change_log(entity_type, row_id);
+CREATE INDEX IF NOT EXISTS idx_sync_change_log_employee ON sync_change_log(employee_id, version);
 
 CREATE TABLE IF NOT EXISTS data_retention_settings (
   id TEXT PRIMARY KEY,
