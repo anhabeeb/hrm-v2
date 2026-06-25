@@ -7,6 +7,7 @@ import {
   CalendarCheck,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -23,7 +24,7 @@ import {
   UserRound,
   Users
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { useAuth } from "../hooks/useAuth";
@@ -37,7 +38,14 @@ type NavItem = {
   permissionAny?: string[];
 };
 
-const navGroups: Array<{ label: string; items: NavItem[] }> = [
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const SIDEBAR_GROUP_STATE_KEY = "hrm-v2-sidebar-groups";
+
+const navGroups: NavGroup[] = [
   {
     label: "Dashboard",
     items: [{ label: "Dashboard", to: "/", icon: LayoutDashboard, permission: "dashboard.view" }]
@@ -105,6 +113,23 @@ function routeTitle(pathname: string) {
   return segment.split("-").map((part: string) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
+function routeMatchesItem(pathname: string, item: NavItem) {
+  if (item.to === "/") return pathname === "/";
+  return pathname === item.to || pathname.startsWith(`${item.to}/`);
+}
+
+function readSidebarGroupState() {
+  if (typeof window === "undefined") return {};
+  try {
+    const saved = window.localStorage.getItem(SIDEBAR_GROUP_STATE_KEY);
+    if (!saved) return {};
+    const parsed = JSON.parse(saved);
+    return parsed && typeof parsed === "object" ? parsed as Record<string, boolean> : {};
+  } catch {
+    return {};
+  }
+}
+
 export function AdminShell({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
@@ -118,25 +143,53 @@ export function AppShell() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => readSidebarGroupState());
   const permissions = useMemo(() => new Set(user?.permissions ?? []), [user]);
   const visibleGroups = useMemo(() => navGroups
     .map((group) => ({ ...group, items: group.items.filter((item) => canShow(item, permissions)) }))
     .filter((group) => group.items.length), [permissions]);
   const selfServiceVisible = Boolean(user?.employee_id);
+  const sidebarGroups = useMemo<NavGroup[]>(() => {
+    if (!selfServiceVisible) return visibleGroups;
+    return [
+      ...visibleGroups,
+      {
+        label: "Self-Service",
+        items: [{ label: "Self-Service", to: "/self-service", icon: UserRound }]
+      }
+    ];
+  }, [selfServiceVisible, visibleGroups]);
+  const activeGroupLabels = useMemo(() => new Set(
+    sidebarGroups
+      .filter((group) => group.items.some((item) => routeMatchesItem(location.pathname, item)))
+      .map((group) => group.label)
+  ), [location.pathname, sidebarGroups]);
   const title = routeTitle(location.pathname);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_GROUP_STATE_KEY, JSON.stringify(expandedGroups));
+    } catch {
+      // Storage can be unavailable in strict browser modes; the sidebar still works without persistence.
+    }
+  }, [expandedGroups]);
+
+  const toggleGroup = (label: string) => {
+    setExpandedGroups((current) => ({ ...current, [label]: !(current[label] ?? true) }));
+  };
 
   return (
     <AdminShell>
-      <div className="flex min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#eef6f6_100%)]">
+      <div className="flex h-screen overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#eef6f6_100%)]">
         <aside
           className={cn(
-            "fixed inset-y-0 left-0 z-40 flex border-r bg-white/95 shadow-sm backdrop-blur transition-all duration-200 lg:static",
+            "fixed inset-y-0 left-0 z-40 flex h-screen border-r bg-white/95 shadow-sm backdrop-blur transition-all duration-200 lg:static lg:translate-x-0",
             collapsed ? "w-[76px]" : "w-[268px]",
             mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           )}
         >
-          <div className="flex min-h-0 w-full flex-col">
-            <div className="flex h-16 items-center border-b px-3">
+          <div className="flex h-full min-h-0 w-full flex-col">
+            <div className="flex h-16 shrink-0 items-center border-b px-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm">
                 HR
               </div>
@@ -148,64 +201,68 @@ export function AppShell() {
               ) : null}
             </div>
 
-            <nav className="flex-1 overflow-y-auto px-2 py-3">
-              <div className="space-y-5">
-                {visibleGroups.map((group) => (
-                  <div key={group.label}>
-                    {!collapsed ? <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{group.label}</p> : null}
-                    <div className="space-y-1">
-                      {group.items.map((item) => {
-                        const Icon = item.icon;
-                        return (
-                          <NavLink
-                            key={item.to}
-                            to={item.to}
-                            end={item.to === "/"}
-                            onClick={() => setMobileOpen(false)}
-                            title={collapsed ? item.label : undefined}
-                            className={({ isActive }) =>
-                              cn(
-                                "flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-                                collapsed ? "justify-center" : "gap-3",
-                                isActive && "bg-primary/10 text-primary ring-1 ring-primary/10"
-                              )
-                            }
-                          >
-                            <Icon className="h-4 w-4 shrink-0" />
-                            {!collapsed ? <span className="truncate">{item.label}</span> : null}
-                          </NavLink>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-
-                {selfServiceVisible ? (
-                  <SelfServiceShell>
-                    <div>
-                      {!collapsed ? <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Self-Service</p> : null}
-                      <NavLink
-                        to="/self-service"
-                        onClick={() => setMobileOpen(false)}
-                        title={collapsed ? "Self-Service" : undefined}
-                        className={({ isActive }) =>
-                          cn(
-                            "flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-                            collapsed ? "justify-center" : "gap-3",
-                            isActive && "bg-primary/10 text-primary ring-1 ring-primary/10"
-                          )
-                        }
+            <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 [scrollbar-color:#94a3b8_transparent] [scrollbar-width:thin]">
+              <div className={cn("space-y-1.5", collapsed && "space-y-2")}>
+                {sidebarGroups.map((group) => {
+                  const expanded = collapsed || activeGroupLabels.has(group.label) || (expandedGroups[group.label] ?? true);
+                  const groupContent = (
+                    <div key={group.label} className="rounded-lg">
+                      {!collapsed ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(group.label)}
+                          className={cn(
+                            "mb-1 flex h-8 w-full items-center justify-between rounded-md px-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800",
+                            activeGroupLabels.has(group.label) && "bg-primary/5 text-primary"
+                          )}
+                          aria-expanded={expanded}
+                        >
+                          <span className="truncate">{group.label}</span>
+                          <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform duration-200", !expanded && "-rotate-90")} />
+                        </button>
+                      ) : null}
+                      <div
+                        className={cn(
+                          "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+                          expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                        )}
                       >
-                        <UserRound className="h-4 w-4 shrink-0" />
-                        {!collapsed ? <span className="truncate">Self-Service</span> : null}
-                      </NavLink>
+                        <div className="min-h-0 overflow-hidden">
+                          <div className={cn("space-y-1", !collapsed && "border-l border-slate-200 pl-2")}>
+                            {group.items.map((item) => {
+                              const Icon = item.icon;
+                              return (
+                                <NavLink
+                                  key={item.to}
+                                  to={item.to}
+                                  end={item.to === "/"}
+                                  onClick={() => setMobileOpen(false)}
+                                  title={collapsed ? `${group.label}: ${item.label}` : undefined}
+                                  className={({ isActive }) =>
+                                    cn(
+                                      "group flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+                                      collapsed ? "justify-center" : "gap-3",
+                                      isActive && "bg-primary/10 text-primary ring-1 ring-primary/10"
+                                    )
+                                  }
+                                >
+                                  <Icon className="h-4 w-4 shrink-0" />
+                                  {!collapsed ? <span className="truncate">{item.label}</span> : null}
+                                </NavLink>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </SelfServiceShell>
-                ) : null}
+                  );
+
+                  return group.label === "Self-Service" ? <SelfServiceShell key={group.label}>{groupContent}</SelfServiceShell> : groupContent;
+                })}
               </div>
             </nav>
 
-            <div className="border-t p-2">
+            <div className="shrink-0 border-t p-2">
               <Button
                 variant="ghost"
                 size={collapsed ? "icon" : "sm"}
@@ -222,8 +279,8 @@ export function AppShell() {
 
         {mobileOpen ? <button className="fixed inset-0 z-30 bg-slate-900/25 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" /> : null}
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-white/90 px-4 backdrop-blur lg:px-6">
+        <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+          <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b bg-white/90 px-4 backdrop-blur lg:px-6">
             <div className="flex min-w-0 items-center gap-3">
               <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} title="Open navigation">
                 <Menu className="h-4 w-4" />
@@ -259,7 +316,7 @@ export function AppShell() {
             </div>
           </header>
 
-          <main className="min-w-0 flex-1 overflow-x-hidden">
+          <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
             <div className="mx-auto w-full max-w-[1680px] px-3 py-4 sm:px-4 lg:px-6">
               <Outlet />
             </div>
