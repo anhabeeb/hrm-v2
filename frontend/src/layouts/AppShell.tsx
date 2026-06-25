@@ -2,6 +2,7 @@ import {
   Archive,
   BarChart3,
   Bell,
+  BookOpenCheck,
   Building2,
   BriefcaseBusiness,
   CalendarCheck,
@@ -96,6 +97,7 @@ const navGroups: NavGroup[] = [
       { label: "Settings", to: "/settings", icon: Settings, permission: "settings.view" },
       { label: "Organization", to: "/settings/organization", icon: Building2, permission: "organization.view" },
       { label: "Admin Controls", to: "/settings/admin", icon: ShieldCheck, permissionAny: ["admin.settings_hub.view", "admin.modules.view", "admin.system_health.view"] },
+      { label: "HRM Guide", to: "/admin/help", icon: BookOpenCheck, permissionAny: ["admin.help.view", "admin.help.manage"] },
       { label: "Users & Access", to: "/users-access", icon: ShieldCheck, permission: "users.view" }
     ]
   }
@@ -144,7 +146,11 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => readSidebarGroupState());
-  const permissions = useMemo(() => new Set(user?.permissions ?? []), [user]);
+  const permissions = useMemo(() => {
+    const next = new Set(user?.permissions ?? []);
+    if (user?.is_owner) next.add("admin.help.view");
+    return next;
+  }, [user]);
   const visibleGroups = useMemo(() => navGroups
     .map((group) => ({ ...group, items: group.items.filter((item) => canShow(item, permissions)) }))
     .filter((group) => group.items.length), [permissions]);

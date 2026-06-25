@@ -8,6 +8,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type {
@@ -183,6 +184,7 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
           <p className="text-sm text-muted-foreground">Configurable chains, delegation, escalation, notifications, timelines, and module fallback adapters.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <AdminHelpLink target="approvals" label="View Approval Guide" />
           {can(permissions, ["approvals.escalations.manage", "approvals.manage"]) ? <Button variant="outline" size="sm" onClick={async () => { if (token) { await api.refreshApprovalReminders(token); await api.refreshApprovalEscalations(token); await load(); } }}><RefreshCw className="h-4 w-4" /> Refresh reminders</Button> : null}
           <Link to="/reports"><Button variant="outline" size="sm"><FileText className="h-4 w-4" /> Report Center</Button></Link>
         </div>

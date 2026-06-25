@@ -8,6 +8,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
@@ -383,7 +384,8 @@ export function PayrollPensionPage() {
 }
 
 function PayrollPageShell({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
-  return <div className="space-y-4"><div><h1 className="text-xl font-semibold">{title}</h1><p className="text-sm text-muted-foreground">{description}</p></div><PayrollNav />{children}</div>;
+  const helpTarget = title.includes("Bank") ? "bankLoans" : title.includes("Pension") ? "pension" : "payroll";
+  return <div className="space-y-4"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="text-xl font-semibold">{title}</h1><p className="text-sm text-muted-foreground">{description}</p></div><div className="flex flex-wrap gap-2"><PayrollNav /><AdminHelpLink target={helpTarget} label="View Payroll Guide" /></div></div>{children}</div>;
 }
 
 function Header({ icon, title, action }: { icon: React.ReactNode; title: string; action?: React.ReactNode }) {

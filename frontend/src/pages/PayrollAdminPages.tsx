@@ -8,6 +8,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
@@ -25,7 +26,7 @@ function ErrorMessage({ error }: { error: string | null }) {
 }
 
 function Header({ title, description, children }: { title: string; description: string; children?: React.ReactNode }) {
-  return <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="text-lg font-semibold">{title}</h1><p className="text-sm text-muted-foreground">{description}</p></div><div className="flex flex-wrap gap-2"><PayrollNav />{children}</div></div>;
+  return <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="text-lg font-semibold">{title}</h1><p className="text-sm text-muted-foreground">{description}</p></div><div className="flex flex-wrap gap-2"><PayrollNav /><AdminHelpLink target="payroll" label="View Payroll Guide" />{children}</div></div>;
 }
 
 function SearchInput({ value, onChange, placeholder = "Search employee/name/no" }: { value: string; onChange: (value: string) => void; placeholder?: string }) {

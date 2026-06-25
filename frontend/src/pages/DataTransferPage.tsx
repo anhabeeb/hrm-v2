@@ -17,6 +17,7 @@ import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 
@@ -323,7 +324,10 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
           <h1 className="text-lg font-semibold">Data Import / Export & Deployment Readiness</h1>
           <p className="text-sm text-muted-foreground">Controlled CSV import, export history, backup guidance, migration readiness, QA, smoke, and deployment status.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" /> Refresh</Button>
+        <div className="flex flex-wrap gap-2">
+          <AdminHelpLink target={active === "deployment" || active === "remote-d1" || active === "qa" || active === "smoke" ? "deployment" : "dataImport"} label="View Operations Guide" />
+          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" /> Refresh</Button>
+        </div>
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1">

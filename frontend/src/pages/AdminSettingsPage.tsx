@@ -22,6 +22,7 @@ import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { clearCurrentBrowserCache, getFrontendCacheDiagnostics, preserveSafeUiPreferences } from "../lib/cache/hrmCache";
@@ -356,6 +357,7 @@ export function AdminSettingsPage() {
           <p className="text-sm text-muted-foreground">Central module controls, consistency checks, security logs, and production readiness guardrails.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <AdminHelpLink target={active === "cache-sync" ? "cacheTimeout" : active === "data-transfer" ? "dataImport" : "deployment"} label="View Configuration Guide" />
           <Button size="sm" variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" /> Refresh</Button>
           <NavLink to="/settings"><Button size="sm" variant="outline">Settings index</Button></NavLink>
         </div>

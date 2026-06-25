@@ -9,6 +9,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceDevice, AttendanceDeviceSettings, AttendanceImportBatch, AttendanceImportRowError, AttendanceLockedDayWarning, AttendanceRawLog, AttendanceUnmatchedLog, AttendanceVendorIntegration, EmployeeBiometricMapping } from "../types/attendance";
@@ -54,7 +55,10 @@ export function AttendanceDeviceOperationsPage({ mode }: { mode: Mode }) {
           <h1 className="text-lg font-semibold">{titleFor(mode)}</h1>
           <p className="text-sm text-muted-foreground">ZKTeco import, bridge, ADMS placeholder, reconciliation, and protected payroll-lock handling.</p>
         </div>
-        <AttendanceNav />
+        <div className="flex flex-wrap gap-2">
+          <AttendanceNav />
+          <AdminHelpLink target="zkteco" label="View ZKTeco Guide" />
+        </div>
       </div>
       {mode === "settings" ? <DeviceSettings token={token} /> : null}
       {mode === "mappings" ? <BiometricMappings token={token} /> : null}

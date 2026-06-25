@@ -16,6 +16,8 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_access_scopes_apply', 'access_scopes.apply', 'access_scopes', 'Apply data access scopes to users or access templates', 1),
   ('perm_settings_view', 'settings.view', 'settings', 'View system settings', 1),
   ('perm_settings_manage', 'settings.manage', 'settings', 'Manage system settings', 1),
+  ('perm_admin_help_view', 'admin.help.view', 'admin', 'View Super Admin HRM configuration guide', 1),
+  ('perm_admin_help_manage', 'admin.help.manage', 'admin', 'Manage Super Admin HRM guide content', 1),
   ('perm_organization_view', 'organization.view', 'organization', 'View organization master data', 0),
   ('perm_organization_manage', 'organization.manage', 'organization', 'Manage organization master data', 0),
   ('perm_employees_view', 'employees.view', 'employees', 'View employee records', 0),

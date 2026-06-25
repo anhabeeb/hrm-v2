@@ -15,6 +15,7 @@ const AttendanceDeviceOperationsPage = lazyPage(() => import("../pages/Attendanc
 const AttendanceRecordsPage = lazyPage(() => import("../pages/AttendanceRecordsPage"), "AttendanceRecordsPage");
 const AttendanceReportsPage = lazyPage(() => import("../pages/AttendanceReportsPage"), "AttendanceReportsPage");
 const AttendanceSettingsPage = lazyPage(() => import("../pages/AttendanceSettingsPage"), "AttendanceSettingsPage");
+const AdminHelpGuidePage = lazyPage(() => import("../pages/AdminHelpGuidePage"), "AdminHelpGuidePage");
 const AdminSettingsPage = lazyPage(() => import("../pages/AdminSettingsPage"), "AdminSettingsPage");
 const ApprovalsPage = lazyPage(() => import("../pages/ApprovalsPage"), "ApprovalsPage");
 const AssetAssignmentsPage = lazyPage(() => import("../pages/AssetAssignmentsPage"), "AssetAssignmentsPage");
@@ -239,6 +240,7 @@ export function AppRoutes() {
             <Route path="self-service/kyc-requests" element={<SelfServicePage mode="kyc" />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/admin" element={<AdminSettingsPage />} />
+            <Route path="admin/help" element={<AdminHelpGuidePage />} />
             <Route path="settings/admin/imports" element={<DataTransferPage mode="imports" />} />
             <Route path="settings/admin/import-templates" element={<DataTransferPage mode="templates" />} />
             <Route path="settings/admin/exports" element={<DataTransferPage mode="exports" />} />

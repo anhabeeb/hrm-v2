@@ -8,6 +8,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { AccessUser, Role } from "../types/auth";
@@ -90,7 +91,10 @@ export function LeaveSettingsPage() {
 
   return (
     <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">Leave Settings</h1><p className="text-sm text-muted-foreground">Leave types, configurable policies, deduction/document rules, and approval workflows.</p></div>
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div><h1 className="text-lg font-semibold">Leave Settings</h1><p className="text-sm text-muted-foreground">Leave types, configurable policies, deduction/document rules, and approval workflows.</p></div>
+        <AdminHelpLink target="leave" label="View Leave Guide" />
+      </div>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="flex overflow-x-auto border-b">{(["types", "policies", "documentRules", "deductionRules", "workflows"] as Tab[]).map((item) => <button key={item} className={`h-11 border-b-2 px-4 text-sm font-medium ${tab === item ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:bg-muted/50"}`} onClick={() => setTab(item)}>{tabLabel(item)}</button>)}</div>
