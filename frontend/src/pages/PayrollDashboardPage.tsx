@@ -5,6 +5,7 @@ import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { DashboardWidget, MetricGrid, PageHeader, PageShell, StatCard, WarningPanel } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -41,68 +42,65 @@ export function PayrollDashboardPage() {
   if (!canView) return <Panel><EmptyState title="Payroll unavailable" description="Your account needs payroll.view permission." /></Panel>;
 
   const metrics = [
-    { label: "Current period net", value: money(dashboard?.current_period_net_total), icon: Banknote },
-    { label: "Draft runs", value: dashboard?.draft_runs ?? 0, icon: Clock3 },
-    { label: "Approved runs", value: dashboard?.approved_runs ?? 0, icon: CheckCircle2 },
-    { label: "Paid runs", value: dashboard?.paid_runs ?? 0, icon: WalletCards },
-    { label: "Pending advances", value: dashboard?.pending_advances ?? 0, icon: AlertCircle },
-    { label: "Excluded employees", value: dashboard?.employees_excluded_from_payroll ?? 0, icon: FileWarning },
-    { label: "Attendance candidates", value: dashboard?.attendance_deduction_candidates ?? 0, icon: CalendarDays },
-    { label: "Payroll holds", value: dashboard?.payroll_holds ?? 0, icon: PauseCircle }
+    { label: "Current period net", value: money(dashboard?.current_period_net_total), icon: <Banknote className="h-4 w-4" />, tone: "info" as const },
+    { label: "Draft runs", value: dashboard?.draft_runs ?? 0, icon: <Clock3 className="h-4 w-4" />, tone: "warning" as const },
+    { label: "Approved placeholders", value: dashboard?.approved_runs ?? 0, icon: <CheckCircle2 className="h-4 w-4" />, tone: "success" as const },
+    { label: "Finalized placeholders", value: dashboard?.paid_runs ?? 0, icon: <WalletCards className="h-4 w-4" />, tone: "neutral" as const },
+    { label: "Pending advances", value: dashboard?.pending_advances ?? 0, icon: <AlertCircle className="h-4 w-4" />, tone: "warning" as const },
+    { label: "Excluded employees", value: dashboard?.employees_excluded_from_payroll ?? 0, icon: <FileWarning className="h-4 w-4" />, tone: "danger" as const },
+    { label: "Attendance candidates", value: dashboard?.attendance_deduction_candidates ?? 0, icon: <CalendarDays className="h-4 w-4" />, tone: "info" as const },
+    { label: "Payroll holds", value: dashboard?.payroll_holds ?? 0, icon: <PauseCircle className="h-4 w-4" />, tone: "warning" as const }
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Payroll</h1>
-          <p className="text-sm text-muted-foreground">Month-end payroll foundation with periods, runs, advances, deductions, and exports.</p>
-        </div>
-        <PayrollNav />
-      </div>
-      {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+    <PageShell>
+      <PageHeader
+        title="Payroll"
+        eyebrow="Payroll Core"
+        description="Month-end payroll foundation with scoped periods, review runs, advances, deductions, reports, and cutoff-aware warnings."
+        actions={<PayrollNav />}
+      />
+      {error ? <WarningPanel tone="danger">{error}</WarningPanel> : null}
       {loading ? <Panel><EmptyState title="Loading payroll dashboard" description="Fetching payroll counters and current period status." /></Panel> : null}
       {!loading && dashboard ? (
         <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {metrics.map((metric) => {
-              const Icon = metric.icon;
-              return (
-                <Panel key={metric.label} className="p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">{metric.label}</p>
-                      <p className="mt-1 text-xl font-semibold">{metric.value}</p>
-                    </div>
-                    <div className="rounded-md border bg-slate-50 p-2"><Icon className="h-4 w-4 text-slate-600" /></div>
-                  </div>
-                </Panel>
-              );
-            })}
-          </div>
-          <Panel className="overflow-hidden">
-            <div className="flex flex-col gap-3 border-b px-4 py-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-sm font-semibold">Current payroll period</h2>
-                <p className="text-xs text-muted-foreground">Salary is normally paid at month end. Complex statutory rules remain future configuration.</p>
-              </div>
+          <MetricGrid>
+            {metrics.map((metric) => <StatCard key={metric.label} label={metric.label} value={metric.value} icon={metric.icon} tone={metric.tone} />)}
+          </MetricGrid>
+
+          <DashboardWidget
+            title="Current payroll period"
+            description="Salary is normally paid at month end. Prompt 10 keeps final payment processing as a later phase."
+            actions={
               <div className="flex flex-wrap gap-2">
                 <Link to="/payroll/periods"><Button size="sm" variant="outline">Open periods</Button></Link>
                 <Link to="/payroll/runs"><Button size="sm">Open runs</Button></Link>
               </div>
-            </div>
+            }
+          >
             {dashboard.current_period ? (
               <div className="grid gap-3 p-4 md:grid-cols-4">
                 <Info label="Month/year" value={`${dashboard.current_period.period_month}/${dashboard.current_period.period_year}`} />
                 <Info label="Date range" value={`${dashboard.current_period.start_date} to ${dashboard.current_period.end_date}`} />
                 <Info label="Payment date" value={dashboard.current_period.salary_payment_date ?? "-"} />
-                <div><p className="text-xs text-muted-foreground">Status</p><Badge tone={dashboard.current_period.status === "PAID" ? "success" : "neutral"}>{dashboard.current_period.status}</Badge></div>
+                <div><p className="text-xs text-muted-foreground">Status</p><Badge tone={dashboard.current_period.status === "FINALIZED_PLACEHOLDER" ? "success" : "neutral"}>{dashboard.current_period.status}</Badge></div>
               </div>
             ) : <EmptyState title="No current payroll period" description="Create an open payroll period before generating runs." />}
-          </Panel>
+          </DashboardWidget>
+
+          <DashboardWidget title="Payroll run status stepper" description="Prompt 10 runs move through review-safe placeholders before future payment processing is enabled.">
+            <div className="grid gap-2 p-4 md:grid-cols-5">
+              {["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER"].map((status, index) => (
+                <div key={status} className="rounded-md border bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">Step {index + 1}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-900">{status.replace(/_/g, " ")}</p>
+                </div>
+              ))}
+            </div>
+          </DashboardWidget>
         </>
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 

@@ -10,6 +10,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { ApiError, api } from "../../lib/api";
 import type { Employee } from "../../types/employees";
 import type { EmployeePayrollProfile, EmployeePayrollSummary } from "../../types/payroll";
+import { EmployeePayrollFoundationPanels } from "./EmployeePayrollFoundationPanels";
 
 function money(value: number | null | undefined, currency = "MVR") {
   return `${currency} ${Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -132,6 +133,7 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
           <Toggle disabled={!editing} label="Leave deduction" checked={Boolean(form.leave_deduction_enabled)} onChange={(value) => update("leave_deduction_enabled", value)} />
         </div>
       </Panel>
+      <EmployeePayrollFoundationPanels employeeId={employee.id} summary={summary} onReload={load} />
       <div className="grid gap-4 xl:grid-cols-2">
         <RowsPanel title="Salary history" rows={summary.salary_history ?? []} columns={["effective_date", "old_basic_salary", "new_basic_salary", "reason", "created_by_name"]} action={canUpdate ? <Button size="sm" onClick={() => setIncrementForm({ amount: "", effective_date: new Date().toISOString().slice(0, 10), reason: "" })}><Plus className="h-4 w-4" /> Add increment</Button> : null} />
         <RowsPanel title="Increment history" rows={summary.increments ?? []} columns={["effective_date", "old_salary", "increment_amount", "new_salary", "reason"]} />
@@ -139,6 +141,8 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
         <RowsPanel title="Deductions" rows={(summary.deductions ?? []) as unknown as Record<string, unknown>[]} columns={["deduction_type", "amount", "status", "reason", "start_date", "end_date"]} />
         <RowsPanel title="Payroll run history" rows={(summary.runs ?? []) as unknown as Record<string, unknown>[]} columns={["employee_no_snapshot", "basic_salary", "days_worked", "total_deductions", "net_salary", "status"]} />
         <RowsPanel title="Payslip history" rows={(summary.payslips ?? []) as unknown as Record<string, unknown>[]} columns={["period_month", "period_year", "payslip_number", "status", "version_number", "generated_at"]} />
+        <RowsPanel title="Custom deductions" rows={(summary.custom_deductions ?? []) as unknown as Record<string, unknown>[]} columns={["template_name_snapshot", "category_snapshot", "assigned_amount", "total_amount", "remaining_balance", "approval_status", "status"]} />
+        <RowsPanel title="Custom deduction payroll applications" rows={(summary.custom_deduction_applications ?? []) as unknown as Record<string, unknown>[]} columns={["template_name_snapshot", "scheduled_amount", "deducted_amount", "shortfall_amount", "remaining_balance_after", "application_status", "created_at"]} />
         <RowsPanel title="Final settlements" rows={(summary.settlements ?? []) as unknown as Record<string, unknown>[]} columns={["final_salary_amount", "pending_advance_amount", "net_settlement_amount", "status", "reason"]} />
       </div>
       <RowsPanel title="Payroll audit" rows={summary.audit ?? []} columns={["action", "entity_type", "reason", "created_at"]} />

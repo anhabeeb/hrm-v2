@@ -18,6 +18,7 @@ import {
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -48,10 +49,19 @@ const MODULE_LABELS: Record<string, string> = {
   roster: "Roster",
   documents: "Documents",
   assets: "Assets",
+  uniforms: "Uniforms",
   reports: "Reports",
   settings: "Settings",
   self_service: "Self-Service",
-  audit: "Audit"
+  audit: "Audit",
+  admin: "Admin Controls",
+  data_import: "Data Import",
+  data_export: "Data Export",
+  data_transfer: "Data Transfer",
+  backup: "Backup Readiness",
+  migration: "Migration Readiness",
+  deployment: "Deployment Readiness",
+  qa: "QA & Smoke Tests"
 };
 
 const SCOPE_TYPE_LABELS: Record<AccessScopeType, string> = {
@@ -118,6 +128,7 @@ export function UsersAccessPage() {
   const [roleModal, setRoleModal] = useState<{ mode: RoleModalMode; role?: Role } | null>(null);
   const [mappingModal, setMappingModal] = useState<{ mode: MappingModalMode; mapping?: RoleMappingRule } | null>(null);
   const [scopeModal, setScopeModal] = useState<{ mode: ScopeModalMode; scope?: AccessScopeRule } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ title: string; description: string; confirmLabel: string; tone?: "default" | "danger"; run: () => Promise<unknown>; success: string } | null>(null);
   const canViewMappings = Boolean(currentUser?.permissions.includes("role_mappings.view"));
   const canManageMappings = Boolean(currentUser?.permissions.includes("role_mappings.manage"));
   const canViewScopes = Boolean(currentUser?.permissions.includes("access_scopes.view"));
@@ -311,16 +322,12 @@ export function UsersAccessPage() {
             onEdit={(accessUser) => setUserModal({ mode: "edit", user: accessUser })}
             onAssign={(accessUser) => setUserModal({ mode: "assign", user: accessUser })}
             onReset={(accessUser) => {
-              if (window.confirm(`Trigger password reset placeholder for ${accessUser.name}?`)) {
-                void runAction(() => api.userAction(token ?? "", accessUser.id, "reset-password"), "Password reset placeholder logged.");
-              }
+              setConfirmAction({ title: "Reset password placeholder", description: `Trigger password reset placeholder for ${accessUser.name}?`, confirmLabel: "Reset", run: () => api.userAction(token ?? "", accessUser.id, "reset-password"), success: "Password reset placeholder logged." });
             }}
             onStatusAction={(accessUser, action) => {
               const protectedMessage = protectedOwnerMessage(accessUser);
               if ((action === "disable" || action === "lock") && protectedMessage) return;
-              if (window.confirm(`${action} ${accessUser.name}?`)) {
-                void runAction(() => api.userAction(token ?? "", accessUser.id, action), `User ${action} action completed.`);
-              }
+              setConfirmAction({ title: `${action} user`, description: `${action} ${accessUser.name}?`, confirmLabel: action, tone: action === "disable" || action === "lock" ? "danger" : "default", run: () => api.userAction(token ?? "", accessUser.id, action), success: `User ${action} action completed.` });
             }}
           />
         ) : null}
@@ -336,9 +343,7 @@ export function UsersAccessPage() {
             onPermissions={(role) => setRoleModal({ mode: "permissions", role })}
             onAction={(role, action) => {
               if (role.is_protected && action === "disable") return;
-              if (window.confirm(`${action} role ${role.name}?`)) {
-                void runAction(() => api.roleAction(token ?? "", role.id, action), `Role ${action} action completed.`);
-              }
+              setConfirmAction({ title: `${action} role`, description: `${action} role ${role.name}?`, confirmLabel: action, tone: action === "disable" ? "danger" : "default", run: () => api.roleAction(token ?? "", role.id, action), success: `Role ${action} action completed.` });
             }}
           />
         ) : null}
@@ -366,9 +371,7 @@ export function UsersAccessPage() {
             onQueryChange={setMappingQuery}
             onEdit={(mapping) => setMappingModal({ mode: "edit", mapping })}
             onAction={(mapping, action) => {
-              if (window.confirm(`${action} role mapping ${mapping.name}?`)) {
-                void runAction(() => api.roleMappingAction(token ?? "", mapping.id, action), `Role mapping ${action} action completed.`);
-              }
+              setConfirmAction({ title: `${action} role mapping`, description: `${action} role mapping ${mapping.name}?`, confirmLabel: action, tone: action === "disable" ? "danger" : "default", run: () => api.roleMappingAction(token ?? "", mapping.id, action), success: `Role mapping ${action} action completed.` });
             }}
           />
         ) : null}
@@ -386,9 +389,7 @@ export function UsersAccessPage() {
             onOwnerFilterChange={setScopeOwnerFilter}
             onEdit={(scope) => setScopeModal({ mode: "edit", scope })}
             onAction={(scope, action) => {
-              if (window.confirm(`${action} access scope ${scope.name}?`)) {
-                void runAction(() => api.accessScopeAction(token ?? "", scope.id, action), `Access scope ${action} action completed.`);
-              }
+              setConfirmAction({ title: `${action} access scope`, description: `${action} access scope ${scope.name}?`, confirmLabel: action, tone: action === "disable" ? "danger" : "default", run: () => api.accessScopeAction(token ?? "", scope.id, action), success: `Access scope ${action} action completed.` });
             }}
           />
         ) : null}
@@ -481,6 +482,21 @@ export function UsersAccessPage() {
           }
         />
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(confirmAction)}
+        title={confirmAction?.title ?? "Confirm action"}
+        description={confirmAction?.description}
+        confirmLabel={confirmAction?.confirmLabel ?? "Confirm"}
+        tone={confirmAction?.tone ?? "default"}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => {
+          if (!confirmAction) return;
+          const pendingAction = confirmAction;
+          setConfirmAction(null);
+          void runAction(pendingAction.run, pendingAction.success);
+        }}
+      />
 
       <div className="text-xs text-muted-foreground">
         Signed in as {currentUser?.name}. Backend permissions remain the source of truth for every action.

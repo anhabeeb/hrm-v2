@@ -6,9 +6,11 @@ import { EmployeeAttendancePanel } from "../components/attendance/EmployeeAttend
 import { EmployeeAuditPanel } from "../components/audit/EmployeeAuditPanel";
 import { EmployeeAssetsPanel } from "../components/assets/EmployeeAssetsPanel";
 import { EmployeeAvatar } from "../components/employee/EmployeeAvatar";
+import { EmployeeContractsPanel } from "../components/employee/EmployeeContractsPanel";
 import { EmployeeDocumentsPanel } from "../components/employee/EmployeeDocumentsPanel";
 import { EmployeeProfilePhotoControls } from "../components/employee/EmployeeProfilePhotoControls";
 import { EmployeeLeavePanel } from "../components/leave/EmployeeLeavePanel";
+import { EmployeeFinalSettlementPanel } from "../components/payroll/EmployeeFinalSettlementPanel";
 import { EmployeeNotesPanel } from "../components/notes/EmployeeNotesPanel";
 import { EmployeePayrollPanel } from "../components/payroll/EmployeePayrollPanel";
 import { EmployeeRosterPanel } from "../components/roster/EmployeeRosterPanel";
@@ -17,14 +19,16 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { PageShell, ResponsiveTabs } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { EmployeeUserAccessPreview } from "../types/auth";
 import type { Employee, EmployeeContact, EmployeeContactInput, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
+import type { LifecycleSummary, LifecycleTask } from "../types/lifecycle";
 
-const profileTabs = ["Overview", "Personal Info", "Job Info", "Contacts", "User Access", "Payroll", "Attendance", "Roster", "Leave", "Documents", "Assets & Uniforms", "Notes", "Audit Log"] as const;
+const profileTabs = ["Overview", "Personal Info", "Job Info", "Contracts", "Contacts", "User Access", "Lifecycle", "Payroll", "Final Settlement", "Attendance", "Roster", "Leave", "Documents", "Assets & Uniforms", "Notes", "Audit Log"] as const;
 type ProfileTab = (typeof profileTabs)[number];
 
 function tone(status?: string) {
@@ -47,6 +51,7 @@ export function EmployeeProfilePage() {
   const [audit, setAudit] = useState<Record<string, unknown>[]>([]);
   const [profileRequests, setProfileRequests] = useState<Record<string, unknown>[]>([]);
   const [userAccess, setUserAccess] = useState<EmployeeUserAccessPreview | null>(null);
+  const [lifecycle, setLifecycle] = useState<LifecycleSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contactModal, setContactModal] = useState<{ mode: "create" | "edit"; contact?: EmployeeContact } | null>(null);
   const [archiveReason, setArchiveReason] = useState("");
@@ -65,12 +70,15 @@ export function EmployeeProfilePage() {
   const canLeave = permissions.has("employees.leave.view") || permissions.has("leave.view");
   const canAttendance = permissions.has("employees.attendance.view") || permissions.has("attendance.view");
   const canRoster = permissions.has("employees.roster.view") || permissions.has("roster.view");
+  const canContracts = permissions.has("employees.contracts.view") || permissions.has("contracts.view");
   const canPayroll = permissions.has("employees.payroll.view") || permissions.has("payroll.view");
+  const canFinalSettlement = permissions.has("employees.final_settlement.view") || permissions.has("final_settlement.view") || permissions.has("final_settlement.cases.view");
   const canAssets = permissions.has("employees.assets.view") || permissions.has("assets.view");
   const canNotes = permissions.has("employee_notes.view");
   const canAudit = permissions.has("employees.audit.view") || permissions.has("audit.view");
   const canViewUserAccess = permissions.has("role_mappings.view");
   const canApplyUserAccess = permissions.has("role_mappings.apply");
+  const canViewLifecycle = permissions.has("employees.lifecycle.view") || permissions.has("onboarding.cases.view") || permissions.has("offboarding.cases.view");
   const canUploadPhoto = permissions.has("documents.upload");
   const canClearPhoto = permissions.has("documents.archive");
 
@@ -94,6 +102,13 @@ export function EmployeeProfilePage() {
           setUserAccess((await api.getEmployeeUserAccess(token, id)).preview);
         } catch {
           setUserAccess(null);
+        }
+      }
+      if (canViewLifecycle) {
+        try {
+          setLifecycle((await api.getEmployeeLifecycleSummary(token, id)).summary);
+        } catch {
+          setLifecycle(null);
         }
       }
       try {
@@ -194,7 +209,7 @@ export function EmployeeProfilePage() {
   const completed = onboarding.filter((task) => task.status === "COMPLETED").length;
 
   return (
-    <div className="space-y-4">
+    <PageShell constrained={false}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
           <EmployeeAvatar employee={employee} token={token} size="lg" />
@@ -219,12 +234,12 @@ export function EmployeeProfilePage() {
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
 
       <Panel className="overflow-hidden">
-        <div className="flex overflow-x-auto border-b">
-          {profileTabs.map((tab) => (
-            <button key={tab} className={`h-11 whitespace-nowrap border-b-2 px-4 text-sm font-medium ${activeTab === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:bg-muted/50"}`} onClick={() => setActiveTab(tab)}>
-              {tab}
-            </button>
-          ))}
+        <div className="border-b p-2">
+          <ResponsiveTabs
+            items={profileTabs.map((tab) => ({ key: tab, label: tab }))}
+            active={activeTab}
+            onChange={(tab) => setActiveTab(tab as ProfileTab)}
+          />
         </div>
         <div className="p-4">
           {activeTab === "Overview" ? (
@@ -243,9 +258,12 @@ export function EmployeeProfilePage() {
             ["Full name", employee.full_name], ["Display name", employee.display_name], ["Gender", employee.gender], ["Date of birth", employee.date_of_birth], ["Nationality", employee.nationality], ["Employee type", employee.employee_type], ["Employment type", employee.employment_type], ["Profile photo", employee.profile_photo_document_id ? "Uploaded" : "Not uploaded"]
           ]} /><ProfileUpdateRequests rows={profileRequests} /></div> : null}
           {activeTab === "Job Info" ? <JobInfo employee={employee} jobHistory={jobHistory} /> : null}
+          {activeTab === "Contracts" ? canContracts ? <EmployeeContractsPanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Contracts unavailable" description="Your account needs employee contract access." /> : null}
           {activeTab === "Contacts" ? <Contacts contacts={contacts} canManage={canContacts} onAdd={() => setContactModal({ mode: "create" })} onEdit={(contact) => setContactModal({ mode: "edit", contact })} onArchive={(contact) => setContactArchiveTarget(contact)} /> : null}
           {activeTab === "User Access" ? canViewUserAccess ? <UserAccessPanel preview={userAccess} canApply={canApplyUserAccess} onApply={(mappingId) => void applyUserAccessMapping(mappingId)} /> : <EmptyState title="User access unavailable" description="Your account needs role_mappings.view permission." /> : null}
+          {activeTab === "Lifecycle" ? canViewLifecycle ? <LifecyclePanel summary={lifecycle} /> : <EmptyState title="Lifecycle unavailable" description="Your account needs employee lifecycle access." /> : null}
           {activeTab === "Payroll" ? (canPayroll ? <EmployeePayrollPanel employee={employee} /> : <Panel><EmptyState title="Payroll unavailable" description="Your account needs employee payroll access." /></Panel>) : null}
+          {activeTab === "Final Settlement" ? (canFinalSettlement ? <EmployeeFinalSettlementPanel employee={employee} /> : <Panel><EmptyState title="Final settlement unavailable" description="Your account needs employee final settlement access." /></Panel>) : null}
           {activeTab === "Attendance" ? canAttendance ? <EmployeeAttendancePanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Attendance unavailable" description="Your account needs employees.attendance.view permission." /> : null}
           {activeTab === "Roster" ? canRoster ? <EmployeeRosterPanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Roster unavailable" description="Your account needs employees.roster.view permission." /> : null}
           {activeTab === "Leave" ? canLeave ? <EmployeeLeavePanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Leave unavailable" description="Your account needs employees.leave.view permission." /> : null}
@@ -287,7 +305,7 @@ export function EmployeeProfilePage() {
           onSubmit={(input) => void changeStatus(input)}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 
@@ -374,6 +392,46 @@ function UserAccessPanel({ preview, canApply, onApply }: { preview: EmployeeUser
         </div>
       </div>
       {!preview.linked_user ? <EmptyState title="No linked system user" description="Role mapping can be applied after this employee is linked to a user account." /> : null}
+    </div>
+  );
+}
+
+function LifecyclePanel({ summary }: { summary: LifecycleSummary | null }) {
+  if (!summary) return <EmptyState title="Lifecycle summary unavailable" description="Onboarding and offboarding details will appear here after a case is created." />;
+  const lifecycleRows = [
+    ["Onboarding case", summary.onboarding?.case_number ?? "-"],
+    ["Onboarding status", summary.onboarding?.onboarding_status ?? "-"],
+    ["Activation status", summary.onboarding?.activation_status ?? "-"],
+    ["Offboarding case", summary.offboarding?.case_number ?? "-"],
+    ["Offboarding status", summary.offboarding?.offboarding_status ?? "-"],
+    ["Finalization status", summary.offboarding?.finalization_status ?? "-"]
+  ] as Array<[string, string]>;
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Summary title="Lifecycle status" rows={lifecycleRows} />
+        <Summary title="Onboarding tasks" rows={[["Total", String(summary.onboarding_tasks.length)], ["Completed", String(summary.onboarding_tasks.filter((task) => task.task_status === "COMPLETED").length)], ["Blocked", String(summary.onboarding_tasks.filter((task) => task.task_status === "BLOCKED").length)]]} />
+        <Summary title="Offboarding tasks" rows={[["Total", String(summary.offboarding_tasks.length)], ["Completed", String(summary.offboarding_tasks.filter((task) => task.task_status === "COMPLETED").length)], ["Blocked", String(summary.offboarding_tasks.filter((task) => task.task_status === "BLOCKED").length)]]} />
+      </div>
+      <LifecycleTaskTable title="Onboarding checklist" rows={summary.onboarding_tasks} />
+      <LifecycleTaskTable title="Offboarding checklist" rows={summary.offboarding_tasks} />
+      <SimpleRows title="Lifecycle events" rows={summary.events.map((event) => ({ ...event }))} columns={["action", "case_type", "previous_status", "new_status", "reason", "created_at"]} />
+    </div>
+  );
+}
+
+function LifecycleTaskTable({ title, rows }: { title: string; rows: LifecycleTask[] }) {
+  return (
+    <div className="rounded-md border">
+      <div className="border-b px-3 py-2 text-sm font-semibold">{title}</div>
+      {rows.length === 0 ? <EmptyState title="No checklist rows" description="Tasks will be generated after the related lifecycle case is created." /> : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Group</TableHead><TableHead>Status</TableHead><TableHead>Required</TableHead><TableHead>Due</TableHead><TableHead>Reason</TableHead></TableRow></TableHeader>
+            <TableBody>{rows.map((task) => <TableRow key={String(task.id)}><TableCell>{String(task.task_name ?? task.title ?? task.task_key ?? "-")}</TableCell><TableCell>{String(task.task_group ?? "-")}</TableCell><TableCell><Badge tone={task.task_status === "COMPLETED" ? "success" : task.task_status === "BLOCKED" ? "danger" : task.task_status === "WAIVED" ? "warning" : "neutral"}>{String(task.task_status ?? task.status ?? "-")}</Badge></TableCell><TableCell>{task.is_required || task.required ? "Yes" : "No"}</TableCell><TableCell>{String(task.due_date ?? "-")}</TableCell><TableCell>{String(task.waiver_reason ?? task.blocked_reason ?? "-")}</TableCell></TableRow>)}</TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 }

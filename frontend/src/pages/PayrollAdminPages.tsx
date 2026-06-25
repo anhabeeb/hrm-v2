@@ -36,8 +36,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /> {label}</label>;
+function Toggle({ label, checked, disabled = false, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
+  return <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" disabled={disabled} checked={checked} onChange={(event) => onChange(event.target.checked)} /> {label}</label>;
 }
 
 function Modal({ title, children, onClose, onSave }: { title: string; children: React.ReactNode; onClose: () => void; onSave: () => void }) {
@@ -273,8 +273,8 @@ export function PayrollFinalSettlementsPage() {
 export function PayrollSettingsPage() {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
-  const canView = permissions.has("payroll.settings.manage") || permissions.has("payroll.view");
-  const canManage = permissions.has("payroll.settings.manage");
+  const canView = permissions.has("payroll.settings.view") || permissions.has("payroll.settings.manage") || permissions.has("payroll.custom_deduction_settings.view") || permissions.has("payroll.custom_deduction_settings.manage") || permissions.has("payroll.view");
+  const canManage = permissions.has("payroll.settings.manage") || permissions.has("payroll.custom_deduction_settings.update") || permissions.has("payroll.custom_deduction_settings.manage");
   const [settings, setSettings] = useState<PayrollSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -282,7 +282,100 @@ export function PayrollSettingsPage() {
   function update<K extends keyof PayrollSettings>(key: K, value: PayrollSettings[K]) { if (settings) setSettings({ ...settings, [key]: value }); }
   async function save() { if (!token || !settings) return; try { setSettings((await api.updatePayrollSettings(token, settings)).settings); setMessage("Payroll settings saved."); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save payroll settings."); } }
   if (!canView) return <Panel><EmptyState title="Payroll settings unavailable" description="Your account needs payroll settings permission." /></Panel>;
-  return <div className="space-y-4"><Header title="Payroll Settings" description="Global payroll calculation switches and payment defaults">{canManage ? <Button size="sm" onClick={() => void save()}>Save settings</Button> : null}</Header><ErrorMessage error={error} />{message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}<Panel className="p-4">{!settings ? <EmptyState title="Loading payroll settings" description="Fetching payroll configuration." /> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"><Field label="Default currency"><Input disabled={!canManage} value={settings.default_currency} onChange={(event) => update("default_currency", event.target.value)} /></Field><Field label="Daily rate mode"><select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_daily_rate_mode} onChange={(event) => update("default_daily_rate_mode", event.target.value as PayrollSettings["default_daily_rate_mode"])}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></select></Field><Field label="Payment day"><Input disabled={!canManage} type="number" min={1} max={31} value={settings.default_salary_payment_day ?? ""} onChange={(event) => update("default_salary_payment_day", event.target.value ? Number(event.target.value) : null)} /></Field><Toggle label="Allow negative net salary" checked={Boolean(settings.allow_negative_net_salary)} onChange={(value) => update("allow_negative_net_salary", value)} /><Toggle label="Require approval before paid" checked={Boolean(settings.require_approval_before_paid)} onChange={(value) => update("require_approval_before_paid", value)} /><Toggle label="Include attendance deductions" checked={Boolean(settings.include_attendance_deductions)} onChange={(value) => update("include_attendance_deductions", value)} /><Toggle label="Include leave deductions" checked={Boolean(settings.include_leave_deductions)} onChange={(value) => update("include_leave_deductions", value)} /><Toggle label="Include advance deductions" checked={Boolean(settings.include_advance_deductions)} onChange={(value) => update("include_advance_deductions", value)} /><Toggle label="Include roster scheduled days" checked={Boolean(settings.include_roster_scheduled_days)} onChange={(value) => update("include_roster_scheduled_days", value)} /></div>}</Panel></div>;
+  return <div className="space-y-4">
+    <Header title="Payroll Settings" description="General payroll, bank-loan, pension, payment, and deduction-priority controls.">{canManage ? <Button size="sm" onClick={() => void save()}>Save settings</Button> : null}</Header>
+    <ErrorMessage error={error} />
+    {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
+    <Panel className="p-4">
+      {!settings ? <EmptyState title="Loading payroll settings" description="Fetching payroll configuration." /> : <div className="space-y-5">
+        <SettingsSection title="General Payroll" description="Base calculation and module switches.">
+          <Field label="Default currency"><Input disabled={!canManage} value={settings.default_currency} onChange={(event) => update("default_currency", event.target.value)} /></Field>
+          <Field label="Daily rate mode"><select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_daily_rate_mode} onChange={(event) => update("default_daily_rate_mode", event.target.value as PayrollSettings["default_daily_rate_mode"])}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></select></Field>
+          <Field label="Payment day"><Input disabled={!canManage} type="number" min={1} max={31} value={settings.default_salary_payment_day ?? ""} onChange={(event) => update("default_salary_payment_day", event.target.value ? Number(event.target.value) : null)} /></Field>
+          <Toggle disabled={!canManage} label="Allow negative net salary" checked={Boolean(settings.allow_negative_net_salary)} onChange={(value) => update("allow_negative_net_salary", value)} />
+          <Toggle disabled={!canManage} label="Require approval before paid" checked={Boolean(settings.require_approval_before_paid)} onChange={(value) => update("require_approval_before_paid", value)} />
+          <Toggle disabled={!canManage} label="Include attendance deductions" checked={Boolean(settings.include_attendance_deductions)} onChange={(value) => update("include_attendance_deductions", value)} />
+          <Toggle disabled={!canManage} label="Include leave deductions" checked={Boolean(settings.include_leave_deductions)} onChange={(value) => update("include_leave_deductions", value)} />
+          <Toggle disabled={!canManage} label="Include advance deductions" checked={Boolean(settings.include_advance_deductions)} onChange={(value) => update("include_advance_deductions", value)} />
+          <Toggle disabled={!canManage} label="Include roster scheduled days" checked={Boolean(settings.include_roster_scheduled_days)} onChange={(value) => update("include_roster_scheduled_days", value)} />
+        </SettingsSection>
+
+        <SettingsSection title="Bank Loan Deductions" description="Salary-deduction behavior for bank loans and cash-salary eligibility.">
+          <Toggle disabled={!canManage} label="Enable bank loan deductions" checked={Boolean(settings.bank_loan_deductions_enabled ?? true)} onChange={(value) => update("bank_loan_deductions_enabled", value)} />
+          <Toggle disabled={!canManage} label="Allow multiple bank loans per employee" checked={Boolean(settings.allow_multiple_bank_loans_per_employee ?? true)} onChange={(value) => update("allow_multiple_bank_loans_per_employee", value)} />
+          <Toggle disabled={!canManage} label="Require loan approval before deduction" checked={Boolean(settings.require_loan_approval_before_payroll_deduction ?? true)} onChange={(value) => update("require_loan_approval_before_payroll_deduction", value)} />
+          <Toggle disabled={!canManage} label="Allow partial loan deduction" checked={Boolean(settings.allow_partial_loan_deduction ?? true)} onChange={(value) => update("allow_partial_loan_deduction", value)} />
+          <Toggle disabled={!canManage} label="Block payroll if loan exceeds net salary" checked={Boolean(settings.block_payroll_if_loan_exceeds_net_salary)} onChange={(value) => update("block_payroll_if_loan_exceeds_net_salary", value)} />
+          <Field label="Insufficient salary mode"><select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.bank_loan_insufficient_salary_mode ?? "REQUIRE_OVERRIDE"} onChange={(event) => update("bank_loan_insufficient_salary_mode", event.target.value)}>{["WARN_ONLY", "PARTIAL_DEDUCTION", "SKIP_AND_MARK_FAILED", "BLOCK_PAYROLL", "REQUIRE_OVERRIDE"].map((item) => <option key={item} value={item}>{item}</option>)}</select></Field>
+          <Toggle disabled={!canManage} label="Enable minimum net salary protection" checked={Boolean(settings.bank_loan_minimum_net_salary_protection_enabled)} onChange={(value) => update("bank_loan_minimum_net_salary_protection_enabled", value)} />
+          <Field label="Minimum net threshold type"><select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.bank_loan_minimum_net_salary_threshold_type ?? "FIXED_AMOUNT"} onChange={(event) => update("bank_loan_minimum_net_salary_threshold_type", event.target.value)}><option value="FIXED_AMOUNT">Fixed amount</option><option value="PERCENTAGE_OF_NET_SALARY">Percentage of net salary</option></select></Field>
+          <Field label="Minimum net threshold %"><Input disabled={!canManage} type="number" min={0} step="0.01" value={settings.bank_loan_minimum_net_salary_threshold_percentage ?? 0} onChange={(event) => update("bank_loan_minimum_net_salary_threshold_percentage", Number(event.target.value))} /></Field>
+          <Field label="Minimum net threshold amount"><Input disabled={!canManage} type="number" min={0} step="0.01" value={settings.bank_loan_minimum_net_salary_threshold_amount ?? 0} onChange={(event) => update("bank_loan_minimum_net_salary_threshold_amount", Number(event.target.value))} /></Field>
+          <Toggle disabled={!canManage} label="Skip loan if below threshold" checked={Boolean(settings.bank_loan_skip_if_below_threshold_enabled ?? true)} onChange={(value) => update("bank_loan_skip_if_below_threshold_enabled", value)} />
+          <Toggle disabled={!canManage} label="Require bank notification on skip" checked={Boolean(settings.bank_loan_bank_notification_required_on_skip ?? true)} onChange={(value) => update("bank_loan_bank_notification_required_on_skip", value)} />
+          <Toggle disabled={!canManage} label="Enable direct collection status" checked={Boolean(settings.bank_loan_employee_direct_collection_status_enabled ?? true)} onChange={(value) => update("bank_loan_employee_direct_collection_status_enabled", value)} />
+          <Field label="Loan deduction priority"><Input disabled={!canManage} type="number" min={0} value={settings.loan_deduction_priority ?? 2} onChange={(event) => update("loan_deduction_priority", Number(event.target.value))} /></Field>
+          <Field label="Minimum statement months"><Input disabled={!canManage} type="number" min={0} value={settings.bank_loan_statement_months_required_min ?? 6} onChange={(event) => update("bank_loan_statement_months_required_min", Number(event.target.value))} /></Field>
+          <Field label="Default statement months"><Input disabled={!canManage} type="number" min={0} value={settings.bank_loan_statement_months_required_default ?? 12} onChange={(event) => update("bank_loan_statement_months_required_default", Number(event.target.value))} /></Field>
+          <Field label="Default salary slips months"><Input disabled={!canManage} type="number" min={0} value={settings.bank_loan_salary_slips_months_required_default ?? 6} onChange={(event) => update("bank_loan_salary_slips_months_required_default", Number(event.target.value))} /></Field>
+          <Toggle disabled={!canManage} label="Show loan details in self-service" checked={Boolean(settings.show_loan_details_in_self_service ?? true)} onChange={(value) => update("show_loan_details_in_self_service", value)} />
+          <Toggle disabled={!canManage} label="Show loan details on payslip" checked={Boolean(settings.show_loan_details_on_payslip ?? true)} onChange={(value) => update("show_loan_details_on_payslip", value)} />
+          <Toggle disabled={!canManage} label="Require bank salary route by default" checked={Boolean(settings.bank_loan_requires_bank_salary_route_default ?? true)} onChange={(value) => update("bank_loan_requires_bank_salary_route_default", value)} />
+          <Toggle disabled={!canManage} label="Cash salary default ineligible" checked={Boolean(settings.bank_loan_cash_salary_default_ineligible ?? true)} onChange={(value) => update("bank_loan_cash_salary_default_ineligible", value)} />
+          <Toggle disabled={!canManage} label="Allow cash employee override" checked={Boolean(settings.bank_loan_allow_cash_employee_override ?? true)} onChange={(value) => update("bank_loan_allow_cash_employee_override", value)} />
+          <Toggle disabled={!canManage} label="Override requires reason" checked={Boolean(settings.bank_loan_override_requires_reason ?? true)} onChange={(value) => update("bank_loan_override_requires_reason", value)} />
+          <Toggle disabled={!canManage} label="Override requires document" checked={Boolean(settings.bank_loan_override_requires_document ?? true)} onChange={(value) => update("bank_loan_override_requires_document", value)} />
+        </SettingsSection>
+
+        <SettingsSection title="Custom Deduction Settings" description="Employer-defined payroll deductions after pension and bank loan priorities, with payslip, self-service, and shortfall controls.">
+          <Toggle disabled={!canManage} label="Enable custom deductions" checked={Boolean(settings.custom_deductions_enabled ?? true)} onChange={(value) => update("custom_deductions_enabled", value)} />
+          <Toggle disabled={!canManage} label="Require approval before payroll deduction" checked={Boolean(settings.require_custom_deduction_approval ?? true)} onChange={(value) => update("require_custom_deduction_approval", value)} />
+          <Toggle disabled={!canManage} label="Show on payslip by default" checked={Boolean(settings.custom_deduction_show_on_payslip_default ?? true)} onChange={(value) => update("custom_deduction_show_on_payslip_default", value)} />
+          <Toggle disabled={!canManage} label="Show in self-service by default" checked={Boolean(settings.custom_deduction_show_in_self_service_default ?? true)} onChange={(value) => update("custom_deduction_show_in_self_service_default", value)} />
+          <Toggle disabled={!canManage} label="Include in final settlement by default" checked={Boolean(settings.custom_deduction_include_in_final_settlement_default ?? true)} onChange={(value) => update("custom_deduction_include_in_final_settlement_default", value)} />
+          <Toggle disabled={!canManage} label="Allow partial deduction" checked={Boolean(settings.custom_deduction_allow_partial_deduction ?? true)} onChange={(value) => update("custom_deduction_allow_partial_deduction", value)} />
+          <Toggle disabled={!canManage} label="Carry forward shortfalls" checked={Boolean(settings.custom_deduction_shortfall_carry_forward_enabled)} onChange={(value) => update("custom_deduction_shortfall_carry_forward_enabled", value)} />
+          <Toggle disabled={!canManage} label="Reason required for cancel" checked={Boolean(settings.custom_deduction_require_reason_for_cancel ?? true)} onChange={(value) => update("custom_deduction_require_reason_for_cancel", value)} />
+          <Toggle disabled={!canManage} label="Require document for sensitive categories" checked={Boolean(settings.custom_deduction_require_document_for_sensitive_categories)} onChange={(value) => update("custom_deduction_require_document_for_sensitive_categories", value)} />
+          <Field label="Insufficient salary mode"><select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.custom_deduction_insufficient_salary_mode ?? "WARN_ONLY"} onChange={(event) => update("custom_deduction_insufficient_salary_mode", event.target.value)}>{["WARN_ONLY", "PARTIAL_DEDUCTION", "SKIP_AND_MARK_FAILED", "BLOCK_PAYROLL", "REQUIRE_OVERRIDE"].map((item) => <option key={item} value={item}>{item}</option>)}</select></Field>
+          <Field label="Default priority"><Input disabled={!canManage} type="number" min={0} value={settings.custom_deduction_priority_default ?? 3} onChange={(event) => update("custom_deduction_priority_default", Number(event.target.value))} /></Field>
+        </SettingsSection>
+
+        <SettingsSection title="Pension Settings" description="Automatic employee deductions and employer company-cost contributions.">
+          <Toggle disabled={!canManage} label="Enable pension" checked={Boolean(settings.pension_enabled ?? true)} onChange={(value) => update("pension_enabled", value)} />
+          <Toggle disabled={!canManage} label="Auto-calculate pension" checked={Boolean(settings.pension_auto_calculation_enabled ?? true)} onChange={(value) => update("pension_auto_calculation_enabled", value)} />
+          <Field label="Default pension scheme id"><Input disabled={!canManage} value={settings.default_pension_scheme_id ?? ""} onChange={(event) => update("default_pension_scheme_id", event.target.value || null)} /></Field>
+          <Field label="Employee contribution %"><Input disabled={!canManage} type="number" min={0} step="0.01" value={settings.pension_employee_contribution_default_percent ?? 7} onChange={(event) => update("pension_employee_contribution_default_percent", Number(event.target.value))} /></Field>
+          <Field label="Employer contribution %"><Input disabled={!canManage} type="number" min={0} step="0.01" value={settings.pension_employer_contribution_default_percent ?? 7} onChange={(event) => update("pension_employer_contribution_default_percent", Number(event.target.value))} /></Field>
+          <Field label="Pension basis"><select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.pension_basis_default ?? "BASIC_SALARY_ONLY"} onChange={(event) => update("pension_basis_default", event.target.value)}><option value="BASIC_SALARY_ONLY">Basic salary only</option><option value="GROSS_SALARY">Gross salary</option><option value="CUSTOM_FORMULA_PLACEHOLDER">Custom formula placeholder</option></select></Field>
+          <Toggle disabled={!canManage} label="Show pension on payslip" checked={Boolean(settings.pension_show_on_payslip ?? true)} onChange={(value) => update("pension_show_on_payslip", value)} />
+          <Toggle disabled={!canManage} label="Show pension in self-service" checked={Boolean(settings.pension_show_in_self_service ?? true)} onChange={(value) => update("pension_show_in_self_service", value)} />
+          <Toggle disabled={!canManage} label="Enable pension remittance" checked={Boolean(settings.pension_remittance_enabled ?? true)} onChange={(value) => update("pension_remittance_enabled", value)} />
+          <Toggle disabled={!canManage} label="Employer can pay employee share" checked={Boolean(settings.pension_employer_can_pay_employee_share ?? true)} onChange={(value) => update("pension_employer_can_pay_employee_share", value)} />
+          <Toggle disabled={!canManage} label="Foreign employee pension default enabled" checked={Boolean(settings.foreign_employee_pension_default_enabled)} onChange={(value) => update("foreign_employee_pension_default_enabled", value)} />
+          <Toggle disabled={!canManage} label="Foreign voluntary enrollment enabled" checked={Boolean(settings.foreign_employee_voluntary_enrollment_enabled ?? true)} onChange={(value) => update("foreign_employee_voluntary_enrollment_enabled", value)} />
+        </SettingsSection>
+
+        <SettingsSection title="Payment/Cash Salary Settings" description="Cash salary acknowledgement foundation for Payroll Core.">
+          <Toggle disabled={!canManage} label="Enable cash salary acknowledgement" checked={Boolean(settings.cash_salary_acknowledgement_enabled)} onChange={(value) => update("cash_salary_acknowledgement_enabled", value)} />
+          <Toggle disabled={!canManage} label="Require acknowledgement before finalize" checked={Boolean(settings.cash_salary_acknowledgement_required_before_finalize)} onChange={(value) => update("cash_salary_acknowledgement_required_before_finalize", value)} />
+          <Toggle disabled={!canManage} label="Enable signature capture placeholder" checked={Boolean(settings.cash_salary_signature_capture_placeholder_enabled)} onChange={(value) => update("cash_salary_signature_capture_placeholder_enabled", value)} />
+        </SettingsSection>
+
+        <SettingsSection title="Deduction Priority" description="JSON order used by calculation foundations.">
+          <div className="md:col-span-2 xl:col-span-3">
+            <Field label="payroll_deduction_priority_json">
+              <textarea disabled={!canManage} className="min-h-24 w-full rounded-md border bg-white px-3 py-2 font-mono text-xs" value={settings.payroll_deduction_priority_json ?? ""} onChange={(event) => update("payroll_deduction_priority_json", event.target.value)} />
+            </Field>
+          </div>
+        </SettingsSection>
+      </div>}
+    </Panel>
+  </div>;
+}
+
+function SettingsSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return <section className="space-y-3 border-b pb-4 last:border-b-0 last:pb-0"><div><h2 className="text-sm font-semibold">{title}</h2><p className="text-xs text-muted-foreground">{description}</p></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{children}</div></section>;
 }
 
 export function PayrollReportsPage() {
@@ -313,7 +406,7 @@ export function PayrollReportsPage() {
     try { const download = await api.exportPayrollReportCsv(token, filters); const url = URL.createObjectURL(download.blob); const link = document.createElement("a"); link.href = url; link.download = download.filename || `payroll-${report}.csv`; link.click(); URL.revokeObjectURL(url); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to export payroll report."); }
   }
   if (!canView) return <Panel><EmptyState title="Payroll reports unavailable" description="Your account needs payroll.reports.view permission." /></Panel>;
-  return <PageShell title="Payroll Reports" description="Filter and export payroll summaries with the same visible criteria." error={error} loading={loading} empty={rows.length === 0} emptyTitle="No report rows" filters={<><select className="h-9 rounded-md border bg-white px-3 text-sm" value={report} onChange={(event) => setReport(event.target.value)}>{["summary", "department", "location", "advance", "attendance", "leave", "employee-history", "final-settlement"].map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="h-9 rounded-md border bg-white px-3 text-sm" value={periodId} onChange={(event) => setPeriodId(event.target.value)}><option value="">All periods</option>{periods.map((period) => <option key={period.id} value={period.id}>{period.period_month}/{period.period_year}</option>)}</select><DepartmentFilter departments={departments} value={departmentId} onChange={setDepartmentId} /><LocationFilter locations={locations} value={locationId} onChange={setLocationId} /><SearchInput value={search} onChange={setSearch} /></>} action={canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}>
+  return <PageShell title="Payroll Reports" description="Filter and export payroll summaries with the same visible criteria." error={error} loading={loading} empty={rows.length === 0} emptyTitle="No report rows" filters={<><select className="h-9 rounded-md border bg-white px-3 text-sm" value={report} onChange={(event) => setReport(event.target.value)}>{["summary", "department", "location", "advance", "attendance", "leave", "custom-deductions", "custom-deduction-shortfalls", "employee-history", "final-settlement"].map((item) => <option key={item} value={item}>{item}</option>)}</select><select className="h-9 rounded-md border bg-white px-3 text-sm" value={periodId} onChange={(event) => setPeriodId(event.target.value)}><option value="">All periods</option>{periods.map((period) => <option key={period.id} value={period.id}>{period.period_month}/{period.period_year}</option>)}</select><DepartmentFilter departments={departments} value={departmentId} onChange={setDepartmentId} /><LocationFilter locations={locations} value={locationId} onChange={setLocationId} /><SearchInput value={search} onChange={setSearch} /></>} action={canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}>
     <TableHeader><TableRow>{Object.keys(rows[0] ?? { report: "", value: "" }).map((key) => <TableHead key={key}>{key}</TableHead>)}</TableRow></TableHeader>
     <TableBody>{rows.map((row, index) => <TableRow key={index}>{Object.keys(rows[0] ?? row).map((key) => <TableCell key={key}>{String(row[key] ?? "-")}</TableCell>)}</TableRow>)}</TableBody>
   </PageShell>;

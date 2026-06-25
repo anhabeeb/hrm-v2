@@ -5,6 +5,7 @@ import { recordAudit } from "../db/audit";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
+import { refreshComplianceAfterDocumentChange, resolveDocumentAlertForRenewedDocument } from "./document-compliance";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
@@ -226,6 +227,19 @@ async function publishDocument(c: Context<AppBindings>, event: "documents.change
   await publishAccessEvent(c.env, event, { actor_user_id: actor.id, entity_type: "document", entity_id: entityId, action });
   if (event !== "documents.changed") {
     await publishAccessEvent(c.env, "documents.changed", { actor_user_id: actor.id, entity_type: "document", entity_id: entityId, action });
+  }
+}
+
+async function refreshDocumentComplianceQuietly(c: Context<AppBindings>, employeeId: string, documentId?: string | null) {
+  try {
+    await refreshComplianceAfterDocumentChange(c.env.DB, employeeId, documentId ?? null);
+  } catch (error) {
+    console.error(JSON.stringify({
+      level: "warn",
+      message: error instanceof Error ? error.message : "Document compliance refresh failed",
+      employee_id: employeeId,
+      document_id: documentId ?? null
+    }));
   }
 }
 
@@ -813,6 +827,7 @@ async function uploadEmployeeDocument(c: Context<AppBindings>, replaceDocumentId
   const doc = await getDocument(c.env.DB, documentId!, employeeId);
   await auditDocument(c, { action: replaceDocumentId ? "document.replaced" : "document.uploaded", entityType: "document", entityId: documentId!, oldValue: oldDocument, newValue: doc, reason: optionalString(body.reason_for_replacement) });
   await publishDocument(c, replaceDocumentId ? "document.replaced" : "document.uploaded", documentId!, replaceDocumentId ? "replaced" : "uploaded");
+  await refreshDocumentComplianceQuietly(c, employeeId, documentId);
   return ok(c, { document: doc ? maskDocument(doc, hasPermission(c, "documents.sensitive.view")) : null }, replaceDocumentId ? 200 : 201);
 }
 
@@ -834,6 +849,7 @@ employeeDocumentRoutes.patch("/:employeeId/documents/:documentId", requirePermis
   await c.env.DB.prepare("UPDATE employee_documents SET document_number = ?, issue_date = ?, expiry_date = ?, notes = ?, updated_at = ?, updated_by_user_id = ? WHERE id = ?").bind(meta.document_number, meta.issue_date, meta.expiry_date, optionalString(body.notes), new Date().toISOString(), c.get("currentUser").id, doc.id).run();
   const updated = await getDocument(c.env.DB, doc.id, doc.employee_id);
   await auditDocument(c, { action: "document.metadata_updated", entityType: "document", entityId: doc.id, oldValue: doc, newValue: updated });
+  await refreshDocumentComplianceQuietly(c, doc.employee_id, doc.id);
   return ok(c, { document: updated ? maskDocument(updated, hasPermission(c, "documents.sensitive.view")) : null });
 });
 
@@ -859,6 +875,7 @@ async function documentStatusAction(c: Context<AppBindings>, status: StoredStatu
   const updated = await getDocument(c.env.DB, doc.id, doc.employee_id);
   await auditDocument(c, { action: `document.${action}`, entityType: "document", entityId: doc.id, oldValue: doc, newValue: updated, reason: reasonResult.reason });
   await publishDocument(c, action === "archived" ? "document.archived" : action === "restored" ? "document.restored" : "document.soft_deleted", doc.id, action);
+  await refreshDocumentComplianceQuietly(c, doc.employee_id, doc.id);
   return ok(c, { document: updated ? maskDocument(updated, hasPermission(c, "documents.sensitive.view")) : null });
 }
 
@@ -883,6 +900,7 @@ employeeDocumentRoutes.delete("/:employeeId/documents/:documentId/permanent-dele
   await c.env.DB.prepare("DELETE FROM employee_document_versions WHERE employee_document_id = ?").bind(doc.id).run();
   await c.env.DB.prepare("DELETE FROM employee_documents WHERE id = ?").bind(doc.id).run();
   await publishDocument(c, "document.permanently_deleted", doc.id, "permanently_deleted");
+  await refreshDocumentComplianceQuietly(c, doc.employee_id, doc.id);
   return ok(c, { deleted: true });
 });
 
@@ -947,6 +965,7 @@ employeeDocumentRoutes.post("/:employeeId/profile-photo", requirePermission("doc
     await auditDocument(c, { action: "document.profile_photo_updated", entityType: "document", entityId: documentId, newValue: { employee_id: employeeId, replaced: Boolean(existing) } });
     await auditEmployeeProfilePhoto(c, { employeeId, oldValue: { profile_photo_document_id: employee.profile_photo_document_id }, newValue: { profile_photo_document_id: documentId } });
     await publishEmployeeProfilePhoto(c, employeeId, documentId, "profile_photo_changed");
+    await resolveDocumentAlertForRenewedDocument(c.env.DB, employeeId, documentId);
   }
   return response;
 });
@@ -976,6 +995,7 @@ employeeDocumentRoutes.delete("/:employeeId/profile-photo", requirePermission("d
   await c.env.DB.prepare("UPDATE employees SET profile_photo_document_id = NULL, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), employeeId).run();
   await auditEmployeeProfilePhoto(c, { employeeId, oldValue: { profile_photo_document_id: employee.profile_photo_document_id }, newValue: { profile_photo_document_id: null }, reason: "Profile photo cleared" });
   await publishEmployeeProfilePhoto(c, employeeId, active?.id ?? null, "profile_photo_changed");
+  await refreshDocumentComplianceQuietly(c, employeeId, active?.id ?? null);
   return ok(c, { cleared: true });
 });
 

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -110,6 +111,7 @@ export function OrganizationSettingsPage() {
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [levelFilter, setLevelFilter] = useState("all");
   const [modal, setModal] = useState<ModalState | null>(null);
+  const [actionTarget, setActionTarget] = useState<{ kind: EntityKind; id: string; active: boolean; name: string } | null>(null);
 
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("organization.view");
@@ -209,9 +211,6 @@ export function OrganizationSettingsPage() {
       return;
     }
     const action = active ? "disable" : "enable";
-    if (!window.confirm(`Are you sure you want to ${action} this record?`)) {
-      return;
-    }
     setError(null);
     try {
       if (kind === "location") {
@@ -223,6 +222,7 @@ export function OrganizationSettingsPage() {
       } else {
         await api.positionAction(token, id, action);
       }
+      setActionTarget(null);
       await loadOrganization();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : `Unable to ${action} record.`);
@@ -326,7 +326,7 @@ export function OrganizationSettingsPage() {
                 onCreate={() => setModal({ kind: "location", mode: "create" })}
                 onView={(record) => setModal({ kind: "location", mode: "view", record })}
                 onEdit={(record) => setModal({ kind: "location", mode: "edit", record })}
-                onAction={(record) => void runAction("location", record.id, record.is_active)}
+                onAction={(record) => setActionTarget({ kind: "location", id: record.id, active: record.is_active, name: record.name })}
               />
             ) : null}
 
@@ -341,7 +341,7 @@ export function OrganizationSettingsPage() {
                 onCreate={() => setModal({ kind: "department", mode: "create" })}
                 onView={(record) => setModal({ kind: "department", mode: "view", record })}
                 onEdit={(record) => setModal({ kind: "department", mode: "edit", record })}
-                onAction={(record) => void runAction("department", record.id, record.is_active)}
+                onAction={(record) => setActionTarget({ kind: "department", id: record.id, active: record.is_active, name: record.name })}
               />
             ) : null}
 
@@ -362,7 +362,7 @@ export function OrganizationSettingsPage() {
                 onCreate={() => setModal({ kind: "position", mode: "create" })}
                 onView={(record) => setModal({ kind: "position", mode: "view", record })}
                 onEdit={(record) => setModal({ kind: "position", mode: "edit", record })}
-                onAction={(record) => void runAction("position", record.id, record.is_active)}
+                onAction={(record) => setActionTarget({ kind: "position", id: record.id, active: record.is_active, name: record.title })}
               />
             ) : null}
 
@@ -377,7 +377,7 @@ export function OrganizationSettingsPage() {
                 onCreate={() => setModal({ kind: "job-level", mode: "create" })}
                 onView={(record) => setModal({ kind: "job-level", mode: "view", record })}
                 onEdit={(record) => setModal({ kind: "job-level", mode: "edit", record })}
-                onAction={(record) => void runAction("job-level", record.id, record.is_active)}
+                onAction={(record) => setActionTarget({ kind: "job-level", id: record.id, active: record.is_active, name: record.name })}
               />
             ) : null}
           </div>
@@ -395,6 +395,15 @@ export function OrganizationSettingsPage() {
           onSave={(input) => void saveModal(input)}
         />
       ) : null}
+      <ConfirmDialog
+        open={Boolean(actionTarget)}
+        title={`${actionTarget?.active ? "Disable" : "Enable"} organization record`}
+        description={`Are you sure you want to ${actionTarget?.active ? "disable" : "enable"} ${actionTarget?.name ?? "this record"}?`}
+        confirmLabel={actionTarget?.active ? "Disable" : "Enable"}
+        tone={actionTarget?.active ? "danger" : "default"}
+        onCancel={() => setActionTarget(null)}
+        onConfirm={() => actionTarget ? void runAction(actionTarget.kind, actionTarget.id, actionTarget.active) : undefined}
+      />
     </div>
   );
 }

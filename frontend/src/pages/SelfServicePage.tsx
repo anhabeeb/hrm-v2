@@ -1,4 +1,4 @@
-import { CalendarDays, Download, Eye, FileText, Plus, RefreshCw } from "lucide-react";
+import { Bell, CalendarDays, CreditCard, Download, Eye, FileText, Landmark, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -13,17 +14,27 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { cn } from "../lib/utils";
 
-type Mode = "home" | "profile" | "documents" | "attendance" | "leave" | "roster" | "payroll" | "assets" | "kyc";
+type Mode = "home" | "profile" | "documents" | "attendance" | "leave" | "roster" | "payroll" | "payment-methods" | "bank-loans" | "pension" | "contracts" | "onboarding" | "offboarding" | "assets" | "uniforms" | "approvals" | "notifications" | "kyc";
 type Row = Record<string, unknown>;
 
 const nav = [
+  { mode: "home", label: "Dashboard", to: "/self-service" },
   { mode: "profile", label: "My Profile", to: "/self-service/profile" },
   { mode: "documents", label: "My Documents", to: "/self-service/documents" },
   { mode: "attendance", label: "My Attendance", to: "/self-service/attendance" },
   { mode: "leave", label: "My Leave", to: "/self-service/leave" },
   { mode: "roster", label: "My Roster", to: "/self-service/roster" },
   { mode: "payroll", label: "My Payroll", to: "/self-service/payroll" },
+  { mode: "payment-methods", label: "Payment Methods", to: "/self-service/payment-methods" },
+  { mode: "bank-loans", label: "Bank Loans", to: "/self-service/bank-loans" },
+  { mode: "pension", label: "Pension", to: "/self-service/pension" },
+  { mode: "contracts", label: "My Contracts", to: "/self-service/contracts" },
+  { mode: "onboarding", label: "My Onboarding", to: "/self-service/onboarding" },
+  { mode: "offboarding", label: "My Offboarding", to: "/self-service/offboarding" },
   { mode: "assets", label: "My Assets", to: "/self-service/assets" },
+  { mode: "uniforms", label: "My Uniforms", to: "/self-service/uniforms" },
+  { mode: "approvals", label: "Requests & Approvals", to: "/self-service/approvals" },
+  { mode: "notifications", label: "Notifications", to: "/self-service/notifications" },
   { mode: "kyc", label: "KYC Requests", to: "/self-service/kyc-requests" }
 ] as const;
 
@@ -34,7 +45,7 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const activeMode = mode === "home" ? "profile" : mode;
+  const activeMode = mode;
 
   async function load() {
     if (!token) return;
@@ -49,11 +60,28 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
         setMessage(self.unavailable_message ?? "This account is not linked to an employee profile.");
         return;
       }
-      if (activeMode === "profile") setData(await api.getSelfServiceProfile(token));
-      if (activeMode === "documents") setData(await api.getSelfServiceDocuments(token));
+      if (activeMode === "home") setData(await api.getSelfServiceDashboard(token));
+      if (activeMode === "profile") {
+        const [profile, requests] = await Promise.all([
+          api.getSelfServiceProfile(token),
+          api.getSelfServiceProfileUpdateRequests(token).catch(() => ({ requests: [] }))
+        ]);
+        setData({ ...profile, profile_update_requests: requests.requests });
+      }
+      if (activeMode === "documents") {
+        const [documents, compliance] = await Promise.all([
+          api.getSelfServiceDocuments(token),
+          api.getSelfServiceDocumentCompliance(token).catch(() => ({ compliance: null }))
+        ]);
+        setData({ ...documents, document_compliance: compliance.compliance });
+      }
       if (activeMode === "attendance") {
         try {
-          setData(await api.getSelfServiceAttendance(token));
+          const [attendance, deviceSummary] = await Promise.all([
+            api.getSelfServiceAttendance(token),
+            api.getSelfServiceAttendanceDeviceSummary(token).catch(() => null)
+          ]);
+          setData({ ...attendance, device_summary: deviceSummary });
         } catch (err) {
           if (err instanceof ApiError && err.code === "ATTENDANCE_MODULE_DISABLED") {
             setData({ attendance_module_enabled: false });
@@ -74,8 +102,36 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
           }
         }
       }
-      if (activeMode === "payroll") setData(await api.getSelfServicePayroll(token));
+      if (activeMode === "payroll") {
+        const [payroll, paymentMethods, bankLoans, pension, customDeductions] = await Promise.all([
+          api.getSelfServicePayroll(token),
+          api.getSelfServicePaymentMethods(token).catch(() => ({ payment_methods: [] })),
+          api.getSelfServiceBankLoans(token).catch(() => ({ loans: [], payments: [] })),
+          api.getSelfServicePension(token).catch(() => ({ profile: null, contributions: [] })),
+          api.getSelfServiceCustomDeductions(token).catch(() => ({ deductions: [], applications: [], message: null }))
+        ]);
+        setData({
+          ...payroll,
+          payment_methods: paymentMethods.payment_methods,
+          bank_loans: bankLoans.loans,
+          bank_loan_payments: bankLoans.payments,
+          pension_profile: pension.profile,
+          pension_contributions: pension.contributions,
+          custom_deductions: customDeductions.deductions,
+          custom_deduction_applications: customDeductions.applications,
+          custom_deductions_message: customDeductions.message
+        });
+      }
+      if (activeMode === "payment-methods") setData(await api.getSelfServicePaymentMethods(token));
+      if (activeMode === "bank-loans") setData(await api.getSelfServiceBankLoans(token));
+      if (activeMode === "pension") setData(await api.getSelfServicePension(token));
+      if (activeMode === "contracts") setData(await api.getSelfServiceContracts(token));
+      if (activeMode === "onboarding") setData(await api.getSelfServiceOnboarding(token));
+      if (activeMode === "offboarding") setData(await api.getSelfServiceOffboarding(token));
       if (activeMode === "assets") setData(await api.getSelfServiceAssets(token));
+      if (activeMode === "uniforms") setData(await api.getSelfServiceUniforms(token));
+      if (activeMode === "approvals") setData(await api.getSelfServiceRequests(token));
+      if (activeMode === "notifications") setData(await api.getSelfServiceNotifications(token));
       if (activeMode === "kyc") setData(await api.listSelfServiceKycRequests(token));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Self-service could not be loaded.");
@@ -89,17 +145,18 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
   }, [token, activeMode]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Employee Self-Service</h1>
-          <p className="text-sm text-muted-foreground">View your own HR records and submit profile update requests.</p>
-        </div>
+    <PageShell>
+      <PageHeader
+        title="Employee Self-Service"
+        eyebrow="My HR workspace"
+        description="View your own HR records, documents, attendance, leave, roster, payroll, approvals, and notifications."
+        actions={
         <Button variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="h-4 w-4" />
           Refresh
         </Button>
-      </div>
+        }
+      />
 
       <Panel className="overflow-x-auto p-2">
         <div className="flex min-w-max gap-1">
@@ -122,17 +179,27 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
         <Panel className="p-6 text-sm text-muted-foreground">{message}</Panel>
       ) : (
         <DataTableFrame loading={loading} error={error} empty={!loading && linked === false}>
-          {activeMode === "profile" ? <ProfileSection data={data} /> : null}
+          {activeMode === "home" ? <SelfServiceDashboardSection data={data} /> : null}
+          {activeMode === "profile" ? <ProfileSection data={data} token={token} reload={load} /> : null}
           {activeMode === "documents" ? <DocumentsSection data={data} /> : null}
           {activeMode === "attendance" ? <AttendanceSection data={data} token={token} reload={load} /> : null}
           {activeMode === "leave" ? <LeaveSection data={data} token={token} reload={load} /> : null}
           {activeMode === "roster" ? <RosterSelfServiceSection data={data} token={token} /> : null}
           {activeMode === "payroll" ? <PayrollSection data={data} token={token} /> : null}
+          {activeMode === "payment-methods" ? <PaymentMethodsSection data={data} /> : null}
+          {activeMode === "bank-loans" ? <BankLoansSection data={data} /> : null}
+          {activeMode === "pension" ? <PensionSection data={data} /> : null}
+          {activeMode === "contracts" ? <ContractsSelfServiceSection data={data} /> : null}
+          {activeMode === "onboarding" ? <LifecycleSelfServiceSection data={data} kind="onboarding" /> : null}
+          {activeMode === "offboarding" ? <LifecycleSelfServiceSection data={data} kind="offboarding" /> : null}
           {activeMode === "assets" ? <AssetsSection data={data} /> : null}
+          {activeMode === "uniforms" ? <UniformsSection data={data} /> : null}
+          {activeMode === "approvals" ? <SelfServiceRequestsSection data={data} /> : null}
+          {activeMode === "notifications" ? <NotificationsSection data={data} token={token} reload={load} /> : null}
           {activeMode === "kyc" ? <KycSection data={data} token={token} reload={load} /> : null}
         </DataTableFrame>
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -145,9 +212,161 @@ function text(value: unknown) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
 }
 
-function ProfileSection({ data }: { data: Record<string, unknown> | null }) {
+function SelfServiceDashboardSection({ data }: { data: Record<string, unknown> | null }) {
+  const employee = (data?.employee ?? {}) as Row;
+  const summary = (data?.summary ?? {}) as Row;
+  const notifications = rows(data, "notifications");
+  return (
+    <div className="space-y-4 p-4">
+      <Panel className="p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold">Welcome, {text(employee.display_name ?? employee.full_name)}</h2>
+            <p className="text-sm text-muted-foreground">Self-service shows your linked employee records only.</p>
+          </div>
+          <Badge tone="neutral">{text(employee.employee_no)}</Badge>
+        </div>
+      </Panel>
+      <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-4">
+        <SummaryBox label="Open leave requests" value={summary.open_leave_requests ?? 0} />
+        <SummaryBox label="Attendance corrections" value={summary.pending_attendance_corrections ?? 0} />
+        <SummaryBox label="Expiring documents" value={summary.expiring_documents ?? 0} badge />
+        <SummaryBox label="Available payslips" value={summary.available_payslips ?? 0} />
+        <SummaryBox label="Active assets" value={summary.active_assets ?? 0} />
+        <SummaryBox label="Submitted approvals" value={summary.submitted_approvals ?? 0} />
+        <SummaryBox label="Profile updates" value={summary.pending_profile_updates ?? 0} />
+        <SummaryBox label="Unread notifications" value={data?.unread_notifications ?? 0} />
+      </div>
+      <SimpleTable title="Upcoming roster" rows={Array.isArray(summary.upcoming_roster) ? summary.upcoming_roster as Row[] : []} columns={["roster_date", "status", "shift_code", "shift_name", "start_time", "end_time"]} />
+      <SimpleTable title="Recent notifications" rows={notifications} columns={["type", "title", "severity", "created_at"]} />
+    </div>
+  );
+}
+
+function LifecycleSelfServiceSection({ data, kind }: { data: Record<string, unknown> | null; kind: "onboarding" | "offboarding" }) {
+  const current = (data?.[kind] ?? null) as Row | null;
+  const tasks = rows(data, "tasks");
+  const events = rows(data, "events");
+  return (
+    <div className="space-y-4 p-4">
+      <Panel className="p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold">My {kind === "onboarding" ? "onboarding" : "offboarding"} checklist</h2>
+            <p className="text-sm text-muted-foreground">This view is read-only and shows tasks assigned to your employee lifecycle case.</p>
+          </div>
+          {current ? <StatusBadge value={current.onboarding_status ?? current.offboarding_status} /> : null}
+        </div>
+        {current ? (
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <div className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">Case</p><p className="mt-1 text-sm font-medium">{text(current.case_number)}</p></div>
+            <div className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">Readiness</p><p className="mt-1 text-sm font-medium">{text(current.activation_status ?? current.finalization_status)}</p></div>
+            <div className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">Due date</p><p className="mt-1 text-sm font-medium">{text(current.due_date)}</p></div>
+          </div>
+        ) : (
+          <EmptyState title={`No ${kind} case`} description="There is no active lifecycle case for your employee profile." />
+        )}
+      </Panel>
+      <Panel className="overflow-x-auto">
+        <Table>
+          <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Group</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {tasks.map((task) => (
+              <TableRow key={String(task.id)}>
+                <TableCell>{text(task.task_name ?? task.title ?? task.task_key)}</TableCell>
+                <TableCell>{text(task.task_group)}</TableCell>
+                <TableCell><StatusBadge value={task.task_status ?? task.status} /></TableCell>
+                <TableCell>{text(task.due_date)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Panel>
+      <Panel className="overflow-x-auto">
+        <Table>
+          <TableHeader><TableRow><TableHead>Recent lifecycle event</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {events.slice(0, 10).map((event) => (
+              <TableRow key={String(event.id)}>
+                <TableCell>{text(event.action)}</TableCell>
+                <TableCell>{text(event.new_status)}</TableCell>
+                <TableCell>{text(event.created_at)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Panel>
+    </div>
+  );
+}
+
+function ContractsSelfServiceSection({ data }: { data: Record<string, unknown> | null }) {
+  const active = (data?.active_contract ?? null) as Row | null;
+  const salaryVisible = data?.salary_terms_visible === true;
+  const history = rows(data, "contract_history");
+  const fields: [string, unknown][] = active
+    ? [
+        ["Contract number", active.contract_number],
+        ["Type", active.contract_type_name_snapshot],
+        ["Status", active.status],
+        ["Approval", active.approval_status],
+        ["Start date", active.contract_start_date],
+        ["End date", active.contract_end_date],
+        ["Probation status", active.probation_status],
+        ["Confirmation due", active.confirmation_due_date],
+        ["Renewal status", active.renewal_status],
+        ["Document", active.document_id ? "Linked" : "Not linked"]
+      ]
+    : [];
+  if (active && salaryVisible) {
+    fields.push(["Salary snapshot", active.basic_salary_snapshot], ["Currency", active.salary_currency_snapshot]);
+  }
+  return (
+    <div className="space-y-4 p-4">
+      <Panel className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">My active contract</h2>
+            <p className="text-sm text-muted-foreground">Contract information is shown for your own employee profile only.</p>
+          </div>
+          {active ? <StatusBadge value={String(active.status ?? "ACTIVE")} /> : null}
+        </div>
+        {active ? (
+          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {fields.map(([label, value]) => (
+              <div key={label} className="rounded-md border px-3 py-2">
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="mt-1 text-sm font-medium">{text(value)}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No active contract" description={text(data?.message ?? "No active contract is currently available for your profile.")} />
+        )}
+      </Panel>
+      <SimpleTable title="Contract history" rows={history} columns={["contract_number", "contract_type_name_snapshot", "status", "approval_status", "contract_start_date", "contract_end_date", "renewal_status"]} />
+    </div>
+  );
+}
+
+function ProfileSection({ data, token, reload }: { data: Record<string, unknown> | null; token: string | null; reload: () => Promise<void> }) {
   const employee = (data?.employee ?? {}) as Row;
   const contacts = rows(data, "contacts");
+  const [form, setForm] = useState({ section: "personal", field_key: "display_name", requested_value: "", reason: "" });
+  const [message, setMessage] = useState<string | null>(null);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!token) return;
+    setMessage(null);
+    try {
+      await api.createSelfServiceProfileUpdateRequest(token, form);
+      setForm({ section: "personal", field_key: "display_name", requested_value: "", reason: "" });
+      setMessage("Profile update request submitted.");
+      await reload();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Unable to submit profile update request.");
+    }
+  }
   const fields: [string, unknown][] = [
     ["Employee no", employee.employee_no],
     ["Name", employee.full_name],
@@ -172,6 +391,25 @@ function ProfileSection({ data }: { data: Record<string, unknown> | null }) {
         </div>
         <Link to="/self-service/kyc-requests"><Button size="sm"><Plus className="h-4 w-4" />Submit update request</Button></Link>
       </div>
+      <form onSubmit={(event) => void submit(event)} className="grid gap-2 rounded-md border p-3 md:grid-cols-[150px_180px_1fr_1fr_auto]">
+        <select className="h-9 rounded-md border bg-white px-3 text-sm" value={form.section} onChange={(event) => setForm({ ...form, section: event.target.value })}>
+          <option value="personal">Personal</option>
+          <option value="contact">Contact</option>
+          <option value="emergency">Emergency</option>
+          <option value="other">Other</option>
+        </select>
+        <select className="h-9 rounded-md border bg-white px-3 text-sm" value={form.field_key} onChange={(event) => setForm({ ...form, field_key: event.target.value })}>
+          <option value="display_name">Display name</option>
+          <option value="nationality">Nationality</option>
+          <option value="gender">Gender</option>
+          <option value="date_of_birth">Date of birth</option>
+          <option value="confirmation_date">Confirmation date</option>
+        </select>
+        <Input required placeholder="Requested value" value={form.requested_value} onChange={(event) => setForm({ ...form, requested_value: event.target.value })} />
+        <Input placeholder="Reason" value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
+        <Button type="submit"><FileText className="h-4 w-4" />Submit</Button>
+      </form>
+      {message ? <div className="rounded-md border bg-muted px-3 py-2 text-sm">{message}</div> : null}
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {fields.map(([label, value]) => (
           <div key={label} className="rounded-md border px-3 py-2">
@@ -181,17 +419,35 @@ function ProfileSection({ data }: { data: Record<string, unknown> | null }) {
         ))}
       </div>
       <SimpleTable title="Contact summary" rows={contacts} columns={["contact_type", "value", "relationship", "is_primary"]} />
+      <SimpleTable title="Profile update requests" rows={rows(data, "profile_update_requests")} columns={["section", "field_key", "status", "reason", "created_at", "review_note"]} />
     </div>
   );
 }
 
 function DocumentsSection({ data }: { data: Record<string, unknown> | null }) {
+  const compliance = (data?.document_compliance ?? null) as Row | null;
+  const required = Array.isArray(compliance?.required_documents) ? compliance.required_documents as Row[] : [];
+  const cases = Array.isArray(compliance?.renewal_cases) ? compliance.renewal_cases as Row[] : [];
   return (
     <div className="space-y-3 p-4">
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Document uploads are managed by HR/Admin.</div>
+      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{text(compliance?.upload_note ?? data?.upload_note ?? "Document uploads are managed by HR/Admin.")}</div>
+      {compliance ? (
+        <div className="grid gap-2 md:grid-cols-4">
+          <SummaryBox label="Compliance status" value={compliance.compliance_status} badge />
+          <SummaryBox label="Compliance" value={`${text(compliance.compliance_percent)}%`} />
+          <SummaryBox label="Missing required" value={(compliance.warning_summary as Row | undefined)?.missing_required ?? 0} />
+          <SummaryBox label="Expiring soon" value={(compliance.warning_summary as Row | undefined)?.expiring_soon ?? 0} />
+        </div>
+      ) : null}
+      <SimpleTable title="Required document checklist" rows={required} columns={["document_type_name", "status", "expiry_date", "days_until_expiry", "missing", "waived"]} />
+      <SimpleTable title="Renewal cases" rows={cases} columns={["renewal_case_number", "document_type_name", "status", "priority", "due_date", "current_expiry_date"]} />
       <SimpleTable title="My documents" rows={rows(data, "documents")} columns={["document_type_name", "category_name", "issue_date", "expiry_date", "display_status", "is_sensitive"]} />
     </div>
   );
+}
+
+function SummaryBox({ label, value, badge = false }: { label: string; value: unknown; badge?: boolean }) {
+  return <div className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-semibold">{badge ? <Badge tone={String(value).includes("EXPIRED") || String(value).includes("MISSING") ? "danger" : String(value).includes("EXPIRING") ? "warning" : "success"}>{text(value)}</Badge> : text(value)}</p></div>;
 }
 
 function AttendanceSection({ data, token, reload }: { data: Record<string, unknown> | null; token: string | null; reload: () => Promise<void> }) {
@@ -212,7 +468,11 @@ function AttendanceSection({ data, token, reload }: { data: Record<string, unkno
     const [year, monthPart] = value.split("-").map(Number);
     const from = `${value}-01`;
     const to = new Date(Date.UTC(year, monthPart, 0)).toISOString().slice(0, 10);
-    setMonthData(await api.getSelfServiceAttendance(token, { date_from: from, date_to: to }));
+    const [attendance, deviceSummary] = await Promise.all([
+      api.getSelfServiceAttendance(token, { date_from: from, date_to: to }),
+      api.getSelfServiceAttendanceDeviceSummary(token).catch(() => null)
+    ]);
+    setMonthData({ ...attendance, device_summary: deviceSummary });
   }
 
   async function submit(event: FormEvent) {
@@ -249,9 +509,27 @@ function AttendanceSection({ data, token, reload }: { data: Record<string, unkno
         </div>
         <MonthlyAttendanceCalendar month={month} records={rows(monthData, "records")} />
       </Panel>
+      <DeviceSelfServiceSummary data={monthData} />
       <SimpleTable title="Daily attendance" rows={rows(monthData, "records")} columns={["attendance_date", "status", "first_clock_in", "last_clock_out", "late_minutes", "missed_punch", "source"]} />
       <SimpleTable title="Correction requests" rows={rows(monthData, "corrections")} columns={["attendance_date", "requested_clock_in", "requested_clock_out", "status", "reason", "created_at"]} />
     </div>
+  );
+}
+
+function DeviceSelfServiceSummary({ data }: { data: Record<string, unknown> | null }) {
+  const summary = data?.device_summary as Record<string, unknown> | null | undefined;
+  if (!summary) return null;
+  return (
+    <Panel className="overflow-hidden shadow-none">
+      <div className="border-b px-3 py-2">
+        <h2 className="text-sm font-semibold">Biometric attendance summary</h2>
+        <p className="text-xs text-muted-foreground">Your active biometric mappings and latest imported punch logs.</p>
+      </div>
+      <div className="grid gap-3 p-3 md:grid-cols-2">
+        <SimpleTable title="My biometric mappings" rows={Array.isArray(summary.biometric_mappings) ? summary.biometric_mappings as Row[] : []} columns={["device_name", "biometric_user_id", "status"]} />
+        <SimpleTable title="Recent device logs" rows={Array.isArray(summary.recent_raw_logs) ? summary.recent_raw_logs as Row[] : []} columns={["punch_time", "punch_type", "process_status", "source"]} />
+      </div>
+    </Panel>
   );
 }
 
@@ -503,14 +781,127 @@ function PayrollSection({ data, token }: { data: Record<string, unknown> | null;
         </DataTableFrame>
       </Panel>
       <SimpleTable title="Payroll run history" rows={rows(data, "runs")} columns={["period", "status", "basic_salary", "total_earnings", "total_deductions", "net_salary"]} />
+      <SimpleTable title="My payment methods" rows={rows(data, "payment_methods")} columns={["payment_method_type", "payment_institution_name", "bank_account_number_masked", "allocation_type", "allocation_percentage", "allocation_amount", "status", "verification_status"]} />
+      <SimpleTable title="My bank loans" rows={rows(data, "bank_loans")} columns={["payment_institution_name", "loan_reference_number", "monthly_installment_amount", "outstanding_balance", "eligibility_status", "status", "approval_status"]} />
+      <SimpleTable title="Bank loan payment history" rows={rows(data, "bank_loan_payments")} columns={["bank_name_snapshot", "loan_reference_number_snapshot", "deducted_amount", "shortfall_amount", "payment_status", "bank_notification_status", "employee_direct_collection_message", "remittance_reference"]} />
+      {data?.pension_profile ? <SimpleTable title="My pension profile" rows={[data.pension_profile as Row]} columns={["scheme_name", "enrollment_status", "pension_member_id", "effective_date", "status"]} /> : null}
+      <SimpleTable title="My pension contributions" rows={rows(data, "pension_contributions")} columns={["scheme_name", "pensionable_wage", "employee_contribution_amount", "employer_contribution_amount", "total_contribution_amount", "contribution_status"]} />
+      {data?.custom_deductions_message ? <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">{String(data.custom_deductions_message)}</div> : null}
+      <SimpleTable title="My custom deductions" rows={rows(data, "custom_deductions")} columns={["template_name_snapshot", "category_snapshot", "assigned_amount", "total_amount", "remaining_balance", "approval_status", "status"]} />
+      <SimpleTable title="Custom deduction payroll history" rows={rows(data, "custom_deduction_applications")} columns={["template_name_snapshot", "scheduled_amount", "deducted_amount", "shortfall_amount", "remaining_balance_after", "application_status", "created_at"]} />
       <SimpleTable title="Advances" rows={rows(data, "advances")} columns={["payment_date", "amount", "status", "notes"]} />
       <SimpleTable title="Deductions" rows={rows(data, "deductions")} columns={["deduction_type", "amount", "start_date", "end_date", "status", "reason"]} />
     </div>
   );
 }
 
+function PaymentMethodsSection({ data }: { data: Record<string, unknown> | null }) {
+  return (
+    <div className="space-y-4 p-4">
+      <Panel className="p-3 text-sm text-muted-foreground">
+        <CreditCard className="mr-2 inline h-4 w-4" /> Payment methods are read-only in employee self-service. Contact HR/Payroll for changes.
+      </Panel>
+      <SimpleTable title="My payment methods" rows={rows(data, "payment_methods")} columns={["payment_method_type", "payment_institution_name", "bank_account_number_masked", "allocation_type", "allocation_percentage", "allocation_amount", "status", "verification_status"]} />
+    </div>
+  );
+}
+
+function BankLoansSection({ data }: { data: Record<string, unknown> | null }) {
+  return (
+    <div className="space-y-4 p-4">
+      <Panel className="p-3 text-sm text-muted-foreground">
+        <Landmark className="mr-2 inline h-4 w-4" /> Bank loan details are shown only when payroll settings allow employee self-service visibility.
+      </Panel>
+      <SimpleTable title="My bank loans" rows={rows(data, "loans")} columns={["payment_institution_name", "loan_reference_number", "monthly_installment_amount", "outstanding_balance", "eligibility_status", "status", "approval_status"]} />
+      <SimpleTable title="Loan payment history" rows={rows(data, "payments")} columns={["bank_name_snapshot", "loan_reference_number_snapshot", "scheduled_installment_amount", "deducted_amount", "shortfall_amount", "payment_status", "bank_notification_status", "employee_direct_collection_message"]} />
+    </div>
+  );
+}
+
+function PensionSection({ data }: { data: Record<string, unknown> | null }) {
+  const profile = data?.profile ? [data.profile as Row] : [];
+  return (
+    <div className="space-y-4 p-4">
+      <Panel className="p-3 text-sm text-muted-foreground">
+        <ShieldCheck className="mr-2 inline h-4 w-4" /> Pension information is read-only and reflects payroll records prepared by the company.
+      </Panel>
+      <SimpleTable title="My pension profile" rows={profile} columns={["scheme_name", "scheme_code", "enrollment_status", "pension_member_id", "effective_date", "status"]} />
+      <SimpleTable title="Contribution history" rows={rows(data, "contributions")} columns={["scheme_name", "payroll_period_id", "pensionable_wage", "employee_contribution_amount", "employer_contribution_amount", "total_contribution_amount", "contribution_status"]} />
+    </div>
+  );
+}
+
+function SelfServiceRequestsSection({ data }: { data: Record<string, unknown> | null }) {
+  const requestData = (data?.requests ?? {}) as Row;
+  return (
+    <div className="space-y-4 p-4">
+      <SimpleTable title="Profile update requests" rows={Array.isArray(requestData.profile_updates) ? requestData.profile_updates as Row[] : []} columns={["section", "field_key", "status", "reason", "created_at", "review_note"]} />
+      <SimpleTable title="Leave requests" rows={Array.isArray(requestData.leave_requests) ? requestData.leave_requests as Row[] : []} columns={["request_type", "status", "created_at", "reason"]} />
+      <SimpleTable title="Attendance correction requests" rows={Array.isArray(requestData.attendance_corrections) ? requestData.attendance_corrections as Row[] : []} columns={["attendance_date", "requested_status", "status", "reason", "created_at", "review_note"]} />
+    </div>
+  );
+}
+
+function NotificationsSection({ data, token, reload }: { data: Record<string, unknown> | null; token: string | null; reload: () => Promise<void> }) {
+  const notifications = rows(data, "notifications");
+  const [message, setMessage] = useState<string | null>(null);
+  async function markAllRead() {
+    if (!token) return;
+    setMessage(null);
+    try {
+      await api.markAllSelfServiceNotificationsRead(token);
+      setMessage("Notifications marked as read.");
+      await reload();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Unable to update notifications.");
+    }
+  }
+  async function markRead(row: Row) {
+    if (!token) return;
+    setMessage(null);
+    try {
+      await api.markSelfServiceNotificationRead(token, String(row.id));
+      setMessage("Notification marked as read.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Unable to update notification.");
+    }
+  }
+  return (
+    <div className="space-y-4 p-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground"><Bell className="mr-2 inline h-4 w-4" />Unread: {text(data?.unread_count ?? 0)}</div>
+        <Button size="sm" variant="outline" onClick={() => void markAllRead()}>Mark all read</Button>
+      </div>
+      {message ? <div className="rounded-md border bg-muted px-3 py-2 text-sm">{message}</div> : null}
+      <Panel className="overflow-hidden shadow-none">
+        <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">My notifications</h2></div>
+        <DataTableFrame empty={!notifications.length}>
+          <Table>
+            <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Title</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {notifications.map((row) => (
+                <TableRow key={String(row.id)}>
+                  <TableCell>{text(row.type)}</TableCell>
+                  <TableCell>{text(row.title)}</TableCell>
+                  <TableCell><StatusBadge value={row.severity} /></TableCell>
+                  <TableCell>{text(row.created_at)}</TableCell>
+                  <TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => void markRead(row)}>Mark read</Button></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DataTableFrame>
+      </Panel>
+    </div>
+  );
+}
+
 function AssetsSection({ data }: { data: Record<string, unknown> | null }) {
-  return <div className="p-4"><SimpleTable title="My assets and uniforms" rows={rows(data, "assignments")} columns={["category_name", "asset_code", "asset_name", "issued_date", "expected_return_date", "returned_date", "status", "deduction_amount"]} /></div>;
+  return <div className="p-4"><SimpleTable title="My assets" rows={rows(data, "assignments")} columns={["category_name", "asset_code", "asset_name", "issued_date", "expected_return_date", "returned_date", "status", "assignment_status", "clearance_status", "deduction_amount"]} /></div>;
+}
+
+function UniformsSection({ data }: { data: Record<string, unknown> | null }) {
+  return <div className="p-4"><SimpleTable title="My uniforms" rows={rows(data, "assignments")} columns={["uniform_type_name", "size_label", "quantity_issued", "quantity_returned", "quantity_damaged", "quantity_lost", "issued_date", "expected_return_date", "returned_date", "assignment_status", "clearance_status", "deduction_amount"]} /></div>;
 }
 
 function KycSection({ data, token, reload }: { data: Record<string, unknown> | null; token: string | null; reload: () => Promise<void> }) {

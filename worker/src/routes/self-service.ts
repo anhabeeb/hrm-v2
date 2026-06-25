@@ -60,6 +60,418 @@ function hasAny(c: Context<AppBindings>, permissions: string[]) {
   return permissions.some((permission) => userPermissions.includes(permission));
 }
 
+const selfServiceSettingKeys = [
+  "module_enabled",
+  "dashboard_enabled",
+  "profile_enabled",
+  "profile_update_requests_enabled",
+  "leave_enabled",
+  "attendance_enabled",
+  "roster_enabled",
+  "payroll_enabled",
+  "payslips_enabled",
+  "payment_methods_enabled",
+  "bank_loans_enabled",
+  "pension_enabled",
+  "documents_enabled",
+  "documents_compliance_enabled",
+  "contracts_enabled",
+  "assets_enabled",
+  "uniforms_enabled",
+  "approvals_enabled",
+  "onboarding_enabled",
+  "offboarding_enabled",
+  "notifications_enabled",
+  "show_sensitive_payroll_values",
+  "show_sensitive_bank_details",
+  "allow_profile_update_requests",
+  "allow_attendance_correction_requests",
+  "allow_leave_requests",
+  "allow_payslip_downloads"
+] as const;
+
+const selfServiceDefaultSettings = {
+  id: "self_service_settings_default",
+  module_enabled: 1,
+  dashboard_enabled: 1,
+  profile_enabled: 1,
+  profile_update_requests_enabled: 1,
+  leave_enabled: 1,
+  attendance_enabled: 1,
+  roster_enabled: 1,
+  payroll_enabled: 1,
+  payslips_enabled: 1,
+  payment_methods_enabled: 1,
+  bank_loans_enabled: 1,
+  pension_enabled: 1,
+  documents_enabled: 1,
+  documents_compliance_enabled: 1,
+  contracts_enabled: 1,
+  assets_enabled: 1,
+  uniforms_enabled: 1,
+  approvals_enabled: 1,
+  onboarding_enabled: 1,
+  offboarding_enabled: 1,
+  notifications_enabled: 1,
+  show_sensitive_payroll_values: 1,
+  show_sensitive_bank_details: 0,
+  allow_profile_update_requests: 1,
+  allow_attendance_correction_requests: 1,
+  allow_leave_requests: 1,
+  allow_payslip_downloads: 1
+};
+
+type SelfServiceSettingKey = (typeof selfServiceSettingKeys)[number];
+
+async function ensureSelfServiceSettings(db: AppBindings["Bindings"]["DB"]) {
+  const existing = await db.prepare("SELECT * FROM self_service_settings WHERE id = 'self_service_settings_default'").first<Row>();
+  if (existing) return { ...selfServiceDefaultSettings, ...existing };
+  await db
+    .prepare(
+      `INSERT INTO self_service_settings
+       (id, module_enabled, dashboard_enabled, profile_enabled, profile_update_requests_enabled,
+        leave_enabled, attendance_enabled, roster_enabled, payroll_enabled, payslips_enabled,
+        payment_methods_enabled, bank_loans_enabled, pension_enabled, documents_enabled,
+        documents_compliance_enabled, contracts_enabled, assets_enabled, uniforms_enabled,
+        approvals_enabled, onboarding_enabled, offboarding_enabled, notifications_enabled,
+        show_sensitive_payroll_values, show_sensitive_bank_details, allow_profile_update_requests,
+        allow_attendance_correction_requests, allow_leave_requests, allow_payslip_downloads)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(selfServiceDefaultSettings.id, ...selfServiceSettingKeys.map((key) => selfServiceDefaultSettings[key]))
+    .run();
+  return { ...selfServiceDefaultSettings };
+}
+
+async function getSelfServiceSettingsRow(c: Context<AppBindings>) {
+  return ensureSelfServiceSettings(c.env.DB);
+}
+
+function boolSetting(settings: Row, key: SelfServiceSettingKey) {
+  return Number(settings[key] ?? selfServiceDefaultSettings[key]) === 1;
+}
+
+export async function requireSelfServiceEnabled(c: Context<AppBindings>) {
+  const settings = await getSelfServiceSettingsRow(c);
+  if (!boolSetting(settings, "module_enabled")) {
+    return fail(c, 503, "SELF_SERVICE_DISABLED", "Employee self-service is disabled.");
+  }
+  return null;
+}
+
+export async function assertSelfServiceModuleEnabled(c: Context<AppBindings>, moduleKey: SelfServiceSettingKey) {
+  const disabled = await requireSelfServiceEnabled(c);
+  if (disabled) return disabled;
+  const settings = await getSelfServiceSettingsRow(c);
+  if (!boolSetting(settings, moduleKey)) {
+    return fail(c, 403, "SELF_SERVICE_MODULE_DISABLED", "This self-service module is disabled.");
+  }
+  return null;
+}
+
+export async function getAuthenticatedSelfServiceEmployee(c: Context<AppBindings>) {
+  const employeeId = await linkedEmployeeId(c);
+  if (!employeeId) return null;
+  return c.env.DB
+    .prepare(
+      `SELECT e.*, d.name AS department_name, p.title AS position_title, l.name AS location_name, jl.name AS job_level_name
+       FROM employees e
+       LEFT JOIN departments d ON d.id = e.primary_department_id
+       LEFT JOIN positions p ON p.id = e.primary_position_id
+       LEFT JOIN locations l ON l.id = e.primary_location_id
+       LEFT JOIN job_levels jl ON jl.id = e.job_level_id
+       WHERE e.id = ? AND e.archived_at IS NULL`
+    )
+    .bind(employeeId)
+    .first<Row>();
+}
+
+export async function requireSelfServiceEmployeeContext(c: Context<AppBindings>) {
+  const disabled = await requireSelfServiceEnabled(c);
+  if (disabled) return { employee: null, employeeId: null, response: disabled };
+  const employee = await getAuthenticatedSelfServiceEmployee(c);
+  if (!employee) {
+    return { employee: null, employeeId: null, response: fail(c, 403, "SELF_SERVICE_UNAVAILABLE", "This account is not linked to an active employee profile.") };
+  }
+  return { employee, employeeId: String(employee.id), response: null };
+}
+
+export async function requireSelfServiceOwnEmployee(c: Context<AppBindings>, employeeId?: string | null) {
+  const context = await requireSelfServiceEmployeeContext(c);
+  if (context.response) return context;
+  if (employeeId && employeeId !== context.employeeId) {
+    return { ...context, response: fail(c, 404, "SELF_SERVICE_SCOPE_DENIED", "Self-service can only access the linked employee profile.") };
+  }
+  return context;
+}
+
+export function maskSelfServiceSensitiveFields(row: Row | null | undefined, allowSensitive = false) {
+  if (!row) return row;
+  if (allowSensitive) return row;
+  const masked = { ...row };
+  for (const key of ["bank_account_name", "bank_account_no", "bank_account_number_encrypted_or_plain_placeholder", "iban_or_swift_placeholder", "basic_salary", "net_salary", "gross_salary"]) {
+    if (key in masked) masked[key] = null;
+  }
+  return masked;
+}
+
+export async function getSelfServiceModuleVisibility(c: Context<AppBindings>) {
+  const settings = await getSelfServiceSettingsRow(c);
+  const can = (key: string, fallback = "self_service.view") => hasAny(c, [key, fallback]);
+  return {
+    dashboard: boolSetting(settings, "dashboard_enabled") && can("self_service.dashboard.view"),
+    profile: boolSetting(settings, "profile_enabled") && can("self_service.profile.view"),
+    profile_update_requests: boolSetting(settings, "profile_update_requests_enabled") && can("self_service.profile_update_requests.view"),
+    documents: boolSetting(settings, "documents_enabled") && can("self_service.documents.compliance.view"),
+    leave: boolSetting(settings, "leave_enabled") && can("self_service.leave.view"),
+    attendance: boolSetting(settings, "attendance_enabled") && can("self_service.attendance.view"),
+    roster: boolSetting(settings, "roster_enabled") && can("self_service.roster.view"),
+    payroll: boolSetting(settings, "payroll_enabled") && can("self_service.payroll.view"),
+    payslips: boolSetting(settings, "payslips_enabled") && can("self_service.payslips.view"),
+    payment_methods: boolSetting(settings, "payment_methods_enabled") && can("self_service.payment_methods.view"),
+    bank_loans: boolSetting(settings, "bank_loans_enabled") && can("self_service.bank_loans.view"),
+    pension: boolSetting(settings, "pension_enabled") && can("self_service.pension.view"),
+    contracts: boolSetting(settings, "contracts_enabled") && can("self_service.contracts.view"),
+    assets: boolSetting(settings, "assets_enabled") && can("self_service.assets.view"),
+    uniforms: boolSetting(settings, "uniforms_enabled") && can("self_service.uniforms.view"),
+    approvals: boolSetting(settings, "approvals_enabled") && can("self_service.approvals.view"),
+    onboarding: boolSetting(settings, "onboarding_enabled") && can("self_service.onboarding.view"),
+    offboarding: boolSetting(settings, "offboarding_enabled") && can("self_service.offboarding.view"),
+    notifications: boolSetting(settings, "notifications_enabled") && can("self_service.notifications.view")
+  };
+}
+
+export async function getSelfServiceDashboardSummary(c: Context<AppBindings>, employeeId: string) {
+  const [leaveOpen, attendanceCorrections, expiringDocs, payslips, assets, approvals, kyc] = await Promise.all([
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM leave_requests WHERE employee_id = ? AND status IN ('DRAFT', 'PENDING_APPROVAL')").bind(employeeId).first<Row>(),
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM attendance_correction_requests WHERE employee_id = ? AND status IN ('PENDING', 'SUBMITTED')").bind(employeeId).first<Row>(),
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM employee_documents WHERE employee_id = ? AND status = 'ACTIVE' AND expiry_date IS NOT NULL AND date(expiry_date) <= date('now', '+30 day')").bind(employeeId).first<Row>(),
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM payroll_payslips WHERE employee_id = ? AND status IN ('GENERATED', 'REGENERATED')").bind(employeeId).first<Row>(),
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM employee_asset_assignments WHERE employee_id = ? AND COALESCE(returned_date, '') = ''").bind(employeeId).first<Row>(),
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM approval_instances WHERE employee_id = ? OR submitted_by_user_id = ?").bind(employeeId, c.get("currentUser").id).first<Row>(),
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM employee_kyc_update_requests WHERE employee_id = ? AND status IN ('SUBMITTED', 'PENDING')").bind(employeeId).first<Row>()
+  ]);
+  const upcomingRoster = (
+    await c.env.DB
+      .prepare(
+        `SELECT ra.roster_date, ra.status, st.code AS shift_code, st.name AS shift_name, st.start_time, st.end_time
+         FROM roster_assignments ra
+         JOIN roster_periods rp ON rp.id = ra.roster_period_id
+         LEFT JOIN shift_templates st ON st.id = ra.shift_template_id
+         WHERE ra.employee_id = ? AND ra.roster_date >= date('now') AND rp.status IN ('PUBLISHED', 'LOCKED')
+         ORDER BY ra.roster_date ASC LIMIT 7`
+      )
+      .bind(employeeId)
+      .all<Row>()
+  ).results;
+  return {
+    open_leave_requests: Number(leaveOpen?.count ?? 0),
+    pending_attendance_corrections: Number(attendanceCorrections?.count ?? 0),
+    expiring_documents: Number(expiringDocs?.count ?? 0),
+    available_payslips: Number(payslips?.count ?? 0),
+    active_assets: Number(assets?.count ?? 0),
+    submitted_approvals: Number(approvals?.count ?? 0),
+    pending_profile_updates: Number(kyc?.count ?? 0),
+    upcoming_roster: upcomingRoster
+  };
+}
+
+export async function getSelfServiceProfile(c: Context<AppBindings>, employeeId: string) {
+  const employee = await c.env.DB.prepare("SELECT id, employee_no, full_name, display_name, employee_type, employment_type, joining_date, confirmation_date, contract_start_date, contract_end_date, primary_department_id, primary_position_id, primary_location_id, job_level_id, profile_photo_document_id FROM employees WHERE id = ?").bind(employeeId).first<Row>();
+  const contacts = (await c.env.DB.prepare("SELECT contact_type, value, country_code, relationship, is_primary, emergency_priority FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY is_primary DESC, emergency_priority ASC, contact_type ASC").bind(employeeId).all<Row>()).results;
+  return { employee, contacts };
+}
+
+export async function getSelfServiceProfileUpdateRequests(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT id, section, field_key, old_value_json, requested_value_json, reason, status, reviewed_at, review_note, created_at, updated_at FROM employee_kyc_update_requests WHERE employee_id = ? ORDER BY created_at DESC").bind(employeeId).all<Row>()).results;
+}
+
+export async function createSelfServiceProfileUpdateRequest(c: Context<AppBindings>, employeeId: string, body: Row) {
+  const section = readString(body.section);
+  const fieldKey = readString(body.field_key);
+  const requestedValue = unwrapRequestedValue(body.requested_value ?? body.requested_value_json ?? body.fields);
+  if (!section || !fieldKey || requestedValue === undefined || requestedValue === null) {
+    return { response: fail(c, 400, "VALIDATION_ERROR", "Section, field, and requested value are required.") };
+  }
+  if (protectedProfileUpdateFields.has(fieldKey)) {
+    return { response: fail(c, 400, "PROTECTED_FIELD", "This profile field cannot be changed through self-service requests.") };
+  }
+  const oldValue = await currentProfileFieldValue(c.env.DB, employeeId, fieldKey);
+  const id = crypto.randomUUID();
+  await c.env.DB
+    .prepare("INSERT INTO employee_kyc_update_requests (id, employee_id, requested_by_user_id, section, field_key, old_value_json, requested_value_json, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, employeeId, c.get("currentUser").id, section, fieldKey, JSON.stringify({ [fieldKey]: oldValue }), JSON.stringify({ [fieldKey]: requestedValue }), readString(body.reason) || null)
+    .run();
+  return { request_id: id };
+}
+
+export async function cancelSelfServiceProfileUpdateRequest(c: Context<AppBindings>, employeeId: string, requestId: string) {
+  const row = await c.env.DB.prepare("SELECT id, status FROM employee_kyc_update_requests WHERE id = ? AND employee_id = ?").bind(requestId, employeeId).first<Row>();
+  if (!row) return fail(c, 404, "NOT_FOUND", "Profile update request was not found.");
+  if (!["SUBMITTED", "PENDING"].includes(String(row.status))) return fail(c, 400, "REQUEST_NOT_CANCELLABLE", "Only submitted requests can be cancelled.");
+  await c.env.DB.prepare("UPDATE employee_kyc_update_requests SET status = 'CANCELLED', updated_at = ? WHERE id = ?").bind(new Date().toISOString(), requestId).run();
+  return ok(c, { cancelled: true });
+}
+
+export async function getSelfServiceLeaveSummary(c: Context<AppBindings>, employeeId: string) {
+  const cycles = await getSelfServiceLeaveCycles(c, employeeId);
+  const requests = (await c.env.DB.prepare("SELECT * FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 100").bind(employeeId).all<Row>()).results;
+  return { ...cycles, requests };
+}
+
+export async function getSelfServiceLeaveBalances(c: Context<AppBindings>, employeeId: string) {
+  return getSelfServiceLeaveCycles(c, employeeId);
+}
+
+export async function createSelfServiceLeaveRequest(c: Context<AppBindings>) {
+  return fail(c, 501, "USE_SELF_SERVICE_LEAVE_REQUEST_ROUTE", "Use POST /api/v1/self-service/leave/requests.");
+}
+
+export async function getSelfServiceLeaveApprovalTimeline(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT a.* FROM leave_request_approvals a JOIN leave_requests lr ON lr.id = a.leave_request_id WHERE lr.employee_id = ? ORDER BY a.created_at DESC LIMIT 100").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServiceAttendanceSummary(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT status, COUNT(*) AS count FROM attendance_daily_records WHERE employee_id = ? AND attendance_date >= date('now', '-30 day') GROUP BY status").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServiceAttendanceCalendar(c: Context<AppBindings>, employeeId: string, from: string, to: string) {
+  return (await c.env.DB.prepare("SELECT * FROM attendance_daily_records WHERE employee_id = ? AND attendance_date >= ? AND attendance_date <= ? ORDER BY attendance_date DESC").bind(employeeId, from, to).all<Row>()).results;
+}
+
+export async function createSelfServiceAttendanceCorrection(c: Context<AppBindings>) {
+  return fail(c, 501, "USE_SELF_SERVICE_ATTENDANCE_CORRECTION_ROUTE", "Use POST /api/v1/self-service/attendance/corrections.");
+}
+
+export async function getSelfServiceAttendanceCorrectionTimeline(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM attendance_correction_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 100").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServiceRosterWeekly(c: Context<AppBindings>, employeeId: string, start: string, end: string) {
+  return (await c.env.DB.prepare("SELECT * FROM roster_assignments WHERE employee_id = ? AND roster_date BETWEEN ? AND ? ORDER BY roster_date").bind(employeeId, start, end).all<Row>()).results;
+}
+
+export async function getSelfServiceUpcomingShifts(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM roster_assignments WHERE employee_id = ? AND roster_date >= date('now') ORDER BY roster_date LIMIT 14").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServicePublishedRosterOnly(c: Context<AppBindings>, employeeId: string) {
+  return getSelfServiceUpcomingShifts(c, employeeId);
+}
+
+export async function getSelfServicePayrollSummary(c: Context<AppBindings>, employeeId: string) {
+  const profile = await c.env.DB.prepare("SELECT employee_id, basic_salary, currency, payroll_included, payment_method, effective_from FROM employee_payroll_profiles WHERE employee_id = ?").bind(employeeId).first<Row>();
+  const recent = (await c.env.DB.prepare("SELECT id, payroll_run_id, basic_salary, total_earnings, total_deductions, net_salary, status, created_at FROM payroll_employee_results WHERE employee_id = ? ORDER BY created_at DESC LIMIT 12").bind(employeeId).all<Row>()).results;
+  return { profile, recent };
+}
+
+export async function getSelfServicePayrollHistory(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM payroll_employee_results WHERE employee_id = ? ORDER BY created_at DESC LIMIT 24").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServicePayslips(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE employee_id = ? AND status IN ('GENERATED', 'REGENERATED') ORDER BY generated_at DESC").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServicePayslipDetail(c: Context<AppBindings>, employeeId: string, payslipId: string) {
+  return c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ? AND employee_id = ?").bind(payslipId, employeeId).first<Row>();
+}
+
+export async function downloadSelfServicePayslip(c: Context<AppBindings>, employeeId: string, payslipId: string) {
+  return getSelfServicePayslipDetail(c, employeeId, payslipId);
+}
+
+export async function getSelfServiceBankLoans(c: Context<AppBindings>, employeeId: string) {
+  const loans = (await c.env.DB.prepare("SELECT * FROM employee_bank_loans WHERE employee_id = ? AND status != 'ARCHIVED' ORDER BY created_at DESC").bind(employeeId).all<Row>()).results;
+  const payments = (await c.env.DB.prepare("SELECT * FROM employee_bank_loan_payments WHERE employee_id = ? ORDER BY created_at DESC LIMIT 100").bind(employeeId).all<Row>()).results;
+  return { loans, payments };
+}
+
+export async function getSelfServiceBankLoanPaymentHistory(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM employee_bank_loan_payments WHERE employee_id = ? ORDER BY created_at DESC LIMIT 100").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServicePensionSummary(c: Context<AppBindings>, employeeId: string) {
+  const profile = await c.env.DB.prepare("SELECT * FROM employee_pension_profiles WHERE employee_id = ? AND status != 'ARCHIVED' ORDER BY effective_date DESC LIMIT 1").bind(employeeId).first<Row>();
+  const contributions = await getSelfServicePensionContributionHistory(c, employeeId);
+  return { profile, contributions };
+}
+
+export async function getSelfServicePensionContributionHistory(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM payroll_pension_contributions WHERE employee_id = ? ORDER BY created_at DESC LIMIT 100").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServiceDocumentCompliance(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM employee_document_checklist_items WHERE employee_id = ? AND is_active = 1").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServiceDocumentWarnings(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM employee_documents WHERE employee_id = ? AND status = 'ACTIVE' AND expiry_date IS NOT NULL AND date(expiry_date) <= date('now', '+30 day')").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServiceContracts(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM employee_contracts WHERE employee_id = ? ORDER BY contract_start_date DESC, created_at DESC").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServiceContractSummary(c: Context<AppBindings>, employeeId: string) {
+  const contracts = await getSelfServiceContracts(c, employeeId);
+  return { active_contract: contracts.find((row) => row.status === "ACTIVE" || row.status === "EXPIRING_SOON") ?? null, contract_history: contracts };
+}
+
+export async function getSelfServiceAssets(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM employee_asset_assignments WHERE employee_id = ? ORDER BY issued_date DESC").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServiceUniforms(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM employee_uniform_assignments WHERE employee_id = ? ORDER BY issued_date DESC").bind(employeeId).all<Row>()).results;
+}
+
+export async function getSelfServiceApprovalStatus(c: Context<AppBindings>, employeeId: string) {
+  return (await c.env.DB.prepare("SELECT * FROM approval_instances WHERE employee_id = ? OR submitted_by_user_id = ? ORDER BY created_at DESC LIMIT 100").bind(employeeId, c.get("currentUser").id).all<Row>()).results;
+}
+
+export async function getSelfServiceRequestTimeline(c: Context<AppBindings>, employeeId: string) {
+  return getSelfServiceSubmittedRequests(c, employeeId);
+}
+
+export async function getSelfServiceSubmittedRequests(c: Context<AppBindings>, employeeId: string) {
+  const profileUpdates = await getSelfServiceProfileUpdateRequests(c, employeeId);
+  const leaveRequests = (await c.env.DB.prepare("SELECT id, 'leave' AS request_type, status, created_at, reason FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 50").bind(employeeId).all<Row>()).results;
+  const corrections = await getSelfServiceAttendanceCorrectionTimeline(c, employeeId);
+  return { profile_updates: profileUpdates, leave_requests: leaveRequests, attendance_corrections: corrections };
+}
+
+export async function getSelfServiceOnboardingStatus(c: Context<AppBindings>, employeeId: string) {
+  return c.env.DB.prepare("SELECT * FROM employee_onboarding_cases WHERE employee_id = ? ORDER BY created_at DESC LIMIT 1").bind(employeeId).first<Row>();
+}
+
+export async function getSelfServiceOffboardingStatus(c: Context<AppBindings>, employeeId: string) {
+  return c.env.DB.prepare("SELECT * FROM employee_offboarding_cases WHERE employee_id = ? ORDER BY created_at DESC LIMIT 1").bind(employeeId).first<Row>();
+}
+
+export async function getSelfServiceLifecycleSummary(c: Context<AppBindings>, employeeId: string) {
+  return { onboarding: await getSelfServiceOnboardingStatus(c, employeeId), offboarding: await getSelfServiceOffboardingStatus(c, employeeId) };
+}
+
+export async function getSelfServiceNotifications(c: Context<AppBindings>, employeeId: string) {
+  const [approvals, kyc, leave, attendance] = await Promise.all([
+    c.env.DB.prepare("SELECT id, 'approval' AS type, status AS severity, module_key AS title, created_at, updated_at FROM approval_instances WHERE employee_id = ? OR submitted_by_user_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId, c.get("currentUser").id).all<Row>(),
+    c.env.DB.prepare("SELECT id, 'profile_update' AS type, status AS severity, field_key AS title, created_at, updated_at FROM employee_kyc_update_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId).all<Row>(),
+    c.env.DB.prepare("SELECT id, 'leave' AS type, status AS severity, leave_type_id AS title, created_at, updated_at FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId).all<Row>(),
+    c.env.DB.prepare("SELECT id, 'attendance_correction' AS type, status AS severity, attendance_date AS title, created_at, updated_at FROM attendance_correction_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId).all<Row>()
+  ]);
+  return [...approvals.results, ...kyc.results, ...leave.results, ...attendance.results].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""))).slice(0, 50);
+}
+
+export async function markSelfServiceNotificationRead(c: Context<AppBindings>, employeeId: string, notificationId: string) {
+  await recordAudit(c.env.DB, { actorUserId: c.get("currentUser").id, action: "self_service.notification.read", module: "self_service", entityType: "notification", entityId: notificationId, newValue: { employee_id: employeeId }, ipAddress: getClientIp(c.req.raw), userAgent: c.req.header("User-Agent") });
+}
+
+export async function getSelfServiceUnreadNotificationCount(c: Context<AppBindings>, employeeId: string) {
+  const pending = await c.env.DB.prepare("SELECT COUNT(*) AS count FROM employee_kyc_update_requests WHERE employee_id = ? AND status IN ('SUBMITTED', 'PENDING')").bind(employeeId).first<Row>();
+  return Number(pending?.count ?? 0);
+}
+
 const protectedProfileUpdateFields = new Set([
   "salary",
   "role",
@@ -286,15 +698,78 @@ async function updateSelfServiceLeaveBalance(c: Context<AppBindings>, request: R
 }
 
 selfServiceRoutes.get("/me", async (c) => {
+  const disabled = await requireSelfServiceEnabled(c);
+  if (disabled) return disabled;
   const employeeId = await linkedEmployeeId(c);
+  const visibility = await getSelfServiceModuleVisibility(c);
   return ok(c, {
     linked_employee: Boolean(employeeId),
     employee_id: employeeId,
+    module_visibility: visibility,
     unavailable_message: employeeId ? null : "This account is not linked to an employee profile."
   });
 });
 
+selfServiceRoutes.get("/settings", async (c) => {
+  if (!hasAny(c, ["self_service.settings.view", "self_service.settings.manage", "settings.view", "settings.manage"])) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service settings.");
+  }
+  return ok(c, { settings: await getSelfServiceSettingsRow(c) });
+});
+
+selfServiceRoutes.patch("/settings", async (c) => {
+  if (!hasAny(c, ["self_service.settings.update", "self_service.settings.manage", "settings.manage"])) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to update self-service settings.");
+  }
+  const oldSettings = await getSelfServiceSettingsRow(c);
+  const body = await readJsonBody(c.req.raw);
+  const updates: string[] = [];
+  const bindings: unknown[] = [];
+  for (const key of selfServiceSettingKeys) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      updates.push(`${key} = ?`);
+      bindings.push(body[key] ? 1 : 0);
+    }
+  }
+  if (updates.length) {
+    updates.push("updated_by_user_id = ?", "updated_at = ?");
+    bindings.push(c.get("currentUser").id, new Date().toISOString());
+    await c.env.DB.prepare(`UPDATE self_service_settings SET ${updates.join(", ")} WHERE id = 'self_service_settings_default'`).bind(...bindings).run();
+  }
+  const settings = await getSelfServiceSettingsRow(c);
+  await recordAudit(c.env.DB, {
+    actorUserId: c.get("currentUser").id,
+    action: "self_service.settings.updated",
+    module: "self_service",
+    entityType: "self_service_settings",
+    entityId: "self_service_settings_default",
+    oldValue: oldSettings,
+    newValue: settings,
+    ipAddress: getClientIp(c.req.raw),
+    userAgent: c.req.header("User-Agent")
+  });
+  await publishAccessEvent(c.env, "self_service.changed", { actor_user_id: c.get("currentUser").id, entity_type: "self_service", entity_id: "self_service_settings_default", action: "settings_updated" });
+  return ok(c, { settings });
+});
+
+selfServiceRoutes.get("/dashboard", async (c) => {
+  if (!hasAny(c, ["self_service.dashboard.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view the self-service dashboard.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "dashboard_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const [summary, visibility, notifications] = await Promise.all([
+    getSelfServiceDashboardSummary(c, gate.employeeId!),
+    getSelfServiceModuleVisibility(c),
+    getSelfServiceNotifications(c, gate.employeeId!)
+  ]);
+  return ok(c, { employee: gate.employee, summary, module_visibility: visibility, notifications: notifications.slice(0, 8), unread_notifications: await getSelfServiceUnreadNotificationCount(c, gate.employeeId!) });
+});
+
 selfServiceRoutes.get("/profile", async (c) => {
+  if (!hasAny(c, ["self_service.profile.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your self-service profile.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "profile_enabled");
+  if (disabled) return disabled;
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
   const employee = await c.env.DB
@@ -328,7 +803,40 @@ selfServiceRoutes.get("/profile", async (c) => {
   return ok(c, { employee, contacts });
 });
 
+selfServiceRoutes.get("/profile/update-requests", async (c) => {
+  if (!hasAny(c, ["self_service.profile_update_requests.view", "self_service.kyc_request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view profile update requests.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "profile_update_requests_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { requests: await getSelfServiceProfileUpdateRequests(c, gate.employeeId!) });
+});
+
+selfServiceRoutes.post("/profile/update-requests", async (c) => {
+  if (!hasAny(c, ["self_service.profile_update_requests.create", "self_service.kyc_request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to submit profile update requests.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "profile_update_requests_enabled");
+  if (disabled) return disabled;
+  const settings = await getSelfServiceSettingsRow(c);
+  if (!boolSetting(settings, "allow_profile_update_requests")) return fail(c, 403, "SELF_SERVICE_PROFILE_UPDATES_DISABLED", "Profile update requests are disabled.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const result = await createSelfServiceProfileUpdateRequest(c, gate.employeeId!, await readJsonBody(c.req.raw));
+  if ("response" in result) return result.response;
+  await recordAudit(c.env.DB, { actorUserId: c.get("currentUser").id, action: "self_service.profile_update_request.created", module: "self_service", entityType: "profile_update_request", entityId: result.request_id, newValue: { employee_id: gate.employeeId }, ipAddress: getClientIp(c.req.raw), userAgent: c.req.header("User-Agent") });
+  return ok(c, result, 201);
+});
+
+selfServiceRoutes.post("/profile/update-requests/:requestId/cancel", async (c) => {
+  if (!hasAny(c, ["self_service.profile_update_requests.create", "self_service.kyc_request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to cancel profile update requests.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return cancelSelfServiceProfileUpdateRequest(c, gate.employeeId!, c.req.param("requestId"));
+});
+
 selfServiceRoutes.get("/documents", async (c) => {
+  if (!hasAny(c, ["self_service.documents.compliance.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your self-service documents.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "documents_enabled");
+  if (disabled) return disabled;
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
   const rows = (
@@ -357,8 +865,19 @@ selfServiceRoutes.get("/documents", async (c) => {
   return ok(c, { documents: maskSelfServiceDocuments(rows), upload_enabled: false, upload_note: "Document uploads are managed by HR/Admin." });
 });
 
+selfServiceRoutes.get("/documents/warnings", async (c) => {
+  if (!hasAny(c, ["self_service.documents.compliance.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your document warnings.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "documents_compliance_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { warnings: maskSelfServiceDocuments(await getSelfServiceDocumentWarnings(c, gate.employeeId!)) });
+});
+
 selfServiceRoutes.get("/attendance", async (c) => {
   if (!hasAny(c, ["self_service.attendance.view", "self_service.view", "attendance.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service attendance.");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
   const disabled = await requireSelfServiceAttendanceEnabled(c);
   if (disabled) return disabled;
   const gate = await requireLinkedEmployee(c);
@@ -392,10 +911,56 @@ selfServiceRoutes.get("/attendance", async (c) => {
   return ok(c, { attendance_module_enabled: true, records, corrections, filters: { date_from: from, date_to: to } });
 });
 
+selfServiceRoutes.get("/attendance/summary", async (c) => {
+  if (!hasAny(c, ["self_service.attendance.view", "self_service.view", "attendance.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service attendance.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const summary = await getSelfServiceAttendanceSummary(c, gate.employeeId!);
+  const corrections = await getSelfServiceAttendanceCorrectionTimeline(c, gate.employeeId!);
+  return ok(c, { summary, corrections });
+});
+
+selfServiceRoutes.get("/attendance/calendar", async (c) => {
+  if (!hasAny(c, ["self_service.attendance.view", "self_service.view", "attendance.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service attendance.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const from = c.req.query("date_from") ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+  const to = c.req.query("date_to") ?? new Date().toISOString().slice(0, 10);
+  return ok(c, { records: await getSelfServiceAttendanceCalendar(c, gate.employeeId!, from, to), filters: { date_from: from, date_to: to } });
+});
+
+selfServiceRoutes.get("/attendance/daily-records", async (c) => {
+  if (!hasAny(c, ["self_service.attendance.view", "self_service.view", "attendance.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service attendance.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const from = c.req.query("date_from") ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+  const to = c.req.query("date_to") ?? new Date().toISOString().slice(0, 10);
+  return ok(c, { records: await getSelfServiceAttendanceCalendar(c, gate.employeeId!, from, to), filters: { date_from: from, date_to: to } });
+});
+
+selfServiceRoutes.get("/attendance/corrections", async (c) => {
+  if (!hasAny(c, ["self_service.attendance_correction.view", "self_service.attendance.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service attendance corrections.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { corrections: await getSelfServiceAttendanceCorrectionTimeline(c, gate.employeeId!) });
+});
+
 selfServiceRoutes.post("/attendance/corrections", async (c) => {
   if (!hasAny(c, ["self_service.attendance_correction.request", "self_service.attendance_correction", "attendance.corrections.create"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to request attendance corrections.");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
   const disabled = await requireSelfServiceAttendanceEnabled(c);
   if (disabled) return disabled;
+  const selfServiceSettings = await getSelfServiceSettingsRow(c);
+  if (!boolSetting(selfServiceSettings, "allow_attendance_correction_requests")) return fail(c, 403, "SELF_SERVICE_ATTENDANCE_CORRECTIONS_DISABLED", "Attendance correction requests are disabled.");
   const settings = await getSelfServiceAttendanceSettings(c);
   if (Number(settings.allow_employee_correction_requests ?? 1) !== 1) return fail(c, 403, "ATTENDANCE_CORRECTIONS_DISABLED", "Employee attendance correction requests are disabled.");
   const gate = await requireLinkedEmployee(c);
@@ -457,6 +1022,9 @@ selfServiceRoutes.post("/attendance/correction-requests", async (c) => {
 });
 
 selfServiceRoutes.get("/leave", async (c) => {
+  if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service leave.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
+  if (disabled) return disabled;
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
   const balances = (await c.env.DB.prepare("SELECT * FROM leave_balances WHERE employee_id = ? ORDER BY period_year DESC").bind(gate.employeeId).all<Row>()).results;
@@ -484,10 +1052,42 @@ selfServiceRoutes.get("/leave", async (c) => {
   return ok(c, { balances, balance_cycles: cycles.balance_cycles, ledger_recent: cycles.ledger_recent, requests, approvals, leave_request_enabled: c.get("currentUser").permissions.includes("self_service.leave_request") || c.get("currentUser").permissions.includes("leave.request") });
 });
 
+selfServiceRoutes.get("/leave/summary", async (c) => {
+  if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service leave.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { summary: await getSelfServiceLeaveSummary(c, gate.employeeId!) });
+});
+
+selfServiceRoutes.get("/leave/balances", async (c) => {
+  if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service leave balances.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, await getSelfServiceLeaveBalances(c, gate.employeeId!));
+});
+
+selfServiceRoutes.get("/leave/requests", async (c) => {
+  if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service leave requests.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const requests = (await c.env.DB.prepare("SELECT lr.*, lt.name AS leave_type_name FROM leave_requests lr JOIN leave_types lt ON lt.id = lr.leave_type_id WHERE lr.employee_id = ? ORDER BY lr.created_at DESC").bind(gate.employeeId).all<Row>()).results;
+  return ok(c, { requests });
+});
+
 selfServiceRoutes.post("/leave/requests", async (c) => {
   if (!hasAny(c, ["self_service.leave_request", "leave.request"])) {
     return fail(c, 403, "FORBIDDEN", "You do not have permission to create a self-service leave request.");
   }
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
+  const selfServiceSettings = await getSelfServiceSettingsRow(c);
+  if (!boolSetting(selfServiceSettings, "allow_leave_requests")) return fail(c, 403, "SELF_SERVICE_LEAVE_REQUESTS_DISABLED", "Leave requests are disabled.");
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
   const body = await readJsonBody(c.req.raw);
@@ -580,8 +1180,32 @@ selfServiceRoutes.post("/leave/requests", async (c) => {
   return ok(c, { request, approvals, document_required: documentRequired, approval_chain_preview }, 201);
 });
 
+selfServiceRoutes.get("/leave/requests/:requestId", async (c) => {
+  if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view this leave request.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const request = await c.env.DB.prepare("SELECT * FROM leave_requests WHERE id = ? AND employee_id = ?").bind(c.req.param("requestId"), gate.employeeId).first<Row>();
+  if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  const approvals = (await c.env.DB.prepare("SELECT * FROM leave_request_approvals WHERE leave_request_id = ? ORDER BY step_order").bind(c.req.param("requestId")).all<Row>()).results;
+  return ok(c, { request, approvals });
+});
+
+selfServiceRoutes.post("/leave/requests/:requestId/cancel", async (c) => {
+  if (!hasAny(c, ["self_service.leave.cancel", "leave.cancel", "leave.requests.cancel", "self_service.leave_request"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to cancel this leave request.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const request = await c.env.DB.prepare("SELECT * FROM leave_requests WHERE id = ? AND employee_id = ?").bind(c.req.param("requestId"), gate.employeeId).first<Row>();
+  if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (!["DRAFT", "PENDING_APPROVAL"].includes(String(request.status))) return fail(c, 400, "LEAVE_NOT_CANCELLABLE", "Only draft or pending leave requests can be cancelled from self-service.");
+  await c.env.DB.prepare("UPDATE leave_requests SET status = 'CANCELLED', updated_at = ? WHERE id = ?").bind(new Date().toISOString(), c.req.param("requestId")).run();
+  await recordAudit(c.env.DB, { actorUserId: c.get("currentUser").id, action: "self_service.leave_request.cancelled", module: "self_service", entityType: "leave_request", entityId: c.req.param("requestId"), newValue: { employee_id: gate.employeeId }, ipAddress: getClientIp(c.req.raw), userAgent: c.req.header("User-Agent") });
+  return ok(c, { cancelled: true });
+});
+
 selfServiceRoutes.get("/roster", async (c) => {
   if (!hasAny(c, ["self_service.roster.view", "roster.self.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your roster.");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "roster_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
   const disabled = await requireSelfServiceRosterEnabled(c);
   if (disabled) return disabled;
   const gate = await requireLinkedEmployee(c);
@@ -611,8 +1235,32 @@ selfServiceRoutes.get("/roster", async (c) => {
   return ok(c, { week_start_date: start, week_end_date: end, assignments });
 });
 
+selfServiceRoutes.get("/roster/weekly", async (c) => {
+  if (!hasAny(c, ["self_service.roster.view", "roster.self.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your roster.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "roster_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const start = readString(c.req.query("week_start_date")) || isoDate(new Date());
+  const endDate = new Date(`${start}T00:00:00Z`);
+  endDate.setUTCDate(endDate.getUTCDate() + 6);
+  const end = isoDate(endDate);
+  return ok(c, { week_start_date: start, week_end_date: end, assignments: await getSelfServiceRosterWeekly(c, gate.employeeId!, start, end) });
+});
+
+selfServiceRoutes.get("/roster/upcoming", async (c) => {
+  if (!hasAny(c, ["self_service.roster.view", "roster.self.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your roster.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "roster_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { assignments: await getSelfServiceUpcomingShifts(c, gate.employeeId!) });
+});
+
 selfServiceRoutes.get("/roster/week", async (c) => {
   if (!hasAny(c, ["self_service.roster.view", "roster.self.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your roster.");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "roster_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
   const disabled = await requireSelfServiceRosterEnabled(c);
   if (disabled) return disabled;
   const gate = await requireLinkedEmployee(c);
@@ -643,6 +1291,9 @@ selfServiceRoutes.get("/roster/week", async (c) => {
 });
 
 selfServiceRoutes.get("/payroll", async (c) => {
+  if (!hasAny(c, ["self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service payroll.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "payroll_enabled");
+  if (disabled) return disabled;
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
   const payrollSettings = await c.env.DB.prepare("SELECT module_enabled FROM payroll_settings WHERE id = 'payroll_settings_default'").first<Row>();
@@ -665,13 +1316,43 @@ selfServiceRoutes.get("/payroll", async (c) => {
   const advances = (await c.env.DB.prepare("SELECT amount, payment_date, status, notes, created_at FROM payroll_advance_payments WHERE employee_id = ? ORDER BY payment_date DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results;
   const deductions = (await c.env.DB.prepare("SELECT deduction_type, amount, start_date, end_date, status, reason FROM payroll_deductions WHERE employee_id = ? ORDER BY created_at DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results;
   const payslips = (await c.env.DB.prepare("SELECT ps.id, ps.payslip_number, ps.status, ps.generated_at, ps.version_number, pp.period_month, pp.period_year, pre.net_salary FROM payroll_payslips ps INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id INNER JOIN payroll_employee_results pre ON pre.id = ps.payroll_employee_result_id WHERE ps.employee_id = ? AND ps.status IN ('GENERATED', 'REGENERATED') ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results;
-  return ok(c, { profile, runs, advances, deductions, payslips, payslip_download_enabled: hasAny(c, ["self_service.payslips.download", "self_service.payroll.view", "self_service.view"]) });
+  const selfServiceSettings = await getSelfServiceSettingsRow(c);
+  return ok(c, { profile: maskSelfServiceSensitiveFields(profile, boolSetting(selfServiceSettings, "show_sensitive_payroll_values")), runs, advances, deductions, payslips, payslip_download_enabled: boolSetting(selfServiceSettings, "allow_payslip_downloads") && hasAny(c, ["self_service.payslips.download", "self_service.payroll.view", "self_service.view"]) });
+});
+
+selfServiceRoutes.get("/payroll/summary", async (c) => {
+  if (!hasAny(c, ["self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service payroll.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "payroll_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { summary: await getSelfServicePayrollSummary(c, gate.employeeId!) });
+});
+
+selfServiceRoutes.get("/payroll/history", async (c) => {
+  if (!hasAny(c, ["self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service payroll history.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "payroll_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { history: await getSelfServicePayrollHistory(c, gate.employeeId!) });
+});
+
+selfServiceRoutes.get("/payroll/payslips", async (c) => {
+  if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view payslips.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "payslips_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { payslips: await getSelfServicePayslips(c, gate.employeeId!) });
 });
 
 selfServiceRoutes.get("/payslips", async (c) => {
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
   if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view payslips.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "payslips_enabled");
+  if (disabled) return disabled;
   const rows = (await c.env.DB.prepare("SELECT ps.id, ps.payslip_number, ps.status, ps.generated_at, ps.version_number, pp.period_month, pp.period_year, pre.net_salary FROM payroll_payslips ps INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id INNER JOIN payroll_employee_results pre ON pre.id = ps.payroll_employee_result_id WHERE ps.employee_id = ? AND ps.status IN ('GENERATED', 'REGENERATED') ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC").bind(gate.employeeId).all<Row>()).results;
   return ok(c, { payslips: rows });
 });
@@ -741,6 +1422,9 @@ selfServiceRoutes.get("/payslips/:payslipId/download", async (c) => {
 });
 
 selfServiceRoutes.get("/assets", async (c) => {
+  if (!hasAny(c, ["self_service.assets.view", "self_service.view", "assets.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your assets.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "assets_enabled");
+  if (disabled) return disabled;
   const gate = await requireLinkedEmployee(c);
   if (gate.response) return gate.response;
   const assignments = (
@@ -759,6 +1443,47 @@ selfServiceRoutes.get("/assets", async (c) => {
       .all<Row>()
   ).results;
   return ok(c, { assignments });
+});
+
+selfServiceRoutes.get("/requests", async (c) => {
+  if (!hasAny(c, ["self_service.approvals.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service requests.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { requests: await getSelfServiceSubmittedRequests(c, gate.employeeId!) });
+});
+
+selfServiceRoutes.get("/approvals", async (c) => {
+  if (!hasAny(c, ["self_service.approvals.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service approvals.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "approvals_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { approvals: await getSelfServiceApprovalStatus(c, gate.employeeId!), visibility_mode: "SELF_SERVICE" });
+});
+
+selfServiceRoutes.get("/notifications", async (c) => {
+  if (!hasAny(c, ["self_service.notifications.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service notifications.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "notifications_enabled");
+  if (disabled) return disabled;
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  return ok(c, { notifications: await getSelfServiceNotifications(c, gate.employeeId!), unread_count: await getSelfServiceUnreadNotificationCount(c, gate.employeeId!) });
+});
+
+selfServiceRoutes.post("/notifications/:notificationId/read", async (c) => {
+  if (!hasAny(c, ["self_service.notifications.update", "self_service.notifications.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to update self-service notifications.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  await markSelfServiceNotificationRead(c, gate.employeeId!, c.req.param("notificationId"));
+  return ok(c, { read: true });
+});
+
+selfServiceRoutes.post("/notifications/mark-all-read", async (c) => {
+  if (!hasAny(c, ["self_service.notifications.update", "self_service.notifications.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to update self-service notifications.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  await markSelfServiceNotificationRead(c, gate.employeeId!, "all");
+  return ok(c, { read: true });
 });
 
 selfServiceRoutes.get("/kyc-requests", async (c) => {

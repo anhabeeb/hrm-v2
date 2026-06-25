@@ -1,4 +1,4 @@
-import { Banknote, Building2, CalendarCheck, CalendarDays, ClipboardList, FileClock, FileSearch, FileText, Shirt, SlidersHorizontal, Users } from "lucide-react";
+import { Banknote, Building2, CalendarCheck, CalendarDays, ClipboardList, FileClock, FileSearch, FileText, ShieldCheck, Shirt, SlidersHorizontal, Users } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -159,13 +159,43 @@ export function SettingsPage() {
       <Panel className="overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div className="flex items-center gap-3">
-            <FileSearch className="h-4 w-4 text-muted-foreground" />
+            <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
             <div>
-              <h2 className="text-sm font-semibold">Import / migration</h2>
-              <p className="text-xs text-muted-foreground">Validation-only CSV placeholders; old HRM remains reference-only.</p>
+              <h2 className="text-sm font-semibold">Employee self-service</h2>
+              <p className="text-xs text-muted-foreground">Portal visibility, employee request toggles, payslip download, and sensitive field display.</p>
             </div>
           </div>
-          <NavLink to="/settings/import-migration">
+          <NavLink to="/settings/self-service">
+            <Button size="sm" variant="outline">Open</Button>
+          </NavLink>
+        </div>
+      </Panel>
+
+      <Panel className="overflow-hidden">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+            <div>
+              <h2 className="text-sm font-semibold">Admin controls & production readiness</h2>
+              <p className="text-xs text-muted-foreground">Module toggles, consistency checks, security events, data transfer, audit review, and environment safety.</p>
+            </div>
+          </div>
+          <NavLink to="/settings/admin">
+            <Button size="sm" variant="outline">Open</Button>
+          </NavLink>
+        </div>
+      </Panel>
+
+      <Panel className="overflow-hidden">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="flex items-center gap-3">
+            <FileSearch className="h-4 w-4 text-muted-foreground" />
+            <div>
+              <h2 className="text-sm font-semibold">Data import / export and deployment readiness</h2>
+              <p className="text-xs text-muted-foreground">CSV templates, import batches, validation preview, exports, backup guidance, QA, smoke, and deployment readiness.</p>
+            </div>
+          </div>
+          <NavLink to="/settings/admin/imports">
             <Button size="sm" variant="outline">Open</Button>
           </NavLink>
         </div>

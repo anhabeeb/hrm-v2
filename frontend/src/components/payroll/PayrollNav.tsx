@@ -12,8 +12,13 @@ const links = [
   { label: "Components", to: "/payroll/components", permission: "payroll.components.view", fallback: "payroll.view" },
   { label: "Payslips", to: "/payroll/payslips", permission: "payroll.payslips.view", fallback: "payroll.view" },
   { label: "Payment Register", to: "/payroll/payment-register", permission: "payroll.payment_register.view", fallback: "payroll.view" },
+  { label: "Payment Institutions", to: "/payroll/payment-institutions", permission: "payroll.payment_institutions.view", fallback: "payroll.payment_institutions.manage" },
+  { label: "Bank Loans", to: "/payroll/bank-loans", permission: "payroll.bank_loans.view", fallback: "payroll.bank_loans.manage" },
+  { label: "Custom Deductions", to: "/payroll/custom-deductions", permission: "payroll.employee_custom_deductions.view", fallback: "payroll.employee_custom_deductions.manage" },
+  { label: "Pension", to: "/payroll/pension", permission: "payroll.pension_contributions.view", fallback: "payroll.pension_schemes.view" },
   { label: "History", to: "/payroll/history", permission: "payroll.history.view", fallback: "payroll.reports.view" },
-  { label: "Reports", to: "/payroll/reports", permission: "payroll.reports.view" },
+  { label: "Exit Payroll", to: "/payroll/exit-payroll", permission: "final_settlement.view", fallback: "final_settlement.cases.view" },
+  { label: "Reports", to: "/payroll/reports", permission: "payroll.reports.view", fallback: "reports.payroll.view" },
   { label: "Settings", to: "/payroll/settings", permission: "payroll.settings.view", fallback: "payroll.settings.manage" }
 ];
 

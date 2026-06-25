@@ -9,6 +9,7 @@ import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { EmployeeDocumentCompliancePanel } from "./EmployeeDocumentCompliancePanel";
 
 function statusTone(status: string) {
   if (status === "VALID" || status === "ACTIVE") return "success";
@@ -118,6 +119,8 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
       </div>
 
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+
+      <EmployeeDocumentCompliancePanel employee={employee} token={token} permissions={permissions} />
 
       {missing.length > 0 ? (
         <div className="rounded-md border border-amber-200 bg-amber-50">

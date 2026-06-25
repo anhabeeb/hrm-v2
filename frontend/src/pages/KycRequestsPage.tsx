@@ -2,6 +2,7 @@ import { Check, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
+import { ConfirmDialog } from "../components/ui/dialogs";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
@@ -21,6 +22,8 @@ export function KycRequestsPage() {
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reviewAction, setReviewAction] = useState<{ type: "approve" | "reject"; row: Row } | null>(null);
+  const [reviewNote, setReviewNote] = useState("");
 
   const filters = useMemo(() => ({ search, status, section, date_from: dateFrom, date_to: dateTo }), [search, status, section, dateFrom, dateTo]);
 
@@ -44,19 +47,21 @@ export function KycRequestsPage() {
 
   async function approve(row: Row) {
     if (!token) return;
-    const note = window.prompt("Optional approval review note") ?? "";
-    await api.approveKycRequest(token, String(row.id), note);
+    await api.approveKycRequest(token, String(row.id), reviewNote);
+    setReviewAction(null);
+    setReviewNote("");
     await load();
   }
 
   async function reject(row: Row) {
     if (!token) return;
-    const note = window.prompt("Review note is required to reject this request");
-    if (!note?.trim()) {
+    if (!reviewNote.trim()) {
       setError("Review note is required when rejecting a KYC request.");
       return;
     }
-    await api.rejectKycRequest(token, String(row.id), note.trim());
+    await api.rejectKycRequest(token, String(row.id), reviewNote.trim());
+    setReviewAction(null);
+    setReviewNote("");
     await load();
   }
 
@@ -130,10 +135,10 @@ export function KycRequestsPage() {
                     <TableCell className="max-w-[220px] truncate">{text(row.review_note)}</TableCell>
                     <TableCell className="sticky right-0 bg-white text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" title="Approve" disabled={!actionable} onClick={() => void approve(row)}>
+                        <Button variant="ghost" size="icon" title="Approve" disabled={!actionable} onClick={() => { setReviewAction({ type: "approve", row }); setReviewNote(""); }}>
                           <Check className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" title="Reject" disabled={!actionable} onClick={() => void reject(row)}>
+                        <Button variant="ghost" size="icon" title="Reject" disabled={!actionable} onClick={() => { setReviewAction({ type: "reject", row }); setReviewNote(""); }}>
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
@@ -145,6 +150,19 @@ export function KycRequestsPage() {
           </Table>
         </DataTableFrame>
       </Panel>
+      <ConfirmDialog
+        open={Boolean(reviewAction)}
+        title={reviewAction?.type === "reject" ? "Reject profile update" : "Approve profile update"}
+        description={reviewAction?.type === "reject" ? "Add the rejection note that will be stored with this request." : "Add an optional approval note for audit history."}
+        confirmLabel={reviewAction?.type === "reject" ? "Reject" : "Approve"}
+        tone={reviewAction?.type === "reject" ? "danger" : "default"}
+        requireReason={reviewAction?.type === "reject"}
+        reasonLabel="Review note"
+        reasonValue={reviewNote}
+        onReasonChange={setReviewNote}
+        onCancel={() => { setReviewAction(null); setReviewNote(""); }}
+        onConfirm={() => reviewAction?.type === "reject" ? void reject(reviewAction.row) : reviewAction ? void approve(reviewAction.row) : undefined}
+      />
     </div>
   );
 }

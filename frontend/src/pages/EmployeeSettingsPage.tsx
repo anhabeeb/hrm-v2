@@ -2,6 +2,7 @@ import { Eye, Pencil, Plus, RefreshCw, Save, ToggleLeft, ToggleRight } from "luc
 import { useEffect, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -22,6 +23,7 @@ export function EmployeeSettingsPage() {
   const [preview, setPreview] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<StatusModalState | null>(null);
+  const [statusActionTarget, setStatusActionTarget] = useState<EmployeeStatusSetting | null>(null);
 
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("employees.view");
@@ -52,9 +54,9 @@ export function EmployeeSettingsPage() {
   async function statusAction(status: EmployeeStatusSetting) {
     if (!token) return;
     const action = status.is_active ? "disable" : "enable";
-    if (!window.confirm(`Are you sure you want to ${action} this status?`)) return;
     try {
       await api.employeeStatusAction(token, status.id, action);
+      setStatusActionTarget(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to update employee status.");
@@ -128,7 +130,7 @@ export function EmployeeSettingsPage() {
                         <TableCell>{status.show_in_active_lists ? "Yes" : "No"}</TableCell>
                         <TableCell>{[status.requires_final_settlement && "Settlement", status.requires_document_clearance && "Documents", status.requires_asset_clearance && "Assets"].filter(Boolean).join(", ") || "-"}</TableCell>
                         <TableCell>{status.sort_order}</TableCell>
-                        <TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="View"><Eye className="h-4 w-4" /></Button>{canStatus ? <Button variant="ghost" size="icon" title="Edit" onClick={() => setModal({ mode: "edit", status })}><Pencil className="h-4 w-4" /></Button> : null}{canStatus ? <Button variant="ghost" size="icon" title={status.is_active ? "Disable" : "Enable"} onClick={() => void statusAction(status)}>{status.is_active ? <ToggleRight className="h-4 w-4 text-emerald-700" /> : <ToggleLeft className="h-4 w-4" />}</Button> : null}</div></TableCell>
+                        <TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="View"><Eye className="h-4 w-4" /></Button>{canStatus ? <Button variant="ghost" size="icon" title="Edit" onClick={() => setModal({ mode: "edit", status })}><Pencil className="h-4 w-4" /></Button> : null}{canStatus ? <Button variant="ghost" size="icon" title={status.is_active ? "Disable" : "Enable"} onClick={() => setStatusActionTarget(status)}>{status.is_active ? <ToggleRight className="h-4 w-4 text-emerald-700" /> : <ToggleLeft className="h-4 w-4" />}</Button> : null}</div></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -140,6 +142,15 @@ export function EmployeeSettingsPage() {
         </div>
       </Panel>
       {modal ? <StatusModal mode={modal.mode} status={modal.status} onClose={() => setModal(null)} onSave={(input) => void saveStatus(input)} /> : null}
+      <ConfirmDialog
+        open={Boolean(statusActionTarget)}
+        title={`${statusActionTarget?.is_active ? "Disable" : "Enable"} employee status`}
+        description={`Are you sure you want to ${statusActionTarget?.is_active ? "disable" : "enable"} ${statusActionTarget?.name ?? "this status"}?`}
+        confirmLabel={statusActionTarget?.is_active ? "Disable" : "Enable"}
+        tone={statusActionTarget?.is_active ? "danger" : "default"}
+        onCancel={() => setStatusActionTarget(null)}
+        onConfirm={() => statusActionTarget ? void statusAction(statusActionTarget) : undefined}
+      />
     </div>
   );
 }

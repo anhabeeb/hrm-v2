@@ -1,6 +1,7 @@
 import { Pencil, Plus, Power } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -104,6 +105,11 @@ export function DocumentSettingsPage() {
       <div>
         <h1 className="text-lg font-semibold">Document Management Settings</h1>
         <p className="text-sm text-muted-foreground">Document categories, types, required rules, and compliance foundations.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link to="/settings/documents/compliance"><Button variant="outline" size="sm">Compliance settings</Button></Link>
+          <Link to="/settings/documents/compliance/types"><Button variant="outline" size="sm">Type compliance rules</Button></Link>
+          <Link to="/documents/compliance"><Button variant="outline" size="sm">Compliance dashboard</Button></Link>
+        </div>
       </div>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">

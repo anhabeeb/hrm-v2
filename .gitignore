@@ -33,3 +33,7 @@ pnpm-debug.log*
 worker/worker-configuration.d.ts
 worker/.codex-state/
 worker/.codex-worker*.log
+database/remote_schema_audit_report.json
+database/remote_schema_ready_report.json
+database/remote_schema_repair_apply_report.json
+database/remote_schema_repair_generated.sql

@@ -2,7 +2,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, api } from "../../lib/api";
-import type { AttendanceCorrection, AttendanceRawLog, AttendanceRecord } from "../../types/attendance";
+import type { AttendanceCorrection, AttendanceRawLog, AttendanceRecord, EmployeeBiometricMapping } from "../../types/attendance";
 import type { Employee } from "../../types/employees";
 import { AttendanceCorrectionModal } from "./AttendanceCorrectionModal";
 import { Badge } from "../ui/badge";
@@ -25,6 +25,7 @@ export function EmployeeAttendancePanel({ token, employee, permissions }: { toke
   const [calendar, setCalendar] = useState<AttendanceRecord[]>([]);
   const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
   const [rawLogs, setRawLogs] = useState<AttendanceRawLog[]>([]);
+  const [deviceSummary, setDeviceSummary] = useState<{ mappings: EmployeeBiometricMapping[]; raw_log_status_counts: Record<string, unknown>[]; recent_raw_logs: AttendanceRawLog[]; unmatched_related_count: number } | null>(null);
   const [summary, setSummary] = useState<Record<string, number>>({});
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
@@ -36,16 +37,18 @@ export function EmployeeAttendancePanel({ token, employee, permissions }: { toke
     setLoading(true);
     setError(null);
     try {
-      const [summaryResult, rawLogResult, calendarResult] = await Promise.all([
+      const [summaryResult, rawLogResult, calendarResult, deviceResult] = await Promise.all([
         api.getEmployeeAttendanceSummary(token, employee.id),
         api.listEmployeeAttendanceRawLogs(token, employee.id),
-        api.getEmployeeAttendanceCalendar(token, employee.id, { month })
+        api.getEmployeeAttendanceCalendar(token, employee.id, { month }),
+        api.getEmployeeAttendanceDeviceSummary(token, employee.id).catch(() => null)
       ]);
       setSummary(summaryResult.summary);
       setRecords(summaryResult.records);
       setCalendar(calendarResult.calendar);
       setCorrections(summaryResult.corrections);
       setRawLogs(rawLogResult.logs);
+      setDeviceSummary(deviceResult);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load employee attendance.");
     } finally {
@@ -73,6 +76,15 @@ export function EmployeeAttendancePanel({ token, employee, permissions }: { toke
       <div className="grid gap-3 md:grid-cols-5">
         {["present", "absent", "late", "missed_punch", "pending_corrections"].map((key) => <Panel key={key} className="p-3"><div className="text-xs uppercase text-muted-foreground">{key.replace(/_/g, " ")}</div><div className="mt-1 text-xl font-semibold">{summary[key] ?? 0}</div></Panel>)}
       </div>
+      <Panel className="overflow-hidden">
+        <div className="border-b px-3 py-2"><h3 className="text-sm font-semibold">Attendance Device Summary</h3><p className="text-xs text-muted-foreground">Biometric mapping, recent imported logs, and unmatched-log signal for this employee.</p></div>
+        <div className="grid gap-3 p-3 lg:grid-cols-3">
+          <div className="rounded-md border p-3"><div className="text-xs uppercase text-muted-foreground">Active mappings</div><div className="mt-1 text-xl font-semibold">{deviceSummary?.mappings?.length ?? 0}</div></div>
+          <div className="rounded-md border p-3"><div className="text-xs uppercase text-muted-foreground">Recent raw logs</div><div className="mt-1 text-xl font-semibold">{deviceSummary?.recent_raw_logs?.length ?? 0}</div></div>
+          <div className="rounded-md border p-3"><div className="text-xs uppercase text-muted-foreground">Unmatched related</div><div className="mt-1 text-xl font-semibold">{deviceSummary?.unmatched_related_count ?? 0}</div></div>
+        </div>
+        <SmallRows title="Biometric mappings" rows={(deviceSummary?.mappings ?? []).map((mapping) => ({ device: mapping.device_name ?? mapping.device_code ?? "Any device", biometric_id: mapping.biometric_user_id, external_code: mapping.external_employee_code ?? "-", status: mapping.status }))} columns={["device", "biometric_id", "external_code", "status"]} />
+      </Panel>
       <Panel className="overflow-hidden">
         <div className="flex flex-col gap-2 border-b px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
           <div><h3 className="text-sm font-semibold">Monthly Attendance / Payroll Calendar</h3><p className="text-xs text-muted-foreground">Approved leave appears when no attendance record exists for the day.</p></div>

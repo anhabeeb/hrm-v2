@@ -63,6 +63,7 @@ export function DocumentRegistryPage() {
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [filters, setFilters] = useState(defaultFilters);
   const [versions, setVersions] = useState<{ document: EmployeeDocument; rows: EmployeeDocumentVersion[] } | null>(null);
+  const [documentAction, setDocumentAction] = useState<{ document: EmployeeDocument; name: "archive" | "restore" | "soft-delete"; reason: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,12 +128,11 @@ export function DocumentRegistryPage() {
     }
   }
 
-  async function action(doc: EmployeeDocument, name: "archive" | "restore" | "soft-delete") {
+  async function action(doc: EmployeeDocument, name: "archive" | "restore" | "soft-delete", reason: string) {
     if (!token) return;
-    const reason = window.prompt(`${name.replace("-", " ")} reason`);
-    if (!reason) return;
     try {
       await api.employeeDocumentAction(token, doc.employee_id, doc.id, name, reason);
+      setDocumentAction(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to update document.");
@@ -149,6 +149,7 @@ export function DocumentRegistryPage() {
           <p className="text-sm text-muted-foreground">Central employee document tracking, expiry visibility, and compliance status.</p>
         </div>
         <div className="flex gap-2">
+          <Link to="/documents/compliance"><Button variant="outline" size="sm">Compliance</Button></Link>
           <Link to="/documents/missing"><Button variant="outline" size="sm">Missing required</Button></Link>
           {canExport ? <Button variant="outline" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}
         </div>
@@ -202,9 +203,9 @@ export function DocumentRegistryPage() {
                       <Link to={`/employees/${doc.employee_id}`}><Button title="Open Employee 360" variant="ghost" size="icon"><Eye className="h-4 w-4" /></Button></Link>
                       <Button title="Version history" variant="ghost" size="icon" onClick={() => void showVersions(doc)}><History className="h-4 w-4" /></Button>
                       {canDownload ? <Button title="Download" variant="ghost" size="icon" onClick={() => void download(doc)}><Download className="h-4 w-4" /></Button> : null}
-                      {canArchive && doc.status === "ACTIVE" ? <Button title="Archive" variant="ghost" size="icon" onClick={() => void action(doc, "archive")}><Archive className="h-4 w-4" /></Button> : null}
-                      {canArchive && doc.status === "ARCHIVED" ? <Button title="Restore" variant="ghost" size="icon" onClick={() => void action(doc, "restore")}><RotateCcw className="h-4 w-4" /></Button> : null}
-                      {canDelete && doc.status !== "SOFT_DELETED" ? <Button title="Soft delete" variant="ghost" size="icon" onClick={() => void action(doc, "soft-delete")}><Trash2 className="h-4 w-4" /></Button> : null}
+                      {canArchive && doc.status === "ACTIVE" ? <Button title="Archive" variant="ghost" size="icon" onClick={() => setDocumentAction({ document: doc, name: "archive", reason: "" })}><Archive className="h-4 w-4" /></Button> : null}
+                      {canArchive && doc.status === "ARCHIVED" ? <Button title="Restore" variant="ghost" size="icon" onClick={() => setDocumentAction({ document: doc, name: "restore", reason: "" })}><RotateCcw className="h-4 w-4" /></Button> : null}
+                      {canDelete && doc.status !== "SOFT_DELETED" ? <Button title="Soft delete" variant="ghost" size="icon" onClick={() => setDocumentAction({ document: doc, name: "soft-delete", reason: "" })}><Trash2 className="h-4 w-4" /></Button> : null}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -215,8 +216,20 @@ export function DocumentRegistryPage() {
         {loading ? <EmptyState title="Loading registry" description="Fetching document records." /> : documents.length === 0 ? <EmptyState title="No documents found" description="Upload employee documents from Employee 360 or adjust filters." /> : null}
       </Panel>
       {versions ? <VersionsModal versions={versions} onClose={() => setVersions(null)} /> : null}
+      {documentAction ? (
+        <DocumentActionModal
+          action={documentAction}
+          onChange={(reason) => setDocumentAction({ ...documentAction, reason })}
+          onClose={() => setDocumentAction(null)}
+          onConfirm={() => void action(documentAction.document, documentAction.name, documentAction.reason.trim())}
+        />
+      ) : null}
     </div>
   );
+}
+
+function DocumentActionModal({ action, onChange, onClose, onConfirm }: { action: { document: EmployeeDocument; name: "archive" | "restore" | "soft-delete"; reason: string }; onChange: (reason: string) => void; onClose: () => void; onConfirm: () => void }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">{action.name.replace("-", " ")} document</h2><p className="mt-1 text-xs text-muted-foreground">{action.document.document_type_name} for {action.document.employee_name}</p><Input className="mt-3" placeholder="Reason" value={action.reason} onChange={(event) => onChange(event.target.value)} /><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" disabled={!action.reason.trim()} onClick={onConfirm}>Confirm</Button></div></div></div>;
 }
 
 function FilterSelect({ value, onChange, options, label }: { value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }>; label: string }) {

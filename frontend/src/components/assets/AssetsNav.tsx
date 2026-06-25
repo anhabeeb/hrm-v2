@@ -5,8 +5,12 @@ const links = [
   ["Dashboard", "/assets"],
   ["Items", "/assets/items"],
   ["Assignments", "/assets/assignments"],
+  ["Uniform Stock", "/assets/uniforms"],
+  ["Uniform Assignments", "/assets/uniform-assignments"],
+  ["Uniform Types", "/assets/uniform-types"],
   ["Categories", "/assets/categories"],
   ["Deduction rules", "/assets/deduction-rules"],
+  ["Settings", "/assets/settings"],
   ["Reports", "/assets/reports"]
 ] as const;
 

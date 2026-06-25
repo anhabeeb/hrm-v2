@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
+import { DashboardWidget, MetricGrid, PageHeader, PageShell, QuickActionCard } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -60,20 +61,21 @@ export function DashboardPage() {
   const quickLinks = list(dashboard?.quick_links).filter((item) => user?.permissions.includes(String(item.permission)));
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Compact HR operating overview with permission-safe counters.</p>
-        </div>
+    <PageShell>
+      <PageHeader
+        title="Dashboard"
+        eyebrow="HRM command center"
+        description="Compact HR operating overview with permission-safe counters, live-workflow shortcuts, and scope-aware activity."
+        actions={
         <Button variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="h-4 w-4" />
           Refresh
         </Button>
-      </div>
+        }
+      />
 
       <DataTableFrame loading={loading} error={error} empty={!loading && !error && !dashboard}>
-        <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-4">
+        <MetricGrid className="p-3">
           {employees ? <MetricGroup title="Employees" to="/employees" rows={[["Total", employees.total_employees], ["Active", employees.active_employees], ["Onboarding", employees.onboarding_employees]]} /> : null}
           {documents ? <MetricGroup title="Documents" to="/documents" rows={[["Missing", documents.missing_required_documents], ["Expiring", documents.expiring_documents], ["Expired", documents.expired_documents]]} /> : null}
           {attendance ? <MetricGroup title="Attendance" to="/attendance" rows={[["Present", attendance.today_present], ["Absent", attendance.today_absent], ["Late", attendance.today_late], ["Missed punch", attendance.missed_punches_today]]} /> : null}
@@ -82,29 +84,27 @@ export function DashboardPage() {
           {payroll ? <MetricGroup title="Payroll" to="/payroll" rows={[["Draft runs", payroll.draft_payroll_runs], ["Approved", payroll.approved_payroll_runs], ["Holds", payroll.payroll_holds], ["Advances", payroll.pending_advances]]} /> : null}
           {assets ? <MetricGroup title="Assets" to="/assets" rows={[["Issued", assets.issued_assets], ["Pending returns", assets.pending_returns], ["Damaged", assets.damaged_assets], ["Lost", assets.lost_assets]]} /> : null}
           {audit ? <MetricGroup title="Audit" to="/audit" rows={[["Sensitive actions", audit.sensitive_actions_count]]} /> : null}
-        </div>
+        </MetricGrid>
       </DataTableFrame>
 
       {quickLinks.length ? (
-        <Panel className="overflow-hidden">
-          <div className="border-b px-4 py-3">
-            <h2 className="text-sm font-semibold">Priority links</h2>
-            <p className="text-xs text-muted-foreground">Shortcuts into the records that usually need attention first.</p>
-          </div>
+        <DashboardWidget title="Priority links" description="Shortcuts into the records that usually need attention first.">
           <div className="grid gap-2 p-3 md:grid-cols-2 xl:grid-cols-4">
             {quickLinks.map((link) => (
-              <Link key={String(link.to)} to={String(link.to)} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted">
-                <span>{String(link.label)}</span>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              </Link>
+              <QuickActionCard
+                key={String(link.to)}
+                title={String(link.label)}
+                description="Open scoped operational queue"
+                action={<Link to={String(link.to)} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Open <ArrowRight className="h-3.5 w-3.5" /></Link>}
+              />
             ))}
           </div>
-        </Panel>
+        </DashboardWidget>
       ) : null}
 
       {documents ? <PriorityTable title="Recent document uploads" rows={list(documents.recent_document_uploads)} columns={["employee_no", "employee_name", "document_type_name", "created_at"]} /> : null}
       {audit ? <PriorityTable title="Recent audit activity" rows={list(audit.recent_audit_activity)} columns={["created_at", "actor_name", "module", "action", "entity_type"]} statusColumn="module" /> : null}
-    </div>
+    </PageShell>
   );
 }
 

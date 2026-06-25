@@ -5,6 +5,7 @@ import { LeaveRequestDetailModal } from "../components/leave/LeaveRequestDetailM
 import { LeaveRequestModal } from "../components/leave/LeaveRequestModal";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
@@ -50,6 +51,8 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
   const [pendingMine, setPendingMine] = useState(approvalsOnly);
   const [modalOpen, setModalOpen] = useState(false);
   const [detailRequest, setDetailRequest] = useState<LeaveRequest | null>(null);
+  const [actionTarget, setActionTarget] = useState<{ request: LeaveRequest; name: "submit" | "approve" | "reject" | "cancel" } | null>(null);
+  const [actionNote, setActionNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,17 +106,17 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
     if (!token) return;
     try {
       if (name === "submit") await api.submitLeaveRequest(token, request.id);
-      if (name === "approve") await api.approveLeaveRequest(token, request.id, window.prompt("Approval note") ?? null);
+      if (name === "approve") await api.approveLeaveRequest(token, request.id, actionNote || null);
       if (name === "reject") {
-        const note = window.prompt("Reject reason");
-        if (!note) return;
-        await api.rejectLeaveRequest(token, request.id, note);
+        if (!actionNote.trim()) return;
+        await api.rejectLeaveRequest(token, request.id, actionNote.trim());
       }
       if (name === "cancel") {
-        const reason = window.prompt("Cancellation reason");
-        if (!reason) return;
-        await api.cancelLeaveRequest(token, request.id, reason);
+        if (!actionNote.trim()) return;
+        await api.cancelLeaveRequest(token, request.id, actionNote.trim());
       }
+      setActionTarget(null);
+      setActionNote("");
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to update leave request.");
@@ -155,13 +158,26 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Leave type</TableHead><TableHead>Dates</TableHead><TableHead>Days</TableHead><TableHead>Status</TableHead><TableHead>Document</TableHead><TableHead>Deduction</TableHead><TableHead>Current step</TableHead><TableHead>Submitted</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{requests.map((request) => <TableRow key={request.id}><TableCell><Link className="font-medium hover:underline" to={`/employees/${request.employee_id}`}>{request.employee_name ?? "-"}</Link><div className="font-mono text-xs text-muted-foreground">{request.employee_no}</div></TableCell><TableCell>{request.department_name ?? "-"}</TableCell><TableCell>{request.leave_type_name}</TableCell><TableCell>{request.start_date} to {request.end_date}</TableCell><TableCell>{request.requested_days}</TableCell><TableCell><Badge tone={tone(request.status)}>{request.status}</Badge></TableCell><TableCell>{request.document_status}</TableCell><TableCell>{request.salary_deduction_mode ?? "NONE"}</TableCell><TableCell>{request.current_approval_step ?? "-"}</TableCell><TableCell>{request.submitted_at ? new Date(request.submitted_at).toLocaleDateString() : "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><Button title="View details" variant="ghost" size="icon" onClick={() => setDetailRequest(request)}><Eye className="h-4 w-4" /></Button>{request.status === "DRAFT" && canCreate ? <Button title="Submit" variant="ghost" size="icon" onClick={() => void action(request, "submit")}><RotateCcw className="h-4 w-4" /></Button> : null}{request.status === "PENDING_APPROVAL" && canApprove ? <Button title="Approve" variant="ghost" size="icon" onClick={() => void action(request, "approve")}><Check className="h-4 w-4" /></Button> : null}{request.status === "PENDING_APPROVAL" && canApprove ? <Button title="Reject" variant="ghost" size="icon" onClick={() => void action(request, "reject")}><X className="h-4 w-4" /></Button> : null}{request.status !== "CANCELLED" && request.status !== "REJECTED" && canCancel ? <Button title="Cancel" variant="ghost" size="icon" onClick={() => void action(request, "cancel")}><X className="h-4 w-4 text-red-600" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
+            <TableBody>{requests.map((request) => <TableRow key={request.id}><TableCell><Link className="font-medium hover:underline" to={`/employees/${request.employee_id}`}>{request.employee_name ?? "-"}</Link><div className="font-mono text-xs text-muted-foreground">{request.employee_no}</div></TableCell><TableCell>{request.department_name ?? "-"}</TableCell><TableCell>{request.leave_type_name}</TableCell><TableCell>{request.start_date} to {request.end_date}</TableCell><TableCell>{request.requested_days}</TableCell><TableCell><Badge tone={tone(request.status)}>{request.status}</Badge></TableCell><TableCell>{request.document_status}</TableCell><TableCell>{request.salary_deduction_mode ?? "NONE"}</TableCell><TableCell>{request.current_approval_step ?? "-"}</TableCell><TableCell>{request.submitted_at ? new Date(request.submitted_at).toLocaleDateString() : "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><Button title="View details" variant="ghost" size="icon" onClick={() => setDetailRequest(request)}><Eye className="h-4 w-4" /></Button>{request.status === "DRAFT" && canCreate ? <Button title="Submit" variant="ghost" size="icon" onClick={() => { setActionTarget({ request, name: "submit" }); setActionNote(""); }}><RotateCcw className="h-4 w-4" /></Button> : null}{request.status === "PENDING_APPROVAL" && canApprove ? <Button title="Approve" variant="ghost" size="icon" onClick={() => { setActionTarget({ request, name: "approve" }); setActionNote(""); }}><Check className="h-4 w-4" /></Button> : null}{request.status === "PENDING_APPROVAL" && canApprove ? <Button title="Reject" variant="ghost" size="icon" onClick={() => { setActionTarget({ request, name: "reject" }); setActionNote(""); }}><X className="h-4 w-4" /></Button> : null}{request.status !== "CANCELLED" && request.status !== "REJECTED" && canCancel ? <Button title="Cancel" variant="ghost" size="icon" onClick={() => { setActionTarget({ request, name: "cancel" }); setActionNote(""); }}><X className="h-4 w-4 text-red-600" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
         {loading ? <EmptyState title="Loading leave requests" description="Fetching leave records." /> : requests.length === 0 ? <EmptyState title="No leave requests found" description="Create a leave request or adjust filters." /> : null}
       </Panel>
       {modalOpen && token ? <LeaveRequestModal token={token} employees={employees} leaveTypes={types} onClose={() => setModalOpen(false)} onSaved={async (request) => { await load(); if (request.document_required) setDetailRequest(request); }} /> : null}
       {detailRequest && token ? <LeaveRequestDetailModal token={token} request={detailRequest} permissions={permissions} onClose={() => setDetailRequest(null)} onChanged={load} /> : null}
+      <ConfirmDialog
+        open={Boolean(actionTarget)}
+        title={`${actionTarget?.name ?? "Update"} leave request`}
+        description={actionTarget ? `${actionTarget.name.charAt(0).toUpperCase()}${actionTarget.name.slice(1)} leave request for ${actionTarget.request.employee_name ?? actionTarget.request.employee_no}?` : undefined}
+        confirmLabel={actionTarget?.name ? `${actionTarget.name.charAt(0).toUpperCase()}${actionTarget.name.slice(1)}` : "Confirm"}
+        tone={actionTarget?.name === "reject" || actionTarget?.name === "cancel" ? "danger" : "default"}
+        requireReason={actionTarget?.name === "reject" || actionTarget?.name === "cancel"}
+        reasonLabel={actionTarget?.name === "approve" ? "Approval note" : "Reason"}
+        reasonValue={actionNote}
+        onReasonChange={setActionNote}
+        onCancel={() => { setActionTarget(null); setActionNote(""); }}
+        onConfirm={() => actionTarget ? void action(actionTarget.request, actionTarget.name) : undefined}
+      />
     </div>
   );
 }

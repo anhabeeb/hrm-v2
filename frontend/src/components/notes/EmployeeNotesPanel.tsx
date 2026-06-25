@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/dialogs";
 import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -36,6 +37,8 @@ export function EmployeeNotesPanel({ employee }: { employee: Employee }) {
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [filters, setFilters] = useState({ search: "", category_id: "", visibility: "", linked_module: "", include_archived: false, date_from: "", date_to: "" });
   const [modal, setModal] = useState<ModalState>(null);
+  const [archiveTarget, setArchiveTarget] = useState<EmployeeNote | null>(null);
+  const [archiveReason, setArchiveReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -59,10 +62,10 @@ export function EmployeeNotesPanel({ employee }: { employee: Employee }) {
 
   async function archive(note: EmployeeNote) {
     if (!token) return;
-    const reason = window.prompt("Archive reason");
-    if (!reason) return;
     try {
-      await api.archiveEmployeeNote(token, employee.id, note.id, reason);
+      await api.archiveEmployeeNote(token, employee.id, note.id, archiveReason.trim());
+      setArchiveTarget(null);
+      setArchiveReason("");
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to archive note.");
@@ -96,7 +99,7 @@ export function EmployeeNotesPanel({ employee }: { employee: Employee }) {
             <TableHeader><TableRow><TableHead>Note</TableHead><TableHead>Category</TableHead><TableHead>Visibility</TableHead><TableHead>Linked module</TableHead><TableHead>By</TableHead><TableHead>Updated</TableHead><TableHead>Archived</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>{notes.map((note) => {
               const restricted = note.visibility === "HR_ONLY" || note.visibility === "RESTRICTED";
-              return <TableRow key={note.id}><TableCell><div className="font-medium">{note.title}</div><div className="max-w-[420px] truncate text-xs text-muted-foreground">{note.note_body}</div></TableCell><TableCell>{note.category_name ?? "-"}</TableCell><TableCell><Badge tone={note.visibility === "RESTRICTED" ? "danger" : note.visibility === "HR_ONLY" ? "warning" : "neutral"}>{note.visibility}</Badge></TableCell><TableCell>{note.linked_module ?? "-"}</TableCell><TableCell>{note.created_by_name ?? "-"}</TableCell><TableCell>{note.updated_at}</TableCell><TableCell>{note.is_archived ? <Badge tone="neutral">Archived</Badge> : "-"}</TableCell><TableCell><div className="flex min-w-[260px] justify-end gap-1">{canUpdate && (!restricted || canRestrictedManage) ? <Button variant="ghost" size="icon" onClick={() => setModal({ type: "edit", note })}><Pencil className="h-4 w-4" /></Button> : null}<Button variant="ghost" size="icon" onClick={() => setModal({ type: "versions", note })}><History className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => setModal({ type: "attachments", note })}><Paperclip className="h-4 w-4" /></Button>{canArchive && !note.is_archived && (!restricted || canRestrictedManage) ? <Button variant="ghost" size="icon" onClick={() => void archive(note)}><Archive className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
+              return <TableRow key={note.id}><TableCell><div className="font-medium">{note.title}</div><div className="max-w-[420px] truncate text-xs text-muted-foreground">{note.note_body}</div></TableCell><TableCell>{note.category_name ?? "-"}</TableCell><TableCell><Badge tone={note.visibility === "RESTRICTED" ? "danger" : note.visibility === "HR_ONLY" ? "warning" : "neutral"}>{note.visibility}</Badge></TableCell><TableCell>{note.linked_module ?? "-"}</TableCell><TableCell>{note.created_by_name ?? "-"}</TableCell><TableCell>{note.updated_at}</TableCell><TableCell>{note.is_archived ? <Badge tone="neutral">Archived</Badge> : "-"}</TableCell><TableCell><div className="flex min-w-[260px] justify-end gap-1">{canUpdate && (!restricted || canRestrictedManage) ? <Button variant="ghost" size="icon" onClick={() => setModal({ type: "edit", note })}><Pencil className="h-4 w-4" /></Button> : null}<Button variant="ghost" size="icon" onClick={() => setModal({ type: "versions", note })}><History className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => setModal({ type: "attachments", note })}><Paperclip className="h-4 w-4" /></Button>{canArchive && !note.is_archived && (!restricted || canRestrictedManage) ? <Button variant="ghost" size="icon" onClick={() => { setArchiveTarget(note); setArchiveReason(""); }}><Archive className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
             })}</TableBody>
           </Table>
           {!notes.length ? <EmptyState title="No notes yet" description="Create scoped HR notes for this employee." /> : null}
@@ -105,6 +108,18 @@ export function EmployeeNotesPanel({ employee }: { employee: Employee }) {
       {modal?.type === "edit" ? <NoteModal employee={employee} note={modal.note} categories={categories} canRestrictedManage={canRestrictedManage} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
       {modal?.type === "versions" ? <VersionsModal employee={employee} note={modal.note} onClose={() => setModal(null)} /> : null}
       {modal?.type === "attachments" ? <AttachmentsModal employee={employee} note={modal.note} documents={documents} canAttach={canAttach && (modal.note.visibility !== "RESTRICTED" || canRestrictedManage)} onClose={() => setModal(null)} /> : null}
+      <ConfirmDialog
+        open={Boolean(archiveTarget)}
+        title="Archive employee note"
+        description={`Archive ${archiveTarget?.title ?? "this note"}? The note remains in history for audit review.`}
+        confirmLabel="Archive"
+        tone="danger"
+        requireReason
+        reasonValue={archiveReason}
+        onReasonChange={setArchiveReason}
+        onCancel={() => { setArchiveTarget(null); setArchiveReason(""); }}
+        onConfirm={() => archiveTarget ? void archive(archiveTarget) : undefined}
+      />
     </div>
   );
 }

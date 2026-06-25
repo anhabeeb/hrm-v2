@@ -68,7 +68,7 @@ export function AssetSettingsPage({ mode = "categories" }: { mode?: "categories"
 
 function CategoryModal({ category, onClose, onSaved }: { category?: AssetCategory; onClose: () => void; onSaved: () => void }) {
   const { token } = useAuth();
-  const [form, setForm] = useState<Partial<AssetCategory>>({ code: category?.code ?? "", name: category?.name ?? "", type: category?.type ?? category?.category_type ?? "ASSET", description: category?.description ?? "", sort_order: category?.sort_order ?? 100 });
+  const [form, setForm] = useState<Partial<AssetCategory>>({ code: category?.code ?? "", name: category?.name ?? "", type: category?.type ?? "ASSET", description: category?.description ?? "", sort_order: category?.sort_order ?? 100 });
   const [error, setError] = useState<string | null>(null);
   async function save() {
     if (!token) return;

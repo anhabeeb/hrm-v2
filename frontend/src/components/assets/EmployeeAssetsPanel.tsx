@@ -10,7 +10,7 @@ import { Panel } from "../ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { useAuth } from "../../hooks/useAuth";
 import { ApiError, api } from "../../lib/api";
-import type { AssetAssignment, AssetAssignmentEvent, AssetCategory, AssetItem } from "../../types/assets";
+import type { AssetAssignment, AssetAssignmentEvent, AssetCategory, AssetItem, AssetUniformClearanceSummary, UniformAssignment } from "../../types/assets";
 import type { EmployeeDocument } from "../../types/documents";
 import type { Employee } from "../../types/employees";
 
@@ -42,7 +42,9 @@ export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
   const canManage = permissions.has("assets.manage");
   const canDeductions = permissions.has("assets.deductions.manage");
   const [assignments, setAssignments] = useState<AssetAssignment[]>([]);
+  const [uniforms, setUniforms] = useState<UniformAssignment[]>([]);
   const [history, setHistory] = useState<AssetAssignmentEvent[]>([]);
+  const [clearance, setClearance] = useState<AssetUniformClearanceSummary | null>(null);
   const [items, setItems] = useState<AssetItem[]>([]);
   const [categories, setCategories] = useState<AssetCategory[]>([]);
   const [modal, setModal] = useState<ModalState>(null);
@@ -56,18 +58,26 @@ export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
     pendingReturn: assignments.filter((row) => row.status === "ISSUED" && (row.expected_return_date ?? row.expected_return_at)).length,
     recovery: assignments.filter((row) => row.deduction_amount || row.payroll_deduction_id).length
   }), [assignments]);
+  const uniformCounts = useMemo(() => ({
+    issued: uniforms.filter((row) => row.assignment_status === "ISSUED").length,
+    returned: uniforms.filter((row) => row.assignment_status === "RETURNED").length,
+    damaged: uniforms.filter((row) => row.assignment_status === "DAMAGED").length,
+    lost: uniforms.filter((row) => row.assignment_status === "LOST").length
+  }), [uniforms]);
 
   async function load() {
     if (!token) return;
     setError(null);
     try {
       const [summary, itemRows, categoryRows] = await Promise.all([
-        api.getEmployeeAssetSummary(token, employee.id),
+        api.getEmployeeAssetUniformSummary(token, employee.id).catch(() => api.getEmployeeAssetSummary(token, employee.id)),
         api.listAssetItems(token, { status: "AVAILABLE" }),
         api.listAssetCategories(token)
       ]);
-      setAssignments(summary.current_assignments ?? summary.assignments ?? []);
+      setAssignments(summary.assets ?? summary.current_assignments ?? summary.assignments ?? []);
+      setUniforms(summary.uniforms ?? []);
       setHistory(summary.history ?? []);
+      setClearance(summary.clearance ?? null);
       setItems(itemRows.items ?? []);
       setCategories(categoryRows.categories ?? []);
     } catch (err) {
@@ -91,6 +101,13 @@ export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
         <Metric label="Pending return" value={counts.pendingReturn} tone="warning" />
         <Metric label="Deduction/recovery" value={counts.recovery} tone="info" />
       </div>
+      <div className="grid gap-2 md:grid-cols-5">
+        <Metric label="Uniforms issued" value={uniformCounts.issued} tone="success" />
+        <Metric label="Uniforms returned" value={uniformCounts.returned} tone="neutral" />
+        <Metric label="Uniforms damaged" value={uniformCounts.damaged} tone="warning" />
+        <Metric label="Uniforms lost" value={uniformCounts.lost} tone="danger" />
+        <Metric label="Clearance pending" value={clearance?.pending_count ?? 0} tone={(clearance?.pending_count ?? 0) > 0 ? "warning" : "success"} />
+      </div>
       {employee.status_key && !["ACTIVE", "ON_LEAVE", "DRAFT_ONBOARDING"].includes(employee.status_key) ? <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Asset clearance may be required for this employee status.</div> : null}
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden p-0">
@@ -100,6 +117,16 @@ export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
             <TableBody>{assignments.map((row) => <TableRow key={row.id}><TableCell><div className="font-medium">{row.asset_name}</div><div className="text-xs text-muted-foreground">{row.asset_code}</div></TableCell><TableCell>{row.category_name ?? "-"}</TableCell><TableCell><Badge tone={statusTone(row.status)}>{row.status}</Badge></TableCell><TableCell>{row.issued_date ?? row.issued_at ?? "-"}</TableCell><TableCell>{row.expected_return_date ?? row.expected_return_at ?? "-"}</TableCell><TableCell>{row.returned_date ?? row.returned_at ?? "-"}</TableCell><TableCell>{row.deduction_amount ?? row.replacement_cost_charged ?? "-"}</TableCell><TableCell><div className="flex min-w-[480px] justify-end gap-1"><Button variant="ghost" size="sm" onClick={() => setModal({ type: "events", row })}><Eye className="h-4 w-4" /> Events</Button>{canManage ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "attachments", row })}><FilePlus className="h-4 w-4" /> Files</Button> : null}{row.status === "ISSUED" && canReturn ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "lifecycle", row, action: "return" })}>Return</Button> : null}{row.status === "ISSUED" && canDamage ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "lifecycle", row, action: "mark-damaged" })}>Damage</Button> : null}{row.status === "ISSUED" && canLost ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "lifecycle", row, action: "mark-lost" })}>Lost</Button> : null}{row.status === "ISSUED" && canWriteOff ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "lifecycle", row, action: "write-off" })}>Write off</Button> : null}{row.status === "ISSUED" && canIssue ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "replace", row })}><Repeat2 className="h-4 w-4" /> Replace</Button> : null}{canDeductions ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "deduction", row })}><Link2 className="h-4 w-4" /> Deduction</Button> : null}</div></TableCell></TableRow>)}</TableBody>
           </Table>
           {!assignments.length ? <EmptyState title="No issued assets" description="Issue uniforms, devices, keys, or cards from this panel." /> : null}
+        </div>
+      </Panel>
+      <Panel className="overflow-hidden p-0">
+        <div className="border-b px-3 py-2 text-sm font-semibold">Uniform assignments</div>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader><TableRow><TableHead>Uniform</TableHead><TableHead>Size</TableHead><TableHead>Quantity</TableHead><TableHead>Status</TableHead><TableHead>Clearance</TableHead><TableHead>Issued</TableHead><TableHead>Returned</TableHead><TableHead>Deduction</TableHead></TableRow></TableHeader>
+            <TableBody>{uniforms.map((row) => <TableRow key={row.id}><TableCell><div className="font-medium">{row.uniform_type_name}</div><div className="text-xs text-muted-foreground">{row.uniform_type_code}</div></TableCell><TableCell>{row.size_label ?? "-"}</TableCell><TableCell>{row.quantity_issued} issued, {row.quantity_returned} returned</TableCell><TableCell><Badge tone={statusTone(row.assignment_status)}>{row.assignment_status}</Badge></TableCell><TableCell><Badge tone={statusTone(row.clearance_status)}>{row.clearance_status}</Badge></TableCell><TableCell>{row.issued_date}</TableCell><TableCell>{row.returned_date ?? "-"}</TableCell><TableCell>{row.deduction_amount ?? "-"}</TableCell></TableRow>)}</TableBody>
+          </Table>
+          {!uniforms.length ? <EmptyState title="No issued uniforms" description="Uniform issue and clearance records appear here." /> : null}
         </div>
       </Panel>
       <SimpleHistory rows={history} />

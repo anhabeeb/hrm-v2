@@ -14,15 +14,15 @@ type BindValue = string | number | null;
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE" | "EARLY_LEAVE" | "HALF_DAY" | "LEAVE" | "SICK_LEAVE" | "LONG_LEAVE" | "DAY_OFF" | "PUBLIC_HOLIDAY" | "MISSING_PUNCH" | "PENDING_CORRECTION" | "CORRECTED" | "SICK" | "OFF_DAY" | "HOLIDAY";
 type AttendanceSource = "DEVICE" | "MANUAL" | "CORRECTION" | "LEAVE" | "ROSTER" | "SYSTEM";
 type LogSource = "DEVICE" | "MANUAL" | "MANUAL_IMPORT" | "API" | "BRIDGE";
-type RawSource = "DEVICE" | "MANUAL_IMPORT" | "API" | "BRIDGE";
+type RawSource = "DEVICE" | "MANUAL_IMPORT" | "CSV_IMPORT" | "API" | "BRIDGE" | "PUSH_ADMS";
 
 const STATUSES = new Set(["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED", "SICK", "OFF_DAY", "HOLIDAY"]);
 const RECORD_SOURCES = new Set(["DEVICE", "MANUAL", "CORRECTION", "LEAVE", "ROSTER", "SYSTEM"]);
 const LOG_SOURCES = new Set(["DEVICE", "MANUAL", "MANUAL_IMPORT", "API", "BRIDGE"]);
-const RAW_SOURCES = new Set(["DEVICE", "MANUAL_IMPORT", "API", "BRIDGE"]);
+const RAW_SOURCES = new Set(["DEVICE", "MANUAL_IMPORT", "CSV_IMPORT", "API", "BRIDGE", "PUSH_ADMS"]);
 const PUNCH_TYPES = new Set(["IN", "OUT", "BREAK_IN", "BREAK_OUT", "UNKNOWN"]);
-const DEVICE_TYPES = new Set(["BIOMETRIC", "MANUAL_IMPORT", "API", "BRIDGE", "OTHER"]);
-const DEVICE_STATUSES = new Set(["ACTIVE", "INACTIVE", "DISABLED"]);
+const DEVICE_TYPES = new Set(["BIOMETRIC", "MANUAL_IMPORT", "API", "BRIDGE", "PUSH_ADMS", "OTHER"]);
+const DEVICE_STATUSES = new Set(["ACTIVE", "INACTIVE", "DISABLED", "ARCHIVED"]);
 
 export const attendanceRoutes = new Hono<AppBindings>();
 export const employeeAttendanceRoutes = new Hono<AppBindings>();
@@ -663,35 +663,56 @@ attendanceRoutes.get("/calendar", requirePermission("attendance.view"), async (c
 function readDeviceInput(body: Record<string, unknown>, existing?: Record<string, unknown>) {
   const type = readString(body.type || existing?.type || "BIOMETRIC").toUpperCase();
   const status = readString(body.status || existing?.status || "ACTIVE").toUpperCase();
+  const vendor = readString(body.vendor || existing?.vendor || "ZKTECO").toUpperCase();
+  const deviceMode = readString(body.device_mode || existing?.device_mode || "CSV_IMPORT").toUpperCase();
+  const directionMode = readString(body.direction_mode || existing?.direction_mode || "IN_OUT").toUpperCase();
   return {
     name: readString(body.name || existing?.name),
     device_code: readString(body.device_code || existing?.device_code),
     location_id: optionalString(body.location_id ?? existing?.location_id),
+    vendor: ["ZKTECO", "ZKTIME", "ZKBIO_TIME", "MANUAL_IMPORT", "GENERIC_API", "OTHER"].includes(vendor) ? vendor : "ZKTECO",
+    model: optionalString(body.model ?? existing?.model),
     type: DEVICE_TYPES.has(type) ? type : "BIOMETRIC",
     ip_address: optionalString(body.ip_address ?? existing?.ip_address),
+    port: num(body.port ?? existing?.port, null),
     serial_number: optionalString(body.serial_number ?? existing?.serial_number),
+    timezone: optionalString(body.timezone ?? existing?.timezone),
+    device_mode: ["CSV_IMPORT", "LOCAL_BRIDGE", "PUSH_ADMS", "API_PLACEHOLDER", "MANUAL"].includes(deviceMode) ? deviceMode : "CSV_IMPORT",
+    direction_mode: ["IN_OUT", "AUTO_PAIR", "PUNCH_STATE", "UNKNOWN"].includes(directionMode) ? directionMode : "IN_OUT",
+    external_device_id: optionalString(body.external_device_id ?? existing?.external_device_id),
+    adms_device_key: optionalString(body.adms_device_key ?? existing?.adms_device_key),
+    sync_enabled: bool(body.sync_enabled, Boolean(existing?.sync_enabled ?? 0)),
+    allow_csv_import: bool(body.allow_csv_import, Boolean(existing?.allow_csv_import ?? 1)),
+    allow_bridge_import: bool(body.allow_bridge_import, Boolean(existing?.allow_bridge_import ?? 0)),
+    allow_push_adms: bool(body.allow_push_adms, Boolean(existing?.allow_push_adms ?? 0)),
     status: DEVICE_STATUSES.has(status) ? status : "ACTIVE",
     notes: optionalString(body.notes ?? existing?.notes)
   };
 }
 
-attendanceRoutes.get("/devices", requirePermission("attendance.view"), async (c) => {
+attendanceRoutes.get("/devices", requireAnyPermission(["attendance.devices.view", "attendance.devices.manage", "attendance.view"]), async (c) => {
   const rows = await c.env.DB.prepare("SELECT ad.*, l.name AS location_name FROM attendance_devices ad LEFT JOIN locations l ON l.id = ad.location_id ORDER BY ad.status, ad.name").all();
   return ok(c, { devices: rows.results });
 });
 
-attendanceRoutes.get("/devices/:id", requirePermission("attendance.view"), async (c) => {
+attendanceRoutes.get("/devices/:id", requireAnyPermission(["attendance.devices.view", "attendance.devices.manage", "attendance.view"]), async (c) => {
   const device = await c.env.DB.prepare("SELECT ad.*, l.name AS location_name FROM attendance_devices ad LEFT JOIN locations l ON l.id = ad.location_id WHERE ad.id = ?").bind(routeParam(c, "id")).first();
   if (!device) return fail(c, 404, "NOT_FOUND", "Attendance device was not found.");
   return ok(c, { device });
 });
 
-attendanceRoutes.post("/devices", requirePermission("attendance.devices.manage"), async (c) => {
+attendanceRoutes.post("/devices", requireAnyPermission(["attendance.devices.create", "attendance.devices.manage"]), async (c) => {
   const input = readDeviceInput(await readJsonBody(c.req.raw));
   if (!input.name || !input.device_code) return fail(c, 400, "VALIDATION_ERROR", "Device name and code are required.");
   const id = crypto.randomUUID();
   try {
-    await c.env.DB.prepare("INSERT INTO attendance_devices (id, name, device_code, location_id, type, ip_address, serial_number, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.name, input.device_code, input.location_id, input.type, input.ip_address, input.serial_number, input.status, input.notes).run();
+    await c.env.DB.prepare(
+      `INSERT INTO attendance_devices
+        (id, name, device_code, location_id, vendor, model, type, ip_address, port, serial_number, timezone,
+         device_mode, direction_mode, external_device_id, adms_device_key, sync_enabled, allow_csv_import,
+         allow_bridge_import, allow_push_adms, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, input.name, input.device_code, input.location_id, input.vendor, input.model, input.type, input.ip_address, input.port, input.serial_number, input.timezone, input.device_mode, input.direction_mode, input.external_device_id, input.adms_device_key, input.sync_enabled ? 1 : 0, input.allow_csv_import ? 1 : 0, input.allow_bridge_import ? 1 : 0, input.allow_push_adms ? 1 : 0, input.status, input.notes).run();
   } catch {
     return fail(c, 409, "DUPLICATE_DEVICE", "Device code must be unique.");
   }
@@ -700,13 +721,19 @@ attendanceRoutes.post("/devices", requirePermission("attendance.devices.manage")
   return ok(c, { device: await c.env.DB.prepare("SELECT * FROM attendance_devices WHERE id = ?").bind(id).first() }, 201);
 });
 
-attendanceRoutes.patch("/devices/:id", requirePermission("attendance.devices.manage"), async (c) => {
+attendanceRoutes.patch("/devices/:id", requireAnyPermission(["attendance.devices.update", "attendance.devices.manage"]), async (c) => {
   const id = routeParam(c, "id");
   const old = await c.env.DB.prepare("SELECT * FROM attendance_devices WHERE id = ?").bind(id).first<Record<string, unknown>>();
   if (!old) return fail(c, 404, "NOT_FOUND", "Attendance device was not found.");
   const input = readDeviceInput(await readJsonBody(c.req.raw), old);
   if (!input.name || !input.device_code) return fail(c, 400, "VALIDATION_ERROR", "Device name and code are required.");
-  await c.env.DB.prepare("UPDATE attendance_devices SET name = ?, device_code = ?, location_id = ?, type = ?, ip_address = ?, serial_number = ?, status = ?, notes = ?, updated_at = ? WHERE id = ?").bind(input.name, input.device_code, input.location_id, input.type, input.ip_address, input.serial_number, input.status, input.notes, new Date().toISOString(), id).run();
+  await c.env.DB.prepare(
+    `UPDATE attendance_devices
+     SET name = ?, device_code = ?, location_id = ?, vendor = ?, model = ?, type = ?, ip_address = ?, port = ?,
+       serial_number = ?, timezone = ?, device_mode = ?, direction_mode = ?, external_device_id = ?, adms_device_key = ?,
+       sync_enabled = ?, allow_csv_import = ?, allow_bridge_import = ?, allow_push_adms = ?, status = ?, notes = ?, updated_at = ?
+     WHERE id = ?`
+  ).bind(input.name, input.device_code, input.location_id, input.vendor, input.model, input.type, input.ip_address, input.port, input.serial_number, input.timezone, input.device_mode, input.direction_mode, input.external_device_id, input.adms_device_key, input.sync_enabled ? 1 : 0, input.allow_csv_import ? 1 : 0, input.allow_bridge_import ? 1 : 0, input.allow_push_adms ? 1 : 0, input.status, input.notes, new Date().toISOString(), id).run();
   await auditAttendance(c, { action: "attendance.device.updated", entityType: "attendance_device", entityId: id, oldValue: old, newValue: input });
   await publishAttendance(c, "attendance.device.changed", id, "updated", "attendance_device");
   return ok(c, { device: await c.env.DB.prepare("SELECT * FROM attendance_devices WHERE id = ?").bind(id).first() });

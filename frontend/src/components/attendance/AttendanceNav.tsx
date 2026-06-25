@@ -9,7 +9,13 @@ const links = [
   { label: "Calendar", to: "/attendance/calendar", requiresModule: true },
   { label: "Corrections", to: "/attendance/corrections", requiresModule: true },
   { label: "Devices", to: "/attendance/devices", requiresModule: false },
+  { label: "Imports", to: "/attendance/imports", requiresModule: false },
+  { label: "Mappings", to: "/attendance/biometric-mappings", requiresModule: false },
+  { label: "Raw Logs", to: "/attendance/raw-logs", requiresModule: false },
+  { label: "Diagnostics", to: "/attendance/device-diagnostics", requiresModule: false },
+  { label: "Device Reports", to: "/attendance/device-reports", requiresModule: false },
   { label: "Reports", to: "/attendance/reports", requiresModule: true },
+  { label: "Device Settings", to: "/attendance/devices/settings", requiresModule: false },
   { label: "Settings", to: "/attendance/settings", requiresModule: false }
 ];
 

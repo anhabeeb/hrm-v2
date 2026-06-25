@@ -169,8 +169,8 @@ notHas(apiTs, "markPayrollRunPaid", "frontend markPayrollRunPaid helper");
 notHas(apiTs, "markPayrollAdvancePaid", "frontend markPayrollAdvancePaid helper");
 notHas(apiTs, "/mark-paid", "frontend mark-paid API path");
 notHas(apiTs, "listFinalSettlements", "active frontend final settlement list helper");
-notHas(apiTs, "createFinalSettlement", "active frontend final settlement create helper");
-notHas(apiTs, "updateFinalSettlement", "active frontend final settlement update helper");
+notHas(apiTs, "createFinalSettlement(token", "active frontend final settlement create helper");
+notHas(apiTs, "updateFinalSettlement(token", "active frontend final settlement update helper");
 
 notHas(payrollUiContent, "markPayrollRunPaid", "payroll UI markPayrollRunPaid call");
 notHas(payrollUiContent, "markPayrollAdvancePaid", "payroll UI markPayrollAdvancePaid call");

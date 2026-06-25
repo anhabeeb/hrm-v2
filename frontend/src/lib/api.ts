@@ -1,5 +1,18 @@
 import type { AccessScopeRule, AccessUser, ApiEnvelope, AuthUser, BootstrapStatus, EmployeeUserAccessPreview, Permission, Role, RoleMappingRule, UserStatus } from "../types/auth";
-import type { AttendanceCorrection, AttendanceDashboard, AttendanceDayOverride, AttendanceDevice, AttendanceLog, AttendancePayrollImpact, AttendanceRawLog, AttendanceRecord, AttendanceSettings } from "../types/attendance";
+import type {
+  ApprovalAction,
+  ApprovalDelegationRule,
+  ApprovalInstance,
+  ApprovalInstanceStep,
+  ApprovalNotificationTemplate,
+  ApprovalPreview,
+  ApprovalStepAssignee,
+  ApprovalWorkflow,
+  ApprovalWorkflowCondition,
+  ApprovalWorkflowSettings,
+  ApprovalWorkflowStep
+} from "../types/approvals";
+import type { AttendanceCorrection, AttendanceDashboard, AttendanceDayOverride, AttendanceDevice, AttendanceDeviceSettings, AttendanceImportBatch, AttendanceImportRowError, AttendanceLockedDayWarning, AttendanceLog, AttendancePayrollImpact, AttendanceRawLog, AttendanceRecord, AttendanceSettings, AttendanceUnmatchedLog, AttendanceVendorIntegration, EmployeeBiometricMapping } from "../types/attendance";
 import type {
   CompanyInput,
   DepartmentInput,
@@ -37,6 +50,8 @@ import type {
 import type {
   AssetAssignment,
   AssetAssignmentEvent,
+  AssetUniformEvent,
+  AssetUniformSettings,
   AssetCategory,
   AssetDashboard,
   AssetDeductionRule,
@@ -46,15 +61,24 @@ import type {
   EmployeeNote,
   EmployeeNoteAttachment,
   EmployeeNoteCategory,
-  EmployeeNoteVersion
+  EmployeeNoteVersion,
+  UniformAssignment,
+  UniformStockItem,
+  UniformType
 } from "../types/assets";
 import type {
   DocumentCategory,
+  DocumentComplianceDashboard,
+  DocumentComplianceSettings,
   DocumentDashboard,
+  DocumentExpiryAlert,
   DocumentRequiredRule,
   DocumentRequiredRuleInput,
+  DocumentRenewalCase,
+  DocumentRequirementWaiver,
   DocumentType,
   DocumentTypeInput,
+  EmployeeDocumentCompliance,
   EmployeeDocument,
   EmployeeDocumentVersion,
   MissingDocument
@@ -63,6 +87,15 @@ import type { RosterAssignment, RosterDashboard, RosterPeriod, RosterSettings, S
 import type {
   EmployeePayrollProfile,
   EmployeePayrollSummary,
+  CustomDeductionTemplate,
+  EmployeeCustomDeduction,
+  EmployeeCustomDeductionApplication,
+  EmployeeBankLoan,
+  EmployeeBankLoanPayment,
+  EmployeePaymentMethod,
+  EmployeePensionProfile,
+  BankLoanEligibilityRule,
+  BankLoanRemittanceBatch,
   PayrollAdjustment,
   PayrollAdvance,
   PayrollApprovalEvent,
@@ -73,11 +106,33 @@ import type {
   PayrollPaymentRegister,
   PayrollPayslip,
   PayrollPeriod,
+  PayrollPensionContribution,
   PayrollRun,
   PayrollRunEmployee,
   PayrollRunLine,
-  PayrollSettings
+  PayrollSettings,
+  PaymentInstitution,
+  PensionRemittanceBatch,
+  PensionScheme
 } from "../types/payroll";
+import type {
+  FinalSettlementCalculation,
+  FinalSettlementCase,
+  FinalSettlementClearanceItem,
+  FinalSettlementEvent,
+  FinalSettlementLineItem,
+  FinalSettlementPaymentRegister,
+  FinalSettlementSettings,
+  FinalSettlementSummary
+} from "../types/final-settlement";
+import type {
+  LifecycleEvent,
+  LifecycleSettings,
+  LifecycleSummary,
+  LifecycleTask,
+  OffboardingCase,
+  OnboardingCase
+} from "../types/lifecycle";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -194,17 +249,183 @@ export const api = {
   exportReportCsv(token: string, key: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return blobRequest(`/api/v1/reports/${key}/export.csv${query(filters)}`, token);
   },
+  getApprovalSettings(token: string) {
+    return request<{ settings: ApprovalWorkflowSettings }>("/api/v1/approvals/settings", {}, token);
+  },
+  updateApprovalSettings(token: string, input: Partial<ApprovalWorkflowSettings>) {
+    return request<{ settings: ApprovalWorkflowSettings }>("/api/v1/approvals/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  listApprovalWorkflows(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ workflows: ApprovalWorkflow[] }>(`/api/v1/approvals/workflows${query(filters)}`, {}, token);
+  },
+  getApprovalWorkflow(token: string, workflowId: string) {
+    return request<{ workflow: ApprovalWorkflow; conditions: ApprovalWorkflowCondition[]; steps: ApprovalWorkflowStep[] }>(`/api/v1/approvals/workflows/${workflowId}`, {}, token);
+  },
+  createApprovalWorkflow(token: string, input: Partial<ApprovalWorkflow>) {
+    return request<{ workflow: ApprovalWorkflow }>("/api/v1/approvals/workflows", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateApprovalWorkflow(token: string, workflowId: string, input: Partial<ApprovalWorkflow>) {
+    return request<{ workflow: ApprovalWorkflow }>(`/api/v1/approvals/workflows/${workflowId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  approvalWorkflowAction(token: string, workflowId: string, action: "archive" | "activate" | "deactivate") {
+    return request<{ workflow: ApprovalWorkflow }>(`/api/v1/approvals/workflows/${workflowId}/${action}`, { method: "POST" }, token);
+  },
+  createApprovalWorkflowCondition(token: string, workflowId: string, input: Record<string, unknown>) {
+    return request<{ condition_id: string }>(`/api/v1/approvals/workflows/${workflowId}/conditions`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateApprovalWorkflowCondition(token: string, workflowId: string, conditionId: string, input: Record<string, unknown>) {
+    return request<{ updated: boolean }>(`/api/v1/approvals/workflows/${workflowId}/conditions/${conditionId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  deleteApprovalWorkflowCondition(token: string, workflowId: string, conditionId: string) {
+    return request<{ deleted: boolean }>(`/api/v1/approvals/workflows/${workflowId}/conditions/${conditionId}`, { method: "DELETE" }, token);
+  },
+  createApprovalWorkflowStep(token: string, workflowId: string, input: Record<string, unknown>) {
+    return request<{ step_id: string }>(`/api/v1/approvals/workflows/${workflowId}/steps`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateApprovalWorkflowStep(token: string, workflowId: string, stepId: string, input: Record<string, unknown>) {
+    return request<{ updated: boolean }>(`/api/v1/approvals/workflows/${workflowId}/steps/${stepId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  deleteApprovalWorkflowStep(token: string, workflowId: string, stepId: string) {
+    return request<{ deleted: boolean }>(`/api/v1/approvals/workflows/${workflowId}/steps/${stepId}`, { method: "DELETE" }, token);
+  },
+  listApprovalInbox(token: string, mode: "inbox" | "submitted" | "history" | "overdue" | "escalated" | "delegated-to-me" = "inbox", filters?: Record<string, string | number | boolean | null | undefined>) {
+    const path = mode === "inbox" ? "/api/v1/approvals/inbox" : `/api/v1/approvals/${mode}`;
+    return request<{ approvals: ApprovalInstance[] }>(`${path}${query(filters)}`, {}, token);
+  },
+  getApprovalInstance(token: string, instanceId: string) {
+    return request<{ instance: ApprovalInstance; steps: ApprovalInstanceStep[]; assignees: ApprovalStepAssignee[]; timeline: ApprovalAction[] }>(`/api/v1/approvals/instances/${instanceId}`, {}, token);
+  },
+  approvalInstanceAction(token: string, instanceId: string, action: "approve" | "reject" | "send-back" | "cancel", input: Record<string, unknown> = {}) {
+    return request<{ instance: ApprovalInstance | null }>(`/api/v1/approvals/instances/${instanceId}/${action}`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getApprovalTimeline(token: string, instanceId: string) {
+    return request<{ timeline: ApprovalAction[] }>(`/api/v1/approvals/instances/${instanceId}/timeline`, {}, token);
+  },
+  previewApprovalWorkflow(token: string, input: Record<string, unknown>) {
+    return request<{ preview: ApprovalPreview }>("/api/v1/approvals/preview", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  listApprovalDelegations(token: string) {
+    return request<{ delegations: ApprovalDelegationRule[] }>("/api/v1/approvals/delegations", {}, token);
+  },
+  createApprovalDelegation(token: string, input: Record<string, unknown>) {
+    return request<{ delegation_id: string }>("/api/v1/approvals/delegations", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  cancelApprovalDelegation(token: string, delegationId: string, reason: string) {
+    return request<{ cancelled: boolean }>(`/api/v1/approvals/delegations/${delegationId}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  refreshApprovalReminders(token: string) {
+    return request<{ reminders_created: number }>("/api/v1/approvals/reminders/refresh", { method: "POST" }, token);
+  },
+  refreshApprovalEscalations(token: string) {
+    return request<{ escalations_created: number }>("/api/v1/approvals/escalations/refresh", { method: "POST" }, token);
+  },
+  listApprovalNotificationTemplates(token: string) {
+    return request<{ templates: ApprovalNotificationTemplate[] }>("/api/v1/approvals/notification-templates", {}, token);
+  },
+  updateApprovalNotificationTemplate(token: string, templateId: string, input: Partial<ApprovalNotificationTemplate>) {
+    return request<{ updated: boolean }>(`/api/v1/approvals/notification-templates/${templateId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  getSelfServiceApprovals(token: string) {
+    return request<{ approvals: ApprovalInstance[]; visibility_mode: string; message?: string }>("/api/v1/self-service/approvals", {}, token);
+  },
+  getReportExportLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ logs: Record<string, unknown>[] }>(`/api/v1/reports/export-logs${query(filters)}`, {}, token);
+  },
+  getContractSettings(token: string) {
+    return request<{ settings: Record<string, unknown> }>("/api/v1/contracts/settings", {}, token);
+  },
+  updateContractSettings(token: string, input: Record<string, unknown>) {
+    return request<{ settings: Record<string, unknown> }>("/api/v1/contracts/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  listContractTypes(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ types: Record<string, unknown>[] }>(`/api/v1/contracts/types${query(filters)}`, {}, token);
+  },
+  createContractType(token: string, input: Record<string, unknown>) {
+    return request<{ type: Record<string, unknown> }>("/api/v1/contracts/types", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateContractType(token: string, typeId: string, input: Record<string, unknown>) {
+    return request<{ type: Record<string, unknown> }>(`/api/v1/contracts/types/${typeId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  archiveContractType(token: string, typeId: string, reason?: string | null) {
+    return request<{ archived: boolean }>(`/api/v1/contracts/types/${typeId}/archive`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
+  },
+  listContracts(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ contracts: Record<string, unknown>[] }>(`/api/v1/contracts${query(filters)}`, {}, token);
+  },
+  getContract(token: string, contractId: string) {
+    return request<{ contract: Record<string, unknown>; events: Record<string, unknown>[]; document_status: Record<string, unknown> }>(`/api/v1/contracts/${contractId}`, {}, token);
+  },
+  createEmployeeContract(token: string, employeeId: string, input: Record<string, unknown>) {
+    return request<{ contract: Record<string, unknown> }>(`/api/v1/employees/${employeeId}/contracts`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateContract(token: string, contractId: string, input: Record<string, unknown>) {
+    return request<{ contract: Record<string, unknown> }>(`/api/v1/contracts/${contractId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  contractAction(token: string, contractId: string, action: string, input: Record<string, unknown> = {}) {
+    return request<{ contract?: Record<string, unknown>; updated?: boolean }>(`/api/v1/contracts/${contractId}/${action}`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  listEmployeeContracts(token: string, employeeId: string) {
+    return request<{ contracts: Record<string, unknown>[] }>(`/api/v1/employees/${employeeId}/contracts`, {}, token);
+  },
+  getEmployeeContractSummary(token: string, employeeId: string) {
+    return request<{ active_contract: Record<string, unknown> | null; contract_history: Record<string, unknown>[]; events: Record<string, unknown>[]; alerts: Record<string, unknown>[]; requirement_status: Record<string, unknown>; payroll_impact: Record<string, unknown>; final_settlement_context: Record<string, unknown> }>(`/api/v1/employees/${employeeId}/contracts/summary`, {}, token);
+  },
+  listProbationDue(token: string) {
+    return request<{ contracts: Record<string, unknown>[] }>("/api/v1/contracts/probation/due", {}, token);
+  },
+  listContractRenewals(token: string) {
+    return request<{ renewals: Record<string, unknown>[] }>("/api/v1/contracts/renewals", {}, token);
+  },
+  listContractAlerts(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ alerts: Record<string, unknown>[] }>(`/api/v1/contracts/alerts${query(filters)}`, {}, token);
+  },
+  refreshContractAlerts(token: string) {
+    return request<{ created: number; disabled: boolean }>("/api/v1/contracts/alerts/refresh", { method: "POST" }, token);
+  },
+  contractAlertAction(token: string, alertId: string, action: "acknowledge" | "resolve" | "dismiss", input: Record<string, unknown> = {}) {
+    return request<{ updated: boolean }>(`/api/v1/contracts/alerts/${alertId}/${action}`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getSelfServiceContracts(token: string) {
+    return request<{ active_contract: Record<string, unknown> | null; contract_history: Record<string, unknown>[]; salary_terms_visible: boolean; message?: string | null }>("/api/v1/self-service/contracts", {}, token);
+  },
   getSelfServiceMe(token: string) {
-    return request<{ linked_employee: boolean; employee_id: string | null; unavailable_message: string | null }>("/api/v1/self-service/me", {}, token);
+    return request<{ linked_employee: boolean; employee_id: string | null; unavailable_message: string | null; module_visibility?: Record<string, boolean> }>("/api/v1/self-service/me", {}, token);
+  },
+  getSelfServiceSettings(token: string) {
+    return request<{ settings: Record<string, unknown> }>("/api/v1/self-service/settings", {}, token);
+  },
+  updateSelfServiceSettings(token: string, input: Record<string, unknown>) {
+    return request<{ settings: Record<string, unknown> }>("/api/v1/self-service/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  getSelfServiceDashboard(token: string) {
+    return request<{ employee: Record<string, unknown>; summary: Record<string, unknown>; module_visibility: Record<string, boolean>; notifications: Record<string, unknown>[]; unread_notifications: number }>("/api/v1/self-service/dashboard", {}, token);
   },
   getSelfServiceProfile(token: string) {
     return request<{ employee: Record<string, unknown> | null; contacts: Record<string, unknown>[] }>("/api/v1/self-service/profile", {}, token);
   },
+  getSelfServiceProfileUpdateRequests(token: string) {
+    return request<{ requests: Record<string, unknown>[] }>("/api/v1/self-service/profile/update-requests", {}, token);
+  },
+  createSelfServiceProfileUpdateRequest(token: string, input: Record<string, unknown>) {
+    return request<{ request_id: string }>("/api/v1/self-service/profile/update-requests", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  cancelSelfServiceProfileUpdateRequest(token: string, requestId: string) {
+    return request<{ cancelled: boolean }>(`/api/v1/self-service/profile/update-requests/${requestId}/cancel`, { method: "POST" }, token);
+  },
   getSelfServiceDocuments(token: string) {
     return request<{ documents: Record<string, unknown>[]; upload_enabled: boolean; upload_note: string }>("/api/v1/self-service/documents", {}, token);
   },
+  getSelfServiceDocumentWarnings(token: string) {
+    return request<{ warnings: Record<string, unknown>[] }>("/api/v1/self-service/documents/warnings", {}, token);
+  },
   getSelfServiceAttendance(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ records: Record<string, unknown>[]; corrections: Record<string, unknown>[]; filters: Record<string, unknown> }>(`/api/v1/self-service/attendance${query(filters)}`, {}, token);
+  },
+  getSelfServiceAttendanceSummary(token: string) {
+    return request<{ summary: Record<string, unknown>[]; corrections: Record<string, unknown>[] }>("/api/v1/self-service/attendance/summary", {}, token);
+  },
+  getSelfServiceAttendanceCalendar(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ records: Record<string, unknown>[]; filters: Record<string, unknown> }>(`/api/v1/self-service/attendance/calendar${query(filters)}`, {}, token);
   },
   createSelfServiceAttendanceCorrection(token: string, input: Record<string, unknown>) {
     return request<{ correction_id: string }>("/api/v1/self-service/attendance/corrections", { method: "POST", body: JSON.stringify(input) }, token);
@@ -215,11 +436,41 @@ export const api = {
   getSelfServiceLeave(token: string) {
     return request<{ balances: Record<string, unknown>[]; balance_cycles: Record<string, unknown>[]; ledger_recent: Record<string, unknown>[]; requests: Record<string, unknown>[]; approvals: Record<string, unknown>[]; leave_request_enabled: boolean }>("/api/v1/self-service/leave", {}, token);
   },
+  getSelfServiceLeaveSummary(token: string) {
+    return request<{ summary: Record<string, unknown> }>("/api/v1/self-service/leave/summary", {}, token);
+  },
+  getSelfServiceLeaveBalances(token: string) {
+    return request<{ balance_cycles: Record<string, unknown>[]; ledger_recent: Record<string, unknown>[] }>("/api/v1/self-service/leave/balances", {}, token);
+  },
+  cancelSelfServiceLeaveRequest(token: string, requestId: string) {
+    return request<{ cancelled: boolean }>(`/api/v1/self-service/leave/requests/${requestId}/cancel`, { method: "POST" }, token);
+  },
   getSelfServicePayroll(token: string) {
     return request<{ profile: Record<string, unknown> | null; runs: Record<string, unknown>[]; advances: Record<string, unknown>[]; deductions: Record<string, unknown>[]; payslip_download_enabled: boolean }>("/api/v1/self-service/payroll", {}, token);
   },
+  getSelfServicePayrollSummary(token: string) {
+    return request<{ summary: Record<string, unknown> }>("/api/v1/self-service/payroll/summary", {}, token);
+  },
+  getSelfServicePayrollHistory(token: string) {
+    return request<{ history: Record<string, unknown>[] }>("/api/v1/self-service/payroll/history", {}, token);
+  },
   getSelfServiceAssets(token: string) {
     return request<{ assignments: Record<string, unknown>[] }>("/api/v1/self-service/assets", {}, token);
+  },
+  getSelfServiceUniforms(token: string) {
+    return request<{ assignments: Record<string, unknown>[] }>("/api/v1/self-service/uniforms", {}, token);
+  },
+  getSelfServiceRequests(token: string) {
+    return request<{ requests: Record<string, unknown> }>("/api/v1/self-service/requests", {}, token);
+  },
+  getSelfServiceNotifications(token: string) {
+    return request<{ notifications: Record<string, unknown>[]; unread_count: number }>("/api/v1/self-service/notifications", {}, token);
+  },
+  markSelfServiceNotificationRead(token: string, notificationId: string) {
+    return request<{ read: boolean }>(`/api/v1/self-service/notifications/${notificationId}/read`, { method: "POST" }, token);
+  },
+  markAllSelfServiceNotificationsRead(token: string) {
+    return request<{ read: boolean }>("/api/v1/self-service/notifications/mark-all-read", { method: "POST" }, token);
   },
   listSelfServiceKycRequests(token: string) {
     return request<{ requests: Record<string, unknown>[] }>("/api/v1/self-service/kyc-requests", {}, token);
@@ -493,6 +744,126 @@ export const api = {
   updateEmployeeOnboardingTask(token: string, id: string, taskId: string, status: OnboardingStatus) {
     return request<{ task: OnboardingTask }>(`/api/v1/employees/${id}/onboarding/${taskId}`, { method: "PATCH", body: JSON.stringify({ status }) }, token);
   },
+  createEmployeeOnboardingCase(token: string, employeeId: string) {
+    return request<{ case_id: string }>(`/api/v1/employees/${employeeId}/onboarding/cases`, { method: "POST" }, token);
+  },
+  createEmployeeOffboardingCase(token: string, employeeId: string, input: { exit_type: string; last_working_day: string; exit_reason?: string | null; exit_notice_date?: string | null }) {
+    return request<{ case_id: string }>(`/api/v1/employees/${employeeId}/offboarding/cases`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getEmployeeLifecycleSummary(token: string, employeeId: string) {
+    return request<{ summary: LifecycleSummary }>(`/api/v1/employees/${employeeId}/lifecycle-summary`, {}, token);
+  },
+  listEmployeeLifecycleEvents(token: string, employeeId: string) {
+    return request<{ events: LifecycleEvent[] }>(`/api/v1/employees/${employeeId}/lifecycle-events`, {}, token);
+  },
+  getLifecycleDashboard(token: string) {
+    return request<{ dashboard: Record<string, unknown> }>("/api/v1/lifecycle/dashboard", {}, token);
+  },
+  listLifecycleEvents(token: string) {
+    return request<{ events: LifecycleEvent[] }>("/api/v1/lifecycle/events", {}, token);
+  },
+  getOnboardingSettings(token: string) {
+    return request<{ settings: LifecycleSettings }>("/api/v1/onboarding/settings", {}, token);
+  },
+  updateOnboardingSettings(token: string, input: Partial<LifecycleSettings>) {
+    return request<{ settings: LifecycleSettings }>("/api/v1/onboarding/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  listOnboardingCases(token: string) {
+    return request<{ cases: OnboardingCase[] }>("/api/v1/onboarding/cases", {}, token);
+  },
+  getOnboardingDashboard(token: string) {
+    return request<{ dashboard: Record<string, unknown> }>("/api/v1/onboarding/dashboard", {}, token);
+  },
+  listOnboardingAlerts(token: string) {
+    return request<{ alerts: Record<string, unknown>[] }>("/api/v1/onboarding/alerts", {}, token);
+  },
+  refreshOnboardingAlerts(token: string) {
+    return request<{ refreshed: boolean }>("/api/v1/onboarding/alerts/refresh", { method: "POST" }, token);
+  },
+  getOnboardingCase(token: string, caseId: string) {
+    return request<{ case: OnboardingCase; employee: Employee; checklist: { tasks: LifecycleTask[] }; approval: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}`, {}, token);
+  },
+  updateOnboardingCase(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ case: OnboardingCase }>(`/api/v1/onboarding/cases/${caseId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  refreshOnboardingTasks(token: string, caseId: string) {
+    return request<{ checklist: { tasks: LifecycleTask[] } }>(`/api/v1/onboarding/cases/${caseId}/tasks/refresh`, { method: "POST" }, token);
+  },
+  getOnboardingReadiness(token: string, caseId: string) {
+    return request<{ readiness: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/readiness`, {}, token);
+  },
+  submitOnboardingActivation(token: string, caseId: string) {
+    return request<Record<string, unknown>>(`/api/v1/onboarding/cases/${caseId}/submit-activation`, { method: "POST" }, token);
+  },
+  approveOnboardingActivation(token: string, caseId: string) {
+    return request<Record<string, unknown>>(`/api/v1/onboarding/cases/${caseId}/approve-activation`, { method: "POST" }, token);
+  },
+  activateOnboardingCase(token: string, caseId: string) {
+    return request<Record<string, unknown>>(`/api/v1/onboarding/cases/${caseId}/activate`, { method: "POST" }, token);
+  },
+  activateOnboardingCaseWithOverride(token: string, caseId: string, reason: string) {
+    return request<Record<string, unknown>>(`/api/v1/onboarding/cases/${caseId}/activate-with-override`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  completeOnboardingTask(token: string, taskId: string) {
+    return request<{ completed: boolean }>(`/api/v1/onboarding/tasks/${taskId}/complete`, { method: "POST" }, token);
+  },
+  waiveOnboardingTask(token: string, taskId: string, reason: string) {
+    return request<{ waived: boolean }>(`/api/v1/onboarding/tasks/${taskId}/waive`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  reopenOnboardingTask(token: string, taskId: string) {
+    return request<{ reopened: boolean }>(`/api/v1/onboarding/tasks/${taskId}/reopen`, { method: "POST" }, token);
+  },
+  getOffboardingSettings(token: string) {
+    return request<{ settings: LifecycleSettings }>("/api/v1/offboarding/settings", {}, token);
+  },
+  updateOffboardingSettings(token: string, input: Partial<LifecycleSettings>) {
+    return request<{ settings: LifecycleSettings }>("/api/v1/offboarding/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  listOffboardingCases(token: string) {
+    return request<{ cases: OffboardingCase[] }>("/api/v1/offboarding/cases", {}, token);
+  },
+  getOffboardingDashboard(token: string) {
+    return request<{ dashboard: Record<string, unknown> }>("/api/v1/offboarding/dashboard", {}, token);
+  },
+  getOffboardingCase(token: string, caseId: string) {
+    return request<{ case: OffboardingCase; employee: Employee; checklist: { tasks: LifecycleTask[] }; approval: Record<string, unknown> }>(`/api/v1/offboarding/cases/${caseId}`, {}, token);
+  },
+  updateOffboardingCase(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ case: OffboardingCase }>(`/api/v1/offboarding/cases/${caseId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  refreshOffboardingTasks(token: string, caseId: string) {
+    return request<{ checklist: { tasks: LifecycleTask[] } }>(`/api/v1/offboarding/cases/${caseId}/tasks/refresh`, { method: "POST" }, token);
+  },
+  getOffboardingReadiness(token: string, caseId: string) {
+    return request<{ readiness: Record<string, unknown> }>(`/api/v1/offboarding/cases/${caseId}/readiness`, {}, token);
+  },
+  submitOffboardingFinalization(token: string, caseId: string) {
+    return request<Record<string, unknown>>(`/api/v1/offboarding/cases/${caseId}/submit-finalization`, { method: "POST" }, token);
+  },
+  approveOffboardingFinalization(token: string, caseId: string) {
+    return request<Record<string, unknown>>(`/api/v1/offboarding/cases/${caseId}/approve-finalization`, { method: "POST" }, token);
+  },
+  finalizeOffboardingCase(token: string, caseId: string) {
+    return request<Record<string, unknown>>(`/api/v1/offboarding/cases/${caseId}/finalize-exit`, { method: "POST" }, token);
+  },
+  finalizeOffboardingCaseWithOverride(token: string, caseId: string, reason: string) {
+    return request<Record<string, unknown>>(`/api/v1/offboarding/cases/${caseId}/finalize-with-override`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  completeOffboardingTask(token: string, taskId: string) {
+    return request<{ completed: boolean }>(`/api/v1/offboarding/tasks/${taskId}/complete`, { method: "POST" }, token);
+  },
+  waiveOffboardingTask(token: string, taskId: string, reason: string) {
+    return request<{ waived: boolean }>(`/api/v1/offboarding/tasks/${taskId}/waive`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  reopenOffboardingTask(token: string, taskId: string) {
+    return request<{ reopened: boolean }>(`/api/v1/offboarding/tasks/${taskId}/reopen`, { method: "POST" }, token);
+  },
+  getSelfServiceOnboarding(token: string) {
+    return request<{ onboarding: OnboardingCase | null; tasks: LifecycleTask[]; events: LifecycleEvent[] }>("/api/v1/self-service/onboarding", {}, token);
+  },
+  getSelfServiceOffboarding(token: string) {
+    return request<{ offboarding: OffboardingCase | null; tasks: LifecycleTask[]; events: LifecycleEvent[] }>("/api/v1/self-service/offboarding", {}, token);
+  },
   listEmployeeAudit(token: string, id: string) {
     return request<{ audit: Record<string, unknown>[] }>(`/api/v1/employees/${id}/audit`, {}, token);
   },
@@ -606,6 +977,84 @@ export const api = {
   },
   streamEmployeeProfilePhoto(token: string, employeeId: string) {
     return blobRequest(`/api/v1/employees/${employeeId}/profile-photo`, token);
+  },
+  getDocumentComplianceSettings(token: string) {
+    return request<{ settings: DocumentComplianceSettings }>("/api/v1/documents/compliance/settings", {}, token);
+  },
+  updateDocumentComplianceSettings(token: string, input: Partial<DocumentComplianceSettings>) {
+    return request<{ settings: DocumentComplianceSettings }>("/api/v1/documents/compliance/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  listDocumentTypeCompliance(token: string) {
+    return request<{ document_types: DocumentType[] }>("/api/v1/documents/types/compliance", {}, token);
+  },
+  updateDocumentTypeCompliance(token: string, typeId: string, input: Partial<DocumentType>) {
+    return request<{ document_type: DocumentType }>(`/api/v1/documents/types/${typeId}/compliance`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  archiveDocumentRequiredRule(token: string, ruleId: string) {
+    return request<{ archived: boolean }>(`/api/v1/documents/required-rules/${ruleId}/archive`, { method: "POST" }, token);
+  },
+  getDocumentComplianceDashboard(token: string) {
+    return request<DocumentComplianceDashboard>("/api/v1/documents/compliance/dashboard", {}, token);
+  },
+  refreshDocumentCompliance(token: string) {
+    return request<{ refreshed_count: number; employee_ids: string[]; alerts?: Record<string, unknown> }>("/api/v1/documents/compliance/refresh", { method: "POST" }, token);
+  },
+  listDocumentComplianceMissing(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ missing: Record<string, unknown>[]; rows: Record<string, unknown>[] }>(`/api/v1/documents/compliance/missing${query(filters)}`, {}, token);
+  },
+  listDocumentComplianceExpiring(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ expiring: Record<string, unknown>[]; rows: Record<string, unknown>[] }>(`/api/v1/documents/compliance/expiring${query(filters)}`, {}, token);
+  },
+  listDocumentComplianceExpired(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ expired: Record<string, unknown>[]; rows: Record<string, unknown>[] }>(`/api/v1/documents/compliance/expired${query(filters)}`, {}, token);
+  },
+  listDocumentAlerts(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ alerts: DocumentExpiryAlert[] }>(`/api/v1/documents/alerts${query(filters)}`, {}, token);
+  },
+  refreshDocumentAlerts(token: string) {
+    return request<Record<string, unknown>>("/api/v1/documents/alerts/refresh", { method: "POST" }, token);
+  },
+  documentAlertAction(token: string, alertId: string, action: "acknowledge" | "resolve" | "dismiss", reason?: string) {
+    return request<{ alert: DocumentExpiryAlert }>(`/api/v1/documents/alerts/${alertId}/${action}`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  listDocumentRenewalCases(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ renewal_cases: DocumentRenewalCase[] }>(`/api/v1/documents/renewal-cases${query(filters)}`, {}, token);
+  },
+  getDocumentRenewalCase(token: string, caseId: string) {
+    return request<{ renewal_case: DocumentRenewalCase; events: Record<string, unknown>[] }>(`/api/v1/documents/renewal-cases/${caseId}`, {}, token);
+  },
+  updateDocumentRenewalCase(token: string, caseId: string, input: Partial<DocumentRenewalCase>) {
+    return request<{ renewal_case: DocumentRenewalCase }>(`/api/v1/documents/renewal-cases/${caseId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  documentRenewalCaseAction(token: string, caseId: string, action: "assign" | "mark-in-progress" | "mark-waiting" | "complete" | "cancel", input: Record<string, unknown> = {}) {
+    return request<{ renewal_case: DocumentRenewalCase }>(`/api/v1/documents/renewal-cases/${caseId}/${action}`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  listDocumentRenewalCaseEvents(token: string, caseId: string) {
+    return request<{ events: Record<string, unknown>[] }>(`/api/v1/documents/renewal-cases/${caseId}/events`, {}, token);
+  },
+  listDocumentRequirementWaivers(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ waivers: DocumentRequirementWaiver[] }>(`/api/v1/documents/waivers${query(filters)}`, {}, token);
+  },
+  cancelDocumentRequirementWaiver(token: string, waiverId: string, reason: string) {
+    return request<{ waiver: DocumentRequirementWaiver }>(`/api/v1/documents/waivers/${waiverId}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  getEmployeeDocumentCompliance(token: string, employeeId: string) {
+    return request<{ compliance: EmployeeDocumentCompliance }>(`/api/v1/employees/${employeeId}/documents/compliance`, {}, token);
+  },
+  getEmployeeDocumentComplianceSummary(token: string, employeeId: string) {
+    return request<{ summary: EmployeeDocumentCompliance }>(`/api/v1/employees/${employeeId}/documents/compliance-summary`, {}, token);
+  },
+  refreshEmployeeDocumentCompliance(token: string, employeeId: string) {
+    return request<{ compliance: EmployeeDocumentCompliance }>(`/api/v1/employees/${employeeId}/documents/compliance/refresh`, { method: "POST" }, token);
+  },
+  createEmployeeDocumentWaiver(token: string, employeeId: string, input: { document_type_id: string; waiver_reason: string; waiver_start_date?: string | null; waiver_end_date?: string | null; required_rule_id?: string | null }) {
+    return request<{ waiver: DocumentRequirementWaiver }>(`/api/v1/employees/${employeeId}/documents/waivers`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  createEmployeeDocumentRenewalCase(token: string, employeeId: string, input: Record<string, unknown>) {
+    return request<{ renewal_case: DocumentRenewalCase }>(`/api/v1/employees/${employeeId}/documents/renewal-cases`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getSelfServiceDocumentCompliance(token: string) {
+    return request<{ compliance: EmployeeDocumentCompliance & { renewal_cases?: Record<string, unknown>[]; upload_note?: string; upload_request_enabled?: boolean } }>("/api/v1/self-service/documents/compliance", {}, token);
   },
   listLeaveTypes(token: string) {
     return request<{ leave_types: LeaveType[] }>("/api/v1/leave/types", {}, token);
@@ -778,6 +1227,12 @@ export const api = {
   listAttendanceDevices(token: string) {
     return request<{ devices: AttendanceDevice[] }>("/api/v1/attendance/devices", {}, token);
   },
+  getAttendanceDeviceSettings(token: string) {
+    return request<{ settings: AttendanceDeviceSettings }>("/api/v1/attendance/devices/settings", {}, token);
+  },
+  updateAttendanceDeviceSettings(token: string, input: Partial<AttendanceDeviceSettings>) {
+    return request<{ settings: AttendanceDeviceSettings }>("/api/v1/attendance/devices/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
   getAttendanceDevice(token: string, id: string) {
     return request<{ device: AttendanceDevice }>(`/api/v1/attendance/devices/${id}`, {}, token);
   },
@@ -790,8 +1245,107 @@ export const api = {
   attendanceDeviceAction(token: string, id: string, action: "enable" | "disable") {
     return request<{ device: AttendanceDevice }>(`/api/v1/attendance/devices/${id}/${action}`, { method: "POST" }, token);
   },
+  archiveAttendanceDevice(token: string, id: string, reason?: string | null) {
+    return request<{ archived: boolean }>(`/api/v1/attendance/devices/${id}/archive`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
+  },
+  testAttendanceDeviceConnection(token: string, id: string) {
+    return request<{ status: string; message: string }>(`/api/v1/attendance/devices/${id}/test-connection-placeholder`, { method: "POST" }, token);
+  },
+  getAttendanceDeviceDiagnostics(token: string, id: string) {
+    return request<{ device: AttendanceDevice; status_counts: Record<string, unknown>[]; diagnostics: Record<string, unknown> }>(`/api/v1/attendance/devices/${id}/diagnostics`, {}, token);
+  },
+  listBiometricMappings(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ mappings: EmployeeBiometricMapping[] }>(`/api/v1/attendance/biometric-mappings${query(filters)}`, {}, token);
+  },
+  createBiometricMapping(token: string, input: Partial<EmployeeBiometricMapping>) {
+    return request<{ mapping: EmployeeBiometricMapping }>("/api/v1/attendance/biometric-mappings", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateBiometricMapping(token: string, id: string, input: Partial<EmployeeBiometricMapping>) {
+    return request<{ mapping: EmployeeBiometricMapping }>(`/api/v1/attendance/biometric-mappings/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  archiveBiometricMapping(token: string, id: string) {
+    return request<{ archived: boolean }>(`/api/v1/attendance/biometric-mappings/${id}/archive`, { method: "POST" }, token);
+  },
+  listEmployeeBiometricMappings(token: string, employeeId: string) {
+    return request<{ mappings: EmployeeBiometricMapping[] }>(`/api/v1/employees/${employeeId}/biometric-mappings`, {}, token);
+  },
+  createEmployeeBiometricMapping(token: string, employeeId: string, input: Partial<EmployeeBiometricMapping>) {
+    return request<{ mapping: EmployeeBiometricMapping }>(`/api/v1/employees/${employeeId}/biometric-mappings`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  listAttendanceImportBatches(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ batches: AttendanceImportBatch[] }>(`/api/v1/attendance/import-batches${query(filters)}`, {}, token);
+  },
+  getAttendanceImportBatch(token: string, id: string) {
+    return request<{ batch: AttendanceImportBatch; logs: AttendanceRawLog[]; errors: AttendanceImportRowError[] }>(`/api/v1/attendance/import-batches/${id}`, {}, token);
+  },
+  uploadZktecoCsvAttendance(token: string, input: { file: File; attendance_device_id?: string | null }) {
+    const form = new FormData();
+    form.append("file", input.file);
+    if (input.attendance_device_id) form.append("attendance_device_id", input.attendance_device_id);
+    return multipartRequest<Record<string, unknown>>("/api/v1/attendance/import-batches/zkteco-csv", form, token);
+  },
+  processAttendanceImportBatch(token: string, id: string) {
+    return request<Record<string, unknown>>(`/api/v1/attendance/import-batches/${id}/process`, { method: "POST" }, token);
+  },
+  cancelAttendanceImportBatch(token: string, id: string, reason: string) {
+    return request<{ cancelled: boolean }>(`/api/v1/attendance/import-batches/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  listAttendanceImportErrors(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ errors: AttendanceImportRowError[] }>(`/api/v1/attendance/import-errors${query(filters)}`, {}, token);
+  },
   listAttendanceRawLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ logs: AttendanceRawLog[] }>(`/api/v1/attendance/raw-logs${query(filters)}`, {}, token);
+  },
+  getAttendanceRawLog(token: string, id: string) {
+    return request<{ log: AttendanceRawLog }>(`/api/v1/attendance/raw-logs/${id}`, {}, token);
+  },
+  reprocessAttendanceRawLog(token: string, id: string) {
+    return request<Record<string, unknown>>(`/api/v1/attendance/raw-logs/${id}/reprocess`, { method: "POST" }, token);
+  },
+  createManualAttendanceRawLog(token: string, input: Record<string, unknown>) {
+    return request<Record<string, unknown>>("/api/v1/attendance/raw-logs/manual", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  listAttendanceUnmatchedLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ unmatched_logs: AttendanceUnmatchedLog[] }>(`/api/v1/attendance/unmatched-logs${query(filters)}`, {}, token);
+  },
+  mapAttendanceUnmatchedLog(token: string, id: string, input: { employee_id: string; note?: string | null }) {
+    return request<{ resolved: boolean }>(`/api/v1/attendance/unmatched-logs/${id}/map-employee`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  ignoreAttendanceUnmatchedLog(token: string, id: string, note: string) {
+    return request<{ ignored: boolean }>(`/api/v1/attendance/unmatched-logs/${id}/ignore`, { method: "POST", body: JSON.stringify({ note }) }, token);
+  },
+  reprocessResolvedAttendanceUnmatchedLogs(token: string) {
+    return request<Record<string, unknown>>("/api/v1/attendance/unmatched-logs/reprocess-resolved", { method: "POST" }, token);
+  },
+  listAttendanceLockedDayWarnings(token: string) {
+    return request<{ warnings: AttendanceLockedDayWarning[] }>("/api/v1/attendance/locked-day-import-warnings", {}, token);
+  },
+  resolveAttendanceLockedDayWarning(token: string, id: string, note?: string | null) {
+    return request<{ resolved: boolean }>(`/api/v1/attendance/locked-day-import-warnings/${id}/resolve`, { method: "POST", body: JSON.stringify({ note: note ?? null }) }, token);
+  },
+  dismissAttendanceLockedDayWarning(token: string, id: string, note: string) {
+    return request<{ dismissed: boolean }>(`/api/v1/attendance/locked-day-import-warnings/${id}/dismiss`, { method: "POST", body: JSON.stringify({ note }) }, token);
+  },
+  resolveAttendanceImportError(token: string, id: string, note?: string | null) {
+    return request<{ resolved: boolean }>(`/api/v1/attendance/import-errors/${id}/resolve`, { method: "POST", body: JSON.stringify({ note: note ?? null }) }, token);
+  },
+  ignoreAttendanceImportError(token: string, id: string, note: string) {
+    return request<{ ignored: boolean }>(`/api/v1/attendance/import-errors/${id}/ignore`, { method: "POST", body: JSON.stringify({ note }) }, token);
+  },
+  getAttendanceDeviceDiagnosticsOverview(token: string) {
+    return request<{ diagnostics: Record<string, unknown>[] }>("/api/v1/attendance/device-diagnostics", {}, token);
+  },
+  listAttendanceVendorIntegrations(token: string) {
+    return request<{ integrations: AttendanceVendorIntegration[] }>("/api/v1/attendance/vendor-integrations", {}, token);
+  },
+  createAttendanceVendorIntegration(token: string, input: Partial<AttendanceVendorIntegration>) {
+    return request<{ integration: AttendanceVendorIntegration }>("/api/v1/attendance/vendor-integrations", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateAttendanceVendorIntegration(token: string, id: string, input: Partial<AttendanceVendorIntegration>) {
+    return request<{ integration: AttendanceVendorIntegration }>(`/api/v1/attendance/vendor-integrations/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  testAttendanceVendorIntegration(token: string, id: string) {
+    return request<{ status: string; message: string }>(`/api/v1/attendance/vendor-integrations/${id}/test-placeholder`, { method: "POST" }, token);
   },
   listAttendanceLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ logs: AttendanceLog[] }>(`/api/v1/attendance/logs${query(filters)}`, {}, token);
@@ -867,6 +1421,12 @@ export const api = {
   },
   getEmployeeAttendanceSummary(token: string, employeeId: string) {
     return request<{ summary: Record<string, number>; records: AttendanceRecord[]; corrections: AttendanceCorrection[] }>(`/api/v1/employees/${employeeId}/attendance/summary`, {}, token);
+  },
+  getEmployeeAttendanceDeviceSummary(token: string, employeeId: string) {
+    return request<{ mappings: EmployeeBiometricMapping[]; raw_log_status_counts: Record<string, unknown>[]; recent_raw_logs: AttendanceRawLog[]; unmatched_related_count: number }>(`/api/v1/employees/${employeeId}/attendance/device-summary`, {}, token);
+  },
+  getSelfServiceAttendanceDeviceSummary(token: string) {
+    return request<{ biometric_mappings: EmployeeBiometricMapping[]; recent_raw_logs: Record<string, unknown>[]; correction_requests: Record<string, unknown>[] }>("/api/v1/self-service/attendance/summary", {}, token);
   },
   listShiftTemplates(token: string) {
     return request<{ shift_templates: ShiftTemplate[] }>("/api/v1/roster/shift-templates", {}, token);
@@ -1012,6 +1572,18 @@ export const api = {
   updatePayrollSettings(token: string, input: Partial<PayrollSettings>) {
     return request<{ settings: PayrollSettings }>("/api/v1/payroll/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
   },
+  listPaymentInstitutions(token: string, includeArchived = false) {
+    return request<{ institutions: PaymentInstitution[] }>(`/api/v1/payroll/payment-institutions${includeArchived ? "?include_archived=1" : ""}`, {}, token);
+  },
+  createPaymentInstitution(token: string, input: Partial<PaymentInstitution>) {
+    return request<{ institution: PaymentInstitution }>("/api/v1/payroll/payment-institutions", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updatePaymentInstitution(token: string, id: string, input: Partial<PaymentInstitution>) {
+    return request<{ institution: PaymentInstitution }>(`/api/v1/payroll/payment-institutions/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  archivePaymentInstitution(token: string, id: string) {
+    return request<{ archived: boolean }>(`/api/v1/payroll/payment-institutions/${id}/archive`, { method: "POST" }, token);
+  },
   getEmployeePayrollProfile(token: string, employeeId: string) {
     return request<{ profile: EmployeePayrollProfile }>(`/api/v1/employees/${employeeId}/payroll/profile`, {}, token);
   },
@@ -1035,6 +1607,147 @@ export const api = {
   },
   getEmployeePayrollSummary(token: string, employeeId: string) {
     return request<EmployeePayrollSummary>(`/api/v1/employees/${employeeId}/payroll/summary`, {}, token);
+  },
+  listEmployeePaymentMethods(token: string, employeeId: string) {
+    return request<{ payment_methods: EmployeePaymentMethod[] }>(`/api/v1/employees/${employeeId}/payment-methods`, {}, token);
+  },
+  createEmployeePaymentMethod(token: string, employeeId: string, input: Record<string, unknown>) {
+    return request<{ payment_method: EmployeePaymentMethod }>(`/api/v1/employees/${employeeId}/payment-methods`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateEmployeePaymentMethod(token: string, employeeId: string, methodId: string, input: Record<string, unknown>) {
+    return request<{ payment_method: EmployeePaymentMethod }>(`/api/v1/employees/${employeeId}/payment-methods/${methodId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  verifyEmployeePaymentMethod(token: string, employeeId: string, methodId: string) {
+    return request<{ verified: boolean }>(`/api/v1/employees/${employeeId}/payment-methods/${methodId}/verify`, { method: "POST" }, token);
+  },
+  archiveEmployeePaymentMethod(token: string, employeeId: string, methodId: string) {
+    return request<{ archived: boolean }>(`/api/v1/employees/${employeeId}/payment-methods/${methodId}/archive`, { method: "POST" }, token);
+  },
+  getEmployeePensionProfile(token: string, employeeId: string) {
+    return request<{ profile: EmployeePensionProfile | null }>(`/api/v1/employees/${employeeId}/pension-profile`, {}, token);
+  },
+  updateEmployeePensionProfile(token: string, employeeId: string, input: Record<string, unknown>) {
+    return request<{ profile: EmployeePensionProfile }>(`/api/v1/employees/${employeeId}/pension-profile`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  listPayrollBankLoans(token: string) {
+    return request<{ loans: EmployeeBankLoan[] }>("/api/v1/payroll/bank-loans", {}, token);
+  },
+  createEmployeeBankLoan(token: string, employeeId: string, input: Record<string, unknown>) {
+    return request<{ loan: EmployeeBankLoan }>(`/api/v1/payroll/employees/${employeeId}/bank-loans`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updatePayrollBankLoan(token: string, loanId: string, input: Record<string, unknown>) {
+    return request<{ loan: EmployeeBankLoan }>(`/api/v1/payroll/bank-loans/${loanId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  payrollBankLoanAction(token: string, loanId: string, action: "approve" | "pause" | "cancel") {
+    return request<{ loan: EmployeeBankLoan }>(`/api/v1/payroll/bank-loans/${loanId}/${action}`, { method: "POST" }, token);
+  },
+  listPayrollBankLoanPayments(token: string) {
+    return request<{ payments: EmployeeBankLoanPayment[] }>("/api/v1/payroll/bank-loan-payments", {}, token);
+  },
+  confirmBankLoanPaidToBank(token: string, paymentId: string, input: { remittance_reference: string; notes?: string | null }) {
+    return request<{ payment: EmployeeBankLoanPayment }>(`/api/v1/payroll/bank-loan-payments/${paymentId}/confirm-paid-to-bank`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  markBankLoanPaymentBankNotified(token: string, paymentId: string, input: { bank_notification_reference?: string | null; bank_notification_note?: string | null }) {
+    return request<{ payment: EmployeeBankLoanPayment }>(`/api/v1/payroll/bank-loan-payments/${paymentId}/mark-bank-notified`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  listBankLoanEligibilityRules(token: string) {
+    return request<{ rules: BankLoanEligibilityRule[] }>("/api/v1/payroll/bank-loan-eligibility-rules", {}, token);
+  },
+  createBankLoanEligibilityRule(token: string, input: Partial<BankLoanEligibilityRule>) {
+    return request<{ rule: BankLoanEligibilityRule }>("/api/v1/payroll/bank-loan-eligibility-rules", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateBankLoanEligibilityRule(token: string, ruleId: string, input: Partial<BankLoanEligibilityRule>) {
+    return request<{ rule: BankLoanEligibilityRule }>(`/api/v1/payroll/bank-loan-eligibility-rules/${ruleId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  archiveBankLoanEligibilityRule(token: string, ruleId: string) {
+    return request<{ archived: boolean }>(`/api/v1/payroll/bank-loan-eligibility-rules/${ruleId}/archive`, { method: "POST" }, token);
+  },
+  listBankLoanRemittanceBatches(token: string) {
+    return request<{ batches: BankLoanRemittanceBatch[] }>("/api/v1/payroll/bank-loan-remittance-batches", {}, token);
+  },
+  createBankLoanRemittanceBatch(token: string, input: Record<string, unknown>) {
+    return request<{ batch: BankLoanRemittanceBatch }>("/api/v1/payroll/bank-loan-remittance-batches", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getBankLoanRemittanceBatch(token: string, batchId: string) {
+    return request<{ batch: BankLoanRemittanceBatch; items: Record<string, unknown>[] }>(`/api/v1/payroll/bank-loan-remittance-batches/${batchId}`, {}, token);
+  },
+  confirmBankLoanRemittanceBatch(token: string, batchId: string, input: { remittance_reference: string; confirmation_note: string }) {
+    return request<{ confirmed: boolean }>(`/api/v1/payroll/bank-loan-remittance-batches/${batchId}/confirm`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getBankLoanSummaryReport(token: string) {
+    return request<{ reports: Record<string, unknown>[] }>("/api/v1/payroll/reports/bank-loan-summary", {}, token);
+  },
+  getBankLoanShortfallsReport(token: string) {
+    return request<{ reports: Record<string, unknown>[] }>("/api/v1/payroll/reports/bank-loan-shortfalls", {}, token);
+  },
+  listCustomDeductionTemplates(token: string, includeArchived = false) {
+    return request<{ templates: CustomDeductionTemplate[] }>(`/api/v1/payroll/custom-deduction-templates${includeArchived ? "?include_archived=1" : ""}`, {}, token);
+  },
+  createCustomDeductionTemplate(token: string, input: Record<string, unknown>) {
+    return request<{ template: CustomDeductionTemplate }>("/api/v1/payroll/custom-deduction-templates", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateCustomDeductionTemplate(token: string, templateId: string, input: Record<string, unknown>) {
+    return request<{ template: CustomDeductionTemplate }>(`/api/v1/payroll/custom-deduction-templates/${templateId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  archiveCustomDeductionTemplate(token: string, templateId: string) {
+    return request<{ archived: boolean }>(`/api/v1/payroll/custom-deduction-templates/${templateId}/archive`, { method: "POST" }, token);
+  },
+  listPayrollCustomDeductions(token: string) {
+    return request<{ deductions: EmployeeCustomDeduction[] }>("/api/v1/payroll/custom-deductions", {}, token);
+  },
+  listEmployeeCustomDeductions(token: string, employeeId: string) {
+    return request<{ deductions: EmployeeCustomDeduction[]; applications: EmployeeCustomDeductionApplication[] }>(`/api/v1/employees/${employeeId}/custom-deductions`, {}, token);
+  },
+  createEmployeeCustomDeduction(token: string, employeeId: string, input: Record<string, unknown>) {
+    return request<{ deduction: EmployeeCustomDeduction }>(`/api/v1/employees/${employeeId}/custom-deductions`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateEmployeeCustomDeduction(token: string, deductionId: string, input: Record<string, unknown>) {
+    return request<{ deduction: EmployeeCustomDeduction }>(`/api/v1/payroll/custom-deductions/${deductionId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  customDeductionAction(token: string, deductionId: string, action: "approve" | "reject" | "pause" | "resume" | "cancel", reason?: string) {
+    return request<{ deduction: EmployeeCustomDeduction }>(`/api/v1/payroll/custom-deductions/${deductionId}/${action}`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  getCustomDeductionSummaryReport(token: string) {
+    return request<{ reports: Record<string, unknown>[] }>("/api/v1/payroll/reports/custom-deductions-summary", {}, token);
+  },
+  getCustomDeductionsByTemplateReport(token: string) {
+    return request<{ reports: Record<string, unknown>[] }>("/api/v1/payroll/reports/custom-deductions-by-template", {}, token);
+  },
+  getCustomDeductionsByCategoryReport(token: string) {
+    return request<{ reports: Record<string, unknown>[] }>("/api/v1/payroll/reports/custom-deductions-by-category", {}, token);
+  },
+  getCustomDeductionShortfallsReport(token: string) {
+    return request<{ reports: Record<string, unknown>[] }>("/api/v1/payroll/reports/custom-deduction-shortfalls", {}, token);
+  },
+  getCustomDeductionApplicationsReport(token: string) {
+    return request<{ reports: EmployeeCustomDeductionApplication[] }>("/api/v1/payroll/reports/custom-deduction-applications", {}, token);
+  },
+  listPensionSchemes(token: string) {
+    return request<{ schemes: PensionScheme[] }>("/api/v1/payroll/pension-schemes", {}, token);
+  },
+  createPensionScheme(token: string, input: Partial<PensionScheme>) {
+    return request<{ scheme: PensionScheme }>("/api/v1/payroll/pension-schemes", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updatePensionScheme(token: string, schemeId: string, input: Partial<PensionScheme>) {
+    return request<{ scheme: PensionScheme }>(`/api/v1/payroll/pension-schemes/${schemeId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  archivePensionScheme(token: string, schemeId: string) {
+    return request<{ archived: boolean }>(`/api/v1/payroll/pension-schemes/${schemeId}/archive`, { method: "POST" }, token);
+  },
+  listPensionContributions(token: string) {
+    return request<{ contributions: PayrollPensionContribution[] }>("/api/v1/payroll/pension-contributions", {}, token);
+  },
+  getPensionContributionsReport(token: string) {
+    return request<{ reports: Record<string, unknown>[] }>("/api/v1/payroll/reports/pension-contributions", {}, token);
+  },
+  listPensionRemittanceBatches(token: string) {
+    return request<{ batches: PensionRemittanceBatch[] }>("/api/v1/payroll/pension-remittance-batches", {}, token);
+  },
+  createPensionRemittanceBatch(token: string, input: Record<string, unknown>) {
+    return request<{ batch: PensionRemittanceBatch }>("/api/v1/payroll/pension-remittance-batches", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  confirmPensionRemittanceBatch(token: string, batchId: string, input: { remittance_reference: string; confirmation_note: string }) {
+    return request<{ confirmed: boolean }>(`/api/v1/payroll/pension-remittance-batches/${batchId}/confirm`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   listPayrollAdvances(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ advances: PayrollAdvance[] }>(`/api/v1/payroll/advances${query(filters)}`, {}, token);
@@ -1210,6 +1923,18 @@ export const api = {
   previewSelfServicePayslip(token: string, id: string) {
     return blobRequest(`/api/v1/self-service/payslips/${id}/preview`, token);
   },
+  getSelfServicePaymentMethods(token: string) {
+    return request<{ payment_methods: EmployeePaymentMethod[] }>("/api/v1/self-service/payment-methods", {}, token);
+  },
+  getSelfServiceBankLoans(token: string) {
+    return request<{ loans: EmployeeBankLoan[]; payments: EmployeeBankLoanPayment[] }>("/api/v1/self-service/bank-loans", {}, token);
+  },
+  getSelfServiceCustomDeductions(token: string) {
+    return request<{ deductions: EmployeeCustomDeduction[]; applications: EmployeeCustomDeductionApplication[]; message?: string }>("/api/v1/self-service/custom-deductions", {}, token);
+  },
+  getSelfServicePension(token: string) {
+    return request<{ profile: EmployeePensionProfile | null; contributions: PayrollPensionContribution[] }>("/api/v1/self-service/pension", {}, token);
+  },
   downloadSelfServicePayslip(token: string, id: string) {
     return blobRequest(`/api/v1/self-service/payslips/${id}/download`, token);
   },
@@ -1225,8 +1950,131 @@ export const api = {
   exportPayrollReportCsv(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return blobRequest(`/api/v1/payroll/reports/export.csv${query(filters)}`, token);
   },
+  getFinalSettlementSettings(token: string) {
+    return request<{ settings: FinalSettlementSettings }>("/api/v1/final-settlement/settings", {}, token);
+  },
+  updateFinalSettlementSettings(token: string, input: Partial<FinalSettlementSettings>) {
+    return request<{ settings: FinalSettlementSettings }>("/api/v1/final-settlement/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  listFinalSettlementCases(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ cases: FinalSettlementCase[] }>(`/api/v1/final-settlement/cases${query(filters)}`, {}, token);
+  },
+  getFinalSettlementCase(token: string, caseId: string) {
+    return request<{ case: FinalSettlementCase }>(`/api/v1/final-settlement/cases/${caseId}`, {}, token);
+  },
+  createFinalSettlementCase(token: string, input: Record<string, unknown>) {
+    return request<{ case: FinalSettlementCase }>("/api/v1/final-settlement/cases", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateFinalSettlementCase(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ case: FinalSettlementCase }>(`/api/v1/final-settlement/cases/${caseId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  cancelFinalSettlementCase(token: string, caseId: string, reason: string) {
+    return request<{ case: FinalSettlementCase }>(`/api/v1/final-settlement/cases/${caseId}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  calculateFinalSettlementCase(token: string, caseId: string) {
+    return request<FinalSettlementCalculation>(`/api/v1/final-settlement/cases/${caseId}/calculate`, { method: "POST" }, token);
+  },
+  recalculateFinalSettlementCase(token: string, caseId: string, reason?: string | null) {
+    return request<FinalSettlementCalculation>(`/api/v1/final-settlement/cases/${caseId}/recalculate`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
+  },
+  listFinalSettlementLineItems(token: string, caseId: string) {
+    return request<{ line_items: FinalSettlementLineItem[] }>(`/api/v1/final-settlement/cases/${caseId}/line-items`, {}, token);
+  },
+  createFinalSettlementManualAdjustment(token: string, caseId: string, input: { adjustment_type: "EARNING" | "DEDUCTION"; amount: number; reason: string }) {
+    return request<{ adjustment: Record<string, unknown> }>(`/api/v1/final-settlement/cases/${caseId}/manual-adjustments`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  cancelFinalSettlementManualAdjustment(token: string, adjustmentId: string, reason: string) {
+    return request<{ cancelled: boolean }>(`/api/v1/final-settlement/manual-adjustments/${adjustmentId}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  listFinalSettlementClearance(token: string, caseId: string) {
+    return request<{ clearance: FinalSettlementClearanceItem[] }>(`/api/v1/final-settlement/cases/${caseId}/clearance`, {}, token);
+  },
+  updateFinalSettlementClearance(token: string, caseId: string, itemId: string, input: { status: string; reason?: string | null }) {
+    return request<{ item: FinalSettlementClearanceItem }>(`/api/v1/final-settlement/cases/${caseId}/clearance/${itemId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  waiveFinalSettlementClearance(token: string, caseId: string, itemId: string, reason: string) {
+    return request<{ item: FinalSettlementClearanceItem }>(`/api/v1/final-settlement/cases/${caseId}/clearance/${itemId}/waive`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  listFinalSettlementEvents(token: string, caseId: string) {
+    return request<{ events: FinalSettlementEvent[] }>(`/api/v1/final-settlement/cases/${caseId}/events`, {}, token);
+  },
+  submitFinalSettlementForApproval(token: string, caseId: string, note?: string | null) {
+    return request<{ case: FinalSettlementCase }>(`/api/v1/final-settlement/cases/${caseId}/submit-for-approval`, { method: "POST", body: JSON.stringify({ note: note ?? null }) }, token);
+  },
+  approveFinalSettlement(token: string, caseId: string, note?: string | null) {
+    return request<{ case: FinalSettlementCase }>(`/api/v1/final-settlement/cases/${caseId}/approve`, { method: "POST", body: JSON.stringify({ note: note ?? null }) }, token);
+  },
+  rejectFinalSettlement(token: string, caseId: string, reason: string) {
+    return request<{ case: FinalSettlementCase }>(`/api/v1/final-settlement/cases/${caseId}/reject`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  sendBackFinalSettlement(token: string, caseId: string, reason: string) {
+    return request<{ case: FinalSettlementCase }>(`/api/v1/final-settlement/cases/${caseId}/send-back`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  finalizeFinalSettlement(token: string, caseId: string, note?: string | null) {
+    return request<{ case: FinalSettlementCase }>(`/api/v1/final-settlement/cases/${caseId}/finalize`, { method: "POST", body: JSON.stringify({ reason: note ?? null }) }, token);
+  },
+  unlockFinalSettlement(token: string, caseId: string, reason: string) {
+    return request<{ case: FinalSettlementCase }>(`/api/v1/final-settlement/cases/${caseId}/unlock-finalized`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  listFinalSettlementPaymentRegister(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ payments: FinalSettlementPaymentRegister[] }>(`/api/v1/final-settlement/payment-register${query(filters)}`, {}, token);
+  },
+  getFinalSettlementPaymentRegister(token: string, caseId: string) {
+    return request<{ payment: FinalSettlementPaymentRegister | null }>(`/api/v1/final-settlement/cases/${caseId}/payment-register`, {}, token);
+  },
+  prepareFinalSettlementPaymentRegister(token: string, caseId: string) {
+    return request<{ payment: FinalSettlementPaymentRegister }>(`/api/v1/final-settlement/cases/${caseId}/prepare-payment-register`, { method: "POST" }, token);
+  },
+  confirmManualFinalSettlementPayment(token: string, paymentId: string, input: { confirmation_reference: string; confirmation_note: string }) {
+    return request<{ payment: FinalSettlementPaymentRegister }>(`/api/v1/final-settlement/payment-register/${paymentId}/confirm-manual-paid`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  cancelFinalSettlementPayment(token: string, paymentId: string, reason: string) {
+    return request<{ payment: FinalSettlementPaymentRegister }>(`/api/v1/final-settlement/payment-register/${paymentId}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+  },
+  getFinalSettlementReportsSummary(token: string) {
+    return request<Record<string, unknown>>("/api/v1/final-settlement/reports/summary", {}, token);
+  },
+  getFinalSettlementDepartmentTotals(token: string) {
+    return request<{ rows: Record<string, unknown>[] }>("/api/v1/final-settlement/reports/department-totals", {}, token);
+  },
+  getFinalSettlementWorksiteTotals(token: string) {
+    return request<{ rows: Record<string, unknown>[] }>("/api/v1/final-settlement/reports/worksite-totals", {}, token);
+  },
+  getFinalSettlementAssetUniformDeductions(token: string) {
+    return request<{ rows: Record<string, unknown>[] }>("/api/v1/final-settlement/reports/asset-uniform-deductions", {}, token);
+  },
+  getFinalSettlementLeaveSettlementReport(token: string) {
+    return request<{ rows: Record<string, unknown>[] }>("/api/v1/final-settlement/reports/leave-settlement", {}, token);
+  },
+  getFinalSettlementAdvanceDeductions(token: string) {
+    return request<{ rows: Record<string, unknown>[] }>("/api/v1/final-settlement/reports/advance-deductions", {}, token);
+  },
+  getFinalSettlementBankLoanSettlementReport(token: string) {
+    return request<{ bank_loan_settlement: Record<string, unknown>[] }>("/api/v1/final-settlement/reports/bank-loan-settlement", {}, token);
+  },
+  getFinalSettlementPensionSettlementReport(token: string) {
+    return request<{ pension_settlement: Record<string, unknown>[] }>("/api/v1/final-settlement/reports/pension-settlement", {}, token);
+  },
+  getFinalSettlementCustomDeductionSettlementReport(token: string) {
+    return request<{ custom_deduction_settlement: Record<string, unknown>[] }>("/api/v1/final-settlement/reports/custom-deduction-settlement", {}, token);
+  },
+  getFinalSettlementNetSummary(token: string) {
+    return request<{ summary: Record<string, unknown> }>("/api/v1/final-settlement/reports/net-settlement-summary", {}, token);
+  },
+  listEmployeeFinalSettlements(token: string, employeeId: string) {
+    return request<{ cases: FinalSettlementCase[] }>(`/api/v1/employees/${employeeId}/final-settlements`, {}, token);
+  },
+  getEmployeeFinalSettlementSummary(token: string, employeeId: string) {
+    return request<{ summary: FinalSettlementSummary | null }>(`/api/v1/employees/${employeeId}/final-settlement/summary`, {}, token);
+  },
   listAssetCategories(token: string) {
     return request<{ categories: AssetCategory[] }>("/api/v1/assets/categories", {}, token);
+  },
+  getAssetUniformSettings(token: string) {
+    return request<{ settings: AssetUniformSettings }>("/api/v1/assets/settings", {}, token);
+  },
+  updateAssetUniformSettings(token: string, input: Partial<AssetUniformSettings>) {
+    return request<{ settings: AssetUniformSettings }>("/api/v1/assets/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   createAssetCategory(token: string, input: Partial<AssetCategory>) {
     return request<{ category: AssetCategory }>("/api/v1/assets/categories", { method: "POST", body: JSON.stringify(input) }, token);
@@ -1236,6 +2084,9 @@ export const api = {
   },
   assetCategoryAction(token: string, id: string, action: "enable" | "disable") {
     return request<{ category: AssetCategory }>(`/api/v1/assets/categories/${id}/${action}`, { method: "POST" }, token);
+  },
+  archiveAssetCategory(token: string, id: string, reason?: string | null) {
+    return request<{ archived: boolean }>(`/api/v1/assets/categories/${id}/archive`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
   },
   listAssetItems(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ items: AssetItem[] }>(`/api/v1/assets/items${query(filters)}`, {}, token);
@@ -1263,6 +2114,9 @@ export const api = {
   },
   assetAssignmentAction(token: string, id: string, action: "return" | "mark-damaged" | "mark-lost" | "write-off", input?: Record<string, unknown>) {
     return request<{ assignment: AssetAssignment }>(`/api/v1/assets/assignments/${id}/${action}`, { method: "POST", body: JSON.stringify(input ?? {}) }, token);
+  },
+  assetAssignmentAdvancedAction(token: string, id: string, action: "approve" | "return" | "transfer" | "mark-damaged" | "mark-lost" | "apply-deduction" | "waive" | "cancel" | "link-document", input?: Record<string, unknown>) {
+    return request<{ assignment: AssetAssignment; deduction?: Record<string, unknown>; new_assignment?: AssetAssignment }>(`/api/v1/assets/assignments/${id}/${action}`, { method: "POST", body: JSON.stringify(input ?? {}) }, token);
   },
   replaceAssetAssignment(token: string, id: string, input: Record<string, unknown>) {
     return request<{ assignment: AssetAssignment }>(`/api/v1/assets/assignments/${id}/replace`, { method: "POST", body: JSON.stringify(input) }, token);
@@ -1296,6 +2150,51 @@ export const api = {
   },
   getEmployeeAssetSummary(token: string, employeeId: string) {
     return request<EmployeeAssetSummary>(`/api/v1/employees/${employeeId}/assets/summary`, {}, token);
+  },
+  getEmployeeAssetUniformSummary(token: string, employeeId: string) {
+    return request<EmployeeAssetSummary>(`/api/v1/employees/${employeeId}/assets-uniforms/summary`, {}, token);
+  },
+  assignAssetToEmployee(token: string, employeeId: string, input: Record<string, unknown>) {
+    return request<{ assignment: AssetAssignment }>(`/api/v1/employees/${employeeId}/assets/assign`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  listUniformTypes(token: string) {
+    return request<{ types: UniformType[] }>("/api/v1/uniforms/types", {}, token);
+  },
+  createUniformType(token: string, input: Partial<UniformType>) {
+    return request<{ type: UniformType }>("/api/v1/uniforms/types", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateUniformType(token: string, id: string, input: Partial<UniformType>) {
+    return request<{ type: UniformType }>(`/api/v1/uniforms/types/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  archiveUniformType(token: string, id: string) {
+    return request<{ archived: boolean }>(`/api/v1/uniforms/types/${id}/archive`, { method: "POST" }, token);
+  },
+  listUniformStock(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ stock: UniformStockItem[] }>(`/api/v1/uniforms/stock${query(filters)}`, {}, token);
+  },
+  createUniformStock(token: string, input: Partial<UniformStockItem>) {
+    return request<{ stock_item: UniformStockItem }>("/api/v1/uniforms/stock", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateUniformStock(token: string, id: string, input: Partial<UniformStockItem>) {
+    return request<{ stock_item: UniformStockItem }>(`/api/v1/uniforms/stock/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  listUniformAssignments(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ assignments: UniformAssignment[] }>(`/api/v1/uniforms/assignments${query(filters)}`, {}, token);
+  },
+  issueUniformAssignment(token: string, input: Record<string, unknown>) {
+    return request<{ assignment: UniformAssignment }>("/api/v1/uniforms/assignments", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  issueEmployeeUniform(token: string, employeeId: string, input: Record<string, unknown>) {
+    return request<{ assignment: UniformAssignment }>(`/api/v1/employees/${employeeId}/uniforms/issue`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  uniformAssignmentAction(token: string, id: string, action: "return" | "mark-damaged" | "mark-lost" | "apply-deduction" | "waive" | "link-document", input?: Record<string, unknown>) {
+    return request<{ assignment: UniformAssignment; deduction?: Record<string, unknown> }>(`/api/v1/uniforms/assignments/${id}/${action}`, { method: "POST", body: JSON.stringify(input ?? {}) }, token);
+  },
+  listUniformAssignmentEvents(token: string, id: string) {
+    return request<{ events: AssetUniformEvent[] }>(`/api/v1/uniforms/assignments/${id}/events`, {}, token);
+  },
+  listEmployeeUniformAssignments(token: string, employeeId: string) {
+    return request<{ assignments: UniformAssignment[] }>(`/api/v1/employees/${employeeId}/uniforms`, {}, token);
   },
   listEmployeeAssetAssignments(token: string, employeeId: string) {
     return request<{ assignments: AssetAssignment[] }>(`/api/v1/employees/${employeeId}/assets/assignments`, {}, token);
@@ -1362,5 +2261,188 @@ export const api = {
   },
   exportEmployeeAuditCsv(token: string, employeeId: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return blobRequest(`/api/v1/employees/${employeeId}/audit/export.csv${query(filters)}`, token);
+  },
+  getAdminSettingsHub(token: string) {
+    return request<{ sections: Record<string, unknown>[]; modules: Record<string, unknown>[] }>("/api/v1/admin/settings-hub", {}, token);
+  },
+  getAdminSettingsHubStatus(token: string) {
+    return request<{ status: Record<string, unknown> }>("/api/v1/admin/settings-hub/status", {}, token);
+  },
+  listAdminModules(token: string) {
+    return request<{ modules: Record<string, unknown>[] }>("/api/v1/admin/modules", {}, token);
+  },
+  getAdminModuleDependencyCheck(token: string, moduleKey: string) {
+    return request<{ dependency_check: Record<string, unknown> }>(`/api/v1/admin/modules/${moduleKey}/dependency-check`, {}, token);
+  },
+  updateAdminModule(token: string, moduleKey: string, input: Record<string, unknown>) {
+    return request<{ module: Record<string, unknown> | null; warnings: Record<string, unknown>[] }>(`/api/v1/admin/modules/${moduleKey}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  listAdminConsistencyChecks(token: string) {
+    return request<{ checks: Record<string, unknown>[] }>("/api/v1/admin/consistency-checks", {}, token);
+  },
+  runAdminConsistencyChecks(token: string) {
+    return request<{ checks: Record<string, unknown>[] }>("/api/v1/admin/consistency-checks/run", { method: "POST" }, token);
+  },
+  listAdminAuditLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ audit: Record<string, unknown>[] }>(`/api/v1/admin/audit-logs${query(filters)}`, {}, token);
+  },
+  listAdminSecurityEvents(token: string) {
+    return request<{ events: Record<string, unknown>[] }>("/api/v1/admin/security-events", {}, token);
+  },
+  listPermissionRisks(token: string) {
+    return request<{ findings: Record<string, unknown>[] }>("/api/v1/admin/permission-risks", {}, token);
+  },
+  runPermissionRisks(token: string) {
+    return request<{ findings: Record<string, unknown>[] }>("/api/v1/admin/permission-risks/run", { method: "POST" }, token);
+  },
+  permissionRiskAction(token: string, findingId: string, action: "acknowledge" | "resolve" | "dismiss", reason?: string | null) {
+    return request<{ updated: boolean }>(`/api/v1/admin/permission-risks/${findingId}/${action}`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
+  },
+  getAccessScopeReview(token: string) {
+    return request<{ review: Record<string, unknown>[] }>("/api/v1/admin/access-scope-review", {}, token);
+  },
+  getAdminSecuritySettings(token: string) {
+    return request<{ settings: Record<string, unknown> | null }>("/api/v1/admin/security-settings", {}, token);
+  },
+  updateAdminSecuritySettings(token: string, input: Record<string, unknown>) {
+    return request<{ settings: Record<string, unknown> | null }>("/api/v1/admin/security-settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  getSystemHealth(token: string) {
+    return request<{ health: Record<string, unknown> }>("/api/v1/admin/system-health", {}, token);
+  },
+  refreshSystemHealth(token: string) {
+    return request<{ health: Record<string, unknown> }>("/api/v1/admin/system-health/refresh", { method: "POST" }, token);
+  },
+  getRemoteSchemaToolsStatus(token: string) {
+    return request<{ remote_schema_tools: Record<string, unknown> }>("/api/v1/admin/remote-schema-tools", {}, token);
+  },
+  getDataRetentionSettings(token: string) {
+    return request<{ settings: Record<string, unknown> | null }>("/api/v1/admin/data-retention-settings", {}, token);
+  },
+  updateDataRetentionSettings(token: string, input: Record<string, unknown>) {
+    return request<{ settings: Record<string, unknown> | null }>("/api/v1/admin/data-retention-settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  getExportSecuritySettings(token: string) {
+    return request<{ settings: Record<string, unknown> | null }>("/api/v1/admin/export-security-settings", {}, token);
+  },
+  updateExportSecuritySettings(token: string, input: Record<string, unknown>) {
+    return request<{ settings: Record<string, unknown> | null }>("/api/v1/admin/export-security-settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  getProductionReadiness(token: string) {
+    return request<{ checks: Record<string, unknown>[] }>("/api/v1/admin/production-readiness", {}, token);
+  },
+  runProductionReadiness(token: string) {
+    return request<{ checks: Record<string, unknown>[] }>("/api/v1/admin/production-readiness/run", { method: "POST" }, token);
+  },
+  getEnvironmentSafety(token: string) {
+    return request<{ environment_safety: Record<string, unknown> }>("/api/v1/admin/environment-safety", {}, token);
+  },
+  runEnvironmentSafety(token: string) {
+    return request<{ environment_safety: Record<string, unknown> }>("/api/v1/admin/environment-safety/check", { method: "POST" }, token);
+  },
+  listAdminSystemAlerts(token: string) {
+    return request<{ alerts: Record<string, unknown>[] }>("/api/v1/admin/system-alerts", {}, token);
+  },
+  refreshAdminSystemAlerts(token: string) {
+    return request<{ alerts: Record<string, unknown>[] }>("/api/v1/admin/system-alerts/refresh", { method: "POST" }, token);
+  },
+  adminSystemAlertAction(token: string, alertId: string, action: "acknowledge" | "resolve" | "dismiss") {
+    return request<{ updated: boolean }>(`/api/v1/admin/system-alerts/${alertId}/${action}`, { method: "POST" }, token);
+  },
+  listDataImportTypes(token: string) {
+    return request<{ types: Record<string, unknown>[] }>("/api/v1/data-import/types", {}, token);
+  },
+  listDataImportTemplates(token: string) {
+    return request<{ templates: Record<string, unknown>[] }>("/api/v1/data-import/templates", {}, token);
+  },
+  getDataImportTemplate(token: string, importType: string) {
+    return request<{ template: Record<string, unknown> }>(`/api/v1/data-import/templates/${importType}`, {}, token);
+  },
+  downloadDataImportTemplate(token: string, importType: string) {
+    return blobRequest(`/api/v1/data-import/templates/${importType}/download`, token);
+  },
+  listDataImportBatches(token: string) {
+    return request<{ batches: Record<string, unknown>[] }>("/api/v1/data-import/batches", {}, token);
+  },
+  getDataImportBatch(token: string, batchId: string) {
+    return request<{ batch: Record<string, unknown>; rows: Record<string, unknown>[]; rollback_placeholder: string }>(`/api/v1/data-import/batches/${batchId}`, {}, token);
+  },
+  createDataImportBatch(token: string, input: Record<string, unknown>) {
+    return request<{ batch: Record<string, unknown> }>("/api/v1/data-import/batches", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  validateDataImportBatch(token: string, batchId: string) {
+    return request<{ batch: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/validate`, { method: "POST" }, token);
+  },
+  getDataImportValidationPreview(token: string, batchId: string) {
+    return request<{ preview: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/validation-preview`, {}, token);
+  },
+  applyDataImportBatch(token: string, batchId: string, input: Record<string, unknown>) {
+    return request<{ batch: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/apply`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  cancelDataImportBatch(token: string, batchId: string, reason?: string | null) {
+    return request<{ batch: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/cancel`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
+  },
+  listDataImportErrors(token: string, batchId: string) {
+    return request<{ errors: Record<string, unknown>[] }>(`/api/v1/data-import/batches/${batchId}/errors`, {}, token);
+  },
+  listDataImportResults(token: string, batchId: string) {
+    return request<{ results: Record<string, unknown>[] }>(`/api/v1/data-import/batches/${batchId}/results`, {}, token);
+  },
+  downloadDataImportErrors(token: string, batchId: string) {
+    return blobRequest(`/api/v1/data-import/batches/${batchId}/errors/download`, token);
+  },
+  listDataExportTypes(token: string) {
+    return request<{ types: Record<string, unknown>[] }>("/api/v1/data-export/types", {}, token);
+  },
+  runDataExport(token: string, exportType: string, input: Record<string, unknown>) {
+    return request<{ export: Record<string, unknown> }>(`/api/v1/data-export/${exportType}/run`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  listDataExportHistory(token: string) {
+    return request<{ history: Record<string, unknown>[] }>("/api/v1/data-export/history", {}, token);
+  },
+  getDataTransferSettings(token: string) {
+    return request<{ settings: Record<string, unknown> }>("/api/v1/admin/data-transfer/settings", {}, token);
+  },
+  updateDataTransferSettings(token: string, input: Record<string, unknown>) {
+    return request<{ settings: Record<string, unknown> }>("/api/v1/admin/data-transfer/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  getBackupReadiness(token: string) {
+    return request<{ checklist: Record<string, unknown>[]; records: Record<string, unknown>[] }>("/api/v1/admin/backup-readiness", {}, token);
+  },
+  recordBackupReadiness(token: string, input: Record<string, unknown>) {
+    return request<{ id: string }>("/api/v1/admin/backup-readiness/records", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getMigrationReadiness(token: string) {
+    return request<{ checklist: string[]; warning: string }>("/api/v1/admin/migration-readiness", {}, token);
+  },
+  recordMigrationReadinessCheck(token: string, input: Record<string, unknown>) {
+    return request<{ recorded: boolean }>("/api/v1/admin/migration-readiness/record-check", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getRemoteD1ApplyGuide(token: string) {
+    return request<{ warning: string; steps: Record<string, unknown>[] }>("/api/v1/admin/remote-d1-apply-guide", {}, token);
+  },
+  getQaTestMatrix(token: string) {
+    return request<{ items: Record<string, unknown>[] }>("/api/v1/admin/qa-test-matrix", {}, token);
+  },
+  seedQaTestMatrix(token: string) {
+    return request<{ seeded: boolean }>("/api/v1/admin/qa-test-matrix/seed-defaults", { method: "POST" }, token);
+  },
+  updateQaTestMatrixItem(token: string, itemId: string, input: Record<string, unknown>) {
+    return request<{ updated: boolean }>(`/api/v1/admin/qa-test-matrix/${itemId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  listSmokeTests(token: string) {
+    return request<{ runs: Record<string, unknown>[]; cli_command: string; note: string }>("/api/v1/admin/smoke-tests", {}, token);
+  },
+  recordSmokeTestResult(token: string, input: Record<string, unknown>) {
+    return request<{ id: string }>("/api/v1/admin/smoke-tests/record-result", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getDeploymentReadiness(token: string) {
+    return request<{ latest: Record<string, unknown> | null; records: Record<string, unknown>[]; rollback_guidance: string }>("/api/v1/admin/deployment-readiness", {}, token);
+  },
+  recordDeploymentReadiness(token: string, input: Record<string, unknown>) {
+    return request<{ id: string }>("/api/v1/admin/deployment-readiness/record", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getAdminReport(token: string, key: string) {
+    return request<{ report: { key: string; rows: Record<string, unknown>[] } }>(`/api/v1/reports/admin/${key}`, {}, token);
   }
 };
