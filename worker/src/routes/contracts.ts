@@ -135,7 +135,7 @@ interface ContractRow {
   location_name?: string | null;
   position_title?: string | null;
   contract_number: string;
-  contract_type_id: string;
+  contract_type_id: string | null;
   contract_type_code_snapshot: string | null;
   contract_type_name_snapshot: string | null;
   contract_title: string;
@@ -256,6 +256,7 @@ function toApiContract(c: Context<AppBindings>, row: ContractRow) {
   const canViewSalary = requireAny(c, CONTRACT_SALARY_VIEW);
   return {
     ...row,
+    contract_type_display_name: row.contract_type_name_snapshot ?? "Not selected",
     salary_terms: canViewSalary ? safeJson(row.salary_terms_json) : null,
     benefits_terms: safeJson(row.benefits_terms_json),
     working_terms: safeJson(row.working_terms_json),
@@ -357,6 +358,23 @@ async function getContractType(db: Env["DB"], typeId: string | null | undefined)
   return db.prepare("SELECT * FROM contract_types WHERE id = ?").bind(typeId).first<ContractTypeRow>();
 }
 
+async function requireActiveContractTypeForNewContract(c: Context<AppBindings>, contractTypeId: string | null | undefined) {
+  if (!contractTypeId) return { response: fail(c, 400, "CONTRACT_TYPE_REQUIRED", "Please select a contract type.") };
+  const type = await getContractType(c.env.DB, contractTypeId);
+  if (!type) return { response: fail(c, 400, "CONTRACT_TYPE_NOT_FOUND", "Selected contract type was not found.") };
+  if (type.is_active !== 1 || type.status !== "ACTIVE" || type.archived_at) {
+    return { response: fail(c, 400, "CONTRACT_TYPE_INACTIVE", "Selected contract type is inactive or archived and cannot be used for a new contract.") };
+  }
+  return { type };
+}
+
+async function requireExistingContractTypeForAction(c: Context<AppBindings>, contract: ContractRow) {
+  if (!contract.contract_type_id) return { response: fail(c, 400, "CONTRACT_TYPE_REQUIRED", "Please select a contract type.") };
+  const type = await getContractType(c.env.DB, contract.contract_type_id);
+  if (!type) return { response: fail(c, 400, "CONTRACT_TYPE_NOT_FOUND", "Selected contract type was not found.") };
+  return { type };
+}
+
 async function getContractById(db: Env["DB"], contractId: string) {
   return db
     .prepare(
@@ -431,6 +449,21 @@ function validateContractDates(input: ReturnType<typeof readContractBody>) {
   if (!dates.every((date) => isValidDate(date))) return "CONTRACT_DATE_INVALID";
   if (input.contract_end_date && input.contract_start_date && input.contract_end_date < input.contract_start_date) return "CONTRACT_DATE_INVALID";
   if (input.probation_start_date && input.probation_end_date && input.probation_end_date < input.probation_start_date) return "CONTRACT_DATE_INVALID";
+  return null;
+}
+
+function validateContractTypeDrivenFields(c: Context<AppBindings>, input: ReturnType<typeof readContractBody>, type: ContractTypeRow) {
+  if (!input.contract_start_date) return fail(c, 400, "CONTRACT_START_DATE_REQUIRED", "Contract start date is required.");
+  if (input.contract_end_date && input.contract_end_date < input.contract_start_date) return fail(c, 400, "CONTRACT_DATE_INVALID", "Contract end date cannot be before contract start date.");
+  if (type.requires_end_date === 1 && !input.contract_end_date) return fail(c, 400, "CONTRACT_END_DATE_REQUIRED", "Contract end date is required for this contract type.");
+  if (type.requires_probation === 1 && (!input.probation_start_date || !input.probation_end_date)) {
+    return fail(c, 400, "CONTRACT_PROBATION_DATES_REQUIRED", "Probation dates are required for this contract type.");
+  }
+  if (input.probation_start_date && input.probation_end_date && input.probation_end_date < input.probation_start_date) {
+    return fail(c, 400, "CONTRACT_DATE_INVALID", "Contract end date cannot be before contract start date.");
+  }
+  const dateError = validateContractDates(input);
+  if (dateError) return fail(c, 400, dateError, "Contract dates are invalid.");
   return null;
 }
 
@@ -907,12 +940,18 @@ contractRoutes.patch("/:contractId", requireAnyPermission(CONTRACT_UPDATE), asyn
   const body = await readJsonBody(c.req.raw);
   if ((body.salary_terms !== undefined || body.basic_salary_snapshot !== undefined) && !requireAny(c, CONTRACT_SALARY_MANAGE)) return fail(c, 403, "CONTRACT_SALARY_PERMISSION_REQUIRED", "Contract salary terms require salary terms permission.");
   const input = readContractBody({ ...contract, ...body });
-  const dateError = validateContractDates(input);
-  if (dateError) return fail(c, 400, dateError, "Contract dates are invalid.");
+  const typeResult = "contract_type_id" in body ? await requireActiveContractTypeForNewContract(c, input.contract_type_id) : await requireExistingContractTypeForAction(c, contract);
+  if ("response" in typeResult) return typeResult.response;
+  const type = typeResult.type!;
+  const typeValidation = validateContractTypeDrivenFields(c, input, type);
+  if (typeValidation) return typeValidation;
   const ruleIssues = validateContractInput(input);
   if (hasValidationErrors(ruleIssues)) return validationResponse(c, ruleIssues);
   if (!(await validateDocumentLink(c.env.DB, contract.employee_id, input.document_id))) return fail(c, 400, "CONTRACT_DOCUMENT_INVALID", "Linked contract document must belong to this employee and be active.");
   const updates = [
+    "contract_type_id = ?",
+    "contract_type_code_snapshot = ?",
+    "contract_type_name_snapshot = ?",
     "contract_title = ?",
     "contract_start_date = ?",
     "contract_end_date = ?",
@@ -938,6 +977,9 @@ contractRoutes.patch("/:contractId", requireAnyPermission(CONTRACT_UPDATE), asyn
   ];
   const settings = await getContractSettings(c.env.DB);
   const bindings: BindValue[] = [
+    type.id,
+    type.code,
+    type.name,
     input.contract_title ?? contract.contract_title,
     input.contract_start_date,
     input.contract_end_date,
@@ -976,6 +1018,12 @@ async function transitionContract(c: Context<AppBindings>, contractId: string | 
   const body = await readJsonBody(c.req.raw);
   const reason = stringOrNull(body.reason) ?? stringOrNull(body.note);
   if (reasonRequired && !reason) return fail(c, 400, "CONTRACT_REASON_REQUIRED", "A reason is required for this contract action.");
+  if (nextStatus === "PENDING_APPROVAL" || nextStatus === "ACTIVE") {
+    const typeResult = await requireExistingContractTypeForAction(c, contract);
+    if ("response" in typeResult) return typeResult.response;
+    const typeValidation = validateContractTypeDrivenFields(c, readContractBody(contract as unknown as Record<string, unknown>), typeResult.type!);
+    if (typeValidation) return typeValidation;
+  }
   if (nextStatus === "ACTIVE") {
     const settings = await getContractSettings(c.env.DB);
     if (settings.require_contract_approval_before_activation === 1 && contract.approval_status !== "APPROVED") return fail(c, 400, "CONTRACT_APPROVAL_REQUIRED", "Contract approval is required before activation.");
@@ -1070,9 +1118,16 @@ contractRoutes.post("/:contractId/renew", requireAnyPermission(CONTRACT_RENEW), 
   const body = await readJsonBody(c.req.raw);
   const employee = await getEmployeeSnapshot(c.env.DB, contract.employee_id);
   if (!employee) return fail(c, 404, "CONTRACT_NOT_FOUND", "Employee was not found.");
+  const typeResult = await requireExistingContractTypeForAction(c, contract);
+  if ("response" in typeResult) return typeResult.response;
+  const type = typeResult.type!;
+  if (type.allows_renewal !== 1) return fail(c, 400, "CONTRACT_RENEWAL_INVALID", "This contract type does not allow renewal.");
   const proposedStart = readString(body.proposed_start_date) || (contract.contract_end_date ? new Date(new Date(`${contract.contract_end_date}T00:00:00.000Z`).getTime() + 86400000).toISOString().slice(0, 10) : nowIso().slice(0, 10));
   const proposedEnd = stringOrNull(body.proposed_end_date);
+  if (!contract.id) return fail(c, 400, "CONTRACT_RENEWAL_REFERENCE_REQUIRED", "Renewal contract must be linked to a previous contract.");
+  if (type.requires_end_date === 1 && !proposedEnd) return fail(c, 400, "CONTRACT_END_DATE_REQUIRED", "Contract end date is required for this contract type.");
   if (!isValidDate(proposedStart) || !isValidDate(proposedEnd)) return fail(c, 400, "CONTRACT_RENEWAL_INVALID", "Renewal dates are invalid.");
+  if (proposedEnd && proposedEnd < proposedStart) return fail(c, 400, "CONTRACT_DATE_INVALID", "Contract end date cannot be before contract start date.");
   const newContractId = crypto.randomUUID();
   const renewalId = crypto.randomUUID();
   const number = stringOrNull(body.contract_number) ?? `${contract.contract_number}-R${contract.contract_version_number + 1}`;
@@ -1087,7 +1142,7 @@ contractRoutes.post("/:contractId/renew", requireAnyPermission(CONTRACT_RENEW), 
         renewal_notice_days, notes, created_by_user_id, updated_by_user_id, metadata_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', 'NOT_REQUIRED', ?, 'NOT_DUE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(newContractId, employee.id, number, contract.contract_type_id, contract.contract_type_code_snapshot, contract.contract_type_name_snapshot, stringOrNull(body.contract_title) ?? `${contract.contract_title} Renewal`, contract.contract_version_number + 1, contract.parent_contract_id ?? contract.id, contract.id, contract.id, proposedStart, proposedEnd, proposedStart, contract.probation_status === "CONFIRMED" ? "NOT_APPLICABLE" : contract.probation_status, employee.employee_no, employee.full_name, employee.department_name, employee.location_name, employee.location_name, employee.position_title, employee.employment_type, employee.job_level_name, contract.basic_salary_snapshot, contract.salary_currency_snapshot, contract.salary_terms_json, contract.benefits_terms_json, contract.working_terms_json, contract.termination_notice_days, contract.renewal_notice_days, stringOrNull(body.notes), c.get("currentUser").id, c.get("currentUser").id, JSON.stringify({ renewal_of_contract_id: contract.id }))
+    .bind(newContractId, employee.id, number, type.id, type.code, type.name, stringOrNull(body.contract_title) ?? `${contract.contract_title} Renewal`, contract.contract_version_number + 1, contract.parent_contract_id ?? contract.id, contract.id, contract.id, proposedStart, proposedEnd, proposedStart, contract.probation_status === "CONFIRMED" ? "NOT_APPLICABLE" : contract.probation_status, employee.employee_no, employee.full_name, employee.department_name, employee.location_name, employee.location_name, employee.position_title, employee.employment_type, employee.job_level_name, contract.basic_salary_snapshot, contract.salary_currency_snapshot, contract.salary_terms_json, contract.benefits_terms_json, contract.working_terms_json, contract.termination_notice_days, contract.renewal_notice_days, stringOrNull(body.notes), c.get("currentUser").id, c.get("currentUser").id, JSON.stringify({ renewal_of_contract_id: contract.id }))
     .run();
   await c.env.DB
     .prepare("INSERT INTO employee_contract_renewals (id, original_contract_id, renewal_contract_id, employee_id, renewal_status, previous_end_date, proposed_start_date, proposed_end_date, changes_summary_json, reason, created_by_user_id) VALUES (?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?)")
@@ -1178,26 +1233,26 @@ employeeContractRoutes.post("/:employeeId/contracts", requireAnyPermission(CONTR
   const body = await readJsonBody(c.req.raw);
   const employee = await getEmployeeSnapshot(c.env.DB, employeeId);
   if (!employee) return fail(c, 404, "CONTRACT_NOT_FOUND", "Employee was not found.");
-  const type = await getContractType(c.env.DB, readString(body.contract_type_id));
-  if (!type || type.is_active !== 1 || type.status !== "ACTIVE") return fail(c, 404, "CONTRACT_TYPE_NOT_FOUND", "Active contract type was not found.");
+  const typeResult = await requireActiveContractTypeForNewContract(c, readString(body.contract_type_id));
+  if ("response" in typeResult) return typeResult.response;
+  const type = typeResult.type!;
   if ((body.salary_terms !== undefined || body.basic_salary_snapshot !== undefined) && !requireAny(c, CONTRACT_SALARY_MANAGE)) return fail(c, 403, "CONTRACT_SALARY_PERMISSION_REQUIRED", "Contract salary terms require salary terms permission.");
   const settings = await getContractSettings(c.env.DB);
+  const providedStartDate = readString(body.contract_start_date);
   const merged = {
     ...body,
-    contract_start_date: readString(body.contract_start_date) || nowIso().slice(0, 10),
-    contract_end_date: stringOrNull(body.contract_end_date) ?? addMonths(readString(body.contract_start_date) || nowIso().slice(0, 10), type.default_duration_months),
-    probation_start_date: stringOrNull(body.probation_start_date) ?? (type.requires_probation ? (readString(body.contract_start_date) || nowIso().slice(0, 10)) : null),
-    probation_end_date: stringOrNull(body.probation_end_date) ?? (type.default_probation_months ? addMonths(readString(body.contract_start_date) || nowIso().slice(0, 10), type.default_probation_months) : null),
-    confirmation_due_date: stringOrNull(body.confirmation_due_date) ?? (type.default_probation_months ? addMonths(readString(body.contract_start_date) || nowIso().slice(0, 10), type.default_probation_months) : null),
-    effective_date: stringOrNull(body.effective_date) ?? (readString(body.contract_start_date) || nowIso().slice(0, 10)),
+    contract_start_date: providedStartDate,
+    contract_end_date: stringOrNull(body.contract_end_date),
+    probation_start_date: stringOrNull(body.probation_start_date),
+    probation_end_date: stringOrNull(body.probation_end_date),
+    confirmation_due_date: stringOrNull(body.confirmation_due_date),
+    effective_date: stringOrNull(body.effective_date) ?? providedStartDate,
     basic_salary_snapshot: numberOrNull(body.basic_salary_snapshot) ?? employee.basic_salary,
     salary_currency_snapshot: stringOrNull(body.salary_currency_snapshot) ?? employee.currency ?? "MVR"
   };
   const input = readContractBody(merged);
-  if (!input.contract_start_date) return fail(c, 400, "CONTRACT_DATE_INVALID", "Contract start date is required.");
-  if (type.requires_end_date === 1 && !input.contract_end_date) return fail(c, 400, "CONTRACT_DATE_INVALID", "This contract type requires an end date.");
-  const dateError = validateContractDates(input);
-  if (dateError) return fail(c, 400, dateError, "Contract dates are invalid.");
+  const typeValidation = validateContractTypeDrivenFields(c, input, type);
+  if (typeValidation) return typeValidation;
   const ruleIssues = validateContractInput(input);
   if (hasValidationErrors(ruleIssues)) return validationResponse(c, ruleIssues);
   if (!(await validateDocumentLink(c.env.DB, employeeId, input.document_id))) return fail(c, 400, "CONTRACT_DOCUMENT_INVALID", "Linked contract document must belong to this employee and be active.");
@@ -1240,6 +1295,7 @@ selfServiceContractRoutes.get("/contracts", async (c) => {
     contract_number: row.contract_number,
     contract_title: row.contract_title,
     contract_type_name_snapshot: row.contract_type_name_snapshot,
+    contract_type_display_name: row.contract_type_name_snapshot ?? "Not selected",
     contract_start_date: row.contract_start_date,
     contract_end_date: row.contract_end_date,
     status: row.status,

@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { hasValidationErrors, validateOrganizationCascadeWithScope, validationResponse } from "../lib/moduleValidation";
 import { publishAccessEvent } from "../realtime/publisher";
+import { autoCreateOnboardingCaseAfterEmployeeCreate } from "./lifecycle";
 import { applyRoleMappingToEmployee, roleMappingPreviewForEmployee } from "./role-mappings";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
@@ -686,6 +687,7 @@ employeeRoutes.post("/", requirePermission("employees.create"), async (c) => {
     await c.env.DB.prepare("UPDATE employee_number_settings SET next_sequence = next_sequence + 1, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), settings.id).run();
   }
   await createOnboardingTasks(c.env.DB, id);
+  await autoCreateOnboardingCaseAfterEmployeeCreate(c, id);
   if (hasJobAssignment(input)) {
     await createJobHistory(c, { employeeId: id, next: input, effectiveDate: input.joining_date, reason: "Initial assignment" });
   }

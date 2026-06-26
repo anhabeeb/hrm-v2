@@ -30,6 +30,7 @@ const onboardingSettingsFields = [
   "onboarding_enabled",
   "require_onboarding_before_activation",
   "allow_draft_employee_records",
+  "auto_create_onboarding_case_on_employee_create",
   "allow_partial_onboarding",
   "require_personal_info_before_activation",
   "require_contact_info_before_activation",
@@ -257,18 +258,25 @@ export async function refreshOnboardingChecklist(c: Context<AppBindings>, caseId
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return null;
   const settings = await ensureOnboardingSettings(c.env.DB);
-  for (const template of onboardingTemplates) {
-    const required = template[0] === "documents" ? Number(settings?.require_documents_before_activation ?? 1) === 1
-      : template[0] === "contract" ? Number(settings?.require_contract_before_activation ?? 0) === 1
-      : template[0] === "payroll_profile" ? Number(settings?.require_payroll_profile_before_activation ?? 1) === 1
-      : template[0] === "payment_method" ? Number(settings?.require_payment_method_before_activation ?? 0) === 1
-      : template[0] === "user_access" ? Number(settings?.require_user_account_before_activation ?? 0) === 1
-      : template[0] === "attendance_biometric" ? Number(settings?.require_biometric_mapping_before_activation ?? 0) === 1
-      : template[0] === "assets_uniforms" ? Number(settings?.require_asset_uniform_issue_before_activation ?? 0) === 1
-      : template[5] === 1;
-    await createOnboardingTaskIfMissing(c, caseId, String(gate.row.employee_id), template, required);
-  }
+  await seedOnboardingChecklistForEmployee(c, caseId, String(gate.row.employee_id), settings);
   return getOnboardingChecklistStatus(c, caseId);
+}
+
+function isOnboardingTemplateRequired(template: (typeof onboardingTemplates)[number], settings: Record<string, unknown> | null | undefined) {
+  return template[0] === "documents" ? Number(settings?.require_documents_before_activation ?? 1) === 1
+    : template[0] === "contract" ? Number(settings?.require_contract_before_activation ?? 0) === 1
+    : template[0] === "payroll_profile" ? Number(settings?.require_payroll_profile_before_activation ?? 1) === 1
+    : template[0] === "payment_method" ? Number(settings?.require_payment_method_before_activation ?? 0) === 1
+    : template[0] === "user_access" ? Number(settings?.require_user_account_before_activation ?? 0) === 1
+    : template[0] === "attendance_biometric" ? Number(settings?.require_biometric_mapping_before_activation ?? 0) === 1
+    : template[0] === "assets_uniforms" ? Number(settings?.require_asset_uniform_issue_before_activation ?? 0) === 1
+    : template[5] === 1;
+}
+
+async function seedOnboardingChecklistForEmployee(c: Context<AppBindings>, caseId: string, employeeId: string, settings: Record<string, unknown> | null | undefined) {
+  for (const template of onboardingTemplates) {
+    await createOnboardingTaskIfMissing(c, caseId, employeeId, template, isOnboardingTemplateRequired(template, settings));
+  }
 }
 
 async function refreshOffboardingChecklist(c: Context<AppBindings>, caseId: string) {
@@ -352,17 +360,114 @@ export async function getOnboardingDocumentBlockers(c: Context<AppBindings>, cas
 
 export async function getOnboardingContractStatus(c: Context<AppBindings>, caseId: string) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
-  const count = gate ? await c.env.DB.prepare("SELECT COUNT(*) AS total FROM employee_contracts WHERE employee_id = ? AND status IN ('ACTIVE', 'SIGNED', 'APPROVED')").bind(String(gate.row.employee_id)).first<{ total: number }>() : { total: 0 };
-  return { ready: Number(count?.total ?? 0) > 0, active_contracts: Number(count?.total ?? 0) };
+  const onboardingSettings = await ensureOnboardingSettings(c.env.DB);
+  const contractSettings = await c.env.DB.prepare("SELECT * FROM contract_settings ORDER BY created_at LIMIT 1").first<Record<string, unknown>>();
+  const requiredByOnboarding = Number(onboardingSettings?.require_contract_before_activation ?? 0) === 1;
+  const requiredByContractSettings = Number(contractSettings?.require_contract_for_active_employee ?? 0) === 1;
+  const required = requiredByOnboarding || requiredByContractSettings;
+
+  if (!gate) {
+    return {
+      ready: !required,
+      required,
+      status: required ? "MISSING" : "NOT_REQUIRED",
+      status_label: required ? "Contract missing" : "Not required",
+      active_contracts: 0,
+      contract: null,
+      display: {
+        contract: required ? "Contract missing" : "Not required",
+        contract_type: "Not selected",
+        contract_start_date: "Not set",
+        contract_end_date: "Not required",
+        probation: "Not applicable",
+        confirmation_due: "Not set"
+      },
+      blockers: required ? [{ type: "CONTRACT", message: "Required employment contract is missing." }] : [],
+      warnings: []
+    };
+  }
+
+  const contract = await c.env.DB
+    .prepare(
+      `SELECT ec.*,
+        ct.name AS current_contract_type_name,
+        ct.code AS current_contract_type_code,
+        ct.requires_end_date AS current_contract_type_requires_end_date,
+        ct.requires_probation AS current_contract_type_requires_probation,
+        ct.status AS current_contract_type_status,
+        ct.archived_at AS current_contract_type_archived_at
+       FROM employee_contracts ec
+       LEFT JOIN contract_types ct ON ct.id = ec.contract_type_id
+       WHERE ec.employee_id = ? AND ec.status IN ('ACTIVE', 'EXPIRING_SOON', 'PENDING_APPROVAL', 'DRAFT')
+       ORDER BY CASE ec.status WHEN 'ACTIVE' THEN 0 WHEN 'EXPIRING_SOON' THEN 1 WHEN 'PENDING_APPROVAL' THEN 2 ELSE 3 END, ec.effective_date DESC, ec.created_at DESC
+       LIMIT 1`
+    )
+    .bind(String(gate.row.employee_id))
+    .first<Record<string, unknown>>();
+
+  const activeCount = await c.env.DB
+    .prepare("SELECT COUNT(*) AS total FROM employee_contracts WHERE employee_id = ? AND status IN ('ACTIVE', 'EXPIRING_SOON')")
+    .bind(String(gate.row.employee_id))
+    .first<{ total: number }>();
+
+  if (!contract) {
+    return {
+      ready: !required,
+      required,
+      status: required ? "MISSING" : "NOT_REQUIRED",
+      status_label: required ? "Contract missing" : "Not required",
+      active_contracts: Number(activeCount?.total ?? 0),
+      contract: null,
+      display: {
+        contract: required ? "Contract missing" : "Not required",
+        contract_type: "Not selected",
+        contract_start_date: "Not set",
+        contract_end_date: "Not required",
+        probation: "Not applicable",
+        confirmation_due: "Not set"
+      },
+      blockers: required ? [{ type: "CONTRACT", message: "Required employment contract is missing or not active." }] : [],
+      warnings: []
+    };
+  }
+
+  const contractTypeRequiresEndDate = Number(contract.current_contract_type_requires_end_date ?? 0) === 1;
+  const contractTypeRequiresProbation = Number(contract.current_contract_type_requires_probation ?? 0) === 1;
+  const contractTypeMissingOrArchived = !contract.current_contract_type_name || contract.current_contract_type_status === "ARCHIVED" || Boolean(contract.current_contract_type_archived_at);
+  const blockers = [
+    required && (!contract.contract_type_id || !contract.current_contract_type_name) ? { type: "CONTRACT", field: "contract_type_id", message: "Please select a contract type." } : null,
+    !contract.contract_start_date ? { type: "CONTRACT", field: "contract_start_date", message: "Contract start date is missing." } : null,
+    contractTypeRequiresEndDate && !contract.contract_end_date ? { type: "CONTRACT", field: "contract_end_date", message: "This contract type requires a contract end date." } : null,
+    contractTypeRequiresProbation && !contract.probation_end_date ? { type: "CONTRACT", field: "probation_end_date", message: "This contract type requires probation details." } : null
+  ].filter(Boolean);
+  const warnings = contractTypeMissingOrArchived ? [{ type: "CONTRACT", message: "Contract type is not selected or is archived." }] : [];
+  const ready = blockers.length === 0 && (!required || ["ACTIVE", "EXPIRING_SOON"].includes(String(contract.status)));
+
+  return {
+    ready,
+    required,
+    status: ready ? "READY" : "INCOMPLETE",
+    status_label: ready ? "Contract ready" : "Contract incomplete",
+    active_contracts: Number(activeCount?.total ?? 0),
+    contract,
+    display: {
+      contract: contract.contract_number ? String(contract.contract_number) : "Contract missing",
+      contract_type: contract.current_contract_type_name ?? contract.contract_type_name_snapshot ?? "Not selected",
+      contract_start_date: contract.contract_start_date ?? "Not set",
+      contract_end_date: contract.contract_end_date ?? (contractTypeRequiresEndDate ? "Not set" : "Not required"),
+      probation: contractTypeRequiresProbation ? (contract.probation_end_date ?? "Not set") : "Not applicable",
+      confirmation_due: contract.confirmation_due_date ?? "Not set"
+    },
+    blockers,
+    warnings
+  };
 }
 
 export async function getOnboardingContractBlockers(c: Context<AppBindings>, caseId: string) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return [];
-  const settings = await ensureOnboardingSettings(c.env.DB);
-  if (Number(settings?.require_contract_before_activation ?? 0) !== 1) return [];
   const status = await getOnboardingContractStatus(c, caseId);
-  return status.ready ? [] : [{ type: "CONTRACT", message: "Required employment contract is missing or not active." }];
+  return status.ready ? [] : status.blockers;
 }
 
 export async function getOnboardingPayrollReadiness(c: Context<AppBindings>, caseId: string) {
@@ -431,6 +536,7 @@ export async function getEmployeeOnboardingReadiness(c: Context<AppBindings>, ca
   const readiness = {
     can_activate: blockers.length === 0,
     blockers,
+    blocking_items: blockers,
     warning_items: [],
     checklist,
     documents: await getOnboardingDocumentChecklist(c, caseId),
@@ -776,24 +882,67 @@ async function listOffboardingCases(c: Context<AppBindings>) {
   return rows.results;
 }
 
-async function createOnboardingCase(c: Context<AppBindings>, employeeId: string) {
-  const employee = await getScopedEmployee(c, employeeId, "manage");
-  if (!employee) return null;
+async function loadOnboardingCaseEmployeeSnapshot(db: D1Database, employeeId: string) {
+  return db
+    .prepare(
+      `SELECT e.*, d.name AS department_name, l.name AS location_name, p.title AS position_name, es.key AS status_key, es.name AS status_name
+       FROM employees e
+       LEFT JOIN departments d ON d.id = e.primary_department_id
+       LEFT JOIN locations l ON l.id = e.primary_location_id
+       LEFT JOIN positions p ON p.id = e.primary_position_id
+       LEFT JOIN employee_statuses es ON es.id = e.status_id
+       WHERE e.id = ? AND e.archived_at IS NULL`
+    )
+    .bind(employeeId)
+    .first<Record<string, unknown>>();
+}
+
+async function insertOnboardingCaseForEmployee(c: Context<AppBindings>, employee: Record<string, unknown>, settings: Record<string, unknown> | null | undefined, metadata: Record<string, unknown> = {}) {
+  const employeeId = String(employee.id);
   const existing = await c.env.DB.prepare("SELECT id FROM employee_onboarding_cases WHERE employee_id = ? AND onboarding_status != 'CANCELLED' AND activation_status != 'ACTIVATED'").bind(employeeId).first<{ id: string }>();
   if (existing) return { duplicate: true, id: existing.id };
-  const settings = await ensureOnboardingSettings(c.env.DB);
   if (settings?.onboarding_enabled === 0) return { disabled: true };
   const now = nowIso();
   const dueDate = new Date(Date.now() + Number(settings?.default_onboarding_due_days ?? 7) * 86400000).toISOString().slice(0, 10);
   const caseId = id("onboarding_case");
   await c.env.DB.prepare(
     `INSERT INTO employee_onboarding_cases
-     (id, case_number, employee_id, employee_number_snapshot, employee_name_snapshot, department_snapshot, location_snapshot, position_snapshot, employment_type_snapshot, employee_type_snapshot, onboarding_status, activation_status, due_date, created_by_user_id, updated_by_user_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IN_PROGRESS', 'NOT_READY', ?, ?, ?)`
-  ).bind(caseId, caseNumber("ONB"), employeeId, employee.employee_no ?? null, employee.full_name ?? null, employee.department_name ?? null, employee.location_name ?? null, employee.position_name ?? null, employee.employment_type ?? null, employee.employee_type ?? null, dueDate, c.get("currentUser").id, c.get("currentUser").id).run();
-  await refreshOnboardingChecklist(c, caseId);
-  await createLifecycleEvent(c, { employeeId, caseType: "ONBOARDING", caseId, action: "onboarding.case.created", newStatus: "IN_PROGRESS", metadata: { created_at: now } });
+     (id, case_number, employee_id, employee_number_snapshot, employee_name_snapshot, department_snapshot, location_snapshot, position_snapshot, employment_type_snapshot, employee_type_snapshot, onboarding_status, activation_status, due_date, created_by_user_id, updated_by_user_id, metadata_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'IN_PROGRESS', 'NOT_READY', ?, ?, ?, ?)`
+  ).bind(
+    caseId,
+    caseNumber("ONB"),
+    employeeId,
+    employee.employee_no ?? null,
+    employee.full_name ?? null,
+    employee.department_name ?? null,
+    employee.location_name ?? null,
+    employee.position_name ?? null,
+    employee.employment_type ?? null,
+    employee.employee_type ?? null,
+    dueDate,
+    c.get("currentUser").id,
+    c.get("currentUser").id,
+    JSON.stringify(metadata)
+  ).run();
+  await seedOnboardingChecklistForEmployee(c, caseId, employeeId, settings);
+  await createLifecycleEvent(c, { employeeId, caseType: "ONBOARDING", caseId, action: "onboarding.case.created", newStatus: "IN_PROGRESS", metadata: { created_at: now, ...metadata } });
   return { id: caseId };
+}
+
+export async function autoCreateOnboardingCaseAfterEmployeeCreate(c: Context<AppBindings>, employeeId: string) {
+  const settings = await ensureOnboardingSettings(c.env.DB);
+  if (settings?.onboarding_enabled === 0 || Number(settings?.auto_create_onboarding_case_on_employee_create ?? 1) !== 1) return { skipped: true };
+  const employee = await loadOnboardingCaseEmployeeSnapshot(c.env.DB, employeeId);
+  if (!employee) return null;
+  return insertOnboardingCaseForEmployee(c, employee, settings, { auto_created: true, source: "employee_create" });
+}
+
+export async function createOnboardingCase(c: Context<AppBindings>, employeeId: string) {
+  const employee = await getScopedEmployee(c, employeeId, "manage");
+  if (!employee) return null;
+  const settings = await ensureOnboardingSettings(c.env.DB);
+  return insertOnboardingCaseForEmployee(c, employee, settings);
 }
 
 async function createOffboardingCase(c: Context<AppBindings>, employeeId: string, body: Record<string, unknown>) {
@@ -859,7 +1008,7 @@ onboardingRoutes.post("/alerts/refresh", requireAnyPermission(["onboarding.alert
   }
   return ok(c, { refreshed: true });
 });
-onboardingRoutes.get("/cases/:caseId", requireAnyPermission(["onboarding.cases.view", "onboarding.cases.manage"]), async (c) => {
+onboardingRoutes.get("/cases/:caseId", requireAnyPermission(["onboarding.cases.view", "onboarding.cases.manage", "employees.lifecycle.view", "employees.view"]), async (c) => {
   const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "view");
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
   return ok(c, { case: gate.row, employee: gate.employee, checklist: await getOnboardingChecklistStatus(c, c.req.param("caseId")), approval: await getOnboardingApprovalSummary(c, c.req.param("caseId")) });
@@ -882,9 +1031,13 @@ onboardingRoutes.post("/cases/:caseId/cancel", requireAnyPermission(["onboarding
   await createLifecycleEvent(c, { employeeId: String(gate.row.employee_id), caseType: "ONBOARDING", caseId: c.req.param("caseId"), action: "onboarding.case.cancelled", previousStatus: String(gate.row.onboarding_status), newStatus: "CANCELLED", reason });
   return ok(c, { cancelled: true });
 });
-onboardingRoutes.get("/cases/:caseId/tasks", requireAnyPermission(["onboarding.tasks.view", "onboarding.tasks.manage"]), async (c) => ok(c, { checklist: await getOnboardingChecklistStatus(c, c.req.param("caseId")) }));
+onboardingRoutes.get("/cases/:caseId/tasks", requireAnyPermission(["onboarding.tasks.view", "onboarding.tasks.manage", "employees.lifecycle.view", "employees.view"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "view");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  return ok(c, { checklist: await getOnboardingChecklistStatus(c, c.req.param("caseId")) });
+});
 onboardingRoutes.post("/cases/:caseId/tasks/refresh", requireAnyPermission(["onboarding.tasks.manage"]), async (c) => ok(c, { checklist: await refreshOnboardingChecklist(c, c.req.param("caseId")) }));
-onboardingRoutes.get("/cases/:caseId/readiness", requireAnyPermission(["onboarding.activation.view", "onboarding.cases.view"]), async (c) => ok(c, { readiness: await getEmployeeOnboardingReadiness(c, c.req.param("caseId")) }));
+onboardingRoutes.get("/cases/:caseId/readiness", requireAnyPermission(["onboarding.activation.view", "onboarding.cases.view", "employees.lifecycle.view", "employees.view"]), async (c) => ok(c, { readiness: await getEmployeeOnboardingReadiness(c, c.req.param("caseId")) }));
 onboardingRoutes.post("/cases/:caseId/submit-activation", requireAnyPermission(["onboarding.activation.submit", "onboarding.activation.manage"]), async (c) => ok(c, { submitted: await submitEmployeeActivationForApproval(c, c.req.param("caseId")), approval: await createOnboardingApprovalInstance(c, c.req.param("caseId")) }));
 onboardingRoutes.post("/cases/:caseId/approve-activation", requireAnyPermission(["onboarding.activation.approve", "onboarding.activation.manage"]), async (c) => ok(c, { approved: await approveEmployeeActivation(c, c.req.param("caseId")), approval: await syncOnboardingApprovalStatus(c, c.req.param("caseId")) }));
 onboardingRoutes.post("/cases/:caseId/activate", requireAnyPermission(["onboarding.activation.activate", "onboarding.activation.manage"]), async (c) => {
@@ -898,7 +1051,9 @@ onboardingRoutes.post("/cases/:caseId/activate-with-override", requireAnyPermiss
   if (!reason) return fail(c, 400, "ONBOARDING_OVERRIDE_REASON_REQUIRED", "Override reason is required.");
   return ok(c, await activateEmployeeWithOnboardingOverride(c, c.req.param("caseId"), reason));
 });
-onboardingRoutes.get("/cases/:caseId/events", requireAnyPermission(["lifecycle.events.view", "onboarding.cases.view"]), async (c) => {
+onboardingRoutes.get("/cases/:caseId/events", requireAnyPermission(["lifecycle.events.view", "onboarding.cases.view", "employees.lifecycle.view"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "view");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
   const rows = await c.env.DB.prepare("SELECT * FROM employee_lifecycle_events WHERE case_type = 'ONBOARDING' AND case_id = ? ORDER BY created_at DESC").bind(c.req.param("caseId")).all();
   return ok(c, { events: rows.results });
 });

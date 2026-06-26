@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { AssetsNav } from "../components/assets/AssetsNav";
+import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -78,9 +79,21 @@ export function AssetUniformSettingsPage() {
     }
   }
 
+  async function toggleModule(key: "asset_module_enabled" | "uniform_module_enabled", enabled: boolean) {
+    if (!token || !settings) return;
+    setError(null);
+    setNotice(null);
+    try {
+      const next = { ...settings, [key]: enabled };
+      const result = await api.updateAssetUniformSettings(token, next);
+      setSettings(result.settings);
+      setNotice(`${key === "asset_module_enabled" ? "Asset" : "Uniform"} module ${enabled ? "enabled" : "disabled"}.`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to update module status.");
+    }
+  }
+
   const checks: Array<[keyof AssetUniformSettings, string, string]> = [
-    ["asset_module_enabled", "Asset module enabled", "Allows asset item issue, return, damage, lost, deduction, and clearance actions."],
-    ["uniform_module_enabled", "Uniform module enabled", "Allows uniform type, stock, issue, return, damage, lost, and clearance actions."],
     ["require_approval_before_asset_issue", "Approval before asset issue", "Creates central approval foundation records before asset issue when workflows are enabled."],
     ["require_approval_before_damage_loss_deduction", "Approval before damage/loss deduction", "Routes damage and lost item deduction decisions through approvals."],
     ["allow_payroll_deduction_for_lost_damaged_items", "Allow payroll deduction", "Allows asset/uniform recovery to create custom payroll deductions."],
@@ -104,22 +117,42 @@ export function AssetUniformSettingsPage() {
       <Panel className="p-4">
         {!settings ? <EmptyState title="No settings loaded" description="Settings will appear after loading." /> : (
           <div className="space-y-4">
+            <ModuleToggleHeader
+              moduleName="Assets"
+              enabled={isOn(settings.asset_module_enabled ?? true)}
+              permissionCanUpdate={canManage}
+              description="Controls company asset issue, return, damage/loss, deductions, clearance, and employee asset self-service visibility."
+              disabledDescription="Asset settings are read-only while the asset module is disabled."
+              dependencyWarnings={["Asset lifecycle feeds final settlement clearance, payroll deductions, reports, and self-service asset history."]}
+              onToggle={(enabled) => toggleModule("asset_module_enabled", enabled)}
+            />
+            <ModuleToggleHeader
+              moduleName="Uniforms"
+              enabled={isOn(settings.uniform_module_enabled ?? true)}
+              permissionCanUpdate={canManage}
+              description="Controls uniform type, stock, issue, return, damage/loss, deductions, clearance, and employee uniform self-service visibility."
+              disabledDescription="Uniform settings are read-only while the uniform module is disabled."
+              dependencyWarnings={["Uniform lifecycle feeds final settlement clearance, payroll deductions, reports, and self-service uniform history."]}
+              onToggle={(enabled) => toggleModule("uniform_module_enabled", enabled)}
+            />
+            <ModuleSettingsBody disabled={!isOn(settings.asset_module_enabled ?? true) && !isOn(settings.uniform_module_enabled ?? true)}>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {checks.map(([key, label, description]) => (
-                <CheckboxField key={key} label={label} helper={description} checked={isOn(settings[key])} disabled={!canManage} onChange={(checked) => setSettings({ ...settings, [key]: checked })} className="min-h-16 items-start" />
+                <CheckboxField key={key} label={label} helper={description} checked={isOn(settings[key])} disabled={!canManage || (!isOn(settings.asset_module_enabled ?? true) && !isOn(settings.uniform_module_enabled ?? true))} onChange={(checked) => setSettings({ ...settings, [key]: checked })} className="min-h-16 items-start" />
               ))}
             </div>
             <div className="grid gap-3 md:grid-cols-3">
               <Field label="Default damage deduction mode">
-                <Select value={String(settings.default_damage_deduction_mode ?? "FULL_REPLACEMENT_VALUE")} disabled={!canManage} onChange={(value) => setSettings({ ...settings, default_damage_deduction_mode: value })}>
+                <Select value={String(settings.default_damage_deduction_mode ?? "FULL_REPLACEMENT_VALUE")} disabled={!canManage || (!isOn(settings.asset_module_enabled ?? true) && !isOn(settings.uniform_module_enabled ?? true))} onChange={(value) => setSettings({ ...settings, default_damage_deduction_mode: value })}>
                   {["FULL_REPLACEMENT_VALUE", "CURRENT_VALUE", "MANUAL_AMOUNT", "CUSTOM_FORMULA_PLACEHOLDER"].map((value) => <option key={value} value={value}>{value}</option>)}
                 </Select>
               </Field>
               <Field label="Default uniform replacement cycle months">
-                <Input type="number" value={String(settings.default_uniform_replacement_cycle_months ?? "")} disabled={!canManage} onChange={(event) => setSettings({ ...settings, default_uniform_replacement_cycle_months: event.target.value ? Number(event.target.value) : null })} />
+                <Input type="number" value={String(settings.default_uniform_replacement_cycle_months ?? "")} disabled={!canManage || (!isOn(settings.asset_module_enabled ?? true) && !isOn(settings.uniform_module_enabled ?? true))} onChange={(event) => setSettings({ ...settings, default_uniform_replacement_cycle_months: event.target.value ? Number(event.target.value) : null })} />
               </Field>
-              <div className="flex items-end">{canManage ? <Button size="sm" onClick={() => void save()}><SlidersHorizontal className="h-4 w-4" /> Save settings</Button> : <Badge tone="warning">Read only</Badge>}</div>
+              <div className="flex items-end">{canManage ? <Button size="sm" disabled={!isOn(settings.asset_module_enabled ?? true) && !isOn(settings.uniform_module_enabled ?? true)} onClick={() => void save()}><SlidersHorizontal className="h-4 w-4" /> Save settings</Button> : <Badge tone="warning">Read only</Badge>}</div>
             </div>
+            </ModuleSettingsBody>
           </div>
         )}
       </Panel>

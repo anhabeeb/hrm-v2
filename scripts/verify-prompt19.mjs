@@ -38,6 +38,7 @@ const auth = read("worker/src/auth/password.ts");
   "onboarding_settings",
   "employee_onboarding_cases",
   "employee_onboarding_tasks",
+  "auto_create_onboarding_case_on_employee_create",
   "onboarding_alerts",
   "offboarding_settings",
   "employee_offboarding_cases",
@@ -84,6 +85,7 @@ const auth = read("worker/src/auth/password.ts");
   "waiveOnboardingTask",
   "getOnboardingDocumentChecklist",
   "getOnboardingContractStatus",
+  "autoCreateOnboardingCaseAfterEmployeeCreate",
   "getOnboardingPayrollReadiness",
   "getOnboardingBiometricMappingStatus",
   "getOnboardingUserAccessStatus",
@@ -105,6 +107,18 @@ const auth = read("worker/src/auth/password.ts");
   "finalizeEmployeeExitFromOffboarding",
   "finalizeEmployeeExitWithOverride"
 ].forEach((marker) => must(lifecycleRoute.includes(marker), `lifecycle route helper missing ${marker}`));
+
+[
+  "Contract missing",
+  "Not required",
+  "Not set",
+  "Not applicable",
+  "blocking_items",
+  "This contract type requires a contract end date",
+  "employee_onboarding_cases WHERE employee_id = ? AND onboarding_status != 'CANCELLED' AND activation_status != 'ACTIVATED'"
+].forEach((marker) => must(lifecycleRoute.includes(marker), `lifecycle route missing onboarding contract null-handling marker ${marker}`));
+
+must(!/employment_type\s*={2,3}\s*["']FULL_TIME["'][\s\S]{0,120}contract_end_date/.test(lifecycleRoute), "full-time employees must not require contract_end_date by default");
 
 [
   "/settings",
@@ -169,6 +183,8 @@ must(exists("frontend/src/types/lifecycle.ts"), "lifecycle frontend types are mi
 must(appShell.includes("Onboarding") && appShell.includes("Offboarding"), "sidebar missing lifecycle navigation");
 must(selfService.includes("My Onboarding") && selfService.includes("My Offboarding"), "self-service lifecycle tabs missing");
 must(employeeProfile.includes("\"Lifecycle\"") && employeeProfile.includes("LifecyclePanel"), "Employee 360 lifecycle panel missing");
+must(read("worker/src/routes/employees.ts").includes("autoCreateOnboardingCaseAfterEmployeeCreate"), "employee create flow missing auto onboarding case hook");
+must(read("frontend/src/pages/LifecyclePage.tsx").includes("ContractReadinessPanel"), "LifecyclePage missing null-safe contract readiness panel");
 
 [
   "frontend/src/pages/LifecyclePage.tsx",

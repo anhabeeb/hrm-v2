@@ -320,7 +320,7 @@ function ContractsSelfServiceSection({ data }: { data: Record<string, unknown> |
   const fields: [string, unknown][] = active
     ? [
         ["Contract number", active.contract_number],
-        ["Type", active.contract_type_name_snapshot],
+        ["Type", active.contract_type_display_name ?? active.contract_type_name_snapshot ?? "Not selected"],
         ["Status", active.status],
         ["Approval", active.approval_status],
         ["Start date", active.contract_start_date],
@@ -357,7 +357,7 @@ function ContractsSelfServiceSection({ data }: { data: Record<string, unknown> |
           <EmptyState title="No active contract" description={text(data?.message ?? "No active contract is currently available for your profile.")} />
         )}
       </Panel>
-      <SimpleTable title="Contract history" rows={history} columns={["contract_number", "contract_type_name_snapshot", "status", "approval_status", "contract_start_date", "contract_end_date", "renewal_status"]} />
+      <SimpleTable title="Contract history" rows={history} columns={["contract_number", "contract_type_display_name", "status", "approval_status", "contract_start_date", "contract_end_date", "renewal_status"]} />
     </div>
   );
 }

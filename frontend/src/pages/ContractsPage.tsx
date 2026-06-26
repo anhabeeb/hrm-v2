@@ -2,6 +2,7 @@ import { FileText, Plus, RefreshCw, Settings, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
+import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
@@ -100,7 +101,7 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
     void load();
   }, [token, tab]);
 
-  const activeTypes = useMemo(() => types.filter((type) => bool(type.is_active) && type.status !== "ARCHIVED"), [types]);
+  const activeTypes = useMemo(() => types.filter((type) => bool(type.is_active) && type.status !== "ARCHIVED" && !type.archived_at), [types]);
 
   async function refreshAlerts() {
     if (!token) return;
@@ -222,7 +223,7 @@ function ContractTable({ rows, canManage, onAction }: { rows: Row[]; canManage: 
             <TableRow key={String(row.id)}>
               <TableCell><Link className="font-medium text-primary" to={`/employees/${row.employee_id}`}>{text(row.employee_name_snapshot ?? row.full_name)}</Link><div className="text-xs text-muted-foreground">{text(row.employee_number_snapshot ?? row.employee_no)}</div></TableCell>
               <TableCell>{text(row.contract_number)}<div className="text-xs text-muted-foreground">{text(row.contract_title)}</div></TableCell>
-              <TableCell>{text(row.contract_type_name_snapshot)}</TableCell>
+              <TableCell>{text(row.contract_type_display_name ?? row.contract_type_name_snapshot ?? "Not selected")}</TableCell>
               <TableCell><StatusBadge value={String(row.status)} /></TableCell>
               <TableCell><Badge tone={row.approval_status === "APPROVED" ? "success" : row.approval_status === "PENDING" ? "warning" : "neutral"}>{text(row.approval_status)}</Badge></TableCell>
               <TableCell>{text(row.contract_start_date)}</TableCell>
@@ -249,11 +250,27 @@ function ContractTable({ rows, canManage, onAction }: { rows: Row[]; canManage: 
 }
 
 function ContractForm({ employees, organizationRefs, types, onClose, onSave }: { employees: Employee[]; organizationRefs: ReturnType<typeof useOrganizationReferences>; types: Row[]; onClose: () => void; onSave: (employeeId: string, input: Row) => Promise<void> }) {
-  const [form, setForm] = useState({ employee_id: "", contract_type_id: "", contract_number: "", contract_title: "", contract_start_date: "", contract_end_date: "", probation_end_date: "", confirmation_due_date: "", basic_salary_snapshot: "", salary_currency_snapshot: "MVR", notes: "" });
+  const [form, setForm] = useState({ employee_id: "", contract_type_id: "", contract_number: "", contract_title: "", contract_start_date: "", contract_end_date: "", probation_start_date: "", probation_end_date: "", confirmation_due_date: "", basic_salary_snapshot: "", salary_currency_snapshot: "MVR", notes: "" });
   const [error, setError] = useState<string | null>(null);
+  const selectedType = useMemo(() => types.find((type) => String(type.id) === form.contract_type_id), [types, form.contract_type_id]);
+  const requiresEndDate = bool(selectedType?.requires_end_date);
+  const requiresProbation = bool(selectedType?.requires_probation);
+  const allowsSalaryTerms = selectedType ? bool(selectedType.allows_salary_terms) : true;
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!form.contract_type_id) {
+      setError("Please select a contract type.");
+      return;
+    }
+    if (requiresEndDate && !form.contract_end_date) {
+      setError("Contract end date is required for this contract type.");
+      return;
+    }
+    if (requiresProbation && (!form.probation_start_date || !form.probation_end_date)) {
+      setError("Probation dates are required for this contract type.");
+      return;
+    }
     try {
       await onSave(form.employee_id, {
         contract_type_id: form.contract_type_id,
@@ -261,11 +278,12 @@ function ContractForm({ employees, organizationRefs, types, onClose, onSave }: {
         contract_title: form.contract_title || null,
         contract_start_date: form.contract_start_date,
         contract_end_date: form.contract_end_date || null,
+        probation_start_date: form.probation_start_date || null,
         probation_end_date: form.probation_end_date || null,
         confirmation_due_date: form.confirmation_due_date || null,
-        basic_salary_snapshot: form.basic_salary_snapshot ? Number(form.basic_salary_snapshot) : null,
+        basic_salary_snapshot: allowsSalaryTerms && form.basic_salary_snapshot ? Number(form.basic_salary_snapshot) : null,
         salary_currency_snapshot: form.salary_currency_snapshot,
-        salary_terms: { source: "contract_form", basic_salary_snapshot: form.basic_salary_snapshot || null },
+        salary_terms: allowsSalaryTerms ? { source: "contract_form", basic_salary_snapshot: form.basic_salary_snapshot || null } : undefined,
         notes: form.notes || null
       });
     } catch (err) {
@@ -282,11 +300,18 @@ function ContractForm({ employees, organizationRefs, types, onClose, onSave }: {
           <Field label="Contract number"><Input value={form.contract_number} onChange={(event) => setForm({ ...form, contract_number: event.target.value })} placeholder="Auto if blank" /></Field>
           <Field label="Title"><Input value={form.contract_title} onChange={(event) => setForm({ ...form, contract_title: event.target.value })} /></Field>
           <Field label="Start date"><Input type="date" required value={form.contract_start_date} onChange={(event) => setForm({ ...form, contract_start_date: event.target.value })} /></Field>
-          <Field label="End date"><Input type="date" value={form.contract_end_date} onChange={(event) => setForm({ ...form, contract_end_date: event.target.value })} /></Field>
-          <Field label="Probation end"><Input type="date" value={form.probation_end_date} onChange={(event) => setForm({ ...form, probation_end_date: event.target.value })} /></Field>
+          <Field label={`End date${requiresEndDate ? " *" : ""}`}>
+            <Input type="date" required={requiresEndDate} value={form.contract_end_date} onChange={(event) => setForm({ ...form, contract_end_date: event.target.value })} />
+            {!requiresEndDate ? <p className="text-xs text-muted-foreground">End date is optional for this contract type.</p> : null}
+          </Field>
+          <Field label={`Probation start${requiresProbation ? " *" : ""}`}><Input type="date" required={requiresProbation} value={form.probation_start_date} onChange={(event) => setForm({ ...form, probation_start_date: event.target.value })} /></Field>
+          <Field label={`Probation end${requiresProbation ? " *" : ""}`}>
+            <Input type="date" required={requiresProbation} value={form.probation_end_date} onChange={(event) => setForm({ ...form, probation_end_date: event.target.value })} />
+            {!requiresProbation ? <p className="text-xs text-muted-foreground">Probation is optional or not applicable for this contract type.</p> : null}
+          </Field>
           <Field label="Confirmation due"><Input type="date" value={form.confirmation_due_date} onChange={(event) => setForm({ ...form, confirmation_due_date: event.target.value })} /></Field>
-          <Field label="Salary snapshot"><Input type="number" min="0" value={form.basic_salary_snapshot} onChange={(event) => setForm({ ...form, basic_salary_snapshot: event.target.value })} /></Field>
-          <Field label="Currency"><Input value={form.salary_currency_snapshot} onChange={(event) => setForm({ ...form, salary_currency_snapshot: event.target.value })} /></Field>
+          <Field label="Salary snapshot"><Input type="number" min="0" disabled={!allowsSalaryTerms} value={form.basic_salary_snapshot} onChange={(event) => setForm({ ...form, basic_salary_snapshot: event.target.value })} />{!allowsSalaryTerms ? <p className="text-xs text-muted-foreground">Salary terms are disabled for this contract type.</p> : null}</Field>
+          <Field label="Currency"><Input disabled={!allowsSalaryTerms} value={form.salary_currency_snapshot} onChange={(event) => setForm({ ...form, salary_currency_snapshot: event.target.value })} /></Field>
           <Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field>
         </div>
         {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
@@ -330,19 +355,36 @@ function ContractTypeForm({ type, onClose, onSave }: { type: Row | null; onClose
 function ContractSettingsPanel({ settings, canEdit, onSave }: { settings: Row | null; canEdit: boolean; onSave: (next: Row) => void }) {
   const [draft, setDraft] = useState<Row>(settings ?? {});
   useEffect(() => setDraft(settings ?? {}), [settings]);
-  const switches = ["contracts_enabled", "require_contract_for_active_employee", "auto_create_contract_task_on_onboarding", "require_contract_approval_before_activation", "allow_employee_without_contract_warning", "contract_expiry_alerts_enabled", "auto_mark_expired_contracts", "auto_create_end_of_contract_settlement_case", "require_reason_for_contract_change", "allow_contract_salary_snapshot", "allow_contract_salary_update_to_payroll_profile", "require_approval_for_contract_salary_update", "contract_document_required", "contract_sensitive_salary_terms"];
+  const switches = ["require_contract_for_active_employee", "auto_create_contract_task_on_onboarding", "require_contract_approval_before_activation", "allow_employee_without_contract_warning", "contract_expiry_alerts_enabled", "auto_mark_expired_contracts", "auto_create_end_of_contract_settlement_case", "require_reason_for_contract_change", "allow_contract_salary_snapshot", "allow_contract_salary_update_to_payroll_profile", "require_approval_for_contract_salary_update", "contract_document_required", "contract_sensitive_salary_terms"];
   const numbers = ["default_expiry_warning_days", "default_probation_warning_days", "default_renewal_warning_days"];
+  const enabled = bool(draft.contracts_enabled ?? true);
+  function toggleModule(nextEnabled: boolean) {
+    const next = { ...draft, contracts_enabled: nextEnabled };
+    setDraft(next);
+    onSave(next);
+  }
   return (
     <Panel className="space-y-4 p-4">
-      <div>
-        <h2 className="text-base font-semibold">Contract Settings</h2>
-        <p className="text-sm text-muted-foreground">Control contract requirement warnings, expiry/probation alerts, salary snapshots, and document expectations.</p>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {switches.map((key) => <CheckboxField key={key} label={key.split("_").join(" ")} checked={bool(draft[key])} disabled={!canEdit} onChange={(checked) => setDraft({ ...draft, [key]: checked })} />)}
-        {numbers.map((key) => <Field key={key} label={key.split("_").join(" ")}><Input type="number" min="0" disabled={!canEdit} value={text(draft[key]) === "-" ? "" : text(draft[key])} onChange={(event) => setDraft({ ...draft, [key]: Number(event.target.value) })} /></Field>)}
-      </div>
-      {canEdit ? <div className="flex justify-end"><Button onClick={() => onSave(draft)}><Settings className="h-4 w-4" /> Save settings</Button></div> : null}
+      <ModuleToggleHeader
+        moduleName="Contracts"
+        enabled={enabled}
+        permissionCanUpdate={canEdit}
+        description="Controls employee contract records, probation tracking, renewal reminders, expiry alerts, and onboarding contract tasks."
+        disabledDescription="Contract settings are read-only while the contracts module is disabled."
+        dependencyWarnings={["Contracts feed onboarding readiness, expiry alerts, renewals, salary snapshots, and final settlement warnings."]}
+        onToggle={toggleModule}
+      />
+      <ModuleSettingsBody disabled={!enabled}>
+        <div>
+          <h2 className="text-base font-semibold">Contract Settings</h2>
+          <p className="text-sm text-muted-foreground">Control contract requirement warnings, expiry/probation alerts, salary snapshots, and document expectations.</p>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {switches.map((key) => <CheckboxField key={key} label={key.split("_").join(" ")} checked={bool(draft[key])} disabled={!canEdit || !enabled} onChange={(checked) => setDraft({ ...draft, [key]: checked })} />)}
+          {numbers.map((key) => <Field key={key} label={key.split("_").join(" ")}><Input type="number" min="0" disabled={!canEdit || !enabled} value={text(draft[key]) === "-" ? "" : text(draft[key])} onChange={(event) => setDraft({ ...draft, [key]: Number(event.target.value) })} /></Field>)}
+        </div>
+        {canEdit ? <div className="mt-4 flex justify-end"><Button disabled={!enabled} onClick={() => onSave(draft)}><Settings className="h-4 w-4" /> Save settings</Button></div> : null}
+      </ModuleSettingsBody>
     </Panel>
   );
 }

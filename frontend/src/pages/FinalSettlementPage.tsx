@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
+import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -262,10 +263,10 @@ export function FinalSettlementPage() {
     }
   }
 
-  async function saveSettings() {
+  async function saveSettings(nextSettings?: FinalSettlementSettings) {
     if (!token || !settingsData) return;
     try {
-      await api.updateFinalSettlementSettings(token, settingsData);
+      await api.updateFinalSettlementSettings(token, nextSettings ?? settingsData);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to save settlement settings.");
@@ -273,6 +274,7 @@ export function FinalSettlementPage() {
   }
 
   if (!canView) return <Panel><EmptyState title="Exit payroll unavailable" description="Your account needs final settlement access." /></Panel>;
+  const finalSettlementEnabled = bool(settingsData?.final_settlement_enabled ?? true);
 
   return (
     <div className="space-y-4">
@@ -281,7 +283,7 @@ export function FinalSettlementPage() {
           <h1 className="text-lg font-semibold">Exit Payroll / Final Settlement</h1>
           <p className="text-sm text-muted-foreground">Manage Final Settlement cases, clearance, approval, finalization, and manual payment register rows.</p>
         </div>
-        <div className="flex flex-wrap gap-2"><AdminHelpLink target="finalSettlement" label="View Exit Payroll Guide" />{canCreate ? <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New case</Button> : null}</div>
+        <div className="flex flex-wrap gap-2"><AdminHelpLink target="finalSettlement" label="View Exit Payroll Guide" />{canCreate ? <Button size="sm" disabled={!finalSettlementEnabled} onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New case</Button> : null}</div>
       </div>
       <PayrollNav />
 
@@ -343,7 +345,7 @@ export function FinalSettlementPage() {
 
       {tab === "payments" ? <PaymentTable rows={payments} canManage={permissions.has("final_settlement.payment_register.manage")} onAction={(type, row) => { setPaymentAction({ type, row }); setReason(""); setNote(""); setReference(""); }} /> : null}
       {tab === "reports" ? <ReportsPanel reports={reports} /> : null}
-      {tab === "settings" ? <SettingsPanel settings={settingsData} canManage={permissions.has("final_settlement.settings.update") || permissions.has("final_settlement.settings.manage")} onChange={setSettingsData} onSave={() => void saveSettings()} /> : null}
+      {tab === "settings" ? <SettingsPanel settings={settingsData} canManage={permissions.has("final_settlement.settings.update") || permissions.has("final_settlement.settings.manage")} onChange={setSettingsData} onSave={(next) => void saveSettings(next)} /> : null}
 
       {createOpen ? <CreateCaseDialog form={form} employees={employees} organizationRefs={organizationRefs} onChange={setForm} onClose={() => setCreateOpen(false)} onSave={() => void createCase()} /> : null}
       {caseAction ? <CaseActionDialog action={caseAction.type} row={caseAction.row} note={note} reason={reason} amount={amount} adjustmentType={adjustmentType} onNote={setNote} onReason={setReason} onAmount={setAmount} onAdjustmentType={setAdjustmentType} onClose={() => setCaseAction(null)} onSave={() => void runCaseAction()} /> : null}
@@ -446,10 +448,10 @@ function ReportsPanel({ reports }: { reports: Record<string, unknown> | null }) 
   return <Panel className="space-y-3 p-4"><div><h2 className="text-sm font-semibold">Settlement reports foundation</h2><p className="text-sm text-muted-foreground">Protected report APIs cover pending, ready for approval, finalized, department/worksite totals, leave, bank loan, pension, custom deduction, asset/uniform deductions, and net settlement summaries.</p></div><div className="grid gap-3 md:grid-cols-4"><Metric label="Total cases" value={String(summary?.total_cases ?? 0)} /><Metric label="Pending" value={String(summary?.pending_settlements ?? 0)} /><Metric label="Ready approval" value={String(summary?.ready_for_approval ?? 0)} /><Metric label="Finalized" value={String(summary?.finalized_settlements ?? 0)} /><Metric label="Earnings" value={money(summary?.total_earnings)} /><Metric label="Deductions" value={money(summary?.total_deductions)} /><Metric label="Net total" value={money(summary?.net_settlement_amount)} /></div></Panel>;
 }
 
-function SettingsPanel({ settings, canManage, onChange, onSave }: { settings: FinalSettlementSettings | null; canManage: boolean; onChange: (settings: FinalSettlementSettings) => void; onSave: () => void }) {
+function SettingsPanel({ settings, canManage, onChange, onSave }: { settings: FinalSettlementSettings | null; canManage: boolean; onChange: (settings: FinalSettlementSettings) => void; onSave: (settings?: FinalSettlementSettings) => void }) {
   if (!settings) return <Panel><EmptyState title="Settings unavailable" description="Your account needs final settlement settings permission." /></Panel>;
+  const activeSettings = settings;
   const toggleKeys: Array<keyof FinalSettlementSettings> = [
-    "final_settlement_enabled",
     "allow_settlement_case_creation_from_exit_status",
     "auto_create_settlement_case_on_exit_status",
     "require_settlement_approval_before_finalization",
@@ -485,5 +487,28 @@ function SettingsPanel({ settings, canManage, onChange, onSave }: { settings: Fi
     "require_reason_for_recalculation",
     "require_reason_for_unlock"
   ];
-  return <Panel className="space-y-4 p-4"><div className="flex items-center justify-between"><div><h2 className="text-sm font-semibold">Exit payroll settings</h2><p className="text-sm text-muted-foreground">Configure settlement calculation, source inclusion, approval, finalization, and payment register controls.</p></div>{canManage ? <Button size="sm" onClick={onSave}><Settings className="h-4 w-4" /> Save settings</Button> : null}</div><div className="grid gap-2 md:grid-cols-3">{toggleKeys.map((key) => <CheckboxField key={key} label={String(key).replace(/_/g, " ")} disabled={!canManage} checked={bool(settings[key])} onChange={(checked) => onChange({ ...settings, [key]: checked })} />)}</div><div className="grid gap-3 md:grid-cols-3"><Field label="Daily rate mode"><SelectField value={settings.default_daily_rate_calculation_mode} onChange={(value) => onChange({ ...settings, default_daily_rate_calculation_mode: value as FinalSettlementSettings["default_daily_rate_calculation_mode"] })}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></SelectField></Field><Field label="Unused leave payout mode"><SelectField value={settings.default_unused_leave_payout_calculation_mode ?? "DAILY_RATE"} onChange={(value) => onChange({ ...settings, default_unused_leave_payout_calculation_mode: value as FinalSettlementSettings["default_unused_leave_payout_calculation_mode"] })}><option value="DAILY_RATE">Daily rate</option><option value="FIXED_AMOUNT">Fixed amount</option><option value="MANUAL">Manual</option></SelectField></Field><Field label="Default settlement currency"><Input disabled={!canManage} value={settings.default_settlement_currency ?? "MVR"} onChange={(event) => onChange({ ...settings, default_settlement_currency: event.target.value })} /></Field></div></Panel>;
+  const enabled = bool(activeSettings.final_settlement_enabled ?? true);
+  function toggleModule(nextEnabled: boolean) {
+    const next: FinalSettlementSettings = { ...activeSettings, final_settlement_enabled: nextEnabled };
+    onChange(next);
+    onSave(next);
+  }
+  return (
+    <Panel className="space-y-4 p-4">
+      <ModuleToggleHeader
+        moduleName="Final settlement"
+        enabled={enabled}
+        permissionCanUpdate={canManage}
+        description="Controls exit payroll cases, settlement calculation, clearance, approval, finalization, and manual payment register foundation."
+        disabledDescription="Final settlement settings are read-only while the module is disabled."
+        dependencyWarnings={["Final settlement depends on payroll, leave, attendance, contracts, asset/uniform clearance, documents, bank loans, pension, and custom deductions."]}
+        onToggle={toggleModule}
+      />
+      <ModuleSettingsBody disabled={!enabled}>
+        <div className="flex items-center justify-between"><div><h2 className="text-sm font-semibold">Exit payroll settings</h2><p className="text-sm text-muted-foreground">Configure settlement calculation, source inclusion, approval, finalization, and payment register controls.</p></div>{canManage ? <Button size="sm" disabled={!enabled} onClick={() => onSave()}><Settings className="h-4 w-4" /> Save settings</Button> : null}</div>
+        <div className="grid gap-2 md:grid-cols-3">{toggleKeys.map((key) => <CheckboxField key={key} label={String(key).replace(/_/g, " ")} disabled={!canManage || !enabled} checked={bool(settings[key])} onChange={(checked) => onChange({ ...settings, [key]: checked })} />)}</div>
+        <div className="grid gap-3 md:grid-cols-3"><Field label="Daily rate mode"><SelectField value={settings.default_daily_rate_calculation_mode} onChange={(value) => onChange({ ...settings, default_daily_rate_calculation_mode: value as FinalSettlementSettings["default_daily_rate_calculation_mode"] })}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></SelectField></Field><Field label="Unused leave payout mode"><SelectField value={settings.default_unused_leave_payout_calculation_mode ?? "DAILY_RATE"} onChange={(value) => onChange({ ...settings, default_unused_leave_payout_calculation_mode: value as FinalSettlementSettings["default_unused_leave_payout_calculation_mode"] })}><option value="DAILY_RATE">Daily rate</option><option value="FIXED_AMOUNT">Fixed amount</option><option value="MANUAL">Manual</option></SelectField></Field><Field label="Default settlement currency"><Input disabled={!canManage || !enabled} value={settings.default_settlement_currency ?? "MVR"} onChange={(event) => onChange({ ...settings, default_settlement_currency: event.target.value })} /></Field></div>
+      </ModuleSettingsBody>
+    </Panel>
+  );
 }

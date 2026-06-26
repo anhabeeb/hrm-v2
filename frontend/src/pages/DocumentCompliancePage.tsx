@@ -2,6 +2,7 @@ import { Bell, CheckCircle2, ClipboardList, FileWarning, RefreshCw, Settings, XC
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -160,7 +161,7 @@ export function DocumentCompliancePage({ mode = "dashboard" }: { mode?: Mode }) 
         {mode === "alerts" ? <Alerts rows={alerts} loading={loading} canManage={canManage} onAction={(alert, action) => action === "acknowledge" ? void alertAction(alert, action) : setReasonAction({ title: `${action} alert`, reason: "", required: action !== "dismiss", onConfirm: (reason) => alertAction(alert, action, reason) })} /> : null}
         {mode === "renewal-cases" ? <RenewalCases rows={cases} loading={loading} canManage={canManage} onAction={(row, action) => action === "cancel" ? setReasonAction({ title: "Cancel renewal case", reason: "", required: true, onConfirm: (reason) => caseAction(row, action, reason) }) : void caseAction(row, action)} /> : null}
         {mode === "waivers" ? <Waivers rows={waivers} loading={loading} canManage={canManage} onCancel={(row) => setReasonAction({ title: "Cancel waiver", reason: "", required: true, onConfirm: async (reason) => { if (token) await api.cancelDocumentRequirementWaiver(token, row.id, reason); await load(); } })} /> : null}
-        {mode === "settings" && settings ? <SettingsForm settings={settings} token={token!} onSaved={load} onError={setError} /> : null}
+        {mode === "settings" && settings ? <SettingsForm settings={settings} token={token!} canManage={canManage} onSaved={load} onError={setError} /> : null}
         {mode === "type-settings" ? <TypeCompliance types={types} loading={loading} canManage={canManage || permissions.has("documents.types.compliance.update")} onEdit={setTypeModal} /> : null}
       </Panel>
 
@@ -204,18 +205,49 @@ function Waivers({ rows, loading, canManage, onCancel }: { rows: DocumentRequire
   return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Document</TableHead><TableHead>Reason</TableHead><TableHead>Start</TableHead><TableHead>End</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" /></TableCell><TableCell>{row.document_type_name ?? row.document_type_code ?? "-"}</TableCell><TableCell>{row.waiver_reason}</TableCell><TableCell>{row.waiver_start_date}</TableCell><TableCell>{row.waiver_end_date ?? "-"}</TableCell><TableCell><Badge tone={statusTone(row.status)}>{row.status}</Badge></TableCell><TableCell className="text-right">{canManage && row.status === "ACTIVE" ? <Button variant="ghost" size="sm" onClick={() => onCancel(row)}>Cancel</Button> : null}</TableCell></TableRow>)}</TableBody></Table>{loading ? <EmptyState title="Loading waivers" description="Fetching requirement waivers." /> : rows.length === 0 ? <EmptyState title="No waivers" description="Waived requirements will appear here." /> : null}</div>;
 }
 
-function SettingsForm({ settings, token, onSaved, onError }: { settings: DocumentComplianceSettings; token: string; onSaved: () => Promise<void>; onError: (value: string | null) => void }) {
+function SettingsForm({ settings, token, canManage, onSaved, onError }: { settings: DocumentComplianceSettings; token: string; canManage: boolean; onSaved: () => Promise<void>; onError: (value: string | null) => void }) {
   const [form, setForm] = useState(settings);
   const update = (key: keyof DocumentComplianceSettings, value: string | number | boolean) => setForm((current) => ({ ...current, [key]: value }));
-  async function save() {
+  async function save(next = form) {
     try {
-      await api.updateDocumentComplianceSettings(token, form);
+      await api.updateDocumentComplianceSettings(token, next);
       await onSaved();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Unable to save compliance settings.");
     }
   }
-  return <div className="grid gap-3 p-3 md:grid-cols-3"><Toggle label="Compliance enabled" checked={form.document_compliance_enabled} onChange={(value) => update("document_compliance_enabled", value)} /><Toggle label="Expiry alerts" checked={form.expiry_alerts_enabled} onChange={(value) => update("expiry_alerts_enabled", value)} /><Toggle label="Missing alerts" checked={form.missing_required_document_alerts_enabled} onChange={(value) => update("missing_required_document_alerts_enabled", value)} /><Toggle label="Renewal workflow" checked={form.renewal_workflow_enabled} onChange={(value) => update("renewal_workflow_enabled", value)} /><Toggle label="Allow waivers" checked={form.allow_document_requirement_waiver} onChange={(value) => update("allow_document_requirement_waiver", value)} /><Toggle label="Self-service view" checked={form.allow_employee_view_document_compliance} onChange={(value) => update("allow_employee_view_document_compliance", value)} /><Field label="Expiring soon days" type="number" value={String(form.default_expiring_soon_days)} onChange={(value) => update("default_expiring_soon_days", Number(value))} /><Field label="Urgent days" type="number" value={String(form.default_urgent_expiring_days)} onChange={(value) => update("default_urgent_expiring_days", Number(value))} /><Field label="Overdue grace days" type="number" value={String(form.default_overdue_grace_days)} onChange={(value) => update("default_overdue_grace_days", Number(value))} /><div className="md:col-span-3"><Button size="sm" onClick={() => void save()}><Settings className="h-4 w-4" /> Save settings</Button></div></div>;
+  const enabled = Boolean(form.document_compliance_enabled);
+  async function toggleModule(nextEnabled: boolean) {
+    const next = { ...form, document_compliance_enabled: nextEnabled };
+    setForm(next);
+    await save(next);
+  }
+  return (
+    <div className="space-y-3 p-3">
+      <ModuleToggleHeader
+        moduleName="Document compliance"
+        enabled={enabled}
+        permissionCanUpdate={canManage}
+        description="Controls missing document checks, expiry alerts, renewal cases, waivers, and compliance type rules."
+        disabledDescription="Document compliance settings are read-only while compliance automation is disabled."
+        dependencyWarnings={["Disabling compliance suppresses expiry alerts, missing document tracking, renewal cases, and onboarding compliance warnings."]}
+        onToggle={toggleModule}
+      />
+      <ModuleSettingsBody disabled={!enabled}>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Toggle disabled={!canManage || !enabled} label="Expiry alerts" checked={form.expiry_alerts_enabled} onChange={(value) => update("expiry_alerts_enabled", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Missing alerts" checked={form.missing_required_document_alerts_enabled} onChange={(value) => update("missing_required_document_alerts_enabled", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Renewal workflow" checked={form.renewal_workflow_enabled} onChange={(value) => update("renewal_workflow_enabled", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Allow waivers" checked={form.allow_document_requirement_waiver} onChange={(value) => update("allow_document_requirement_waiver", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Self-service view" checked={form.allow_employee_view_document_compliance} onChange={(value) => update("allow_employee_view_document_compliance", value)} />
+          <Field label="Expiring soon days" type="number" value={String(form.default_expiring_soon_days)} onChange={(value) => update("default_expiring_soon_days", Number(value))} />
+          <Field label="Urgent days" type="number" value={String(form.default_urgent_expiring_days)} onChange={(value) => update("default_urgent_expiring_days", Number(value))} />
+          <Field label="Overdue grace days" type="number" value={String(form.default_overdue_grace_days)} onChange={(value) => update("default_overdue_grace_days", Number(value))} />
+          <div className="md:col-span-3"><Button size="sm" disabled={!canManage || !enabled} onClick={() => void save()}><Settings className="h-4 w-4" /> Save settings</Button></div>
+        </div>
+      </ModuleSettingsBody>
+    </div>
+  );
 }
 
 function TypeCompliance({ types, loading, canManage, onEdit }: { types: DocumentType[]; loading: boolean; canManage: boolean; onEdit: (type: DocumentType) => void }) {
@@ -251,8 +283,8 @@ function ReasonModal({ action, onClose }: { action: { title: string; reason: str
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">{action.title}</h2><Input className="mt-3" placeholder="Reason or note" value={reason} onChange={(event) => setReason(event.target.value)} />{error ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void submitReason()}>Confirm</Button></div></div></div>;
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <CheckboxField label={label} checked={checked} onChange={onChange} />;
+function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
+  return <CheckboxField label={label} checked={checked} disabled={disabled} onChange={onChange} />;
 }
 
 function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {

@@ -1,6 +1,7 @@
 import { Bell, CheckCircle2, Clock, Eye, FileText, GitBranch, RefreshCw, Send, Settings, ShieldCheck, UserCheck, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -207,7 +208,7 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
         ) : null}
         {["inbox", "submitted", "overdue", "escalated", "delegated", "history", "self-service"].includes(mode) ? <ApprovalTable rows={approvals} loading={loading} onOpen={openInstance} /> : null}
         {mode === "workflows" ? <WorkflowBuilder rows={workflows} loading={loading} form={workflowForm} setForm={setWorkflowForm} onSave={saveWorkflow} onOpen={openWorkflow} canManage={canManage} /> : null}
-        {mode === "settings" && settings ? <SettingsPanel settings={settings} token={token!} onSaved={load} onError={setError} /> : null}
+        {mode === "settings" && settings ? <SettingsPanel settings={settings} token={token!} canManage={canManage} onSaved={load} onError={setError} /> : null}
         {mode === "delegations" ? <Delegations rows={delegations} loading={loading} form={delegationForm} setForm={setDelegationForm} onSave={saveDelegation} /> : null}
         {mode === "templates" ? <Templates rows={templates} loading={loading} onEdit={setTemplateEdit} /> : null}
         {mode === "reports" ? <ReportTable rows={reportRows} loading={loading} /> : null}
@@ -229,18 +230,51 @@ function WorkflowBuilder({ rows, loading, form, setForm, onSave, onOpen, canMana
   return <div className="space-y-3 p-3">{canManage ? <div className="grid gap-2 rounded-md border p-3 md:grid-cols-7"><Field label="Code" value={form.workflow_code} onChange={(value) => setForm({ ...form, workflow_code: value })} /><Field label="Name" value={form.workflow_name} onChange={(value) => setForm({ ...form, workflow_name: value })} /><Field label="Module" value={form.module_key} onChange={(value) => setForm({ ...form, module_key: value })} /><Field label="Action" value={form.action_key} onChange={(value) => setForm({ ...form, action_key: value })} /><Field label="Entity" value={form.applies_to_entity_type} onChange={(value) => setForm({ ...form, applies_to_entity_type: value })} /><Field label="Priority" value={form.priority_number} onChange={(value) => setForm({ ...form, priority_number: value })} /><div className="flex items-end"><Button size="sm" onClick={() => void onSave()}><GitBranch className="h-4 w-4" /> Create</Button></div></div> : null}<div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Workflow</TableHead><TableHead>Module</TableHead><TableHead>Priority</TableHead><TableHead>Status</TableHead><TableHead>Enabled</TableHead><TableHead>Fallback</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.workflow_name}<div className="font-mono text-xs text-muted-foreground">{row.workflow_code}</div></TableCell><TableCell>{row.module_key}<div className="text-xs text-muted-foreground">{row.action_key}</div></TableCell><TableCell>{row.priority_number}</TableCell><TableCell><Badge tone={statusTone(row.status)}>{row.status}</Badge></TableCell><TableCell>{row.is_enabled ? "Yes" : "No"}</TableCell><TableCell>{row.fallback_behavior}</TableCell><TableCell className="text-right"><Button variant="ghost" size="sm" onClick={() => void onOpen(row)}>Configure</Button></TableCell></TableRow>)}</TableBody></Table>{loading ? <EmptyState title="Loading workflows" description="Fetching approval workflows." /> : rows.length === 0 ? <EmptyState title="No workflows" description="Create a workflow to route future central approvals." /> : null}</div></div>;
 }
 
-function SettingsPanel({ settings, token, onSaved, onError }: { settings: ApprovalWorkflowSettings; token: string; onSaved: () => Promise<void>; onError: (message: string | null) => void }) {
+function SettingsPanel({ settings, token, canManage, onSaved, onError }: { settings: ApprovalWorkflowSettings; token: string; canManage: boolean; onSaved: () => Promise<void>; onError: (message: string | null) => void }) {
   const [form, setForm] = useState(settings);
   const update = (key: keyof ApprovalWorkflowSettings, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
-  async function save() {
+  async function save(next = form) {
     try {
-      await api.updateApprovalSettings(token, form);
+      await api.updateApprovalSettings(token, next);
       await onSaved();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Unable to save approval settings.");
     }
   }
-  return <div className="grid gap-3 p-3 md:grid-cols-3"><Toggle label="Central approvals enabled" checked={form.approval_workflows_enabled} onChange={(value) => update("approval_workflows_enabled", value)} /><Toggle label="Use central workflows" checked={form.use_central_workflow_for_supported_modules} onChange={(value) => update("use_central_workflow_for_supported_modules", value)} /><Toggle label="Fallback to module approval" checked={form.fallback_to_module_approval_if_no_workflow} onChange={(value) => update("fallback_to_module_approval_if_no_workflow", value)} /><Toggle label="Block self approval by default" checked={form.block_self_approval_by_default} onChange={(value) => update("block_self_approval_by_default", value)} /><Toggle label="Delegation enabled" checked={form.allow_delegation} onChange={(value) => update("allow_delegation", value)} /><Toggle label="Escalation enabled" checked={form.escalation_enabled} onChange={(value) => update("escalation_enabled", value)} /><Toggle label="Reminders enabled" checked={form.reminders_enabled} onChange={(value) => update("reminders_enabled", value)} /><Toggle label="Parallel approvals" checked={form.allow_parallel_approvals} onChange={(value) => update("allow_parallel_approvals", value)} /><Toggle label="Any-one approval mode" checked={form.allow_any_one_approval_mode} onChange={(value) => update("allow_any_one_approval_mode", value)} /><div><Label>Escalation basis</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.default_escalation_time_basis} onChange={(event) => update("default_escalation_time_basis", event.target.value)}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option></SelectField></div><div><Label>Employee visibility</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.default_employee_visibility_mode} onChange={(event) => update("default_employee_visibility_mode", event.target.value)}><option value="STEP_NAMES_ONLY">Step names only</option><option value="STEP_NAMES_AND_APPROVER_ROLES">Step names and roles</option><option value="FULL_APPROVER_NAMES">Full approver names</option></SelectField></div><div className="flex items-end"><Button size="sm" onClick={() => void save()}><Settings className="h-4 w-4" /> Save settings</Button></div></div>;
+  const enabled = Boolean(form.approval_workflows_enabled);
+  async function toggleModule(nextEnabled: boolean) {
+    const next = { ...form, approval_workflows_enabled: nextEnabled };
+    setForm(next);
+    await save(next);
+  }
+  return (
+    <div className="space-y-3 p-3">
+      <ModuleToggleHeader
+        moduleName="Central approvals"
+        enabled={enabled}
+        permissionCanUpdate={canManage}
+        description="Controls central approval workflows, delegation, escalation, reminders, and workflow fallback behavior."
+        disabledDescription="Approval settings are read-only while central approvals are disabled. Module-specific fallback approvals remain governed by their own settings."
+        dependencyWarnings={["Disabling central approvals can affect leave, payroll, contracts, asset recovery, onboarding activation, and other routed workflows."]}
+        onToggle={toggleModule}
+      />
+      <ModuleSettingsBody disabled={!enabled}>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Toggle disabled={!canManage || !enabled} label="Use central workflows" checked={form.use_central_workflow_for_supported_modules} onChange={(value) => update("use_central_workflow_for_supported_modules", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Fallback to module approval" checked={form.fallback_to_module_approval_if_no_workflow} onChange={(value) => update("fallback_to_module_approval_if_no_workflow", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Block self approval by default" checked={form.block_self_approval_by_default} onChange={(value) => update("block_self_approval_by_default", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Delegation enabled" checked={form.allow_delegation} onChange={(value) => update("allow_delegation", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Escalation enabled" checked={form.escalation_enabled} onChange={(value) => update("escalation_enabled", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Reminders enabled" checked={form.reminders_enabled} onChange={(value) => update("reminders_enabled", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Parallel approvals" checked={form.allow_parallel_approvals} onChange={(value) => update("allow_parallel_approvals", value)} />
+          <Toggle disabled={!canManage || !enabled} label="Any-one approval mode" checked={form.allow_any_one_approval_mode} onChange={(value) => update("allow_any_one_approval_mode", value)} />
+          <div><Label>Escalation basis</Label><SelectField disabled={!canManage || !enabled} className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.default_escalation_time_basis} onChange={(event) => update("default_escalation_time_basis", event.target.value)}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option></SelectField></div>
+          <div><Label>Employee visibility</Label><SelectField disabled={!canManage || !enabled} className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.default_employee_visibility_mode} onChange={(event) => update("default_employee_visibility_mode", event.target.value)}><option value="STEP_NAMES_ONLY">Step names only</option><option value="STEP_NAMES_AND_APPROVER_ROLES">Step names and roles</option><option value="FULL_APPROVER_NAMES">Full approver names</option></SelectField></div>
+          <div className="flex items-end"><Button size="sm" disabled={!canManage || !enabled} onClick={() => void save()}><Settings className="h-4 w-4" /> Save settings</Button></div>
+        </div>
+      </ModuleSettingsBody>
+    </div>
+  );
 }
 
 function Delegations({ rows, loading, form, setForm, onSave }: { rows: ApprovalDelegationRule[]; loading: boolean; form: Record<string, string>; setForm: (form: any) => void; onSave: () => void }) {
@@ -290,6 +324,6 @@ function Select({ label, value, onChange, options }: { label: string; value: str
   return <div className="space-y-1"><Label>{label}</Label><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</SelectField></div>;
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return <CheckboxField label={label} checked={checked} onChange={onChange} />;
+function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
+  return <CheckboxField label={label} checked={checked} disabled={disabled} onChange={onChange} />;
 }

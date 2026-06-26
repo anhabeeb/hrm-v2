@@ -4,6 +4,7 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PayrollNav } from "../components/payroll/PayrollNav";
+import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -304,13 +305,16 @@ export function PayrollSettingsPage() {
   useEffect(() => { async function load() { if (!token || !canView) return; try { setSettings((await api.getPayrollSettings(token)).settings); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to load payroll settings."); } } void load(); }, [token, canView]);
   function update<K extends keyof PayrollSettings>(key: K, value: PayrollSettings[K]) { if (settings) setSettings({ ...settings, [key]: value }); }
   async function save() { if (!token || !settings) return; try { setSettings((await api.updatePayrollSettings(token, settings)).settings); setMessage("Payroll settings saved."); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save payroll settings."); } }
+  async function togglePayrollModule(enabled: boolean) { if (!token || !settings) return; try { setSettings((await api.updatePayrollSettings(token, { ...settings, module_enabled: enabled })).settings); setMessage(enabled ? "Payroll module enabled." : "Payroll module disabled."); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update payroll module status."); } }
   if (!canView) return <Panel><EmptyState title="Payroll settings unavailable" description="Your account needs payroll settings permission." /></Panel>;
+  const moduleEnabled = Boolean(settings?.module_enabled ?? true);
   return <div className="space-y-4">
-    <Header title="Payroll Settings" description="General payroll, bank-loan, pension, payment, and deduction-priority controls.">{canManage ? <Button size="sm" onClick={() => void save()}>Save settings</Button> : null}</Header>
+    <Header title="Payroll Settings" description="General payroll, bank-loan, pension, payment, and deduction-priority controls.">{canManage ? <Button size="sm" disabled={!moduleEnabled} onClick={() => void save()}>Save settings</Button> : null}</Header>
     <ErrorMessage error={error} />
     {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
+    {settings ? <ModuleToggleHeader moduleName="Payroll" enabled={moduleEnabled} permissionCanUpdate={canManage} description="Controls payroll periods, runs, review results, advances, deductions, pension, bank loans, reports, and payment-register foundations." disabledDescription="Payroll settings are read-only while the payroll module is disabled." dependencyWarnings={["Payroll consumes attendance, leave, roster, pension, bank loan, custom deduction, final settlement, and employee salary foundations."]} onToggle={togglePayrollModule} /> : null}
     <Panel className="p-4">
-      {!settings ? <EmptyState title="Loading payroll settings" description="Fetching payroll configuration." /> : <div className="space-y-5">
+      {!settings ? <EmptyState title="Loading payroll settings" description="Fetching payroll configuration." /> : <ModuleSettingsBody disabled={!moduleEnabled}><div className="space-y-5">
         <SettingsSection title="General Payroll" description="Base calculation and module switches.">
           <Field label="Default currency"><Input disabled={!canManage} value={settings.default_currency} onChange={(event) => update("default_currency", event.target.value)} /></Field>
           <Field label="Daily rate mode"><SelectField disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_daily_rate_mode} onChange={(event) => update("default_daily_rate_mode", event.target.value as PayrollSettings["default_daily_rate_mode"])}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></SelectField></Field>
@@ -392,7 +396,7 @@ export function PayrollSettingsPage() {
             </Field>
           </div>
         </SettingsSection>
-      </div>}
+      </div></ModuleSettingsBody>}
     </Panel>
   </div>;
 }

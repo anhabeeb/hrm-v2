@@ -966,6 +966,7 @@ CREATE TABLE IF NOT EXISTS onboarding_settings (
   onboarding_enabled INTEGER NOT NULL DEFAULT 1 CHECK (onboarding_enabled IN (0, 1)),
   require_onboarding_before_activation INTEGER NOT NULL DEFAULT 1 CHECK (require_onboarding_before_activation IN (0, 1)),
   allow_draft_employee_records INTEGER NOT NULL DEFAULT 1 CHECK (allow_draft_employee_records IN (0, 1)),
+  auto_create_onboarding_case_on_employee_create INTEGER NOT NULL DEFAULT 1 CHECK (auto_create_onboarding_case_on_employee_create IN (0, 1)),
   allow_partial_onboarding INTEGER NOT NULL DEFAULT 1 CHECK (allow_partial_onboarding IN (0, 1)),
   require_personal_info_before_activation INTEGER NOT NULL DEFAULT 1 CHECK (require_personal_info_before_activation IN (0, 1)),
   require_contact_info_before_activation INTEGER NOT NULL DEFAULT 0 CHECK (require_contact_info_before_activation IN (0, 1)),

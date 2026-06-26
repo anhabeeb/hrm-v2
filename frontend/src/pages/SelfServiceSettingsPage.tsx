@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Save } from "lucide-react";
+import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
@@ -12,7 +13,6 @@ const settingGroups = [
   {
     title: "Portal visibility",
     keys: [
-      ["module_enabled", "Self-service enabled"],
       ["dashboard_enabled", "Dashboard"],
       ["profile_enabled", "Profile"],
       ["profile_update_requests_enabled", "Profile update requests"],
@@ -90,6 +90,22 @@ export function SelfServiceSettingsPage() {
     setSettings((current) => ({ ...(current ?? {}), [key]: value ? 1 : 0 }));
   }
 
+  async function toggleSelfServiceModule(enabled: boolean) {
+    if (!token || !settings) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const next = { ...settings, module_enabled: enabled ? 1 : 0 };
+      setSettings((await api.updateSelfServiceSettings(token, next)).settings);
+      setMessage(enabled ? "Self-service module enabled." : "Self-service module disabled.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to update self-service module status.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!token || !settings) return;
@@ -110,6 +126,9 @@ export function SelfServiceSettingsPage() {
     return <Panel className="p-6"><EmptyState title="Self-service settings unavailable" description="Your account needs self_service.settings.view permission." /></Panel>;
   }
 
+  const moduleEnabled = Boolean(Number(settings?.module_enabled ?? 1));
+  const controlsDisabled = !canManage || !moduleEnabled;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -117,11 +136,24 @@ export function SelfServiceSettingsPage() {
           <h1 className="text-lg font-semibold">Employee Self-Service Settings</h1>
           <p className="text-sm text-muted-foreground">Configure which employee self-service modules are visible and which employee actions are allowed.</p>
         </div>
-        {canManage ? <Button form="self-service-settings-form" type="submit" disabled={saving || !settings}><Save className="h-4 w-4" />Save</Button> : null}
+        {canManage ? <Button form="self-service-settings-form" type="submit" disabled={saving || !settings || !moduleEnabled}><Save className="h-4 w-4" />Save</Button> : null}
       </div>
       {message ? <div className="rounded-md border bg-muted px-3 py-2 text-sm">{message}</div> : null}
+      {settings ? (
+        <ModuleToggleHeader
+          moduleName="Self-service"
+          enabled={moduleEnabled}
+          permissionCanUpdate={canManage}
+          isSaving={saving}
+          description="Controls employee-facing portal visibility for profile, documents, leave, attendance, roster, payroll, contracts, assets, and approvals."
+          disabledDescription="Self-service settings are read-only while the employee portal is disabled. Authorized users can re-enable it from this top switch."
+          dependencyWarnings={["Self-service visibility affects employee document submissions, leave requests, attendance corrections, payslips, and employee profile update requests."]}
+          onToggle={toggleSelfServiceModule}
+        />
+      ) : null}
       <DataTableFrame loading={loading} error={error} empty={!loading && !settings}>
         <form id="self-service-settings-form" onSubmit={(event) => void save(event)} className="grid gap-4 xl:grid-cols-2">
+          <ModuleSettingsBody disabled={!moduleEnabled} className="contents">
           {settingGroups.map((group) => (
             <Panel key={group.title} className="overflow-hidden">
               <div className="border-b px-4 py-3">
@@ -129,11 +161,12 @@ export function SelfServiceSettingsPage() {
               </div>
               <div className="grid gap-2 p-3">
                 {group.keys.map(([key, label]) => (
-                  <Toggle key={key} label={label} checked={Boolean(Number(settings?.[key] ?? 0))} disabled={!canManage} onChange={(value) => update(key, value)} />
+                  <Toggle key={key} label={label} checked={Boolean(Number(settings?.[key] ?? 0))} disabled={controlsDisabled} onChange={(value) => update(key, value)} />
                 ))}
               </div>
             </Panel>
           ))}
+          </ModuleSettingsBody>
         </form>
       </DataTableFrame>
     </div>

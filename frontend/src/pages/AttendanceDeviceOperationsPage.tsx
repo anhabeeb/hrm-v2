@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
+import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -63,7 +64,7 @@ export function AttendanceDeviceOperationsPage({ mode }: { mode: Mode }) {
         </div>
       </div>
       <AttendanceNav />
-      {mode === "settings" ? <DeviceSettings token={token} /> : null}
+      {mode === "settings" ? <DeviceSettings token={token} canManage={canManage} /> : null}
       {mode === "mappings" ? <BiometricMappings token={token} /> : null}
       {mode === "imports" ? <ImportBatches token={token} canManage={canManage} /> : null}
       {mode === "raw-logs" ? <RawLogs token={token} /> : null}
@@ -92,7 +93,7 @@ function titleFor(mode: Mode) {
   } as const)[mode];
 }
 
-function DeviceSettings({ token }: { token: string }) {
+function DeviceSettings({ token, canManage }: { token: string; canManage: boolean }) {
   const [settings, setSettings] = useState<AttendanceDeviceSettings | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,25 +120,53 @@ function DeviceSettings({ token }: { token: string }) {
     }
   }
 
+  async function toggleModule(enabled: boolean) {
+    if (!settings) return;
+    const next = enabled
+      ? { ...settings, zkteco_csv_import_enabled: true }
+      : { ...settings, zkteco_csv_import_enabled: false, zkteco_local_bridge_enabled: false, zkteco_push_adms_enabled: false };
+    setSettings(next);
+    setError(null);
+    setMessage(null);
+    try {
+      setSettings((await api.updateAttendanceDeviceSettings(token, next)).settings);
+      setMessage(enabled ? "ZKTeco device integration enabled." : "ZKTeco device integration disabled.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to update device integration status.");
+    }
+  }
+
   if (!settings) return <Panel><EmptyState title="Loading settings" description="Fetching device integration settings." /></Panel>;
+  const moduleEnabled = Boolean(settings.zkteco_csv_import_enabled || settings.zkteco_local_bridge_enabled || settings.zkteco_push_adms_enabled);
   return (
     <Panel className="p-4">
       <StatusLine error={error} message={message} />
+      <ModuleToggleHeader
+        moduleName="ZKTeco devices"
+        enabled={moduleEnabled}
+        permissionCanUpdate={canManage}
+        description="Controls ZKTeco CSV import, local bridge placeholder, ADMS push placeholder, biometric matching, and locked-day import protections."
+        disabledDescription="Device import settings are read-only while all ZKTeco integration modes are disabled."
+        dependencyWarnings={["Device imports feed attendance records, payroll locked-day warnings, unmatched-log review, and attendance reconciliation reports."]}
+        onToggle={toggleModule}
+      />
+      <ModuleSettingsBody disabled={!moduleEnabled} className="mt-4">
       <div className="grid gap-3 md:grid-cols-3">
-        <Toggle label="ZKTeco CSV import" checked={settings.zkteco_csv_import_enabled} onChange={(value) => setSettings({ ...settings, zkteco_csv_import_enabled: value })} />
-        <Toggle label="Local bridge placeholder" checked={settings.zkteco_local_bridge_enabled} onChange={(value) => setSettings({ ...settings, zkteco_local_bridge_enabled: value })} />
-        <Toggle label="ADMS push placeholder" checked={settings.zkteco_push_adms_enabled} onChange={(value) => setSettings({ ...settings, zkteco_push_adms_enabled: value })} />
-        <Toggle label="Auto match biometric ID" checked={settings.auto_match_by_biometric_user_id} onChange={(value) => setSettings({ ...settings, auto_match_by_biometric_user_id: value })} />
-        <Toggle label="Auto match employee no" checked={settings.auto_match_by_employee_no} onChange={(value) => setSettings({ ...settings, auto_match_by_employee_no: value })} />
-        <Toggle label="Auto normalize after import" checked={settings.auto_normalize_after_import} onChange={(value) => setSettings({ ...settings, auto_normalize_after_import: value })} />
-        <Toggle label="Protect payroll-locked days" checked={settings.prevent_locked_day_overwrite} onChange={(value) => setSettings({ ...settings, prevent_locked_day_overwrite: value })} />
-        <Field label="Duplicate window seconds"><Input type="number" value={settings.duplicate_window_seconds ?? 60} onChange={(event) => setSettings({ ...settings, duplicate_window_seconds: Number(event.target.value) })} /></Field>
-        <Field label="Max import rows"><Input type="number" value={settings.max_import_rows ?? 20000} onChange={(event) => setSettings({ ...settings, max_import_rows: Number(event.target.value) })} /></Field>
-        <Field label="Default timezone"><Input value={settings.default_timezone ?? ""} onChange={(event) => setSettings({ ...settings, default_timezone: event.target.value })} /></Field>
-        <Field label="Allowed CSV extensions"><Input value={settings.csv_allowed_extensions_json ?? ""} onChange={(event) => setSettings({ ...settings, csv_allowed_extensions_json: event.target.value })} /></Field>
-        <Field label="Bridge clock skew minutes"><Input type="number" value={settings.bridge_clock_skew_minutes ?? 15} onChange={(event) => setSettings({ ...settings, bridge_clock_skew_minutes: Number(event.target.value) })} /></Field>
+        <Toggle disabled={!canManage || !moduleEnabled} label="ZKTeco CSV import" checked={settings.zkteco_csv_import_enabled} onChange={(value) => setSettings({ ...settings, zkteco_csv_import_enabled: value })} />
+        <Toggle disabled={!canManage || !moduleEnabled} label="Local bridge placeholder" checked={settings.zkteco_local_bridge_enabled} onChange={(value) => setSettings({ ...settings, zkteco_local_bridge_enabled: value })} />
+        <Toggle disabled={!canManage || !moduleEnabled} label="ADMS push placeholder" checked={settings.zkteco_push_adms_enabled} onChange={(value) => setSettings({ ...settings, zkteco_push_adms_enabled: value })} />
+        <Toggle disabled={!canManage || !moduleEnabled} label="Auto match biometric ID" checked={settings.auto_match_by_biometric_user_id} onChange={(value) => setSettings({ ...settings, auto_match_by_biometric_user_id: value })} />
+        <Toggle disabled={!canManage || !moduleEnabled} label="Auto match employee no" checked={settings.auto_match_by_employee_no} onChange={(value) => setSettings({ ...settings, auto_match_by_employee_no: value })} />
+        <Toggle disabled={!canManage || !moduleEnabled} label="Auto normalize after import" checked={settings.auto_normalize_after_import} onChange={(value) => setSettings({ ...settings, auto_normalize_after_import: value })} />
+        <Toggle disabled={!canManage || !moduleEnabled} label="Protect payroll-locked days" checked={settings.prevent_locked_day_overwrite} onChange={(value) => setSettings({ ...settings, prevent_locked_day_overwrite: value })} />
+        <Field label="Duplicate window seconds"><Input disabled={!canManage || !moduleEnabled} type="number" value={settings.duplicate_window_seconds ?? 60} onChange={(event) => setSettings({ ...settings, duplicate_window_seconds: Number(event.target.value) })} /></Field>
+        <Field label="Max import rows"><Input disabled={!canManage || !moduleEnabled} type="number" value={settings.max_import_rows ?? 20000} onChange={(event) => setSettings({ ...settings, max_import_rows: Number(event.target.value) })} /></Field>
+        <Field label="Default timezone"><Input disabled={!canManage || !moduleEnabled} value={settings.default_timezone ?? ""} onChange={(event) => setSettings({ ...settings, default_timezone: event.target.value })} /></Field>
+        <Field label="Allowed CSV extensions"><Input disabled={!canManage || !moduleEnabled} value={settings.csv_allowed_extensions_json ?? ""} onChange={(event) => setSettings({ ...settings, csv_allowed_extensions_json: event.target.value })} /></Field>
+        <Field label="Bridge clock skew minutes"><Input disabled={!canManage || !moduleEnabled} type="number" value={settings.bridge_clock_skew_minutes ?? 15} onChange={(event) => setSettings({ ...settings, bridge_clock_skew_minutes: Number(event.target.value) })} /></Field>
       </div>
-      <div className="mt-4 flex justify-end"><Button onClick={() => void save()}><Save className="h-4 w-4" /> Save settings</Button></div>
+      <div className="mt-4 flex justify-end"><Button disabled={!canManage || !moduleEnabled} onClick={() => void save()}><Save className="h-4 w-4" /> Save settings</Button></div>
+      </ModuleSettingsBody>
     </Panel>
   );
 }
@@ -388,8 +417,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean | number; onChange: (checked: boolean) => void }) {
-  return <CheckboxField label={label} checked={Boolean(checked)} onChange={onChange} className="min-h-10" />;
+function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean | number; disabled?: boolean; onChange: (checked: boolean) => void }) {
+  return <CheckboxField label={label} checked={Boolean(checked)} disabled={disabled} onChange={onChange} className="min-h-10" />;
 }
 
 function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {

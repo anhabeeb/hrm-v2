@@ -96,6 +96,24 @@ hasAll("worker/src/routes/contracts.ts", [
   "const employeeContractRoutes",
   "const selfServiceContractRoutes",
   "export { contractRoutes, employeeContractRoutes, selfServiceContractRoutes }",
+  "requireActiveContractTypeForNewContract",
+  "requireExistingContractTypeForAction",
+  "validateContractTypeDrivenFields",
+  "CONTRACT_TYPE_REQUIRED",
+  "Please select a contract type.",
+  "CONTRACT_TYPE_NOT_FOUND",
+  "Selected contract type was not found.",
+  "CONTRACT_TYPE_INACTIVE",
+  "Selected contract type is inactive or archived and cannot be used for a new contract.",
+  "CONTRACT_END_DATE_REQUIRED",
+  "Contract end date is required for this contract type.",
+  "CONTRACT_PROBATION_DATES_REQUIRED",
+  "Probation dates are required for this contract type.",
+  "CONTRACT_START_DATE_REQUIRED",
+  "Contract start date is required.",
+  "CONTRACT_RENEWAL_REFERENCE_REQUIRED",
+  "Renewal contract must be linked to a previous contract.",
+  "contract_type_display_name",
   "getEmployeeActiveContract",
   "getEmployeeContractRequirementStatus",
   "syncEmployeeContractStatusSnapshot",
@@ -120,6 +138,12 @@ hasAll("worker/src/routes/contracts.ts", [
   "selfServiceContractRoutes.get(\"/contracts\"",
   "canAccessEmployee"
 ]);
+
+const contractsRoute = read("worker/src/routes/contracts.ts");
+ok(/type\.requires_end_date === 1 && !input\.contract_end_date/.test(contractsRoute), "contract end date must be required by contract type");
+ok(/type\.requires_probation === 1 && \(!input\.probation_start_date \|\| !input\.probation_end_date\)/.test(contractsRoute), "probation dates must be required by contract type");
+ok(/type\.is_active !== 1 \|\| type\.status !== "ACTIVE" \|\| type\.archived_at/.test(contractsRoute), "inactive or archived contract types must be blocked for new contracts");
+ok(!/employment_type\s*={2,3}\s*["']FULL_TIME["'][\s\S]{0,160}contract_end_date/.test(contractsRoute), "contracts route must not infer end-date requirement from FULL_TIME employment type");
 
 hasAll("worker/src/index.ts", [
   "contractRoutes",
@@ -176,7 +200,14 @@ hasAll("frontend/src/pages/ContractsPage.tsx", [
   "Renewals",
   "Alerts",
   "ReasonDialog",
-  "Refresh alerts"
+  "Refresh alerts",
+  "requiresEndDate",
+  "requiresProbation",
+  "allowsSalaryTerms",
+  "End date is optional for this contract type.",
+  "Probation is optional or not applicable for this contract type.",
+  "Salary terms are disabled for this contract type.",
+  "status !== \"ARCHIVED\" && !type.archived_at"
 ]);
 
 hasAll("frontend/src/components/employee/EmployeeContractsPanel.tsx", [
@@ -186,7 +217,15 @@ hasAll("frontend/src/components/employee/EmployeeContractsPanel.tsx", [
   "contractAction",
   "Contract history",
   "Active contract",
-  "Settlement flag"
+  "Settlement flag",
+  "requiresEndDate",
+  "requiresProbation",
+  "allowsSalaryTerms",
+  "End date is optional for this contract type.",
+  "Probation is optional or not applicable for this contract type.",
+  "Salary terms are disabled for this contract type.",
+  "status !== \"ARCHIVED\" && !type.archived_at",
+  "contract_type_display_name"
 ]);
 
 hasAll("frontend/src/pages/EmployeeProfilePage.tsx", [
@@ -199,10 +238,11 @@ hasAll("frontend/src/pages/SelfServicePage.tsx", [
   "contracts",
   "My Contracts",
   "getSelfServiceContracts",
-  "ContractsSelfServiceSection"
+  "ContractsSelfServiceSection",
+  "contract_type_display_name",
+  "Not selected"
 ]);
 
-const contractsRoute = read("worker/src/routes/contracts.ts");
 ok(!/e-signature|esignature|generate legal|legal formula/i.test(contractsRoute), "Prompt 14 must not implement legal/e-signature automation");
 
 for (const file of [

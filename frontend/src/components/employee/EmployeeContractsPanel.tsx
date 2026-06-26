@@ -37,7 +37,7 @@ export function EmployeeContractsPanel({ employee, token, permissions }: { emplo
   const history = useRows(summary, "contract_history");
   const events = useRows(summary, "events");
   const alerts = useRows(summary, "alerts");
-  const activeTypes = useMemo(() => types.filter((type) => bool(type.is_active) && type.status !== "ARCHIVED"), [types]);
+  const activeTypes = useMemo(() => types.filter((type) => bool(type.is_active) && type.status !== "ARCHIVED" && !type.archived_at), [types]);
 
   async function load() {
     setLoading(true);
@@ -106,7 +106,7 @@ export function EmployeeContractsPanel({ employee, token, permissions }: { emplo
               <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 {[
                   ["Contract number", activeContract.contract_number],
-                  ["Type", activeContract.contract_type_name_snapshot],
+                  ["Type", activeContract.contract_type_display_name ?? activeContract.contract_type_name_snapshot ?? "Not selected"],
                   ["Approval", activeContract.approval_status],
                   ["Start", activeContract.contract_start_date],
                   ["End", activeContract.contract_end_date],
@@ -170,7 +170,7 @@ function ContractHistory({ rows, canManage, onAction }: { rows: Row[]; canManage
     <SimpleRows
       title="Contract history"
       rows={rows}
-      columns={["contract_number", "contract_type_name_snapshot", "status", "approval_status", "contract_start_date", "contract_end_date", "probation_status", "renewal_status"]}
+      columns={["contract_number", "contract_type_display_name", "status", "approval_status", "contract_start_date", "contract_end_date", "probation_status", "renewal_status"]}
       actions={canManage ? (row) => (
         <div className="flex flex-wrap justify-end gap-1">
           <Button variant="outline" size="sm" onClick={() => onAction({ row, action: "submit-for-approval", title: "Submit for approval" })}>Submit</Button>
@@ -190,6 +190,7 @@ function CreateContractDialog({ types, onClose, onSave }: { types: Row[]; onClos
     contract_title: "",
     contract_start_date: "",
     contract_end_date: "",
+    probation_start_date: "",
     probation_end_date: "",
     confirmation_due_date: "",
     basic_salary_snapshot: "",
@@ -197,9 +198,25 @@ function CreateContractDialog({ types, onClose, onSave }: { types: Row[]; onClos
     notes: ""
   });
   const [error, setError] = useState<string | null>(null);
+  const selectedType = useMemo(() => types.find((type) => String(type.id) === form.contract_type_id), [types, form.contract_type_id]);
+  const requiresEndDate = bool(selectedType?.requires_end_date);
+  const requiresProbation = bool(selectedType?.requires_probation);
+  const allowsSalaryTerms = selectedType ? bool(selectedType.allows_salary_terms) : true;
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!form.contract_type_id) {
+      setError("Please select a contract type.");
+      return;
+    }
+    if (requiresEndDate && !form.contract_end_date) {
+      setError("Contract end date is required for this contract type.");
+      return;
+    }
+    if (requiresProbation && (!form.probation_start_date || !form.probation_end_date)) {
+      setError("Probation dates are required for this contract type.");
+      return;
+    }
     try {
       await onSave({
         contract_type_id: form.contract_type_id,
@@ -207,10 +224,12 @@ function CreateContractDialog({ types, onClose, onSave }: { types: Row[]; onClos
         contract_title: form.contract_title || null,
         contract_start_date: form.contract_start_date,
         contract_end_date: form.contract_end_date || null,
+        probation_start_date: form.probation_start_date || null,
         probation_end_date: form.probation_end_date || null,
         confirmation_due_date: form.confirmation_due_date || null,
-        basic_salary_snapshot: form.basic_salary_snapshot ? Number(form.basic_salary_snapshot) : null,
+        basic_salary_snapshot: allowsSalaryTerms && form.basic_salary_snapshot ? Number(form.basic_salary_snapshot) : null,
         salary_currency_snapshot: form.salary_currency_snapshot,
+        salary_terms: allowsSalaryTerms ? { source: "employee_360_contract_form", basic_salary_snapshot: form.basic_salary_snapshot || null } : undefined,
         notes: form.notes || null
       });
     } catch (err) {
@@ -224,11 +243,18 @@ function CreateContractDialog({ types, onClose, onSave }: { types: Row[]; onClos
         <Field label="Contract number"><Input value={form.contract_number} onChange={(event) => setForm({ ...form, contract_number: event.target.value })} placeholder="Auto if blank" /></Field>
         <Field label="Title"><Input value={form.contract_title} onChange={(event) => setForm({ ...form, contract_title: event.target.value })} /></Field>
         <Field label="Start date"><Input type="date" required value={form.contract_start_date} onChange={(event) => setForm({ ...form, contract_start_date: event.target.value })} /></Field>
-        <Field label="End date"><Input type="date" value={form.contract_end_date} onChange={(event) => setForm({ ...form, contract_end_date: event.target.value })} /></Field>
-        <Field label="Probation end"><Input type="date" value={form.probation_end_date} onChange={(event) => setForm({ ...form, probation_end_date: event.target.value })} /></Field>
+        <Field label={`End date${requiresEndDate ? " *" : ""}`}>
+          <Input type="date" required={requiresEndDate} value={form.contract_end_date} onChange={(event) => setForm({ ...form, contract_end_date: event.target.value })} />
+          {!requiresEndDate ? <p className="text-xs text-muted-foreground">End date is optional for this contract type.</p> : null}
+        </Field>
+        <Field label={`Probation start${requiresProbation ? " *" : ""}`}><Input type="date" required={requiresProbation} value={form.probation_start_date} onChange={(event) => setForm({ ...form, probation_start_date: event.target.value })} /></Field>
+        <Field label={`Probation end${requiresProbation ? " *" : ""}`}>
+          <Input type="date" required={requiresProbation} value={form.probation_end_date} onChange={(event) => setForm({ ...form, probation_end_date: event.target.value })} />
+          {!requiresProbation ? <p className="text-xs text-muted-foreground">Probation is optional or not applicable for this contract type.</p> : null}
+        </Field>
         <Field label="Confirmation due"><Input type="date" value={form.confirmation_due_date} onChange={(event) => setForm({ ...form, confirmation_due_date: event.target.value })} /></Field>
-        <Field label="Salary snapshot"><Input type="number" min="0" value={form.basic_salary_snapshot} onChange={(event) => setForm({ ...form, basic_salary_snapshot: event.target.value })} /></Field>
-        <Field label="Currency"><Input value={form.salary_currency_snapshot} onChange={(event) => setForm({ ...form, salary_currency_snapshot: event.target.value })} /></Field>
+        <Field label="Salary snapshot"><Input type="number" min="0" disabled={!allowsSalaryTerms} value={form.basic_salary_snapshot} onChange={(event) => setForm({ ...form, basic_salary_snapshot: event.target.value })} />{!allowsSalaryTerms ? <p className="text-xs text-muted-foreground">Salary terms are disabled for this contract type.</p> : null}</Field>
+        <Field label="Currency"><Input disabled={!allowsSalaryTerms} value={form.salary_currency_snapshot} onChange={(event) => setForm({ ...form, salary_currency_snapshot: event.target.value })} /></Field>
         <Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field>
         {error ? <p className="text-sm text-red-600 md:col-span-2">{error}</p> : null}
         <div className="flex justify-end gap-2 md:col-span-2"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button type="submit"><FileSignature className="h-4 w-4" />Save draft</Button></div>

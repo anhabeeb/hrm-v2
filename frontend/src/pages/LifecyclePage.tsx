@@ -3,6 +3,7 @@ import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
+import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
@@ -48,6 +49,7 @@ const onboardingSettingFields = [
   "onboarding_enabled",
   "require_onboarding_before_activation",
   "allow_draft_employee_records",
+  "auto_create_onboarding_case_on_employee_create",
   "allow_partial_onboarding",
   "require_documents_before_activation",
   "require_contract_before_activation",
@@ -100,6 +102,10 @@ function text(value: unknown) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
 }
 
+function displayText(value: unknown, fallback = "Not set") {
+  return value === null || value === undefined || value === "" ? fallback : String(value);
+}
+
 function title(value: string) {
   return value.replace(/\//g, " / ").replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -108,8 +114,18 @@ function isEnabled(value: unknown) {
   return value === true || value === 1 || value === "1";
 }
 
+function objectMessage(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "object") {
+    const row = value as Row;
+    return String(row.message ?? row.title ?? row.task_name ?? row.field ?? JSON.stringify(row));
+  }
+  return String(value);
+}
+
 export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const permissions = new Set(user?.permissions ?? []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -128,6 +144,9 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
 
   const activeKind: CaseKind = mode.startsWith("offboarding") ? "offboarding" : "onboarding";
   const activeCases = activeKind === "onboarding" ? onboardingCases : offboardingCases;
+  const canManageLifecycleSettings = activeKind === "onboarding"
+    ? permissions.has("onboarding.settings.manage") || permissions.has("onboarding.settings.update") || permissions.has("settings.manage")
+    : permissions.has("offboarding.settings.manage") || permissions.has("offboarding.settings.update") || permissions.has("settings.manage");
 
   async function load() {
     if (!token) return;
@@ -227,7 +246,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
           onSelect={(id) => setSelected({ kind: activeKind, id })}
         />
       ) : null}
-      {mode.includes("settings") ? <SettingsSection settings={settings} kind={activeKind} loading={loading} error={error} onSave={saveSettings} /> : null}
+      {mode.includes("settings") ? <SettingsSection settings={settings} kind={activeKind} canManage={canManageLifecycleSettings} loading={loading} error={error} onSave={saveSettings} /> : null}
       {mode === "onboarding-alerts" ? <AlertsSection alerts={alerts} loading={loading} error={error} onRefresh={() => void refreshAlerts()} /> : null}
       {mode === "lifecycle-reports" ? <ReportsSection reportKey={reportKey} setReportKey={setReportKey} rows={reportRows} loading={loading} error={error} onExport={() => void exportReport()} /> : null}
 
@@ -311,28 +330,49 @@ function CasesSection({ kind, cases, loading, error, onCreate, onSelect }: { kin
   );
 }
 
-function SettingsSection({ settings, kind, loading, error, onSave }: { settings: LifecycleSettings | null; kind: CaseKind; loading: boolean; error: string | null; onSave: (input: LifecycleSettings) => Promise<void> }) {
+function SettingsSection({ settings, kind, canManage, loading, error, onSave }: { settings: LifecycleSettings | null; kind: CaseKind; canManage: boolean; loading: boolean; error: string | null; onSave: (input: LifecycleSettings) => Promise<void> }) {
   const [draft, setDraft] = useState<LifecycleSettings | null>(settings);
   useEffect(() => setDraft(settings), [settings]);
   const fields = kind === "onboarding" ? onboardingSettingFields : offboardingSettingFields;
+  const enabledField = kind === "onboarding" ? "onboarding_enabled" : "offboarding_enabled";
   if (loading) return <DataTableFrame loading><div /></DataTableFrame>;
   if (error) return <DataTableFrame error={error}><div /></DataTableFrame>;
   if (!draft) return <Panel><EmptyState title="Settings unavailable" /></Panel>;
+  const enabled = isEnabled(draft[enabledField]);
+  async function toggleModule(nextEnabled: boolean) {
+    const next = { ...draft, [enabledField]: nextEnabled ? 1 : 0 } as LifecycleSettings;
+    setDraft(next);
+    await onSave(next);
+  }
   return (
-    <Panel className="p-4">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {fields.map((field) => (
-          <CheckboxField
-            key={field}
-            label={title(field)}
-            checked={isEnabled(draft[field])}
-            onChange={(checked) => setDraft({ ...draft, [field]: checked ? 1 : 0 })}
-          />
-        ))}
-      </div>
-      <div className="mt-4 flex justify-end">
-        <Button size="sm" onClick={() => void onSave(draft)}>Save settings</Button>
-      </div>
+    <Panel className="space-y-4 p-4">
+      <ModuleToggleHeader
+        moduleName={kind === "onboarding" ? "Onboarding" : "Offboarding"}
+        enabled={enabled}
+        permissionCanUpdate={canManage}
+        description={kind === "onboarding" ? "Controls onboarding cases, activation readiness, checklist automation, and onboarding task requirements." : "Controls offboarding cases, exit readiness, final checks, access revocation, and clearance requirements."}
+        disabledDescription={`${kind === "onboarding" ? "Onboarding" : "Offboarding"} settings are read-only while this lifecycle module is disabled.`}
+        dependencyWarnings={kind === "onboarding"
+          ? ["Onboarding affects employee activation, required documents, contract readiness, payroll setup, and user access setup."]
+          : ["Offboarding affects employee exit cases, final settlement readiness, clearance, payroll checks, and access deactivation."]}
+        onToggle={toggleModule}
+      />
+      <ModuleSettingsBody disabled={!enabled}>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {fields.filter((field) => field !== enabledField).map((field) => (
+            <CheckboxField
+              key={field}
+              label={title(field)}
+              checked={isEnabled(draft[field])}
+              disabled={!canManage || !enabled}
+              onChange={(checked) => setDraft({ ...draft, [field]: checked ? 1 : 0 })}
+            />
+          ))}
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button size="sm" disabled={!canManage || !enabled} onClick={() => void onSave(draft)}>Save settings</Button>
+        </div>
+      </ModuleSettingsBody>
     </Panel>
   );
 }
@@ -451,6 +491,7 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
               { title: "Current workflow status", description: text("onboarding_status" in detail.case ? detail.case.onboarding_status : detail.case.offboarding_status) }
             ]}
           />
+          {kind === "onboarding" ? <ContractReadinessPanel contract={detail.readiness?.contract as Row | undefined} /> : null}
           <div className="grid gap-3 md:grid-cols-2">
             <Panel className="p-3"><h3 className="text-sm font-semibold">Blocking items</h3><List values={blockers} /></Panel>
             <Panel className="p-3"><h3 className="text-sm font-semibold">Warnings</h3><List values={warnings} /></Panel>
@@ -540,7 +581,38 @@ function Info({ label, value }: { label: string; value: unknown }) {
   return <div className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium">{text(value)}</p></div>;
 }
 
+function ContractReadinessPanel({ contract }: { contract?: Row }) {
+  const display = (contract?.display ?? {}) as Row;
+  const warnings = Array.isArray(contract?.warnings) ? contract.warnings : [];
+  const blockers = Array.isArray(contract?.blockers) ? contract.blockers : [];
+  return (
+    <Panel className="p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">Contract readiness</h3>
+          <p className="text-xs text-muted-foreground">Permanent contracts can leave end dates blank unless the selected contract type requires one.</p>
+        </div>
+        <Badge tone={contract?.ready ? "success" : contract?.required ? "warning" : "neutral"}>{displayText(contract?.status_label, "Not required")}</Badge>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <Info label="Contract" value={display.contract ?? (contract?.required ? "Contract missing" : "Not required")} />
+        <Info label="Contract Type" value={display.contract_type ?? "Not selected"} />
+        <Info label="Contract Start Date" value={display.contract_start_date ?? "Not set"} />
+        <Info label="Contract End Date" value={display.contract_end_date ?? "Not required"} />
+        <Info label="Probation" value={display.probation ?? "Not applicable"} />
+        <Info label="Confirmation Due" value={display.confirmation_due ?? "Not set"} />
+      </div>
+      {blockers.length || warnings.length ? (
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div><p className="text-xs font-medium text-muted-foreground">Contract blockers</p><List values={blockers} /></div>
+          <div><p className="text-xs font-medium text-muted-foreground">Contract warnings</p><List values={warnings} /></div>
+        </div>
+      ) : null}
+    </Panel>
+  );
+}
+
 function List({ values }: { values: unknown[] }) {
   if (!values.length) return <p className="mt-2 text-sm text-muted-foreground">None.</p>;
-  return <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-muted-foreground">{values.map((value, index) => <li key={index}>{text(value)}</li>)}</ul>;
+  return <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-muted-foreground">{values.map((value, index) => <li key={index}>{objectMessage(value)}</li>)}</ul>;
 }
