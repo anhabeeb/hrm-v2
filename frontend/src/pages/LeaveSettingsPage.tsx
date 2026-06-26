@@ -15,6 +15,7 @@ import type { AccessUser, Role } from "../types/auth";
 import type { DocumentType } from "../types/documents";
 import type { LeavePolicy, LeaveType, LeaveWorkflow, LeaveWorkflowStep } from "../types/leave";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
+import { CheckboxField, SelectField } from "../components/ui/page-shell";
 
 type Tab = "types" | "policies" | "documentRules" | "deductionRules" | "workflows";
 type LeaveWorkflowStepForm = {
@@ -97,7 +98,7 @@ export function LeaveSettingsPage() {
       </div>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
-        <div className="flex overflow-x-auto border-b">{(["types", "policies", "documentRules", "deductionRules", "workflows"] as Tab[]).map((item) => <button key={item} className={`h-11 border-b-2 px-4 text-sm font-medium ${tab === item ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:bg-muted/50"}`} onClick={() => setTab(item)}>{tabLabel(item)}</button>)}</div>
+        <div className="flex overflow-x-auto border-b p-1">{(["types", "policies", "documentRules", "deductionRules", "workflows"] as Tab[]).map((item) => <Button key={item} size="sm" variant={tab === item ? "primary" : "ghost"} className="whitespace-nowrap" onClick={() => setTab(item)}>{tabLabel(item)}</Button>)}</div>
         {tab === "types" ? <TypesTable types={types} canManage={canSettings} loading={loading} onNew={() => setTypeModal("new")} onEdit={setTypeModal} onAction={async (row) => { if (!token) return; await api.leaveTypeAction(token, row.id, row.is_active ? "disable" : "enable"); await load(); }} /> : null}
         {tab === "policies" ? <PoliciesTable policies={policies} canManage={canSettings} loading={loading} onNew={() => setPolicyModal("new")} onEdit={setPolicyModal} onAction={async (row) => { if (!token) return; await api.leavePolicyAction(token, row.id, row.is_active ? "disable" : "enable"); await load(); }} /> : null}
         {tab === "documentRules" && token ? <PolicyDocumentRulesTable token={token} policies={policies} documentTypes={documentTypes} canManage={canSettings} /> : null}
@@ -168,7 +169,7 @@ function Actions({ canManage, onEdit, onAction, active }: { canManage: boolean; 
 }
 
 function RulesToolbar({ policies, policyId, setPolicyId, canManage, label, onNew }: { policies: LeavePolicy[]; policyId: string; setPolicyId: (value: string) => void; canManage: boolean; label: string; onNew: () => void }) {
-  return <div className="flex flex-col gap-3 border-b p-3 md:flex-row md:items-end md:justify-between"><div className="w-full max-w-xl space-y-1.5"><Label>Policy</Label><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={policyId} onChange={(event) => setPolicyId(event.target.value)}>{policies.map((policy) => <option key={policy.id} value={policy.id}>{policy.name} - {policy.leave_type_name ?? "Leave"}</option>)}</select></div>{canManage ? <Button size="sm" onClick={onNew} disabled={!policyId}><Plus className="h-4 w-4" /> {label}</Button> : null}</div>;
+  return <div className="flex flex-col gap-3 border-b p-3 md:flex-row md:items-end md:justify-between"><div className="w-full max-w-xl space-y-1.5"><Label>Policy</Label><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={policyId} onChange={(event) => setPolicyId(event.target.value)}>{policies.map((policy) => <option key={policy.id} value={policy.id}>{policy.name} - {policy.leave_type_name ?? "Leave"}</option>)}</SelectField></div>{canManage ? <Button size="sm" onClick={onNew} disabled={!policyId}><Plus className="h-4 w-4" /> {label}</Button> : null}</div>;
 }
 
 function TypeModal({ token, type, onClose, onSaved }: { token: string; type?: LeaveType; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -283,13 +284,13 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
 }
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">Any</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>;
+  return <div className="space-y-1.5"><Label>{label}</Label><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">Any</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectField></div>;
 }
 
 function SimpleSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option || "any"} value={option}>{option || "Any"}</option>)}</select></div>;
+  return <div className="space-y-1.5"><Label>{label}</Label><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option || "any"} value={option}>{option || "Any"}</option>)}</SelectField></div>;
 }
 
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /> {label}</label>;
+  return <CheckboxField label={label} checked={checked} onChange={onChange} className="mt-6" />;
 }

@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { cn } from "../lib/utils";
+import { SelectField as UiSelectField } from "../components/ui/page-shell";
 import type {
   CompanyInput,
   DepartmentInput,
@@ -284,16 +285,15 @@ export function OrganizationSettingsPage() {
       <Panel className="overflow-hidden">
         <div className="flex overflow-x-auto border-b">
           {tabs.map((tab) => (
-            <button
+            <Button
               key={tab.key}
-              className={cn(
-                "h-11 whitespace-nowrap border-b-2 px-4 text-sm font-medium text-muted-foreground",
-                activeTab === tab.key ? "border-primary text-foreground" : "border-transparent hover:bg-muted/50"
-              )}
+              size="sm"
+              variant={activeTab === tab.key ? "primary" : "ghost"}
+              className={cn("whitespace-nowrap", activeTab !== tab.key && "text-muted-foreground")}
               onClick={() => setActiveTab(tab.key)}
             >
               {tab.label}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -437,14 +437,13 @@ function SelectField({
   return (
     <div className={label ? "space-y-1.5" : ""}>
       {label ? <Label>{label}</Label> : null}
-      <select
+      <UiSelectField
         value={value}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-md border bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+        onValueChange={onChange}
       >
         {children}
-      </select>
+      </UiSelectField>
     </div>
   );
 }

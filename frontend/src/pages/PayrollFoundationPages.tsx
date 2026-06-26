@@ -1,5 +1,6 @@
 import { Archive, Check, Landmark, PiggyBank, Plus, RefreshCw, ReceiptText, WalletCards } from "lucide-react";
 import { useEffect, useState } from "react";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -13,6 +14,7 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
 import type { BankLoanEligibilityRule, BankLoanRemittanceBatch, CustomDeductionTemplate, EmployeeBankLoan, EmployeeBankLoanPayment, EmployeeCustomDeduction, EmployeeCustomDeductionApplication, PaymentInstitution, PayrollPensionContribution, PensionRemittanceBatch, PensionScheme } from "../types/payroll";
+import { CheckboxField, SelectField } from "../components/ui/page-shell";
 
 export function PayrollPaymentInstitutionsPage() {
   const { token, user } = useAuth();
@@ -393,9 +395,11 @@ function Header({ icon, title, action }: { icon: React.ReactNode; title: string;
 }
 
 function DataTable({ rows, columns, actions, empty }: { rows: unknown[]; columns: string[]; actions?: (row: Record<string, unknown>) => React.ReactNode; empty: string }) {
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column.split("_").join(" ")}</TableHead>)}{actions ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader><TableBody>{rows.map((item, index) => {
+  const hasEmployeeIdentity = columns.includes("employee_name") || columns.includes("employee_name_snapshot");
+  const visibleColumns = hasEmployeeIdentity ? ["__employee", ...columns.filter((column) => !["employee_no", "employee_name", "employee_name_snapshot", "employee_number_snapshot"].includes(column))] : columns;
+  return <div className="overflow-x-auto"><Table><TableHeader><TableRow>{visibleColumns.map((column) => <TableHead key={column}>{column === "__employee" ? "Employee" : column.split("_").join(" ")}</TableHead>)}{actions ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader><TableBody>{rows.map((item, index) => {
     const row = item as Record<string, unknown>;
-    return <TableRow key={String(row.id ?? index)}>{columns.map((column) => <TableCell key={column}>{renderValue(column, row[column])}</TableCell>)}{actions ? <TableCell className="text-right">{actions(row)}</TableCell> : null}</TableRow>;
+    return <TableRow key={String(row.id ?? index)}>{visibleColumns.map((column) => <TableCell key={column}>{column === "__employee" ? <EmployeeIdentityCell employeeId={String(row.employee_id ?? "")} employeeName={String(row.employee_name ?? row.employee_name_snapshot ?? "-")} employeeNumber={String(row.employee_no ?? row.employee_number_snapshot ?? "")} departmentName={String(row.department_name ?? "")} locationName={String(row.location_name ?? "")} size="sm" /> : renderValue(column, row[column])}</TableCell>)}{actions ? <TableCell className="text-right">{actions(row)}</TableCell> : null}</TableRow>;
   })}</TableBody></Table>{rows.length === 0 ? <EmptyState title="No records" description={empty} /> : null}</div>;
 }
 
@@ -416,7 +420,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function Select({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (value: string) => void }) {
-  return <Field label={label}><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select></Field>;
+  return <Field label={label}><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</SelectField></Field>;
 }
 
 function Modal({ title, children, disabled, onClose, onConfirm }: { title: string; children: React.ReactNode; disabled?: boolean; onClose: () => void; onConfirm: () => void }) {
@@ -424,7 +428,7 @@ function Modal({ title, children, disabled, onClose, onConfirm }: { title: strin
 }
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /> {label}</label>;
+  return <CheckboxField label={label} checked={checked} onChange={onChange} />;
 }
 
 function defaultTemplateForm(): TemplateForm {
@@ -526,8 +530,8 @@ function AssignmentModal({ form, templates, employees, onChange, onClose, onConf
   }
 
   return <Modal title="Assign employee custom deduction" onClose={onClose} onConfirm={onConfirm} disabled={!form.employee_id || !form.template_id || !form.effective_from || !form.reason.trim()}>
-    <Field label="Employee"><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.employee_id} onChange={(event) => onChange({ ...form, employee_id: event.target.value })}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</select></Field>
-    <Field label="Template"><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.template_id} onChange={(event) => chooseTemplate(event.target.value)}><option value="">Select template</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.code} - {template.name}</option>)}</select></Field>
+    <Field label="Employee"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.employee_id} onChange={(event) => onChange({ ...form, employee_id: event.target.value })}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</SelectField></Field>
+    <Field label="Template"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.template_id} onChange={(event) => chooseTemplate(event.target.value)}><option value="">Select template</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.code} - {template.name}</option>)}</SelectField></Field>
     <Field label="Assigned amount"><Input type="number" min={0} step="0.01" value={form.assigned_amount} onChange={(event) => onChange({ ...form, assigned_amount: event.target.value })} /></Field>
     <Field label="Assigned percentage"><Input type="number" min={0} max={100} step="0.01" value={form.assigned_percentage} onChange={(event) => onChange({ ...form, assigned_percentage: event.target.value })} /></Field>
     <Field label="Total amount"><Input type="number" min={0} step="0.01" value={form.total_amount} onChange={(event) => onChange({ ...form, total_amount: event.target.value })} /></Field>

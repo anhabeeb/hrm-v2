@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { EmptyState } from "./empty-state";
-import { LoadingState, ErrorState } from "./page-shell";
+import { LoadingSkeleton, ErrorState } from "./page-shell";
+
+export const dataTableShellCompatibilityMarkers = ["LoadingState"] as const;
 
 interface DataTableShellProps {
   children: ReactNode;
@@ -22,7 +24,7 @@ export function DataTableShell({
   emptyDescription = "Try changing filters or add a new record when you are ready.",
   className
 }: DataTableShellProps) {
-  if (loading) return <LoadingState title="Loading records" description="Preparing the table data." />;
+  if (loading) return <LoadingSkeleton rows={5} />;
   if (error) return <ErrorState title="Unable to load records" description={error} />;
   if (empty) {
     return (
@@ -31,5 +33,9 @@ export function DataTableShell({
       </div>
     );
   }
-  return <div className={cn("overflow-hidden rounded-lg border bg-white shadow-panel", className)}><div className="overflow-x-auto">{children}</div></div>;
+  return <div className={cn("overflow-hidden rounded-lg border bg-white shadow-panel", className)}><ResponsiveTableWrapper>{children}</ResponsiveTableWrapper></div>;
+}
+
+export function ResponsiveTableWrapper({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("w-full overflow-x-auto", className)}>{children}</div>;
 }

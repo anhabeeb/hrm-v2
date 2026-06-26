@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -84,8 +85,8 @@ export function MissingDocumentsPage() {
           <FilterSelect label="All departments" value={filters.department_id} onChange={(value) => setFilters({ ...filters, department_id: value })} options={departments.map((item) => ({ value: item.id, label: item.name }))} />
           <FilterSelect label="All locations" value={filters.location_id} onChange={(value) => setFilters({ ...filters, location_id: value })} options={locations.map((item) => ({ value: item.id, label: item.name }))} />
           <FilterSelect label="All document types" value={filters.document_type_id} onChange={(value) => setFilters({ ...filters, document_type_id: value })} options={types.map((item) => ({ value: item.id, label: item.name }))} />
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.employee_type} onChange={(event) => setFilters({ ...filters, employee_type: event.target.value })}><option value="">All employee types</option>{["LOCAL", "FOREIGN", "OTHER"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.employment_type} onChange={(event) => setFilters({ ...filters, employment_type: event.target.value })}><option value="">All employment types</option>{["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
+          <SelectField aria-label="Employee type" value={filters.employee_type} onValueChange={(employee_type) => setFilters({ ...filters, employee_type })}><option value="">All employee types</option>{["LOCAL", "FOREIGN", "OTHER"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
+          <SelectField aria-label="Employment type" value={filters.employment_type} onValueChange={(employment_type) => setFilters({ ...filters, employment_type })}><option value="">All employment types</option>{["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
           <Button variant="outline" size="sm" onClick={() => setFilters(emptyFilters)}>Reset filters</Button>
         </div>
         <div className="overflow-x-auto">
@@ -139,7 +140,7 @@ function MissingUploadModal({ token, row, type, onClose, onSaved }: { token: str
 }
 
 function FilterSelect({ value, onChange, options, label }: { value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }>; label: string }) {
-  return <select className="h-9 rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">{label}</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
+  return <SelectField aria-label={label} value={value} onValueChange={onChange}><option value="">{label}</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectField>;
 }
 
 function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {

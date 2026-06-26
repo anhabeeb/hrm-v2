@@ -4,11 +4,14 @@ import { Link, useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
-import { EmployeeAvatar } from "../components/employee/EmployeeAvatar";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { DataTableShell } from "../components/ui/data-table-shell";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { AlertBanner, CheckboxField, FilterBar, PageHeader, PageShell, SelectField, SelectField as UiSelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
+import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -177,31 +180,30 @@ export function EmployeesPage() {
   }
 
   if (!canView) {
-    return <Panel><EmptyState title="Employees unavailable" description="Your account needs employees.view permission." /></Panel>;
+    return <PageShell><Panel><EmptyState title="Employees unavailable" description="Your account needs employees.view permission." /></Panel></PageShell>;
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Employees</h1>
-          <p className="text-sm text-muted-foreground">Employee 360 foundation with profile, status, onboarding, and job structure.</p>
-        </div>
-        <div className="flex gap-2">
+    <PageShell constrained={false}>
+      <PageHeader
+        title="Employees"
+        description="Employee 360 foundation with profile, status, onboarding, and job structure."
+        actions={
+          <>
           {(canStatus || canNumber) ? (
             <Link to="/employees/settings">
               <Button variant="outline" size="sm"><Settings2 className="h-4 w-4" /> Settings</Button>
             </Link>
           ) : null}
           {canCreate ? <Button size="sm" onClick={() => setModal({ mode: "create" })}><Plus className="h-4 w-4" /> New Employee</Button> : null}
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      {error ? <AlertBanner tone="danger"><strong>Unable to complete employee action.</strong> {error}</AlertBanner> : null}
 
-      <Panel className="overflow-hidden">
-        <div className="border-b p-3">
-          <div className="grid gap-2 lg:grid-cols-4 xl:grid-cols-8">
+      <div className="space-y-3">
+          <FilterBar className="lg:grid-cols-4 xl:grid-cols-8">
             <div className="relative lg:col-span-2">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Search name or employee no" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -213,16 +215,12 @@ export function EmployeesPage() {
             <Select value={levelId} onChange={setLevelId}><option value="all">All levels</option>{jobLevels.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</Select>
             <Select value={employeeType} onChange={setEmployeeType}><option value="all">All types</option>{employeeTypes.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
             <Select value={employmentType} onChange={setEmploymentType}><option value="all">All employment</option>{employmentTypes.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
-          </div>
-        </div>
-        {loading ? <EmptyState title="Loading employees" description="Fetching Employee 360 records." /> : filtered.length === 0 ? <EmptyState title="No employees found" description="Create a draft employee or adjust filters." /> : (
-          <div className="overflow-x-auto">
+          </FilterBar>
+        <DataTableShell loading={loading} empty={filtered.length === 0} emptyTitle="No employees found" emptyDescription="Create a draft employee or adjust filters.">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Avatar</TableHead>
-                  <TableHead>Employee No</TableHead>
-                  <TableHead>Name</TableHead>
+                  <TableHead className="sticky left-0 z-10 min-w-[280px] bg-white">Employee</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Position</TableHead>
                   <TableHead>Outlet/Location</TableHead>
@@ -238,16 +236,25 @@ export function EmployeesPage() {
               <TableBody>
                 {filtered.map((employee) => (
                   <TableRow key={employee.id}>
-                    <TableCell><EmployeeAvatar employee={employee} token={token} size="sm" /></TableCell>
-                    <TableCell className="font-mono text-xs">{employee.employee_no}</TableCell>
-                    <TableCell className="font-medium">{employee.full_name}<div className="text-xs text-muted-foreground">{employee.display_name ?? "-"}</div></TableCell>
+                    <TableCell className="sticky left-0 z-10 bg-white">
+                      <EmployeeIdentityCell
+                        employee={employee}
+                        token={token}
+                        employeeName={employee.full_name}
+                        employeeNumber={employee.employee_no}
+                        departmentName={employee.department_name}
+                        locationName={employee.location_name}
+                        status={employee.status_name ?? employee.status_key}
+                        to={`/employees/${employee.id}`}
+                      />
+                    </TableCell>
                     <TableCell>{employee.department_name ?? "-"}</TableCell>
                     <TableCell>{employee.position_title ?? "-"}</TableCell>
                     <TableCell>{employee.location_name ?? "-"}</TableCell>
                     <TableCell>{employee.job_level_name ?? "-"}</TableCell>
                     <TableCell>{employee.employee_type}</TableCell>
                     <TableCell>{employee.employment_type}</TableCell>
-                    <TableCell><Badge tone={statusTone(employee.status_key)}>{employee.status_name ?? employee.status_key}</Badge></TableCell>
+                    <TableCell><StatusBadge value={employee.status_name ?? employee.status_key ?? "-"} /></TableCell>
                     <TableCell>{employee.joining_date ?? "-"}</TableCell>
                     <TableCell><Badge tone={employee.user_linked ? "success" : "neutral"}>{employee.user_linked ? "Linked" : "Not linked"}</Badge></TableCell>
                     <TableCell>
@@ -262,9 +269,8 @@ export function EmployeesPage() {
                 ))}
               </TableBody>
             </Table>
-          </div>
-        )}
-      </Panel>
+        </DataTableShell>
+      </div>
 
       {modal ? (
         <EmployeeFormModal
@@ -304,12 +310,12 @@ export function EmployeesPage() {
           onSubmit={(input) => void changeStatus(statusModalEmployee, input)}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 
 function Select({ value, onChange, children }: { value: string; onChange: (value: string) => void; children: React.ReactNode }) {
-  return <select value={value} onChange={(event) => onChange(event.target.value)} className="h-9 rounded-md border bg-white px-3 text-sm">{children}</select>;
+  return <UiSelectField value={value} onValueChange={onChange}>{children}</UiSelectField>;
 }
 
 function toInput(employee?: Employee): EmployeeInput {
@@ -370,21 +376,21 @@ function EmployeeFormModal(props: {
             <Field label="Gender" value={form.gender ?? ""} onChange={(v) => update("gender", v)} />
             <Field label="Date of birth" type="date" value={form.date_of_birth ?? ""} onChange={(v) => update("date_of_birth", v)} />
             <Field label="Nationality" value={form.nationality ?? ""} onChange={(v) => update("nationality", v)} />
-            <SelectField label="Employee type" value={form.employee_type} onChange={(v) => update("employee_type", v)}>{employeeTypes.map((t) => <option key={t} value={t}>{t}</option>)}</SelectField>
-            <SelectField label="Employment type" value={form.employment_type} onChange={(v) => update("employment_type", v)}>{employmentTypes.map((t) => <option key={t} value={t}>{t}</option>)}</SelectField>
-            <SelectField label="Status" value={form.status_id ?? ""} onChange={(v) => update("status_id", v)}><option value="">Draft / Onboarding default</option>{props.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</SelectField>
-            <SelectField label="Department" value={form.primary_department_id ?? ""} onChange={(v) => update("primary_department_id", v)}><option value="">None</option>{props.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</SelectField>
-            <SelectField label="Position" value={form.primary_position_id ?? ""} onChange={(v) => update("primary_position_id", v)}><option value="">None</option>{props.positions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</SelectField>
-            <SelectField label="Outlet/location" value={form.primary_location_id ?? ""} onChange={(v) => update("primary_location_id", v)}><option value="">None</option>{props.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</SelectField>
-            <SelectField label="Job level" value={form.job_level_id ?? ""} onChange={(v) => update("job_level_id", v)}><option value="">None</option>{props.jobLevels.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</SelectField>
-            <SelectField label="Reporting manager" value={form.reporting_manager_employee_id ?? ""} onChange={(v) => update("reporting_manager_employee_id", v)}><option value="">None</option>{props.employees.filter((e) => e.id !== props.employee?.id).map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}</SelectField>
+            <UiSelectField label="Employee type" value={form.employee_type} onValueChange={(v) => update("employee_type", v)}>{employeeTypes.map((t) => <option key={t} value={t}>{t}</option>)}</UiSelectField>
+            <UiSelectField label="Employment type" value={form.employment_type} onValueChange={(v) => update("employment_type", v)}>{employmentTypes.map((t) => <option key={t} value={t}>{t}</option>)}</UiSelectField>
+            <UiSelectField label="Status" value={form.status_id ?? ""} onValueChange={(v) => update("status_id", v)}><option value="">Draft / Onboarding default</option>{props.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</UiSelectField>
+            <UiSelectField label="Department" value={form.primary_department_id ?? ""} onValueChange={(v) => update("primary_department_id", v)}><option value="">None</option>{props.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</UiSelectField>
+            <UiSelectField label="Position" value={form.primary_position_id ?? ""} onValueChange={(v) => update("primary_position_id", v)}><option value="">None</option>{props.positions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</UiSelectField>
+            <UiSelectField label="Outlet/location" value={form.primary_location_id ?? ""} onValueChange={(v) => update("primary_location_id", v)}><option value="">None</option>{props.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</UiSelectField>
+            <UiSelectField label="Job level" value={form.job_level_id ?? ""} onValueChange={(v) => update("job_level_id", v)}><option value="">None</option>{props.jobLevels.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</UiSelectField>
+            <UiSelectField label="Reporting manager" value={form.reporting_manager_employee_id ?? ""} onValueChange={(v) => update("reporting_manager_employee_id", v)}><option value="">None</option>{props.employees.filter((e) => e.id !== props.employee?.id).map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}</UiSelectField>
             <Field label="Joining date" type="date" value={form.joining_date ?? ""} onChange={(v) => update("joining_date", v)} />
             <Field label="Confirmation date" type="date" value={form.confirmation_date ?? ""} onChange={(v) => update("confirmation_date", v)} />
             <Field label="Contract start" type="date" value={form.contract_start_date ?? ""} onChange={(v) => update("contract_start_date", v)} />
             <Field label="Contract end" type="date" value={form.contract_end_date ?? ""} onChange={(v) => update("contract_end_date", v)} />
             <Field label="Probation end" type="date" value={form.probation_end_date ?? ""} onChange={(v) => update("probation_end_date", v)} />
-            <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={form.payroll_included} onChange={(e) => update("payroll_included", e.target.checked)} /> Payroll included</label>
-            <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={form.roster_eligible} onChange={(e) => update("roster_eligible", e.target.checked)} /> Roster eligible</label>
+            <CheckboxField label="Payroll included" checked={form.payroll_included} onChange={(value) => update("payroll_included", value)} className="self-end" />
+            <CheckboxField label="Roster eligible" checked={form.roster_eligible} onChange={(value) => update("roster_eligible", value)} className="self-end" />
             <div className="md:col-span-3"><Field label="Notes summary" value={form.notes_summary ?? ""} onChange={(v) => update("notes_summary", v)} /></div>
           </div>
         </div>
@@ -399,8 +405,4 @@ function EmployeeFormModal(props: {
 
 function Field({ label, value, onChange, type = "text", disabled, placeholder }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled?: boolean; placeholder?: string }) {
   return <div className="space-y-1.5"><Label>{label}</Label><Input type={type} value={value} disabled={disabled} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></div>;
-}
-
-function SelectField({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: React.ReactNode }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><select value={value} onChange={(event) => onChange(event.target.value)} className="h-9 w-full rounded-md border bg-white px-3 text-sm">{children}</select></div>;
 }

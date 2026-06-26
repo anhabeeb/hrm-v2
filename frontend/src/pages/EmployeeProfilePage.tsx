@@ -8,6 +8,7 @@ import { EmployeeAssetsPanel } from "../components/assets/EmployeeAssetsPanel";
 import { EmployeeAvatar } from "../components/employee/EmployeeAvatar";
 import { EmployeeContractsPanel } from "../components/employee/EmployeeContractsPanel";
 import { EmployeeDocumentsPanel } from "../components/employee/EmployeeDocumentsPanel";
+import { EmployeeProfileCard } from "../components/employee/EmployeeIdentityCell";
 import { EmployeeProfilePhotoControls } from "../components/employee/EmployeeProfilePhotoControls";
 import { EmployeeLeavePanel } from "../components/leave/EmployeeLeavePanel";
 import { EmployeeFinalSettlementPanel } from "../components/payroll/EmployeeFinalSettlementPanel";
@@ -19,7 +20,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { PageShell, ResponsiveTabs } from "../components/ui/page-shell";
+import { AlertBanner, CheckboxField, PageShell, ResponsiveTabs, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -210,7 +211,20 @@ export function EmployeeProfilePage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <EmployeeProfileCard
+        employee={employee}
+        token={token}
+        actions={
+          <>
+            <EmployeeProfilePhotoControls employee={employee} token={token!} canUpload={canUploadPhoto} canClear={canClearPhoto} onChanged={load} />
+            <Link to="/employees"><Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>
+            <Button variant="outline" size="sm" onClick={() => navigate("/employees")}><Pencil className="h-4 w-4" /> Edit</Button>
+            {canStatus ? <Button variant="outline" size="sm" onClick={() => { setStatusModalError(null); setStatusModalOpen(true); }}>Change status</Button> : null}
+            {canArchive ? <Button variant="danger" size="sm" onClick={() => setArchiveReason(" ")}><Archive className="h-4 w-4" /> Archive</Button> : null}
+          </>
+        }
+      />
+      <div className="hidden flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
           <EmployeeAvatar employee={employee} token={token} size="lg" />
           <div>
@@ -231,7 +245,7 @@ export function EmployeeProfilePage() {
         </div>
       </div>
 
-      {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      {error ? <AlertBanner tone="danger">{error}</AlertBanner> : null}
 
       <Panel className="overflow-hidden">
         <div className="border-b p-2">
@@ -579,7 +593,32 @@ function ContactModal({ contact, onClose, onSave }: { contact?: EmployeeContact;
     is_sensitive: contact?.is_sensitive ?? false,
     notes: contact?.notes ?? ""
   });
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-xl rounded-lg border bg-white shadow-xl"><div className="flex justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">{contact ? "Edit contact" : "Add contact"}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="grid gap-3 p-4 md:grid-cols-2"><div className="space-y-1.5"><Label>Type</Label><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.contact_type} onChange={(e) => setForm({ ...form, contact_type: e.target.value as EmployeeContactInput["contact_type"] })}>{["PERSONAL_PHONE","WORK_PHONE","PERSONAL_EMAIL","WORK_EMAIL","EMERGENCY","GUARDIAN","SPOUSE","PARENT","OTHER"].map((type) => <option key={type} value={type}>{type}</option>)}</select></div><Field label="Value" value={form.value} onChange={(value) => setForm({ ...form, value })} /><Field label="Country code" value={form.country_code ?? ""} onChange={(country_code) => setForm({ ...form, country_code })} /><Field label="Relationship" value={form.relationship ?? ""} onChange={(relationship) => setForm({ ...form, relationship })} /><Field label="Priority" value={form.emergency_priority?.toString() ?? ""} onChange={(value) => setForm({ ...form, emergency_priority: value ? Number(value) : null })} /><Field label="Notes" value={form.notes ?? ""} onChange={(notes) => setForm({ ...form, notes })} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_primary} onChange={(e) => setForm({ ...form, is_primary: e.target.checked })} /> Primary</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_sensitive} onChange={(e) => setForm({ ...form, is_sensitive: e.target.checked })} /> Sensitive</label></div><div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => onSave(form)}>Save</Button></div></div></div>;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+      <div className="w-full max-w-xl rounded-lg border bg-white shadow-xl">
+        <div className="flex justify-between border-b px-4 py-3">
+          <h2 className="text-sm font-semibold">{contact ? "Edit contact" : "Add contact"}</h2>
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+        </div>
+        <div className="grid gap-3 p-4 md:grid-cols-2">
+          <SelectField label="Type" value={form.contact_type} onChange={(event) => setForm({ ...form, contact_type: event.target.value as EmployeeContactInput["contact_type"] })}>
+            {["PERSONAL_PHONE", "WORK_PHONE", "PERSONAL_EMAIL", "WORK_EMAIL", "EMERGENCY", "GUARDIAN", "SPOUSE", "PARENT", "OTHER"].map((type) => <option key={type} value={type}>{type}</option>)}
+          </SelectField>
+          <Field label="Value" value={form.value} onChange={(value) => setForm({ ...form, value })} />
+          <Field label="Country code" value={form.country_code ?? ""} onChange={(country_code) => setForm({ ...form, country_code })} />
+          <Field label="Relationship" value={form.relationship ?? ""} onChange={(relationship) => setForm({ ...form, relationship })} />
+          <Field label="Priority" value={form.emergency_priority?.toString() ?? ""} onChange={(value) => setForm({ ...form, emergency_priority: value ? Number(value) : null })} />
+          <Field label="Notes" value={form.notes ?? ""} onChange={(notes) => setForm({ ...form, notes })} />
+          <CheckboxField label="Primary" checked={form.is_primary} onChange={(checked) => setForm({ ...form, is_primary: checked })} />
+          <CheckboxField label="Sensitive" checked={form.is_sensitive} onChange={(checked) => setForm({ ...form, is_sensitive: checked })} />
+        </div>
+        <div className="flex justify-end gap-2 border-t px-4 py-3">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={() => onSave(form)}>Save</Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {

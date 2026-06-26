@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SelectField, TextareaField } from "../ui/page-shell";
 import type { RosterAssignment, RosterAssignmentStatus, ShiftTemplate } from "../../types/roster";
 
 type AssignmentForm = Pick<RosterAssignment, "shift_template_id" | "custom_start_time" | "custom_end_time" | "break_minutes" | "status" | "notes"> & { reason?: string };
@@ -56,15 +57,15 @@ export function RosterAssignmentModal({
         </div>
         <div className="grid gap-3 p-4 md:grid-cols-2">
           <Field label="Status">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as RosterAssignmentStatus })}>
+            <SelectField value={form.status} onValueChange={(status) => setForm({ ...form, status: status as RosterAssignmentStatus })}>
               {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Shift template">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.shift_template_id ?? ""} onChange={(event) => setForm({ ...form, shift_template_id: event.target.value || null, status: event.target.value ? "DRAFT" : form.status })}>
+            <SelectField value={form.shift_template_id ?? ""} onValueChange={(value) => setForm({ ...form, shift_template_id: value || null, status: value ? "DRAFT" : form.status })}>
               <option value="">No template</option>
               {shiftTemplates.map((template) => <option key={template.id} value={template.id}>{template.code} - {template.name}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Custom start"><Input type="time" value={form.custom_start_time ?? ""} onChange={(event) => setForm({ ...form, custom_start_time: event.target.value || null })} /></Field>
           <Field label="Custom end"><Input type="time" value={form.custom_end_time ?? ""} onChange={(event) => setForm({ ...form, custom_end_time: event.target.value || null })} /></Field>
@@ -72,10 +73,7 @@ export function RosterAssignmentModal({
           <Field label="Reason">
             <Input value={form.reason ?? ""} required={requireReason} placeholder={requireReason ? "Required for published roster edits" : "Optional"} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
           </Field>
-          <div className="space-y-1.5 md:col-span-2">
-            <Label>Notes</Label>
-            <textarea className="min-h-20 w-full rounded-md border bg-white px-3 py-2 text-sm" value={form.notes ?? ""} onChange={(event) => setForm({ ...form, notes: event.target.value || null })} />
-          </div>
+          <div className="md:col-span-2"><TextareaField label="Notes" value={form.notes ?? ""} onChange={(event) => setForm({ ...form, notes: event.target.value || null })} /></div>
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>

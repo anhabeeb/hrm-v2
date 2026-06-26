@@ -8,6 +8,7 @@ import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { FileUploadField, SelectField } from "../ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { EmployeeDocumentCompliancePanel } from "./EmployeeDocumentCompliancePanel";
 
@@ -277,16 +278,14 @@ function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }
         </div>
         <div className="grid gap-3 p-4 md:grid-cols-2">
           {state.mode === "upload" ? (
-            <div className="space-y-1.5 md:col-span-2">
-              <Label>Document type</Label>
-              <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={documentTypeId} onChange={(event) => setDocumentTypeId(event.target.value)}>
+            <div className="md:col-span-2">
+              <SelectField label="Document type" value={documentTypeId} onValueChange={setDocumentTypeId}>
                 {activeTypes.map((type) => <option key={type.id} value={type.id}>{type.name}{type.is_sensitive ? " (Sensitive)" : ""}</option>)}
-              </select>
+              </SelectField>
             </div>
           ) : null}
           <div className="space-y-1.5 md:col-span-2">
-            <Label>File</Label>
-            <Input type="file" accept={selectedType?.allowed_file_types?.join(",") ?? (state.mode === "photo" ? "image/jpeg,image/png,image/webp" : undefined)} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+            <FileUploadField label="File" accept={selectedType?.allowed_file_types?.join(",") ?? (state.mode === "photo" ? "image/jpeg,image/png,image/webp" : undefined)} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
             {selectedType ? <p className="text-xs text-muted-foreground">Max {selectedType.max_file_size_mb} MB. {selectedType.allowed_file_types?.join(", ")}</p> : null}
           </div>
           {state.mode !== "photo" ? (

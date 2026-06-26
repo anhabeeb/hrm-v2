@@ -1,5 +1,6 @@
 import { Calculator, CheckCircle2, FileText, Lock, Plus, RefreshCw, Send, Settings, Wallet, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -12,6 +13,7 @@ import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
+import { CheckboxField, SelectField as UiSelectField } from "../components/ui/page-shell";
 import type {
   FinalSettlementCase,
   FinalSettlementClearanceItem,
@@ -49,7 +51,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function SelectField({ value, onChange, children }: { value: string; onChange: (value: string) => void; children: React.ReactNode }) {
-  return <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{children}</select>;
+  return <UiSelectField value={value} onValueChange={onChange}>{children}</UiSelectField>;
 }
 
 function Dialog({ title, children, footer }: { title: string; children: React.ReactNode; footer: React.ReactNode }) {
@@ -279,19 +281,19 @@ export function FinalSettlementPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-lg font-semibold">Exit Payroll</h1>
-          <p className="text-sm text-muted-foreground">Manage final settlement cases, clearance, approval, finalization, and manual payment register rows.</p>
+          <h1 className="text-lg font-semibold">Exit Payroll / Final Settlement</h1>
+          <p className="text-sm text-muted-foreground">Manage Final Settlement cases, clearance, approval, finalization, and manual payment register rows.</p>
         </div>
         <div className="flex flex-wrap gap-2"><PayrollNav /><AdminHelpLink target="finalSettlement" label="View Exit Payroll Guide" />{canCreate ? <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New case</Button> : null}</div>
       </div>
 
       <ErrorMessage error={error} />
 
-      <div className="flex flex-wrap gap-2 border-b">
+      <div className="flex flex-wrap gap-2 border-b p-1">
         {(["cases", "payments", "reports", "settings"] as Tab[]).map((item) => (
-          <button key={item} className={`h-10 border-b-2 px-3 text-sm font-medium ${tab === item ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`} onClick={() => setTab(item)}>
+          <Button key={item} size="sm" variant={tab === item ? "primary" : "ghost"} className="whitespace-nowrap" onClick={() => setTab(item)}>
             {item === "cases" ? "Cases" : item === "payments" ? "Payment Register" : item === "reports" ? "Reports" : "Settings"}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -308,7 +310,7 @@ export function FinalSettlementPage() {
                 <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Exit</TableHead><TableHead>Status</TableHead><TableHead>Clearance</TableHead><TableHead>Net</TableHead><TableHead>Payment</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                 <TableBody>{filteredCases.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell><div className="font-medium">{row.employee_name ?? row.employee_name_snapshot ?? row.full_name}</div><div className="font-mono text-xs text-muted-foreground">{row.employee_no ?? row.employee_number_snapshot}</div></TableCell>
+                    <TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name ?? row.employee_name_snapshot ?? row.full_name} employeeNumber={row.employee_no ?? row.employee_number_snapshot} departmentName={row.department_name ?? row.department_snapshot} locationName={row.location_name ?? row.location_snapshot ?? row.worksite_snapshot} size="sm" /></TableCell>
                     <TableCell><div>{row.exit_type}</div><div className="text-xs text-muted-foreground">{row.exit_date} / {row.last_working_day}</div></TableCell>
                     <TableCell><Badge tone={tone(row.status)}>{row.status}</Badge></TableCell>
                     <TableCell><Badge tone={tone(row.clearance_status)}>{row.clearance_status}</Badge></TableCell>
@@ -373,7 +375,7 @@ function CaseDetails({ selected, lineItems, clearance, events, canApprove, canFi
   return (
     <Panel className="space-y-4 p-4">
       <div className="flex items-start justify-between gap-3">
-        <div><h2 className="text-sm font-semibold">{selected.employee_name ?? selected.full_name}</h2><p className="text-xs text-muted-foreground">{selected.exit_type} - {selected.last_working_day}</p></div>
+        <EmployeeIdentityCell employeeId={selected.employee_id} employeeName={selected.employee_name ?? selected.employee_name_snapshot ?? selected.full_name} employeeNumber={selected.employee_no ?? selected.employee_number_snapshot} departmentName={selected.department_name ?? selected.department_snapshot} locationName={selected.location_name ?? selected.location_snapshot ?? selected.worksite_snapshot} status={selected.status} showStatus size="md" />
         <Badge tone={tone(selected.status)}>{selected.status}</Badge>
       </div>
       <div className="grid grid-cols-3 gap-2 text-sm">
@@ -433,7 +435,7 @@ function CaseActionDialog({ action, row, note, reason, amount, adjustmentType, o
 function PaymentTable({ rows, canManage, onAction }: { rows: FinalSettlementPaymentRegister[]; canManage: boolean; onAction: (type: PaymentAction, row: FinalSettlementPaymentRegister) => void }) {
   return <Panel className="overflow-hidden"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Direction</TableHead><TableHead>Net</TableHead><TableHead>Method</TableHead><TableHead>Institution</TableHead><TableHead>Status</TableHead><TableHead>Reference</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => {
     const actionable = row.payment_status === "PENDING" || row.payment_status === "PREPARED";
-    return <TableRow key={row.id}><TableCell><div className="font-medium">{row.employee_name_snapshot}</div><div className="font-mono text-xs text-muted-foreground">{row.employee_number_snapshot ?? row.employee_no_snapshot}</div></TableCell><TableCell>{row.payment_direction}</TableCell><TableCell>{row.net_settlement_amount == null ? "Restricted" : money(row.net_settlement_amount)}</TableCell><TableCell>{row.payment_method_type_snapshot ?? row.payment_method_snapshot ?? "-"}</TableCell><TableCell>{row.payment_institution_snapshot ?? row.bank_name_snapshot ?? "-"}</TableCell><TableCell><Badge tone={tone(row.payment_status)}>{row.payment_status}</Badge></TableCell><TableCell>{row.confirmation_reference ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <Button variant="ghost" size="icon" title="Confirm manual payment" disabled={!actionable} onClick={() => onAction("confirm-paid", row)}><CheckCircle2 className="h-4 w-4" /></Button> : null}{canManage ? <Button variant="ghost" size="icon" title="Cancel row" disabled={!actionable} onClick={() => onAction("cancel-payment", row)}><XCircle className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
+    return <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot} employeeNumber={row.employee_number_snapshot ?? row.employee_no_snapshot} size="sm" /></TableCell><TableCell>{row.payment_direction}</TableCell><TableCell>{row.net_settlement_amount == null ? "Restricted" : money(row.net_settlement_amount)}</TableCell><TableCell>{row.payment_method_type_snapshot ?? row.payment_method_snapshot ?? "-"}</TableCell><TableCell>{row.payment_institution_snapshot ?? row.bank_name_snapshot ?? "-"}</TableCell><TableCell><Badge tone={tone(row.payment_status)}>{row.payment_status}</Badge></TableCell><TableCell>{row.confirmation_reference ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <Button variant="ghost" size="icon" title="Confirm manual payment" disabled={!actionable} onClick={() => onAction("confirm-paid", row)}><CheckCircle2 className="h-4 w-4" /></Button> : null}{canManage ? <Button variant="ghost" size="icon" title="Cancel row" disabled={!actionable} onClick={() => onAction("cancel-payment", row)}><XCircle className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
   })}</TableBody></Table></div>{rows.length === 0 ? <EmptyState title="No payment register rows" description="Finalize a settlement and prepare a manual payment row." /> : null}</Panel>;
 }
 
@@ -485,5 +487,5 @@ function SettingsPanel({ settings, canManage, onChange, onSave }: { settings: Fi
     "require_reason_for_recalculation",
     "require_reason_for_unlock"
   ];
-  return <Panel className="space-y-4 p-4"><div className="flex items-center justify-between"><div><h2 className="text-sm font-semibold">Exit payroll settings</h2><p className="text-sm text-muted-foreground">Configure settlement calculation, source inclusion, approval, finalization, and payment register controls.</p></div>{canManage ? <Button size="sm" onClick={onSave}><Settings className="h-4 w-4" /> Save settings</Button> : null}</div><div className="grid gap-2 md:grid-cols-3">{toggleKeys.map((key) => <label key={key} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"><input type="checkbox" disabled={!canManage} checked={bool(settings[key])} onChange={(event) => onChange({ ...settings, [key]: event.target.checked })} /> {String(key).replace(/_/g, " ")}</label>)}</div><div className="grid gap-3 md:grid-cols-3"><Field label="Daily rate mode"><SelectField value={settings.default_daily_rate_calculation_mode} onChange={(value) => onChange({ ...settings, default_daily_rate_calculation_mode: value as FinalSettlementSettings["default_daily_rate_calculation_mode"] })}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></SelectField></Field><Field label="Unused leave payout mode"><SelectField value={settings.default_unused_leave_payout_calculation_mode ?? "DAILY_RATE"} onChange={(value) => onChange({ ...settings, default_unused_leave_payout_calculation_mode: value as FinalSettlementSettings["default_unused_leave_payout_calculation_mode"] })}><option value="DAILY_RATE">Daily rate</option><option value="FIXED_AMOUNT">Fixed amount</option><option value="MANUAL">Manual</option></SelectField></Field><Field label="Default settlement currency"><Input disabled={!canManage} value={settings.default_settlement_currency ?? "MVR"} onChange={(event) => onChange({ ...settings, default_settlement_currency: event.target.value })} /></Field></div></Panel>;
+  return <Panel className="space-y-4 p-4"><div className="flex items-center justify-between"><div><h2 className="text-sm font-semibold">Exit payroll settings</h2><p className="text-sm text-muted-foreground">Configure settlement calculation, source inclusion, approval, finalization, and payment register controls.</p></div>{canManage ? <Button size="sm" onClick={onSave}><Settings className="h-4 w-4" /> Save settings</Button> : null}</div><div className="grid gap-2 md:grid-cols-3">{toggleKeys.map((key) => <CheckboxField key={key} label={String(key).replace(/_/g, " ")} disabled={!canManage} checked={bool(settings[key])} onChange={(checked) => onChange({ ...settings, [key]: checked })} />)}</div><div className="grid gap-3 md:grid-cols-3"><Field label="Daily rate mode"><SelectField value={settings.default_daily_rate_calculation_mode} onChange={(value) => onChange({ ...settings, default_daily_rate_calculation_mode: value as FinalSettlementSettings["default_daily_rate_calculation_mode"] })}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></SelectField></Field><Field label="Unused leave payout mode"><SelectField value={settings.default_unused_leave_payout_calculation_mode ?? "DAILY_RATE"} onChange={(value) => onChange({ ...settings, default_unused_leave_payout_calculation_mode: value as FinalSettlementSettings["default_unused_leave_payout_calculation_mode"] })}><option value="DAILY_RATE">Daily rate</option><option value="FIXED_AMOUNT">Fixed amount</option><option value="MANUAL">Manual</option></SelectField></Field><Field label="Default settlement currency"><Input disabled={!canManage} value={settings.default_settlement_currency ?? "MVR"} onChange={(event) => onChange({ ...settings, default_settlement_currency: event.target.value })} /></Field></div></Panel>;
 }

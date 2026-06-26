@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { CheckboxField, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -87,19 +88,19 @@ export function AttendanceSettingsPage() {
             <Field label="Early checkout grace minutes"><Input type="number" min="0" disabled={!canManage} value={settings.early_checkout_grace_minutes} onChange={(event) => update("early_checkout_grace_minutes", Number(event.target.value))} /></Field>
             <Field label="Weekly off days"><Input disabled={!canManage} value={weeklyOff} onChange={(event) => setWeeklyOff(event.target.value)} placeholder="FRIDAY, SATURDAY" /></Field>
             <Field label="Default workday mode">
-              <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" disabled={!canManage} value={settings.default_workday_mode ?? "FIXED_SHIFT"} onChange={(event) => update("default_workday_mode", event.target.value as AttendanceSettings["default_workday_mode"])}>
+              <SelectField disabled={!canManage} value={settings.default_workday_mode ?? "FIXED_SHIFT"} onValueChange={(value) => update("default_workday_mode", value as AttendanceSettings["default_workday_mode"])}>
                 {["FIXED_SHIFT", "ROSTER_BASED", "FLEXIBLE"].map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
+              </SelectField>
             </Field>
             <Field label="Default attendance source">
-              <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" disabled={!canManage} value={settings.default_attendance_source ?? "DEVICE"} onChange={(event) => update("default_attendance_source", event.target.value as AttendanceSettings["default_attendance_source"])}>
+              <SelectField disabled={!canManage} value={settings.default_attendance_source ?? "DEVICE"} onValueChange={(value) => update("default_attendance_source", value as AttendanceSettings["default_attendance_source"])}>
                 {["DEVICE", "MANUAL", "MANUAL_IMPORT", "API", "BRIDGE"].map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
+              </SelectField>
             </Field>
             <Field label="Default absent status">
-              <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" disabled={!canManage} value={settings.default_absent_status ?? "ABSENT"} onChange={(event) => update("default_absent_status", event.target.value as AttendanceSettings["default_absent_status"])}>
+              <SelectField disabled={!canManage} value={settings.default_absent_status ?? "ABSENT"} onValueChange={(value) => update("default_absent_status", value as AttendanceSettings["default_absent_status"])}>
                 {["ABSENT", "MISSING_PUNCH", "PENDING_CORRECTION"].map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
+              </SelectField>
             </Field>
             <Field label="Monthly attendance lock day"><Input type="number" min="1" max="31" disabled={!canManage} value={settings.monthly_attendance_lock_day ?? ""} onChange={(event) => update("monthly_attendance_lock_day", event.target.value === "" ? null : Number(event.target.value))} /></Field>
             <Field label="Allowed attendance sources"><Input disabled={!canManage} value={settings.attendance_source_options_json ?? ""} onChange={(event) => update("attendance_source_options_json", event.target.value)} /></Field>
@@ -130,5 +131,5 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" disabled={disabled} checked={checked} onChange={(event) => onChange(event.target.checked)} /> {label}</label>;
+  return <CheckboxField label={label} disabled={disabled} checked={checked} onChange={onChange} />;
 }

@@ -6,6 +6,7 @@ import type { Employee } from "../../types/employees";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { CheckboxField, SelectField } from "../ui/page-shell";
 
 const statusOptions: AttendanceStatus[] = ["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"];
 
@@ -69,23 +70,23 @@ export function AttendanceRecordModal(props: {
         <div className="grid gap-3 p-4 md:grid-cols-2">
           {error ? <div className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
           <Field label="Employee">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={employeeId} disabled={Boolean(props.record)} onChange={(event) => setEmployeeId(event.target.value)} required>
+            <SelectField value={employeeId} disabled={Boolean(props.record)} onValueChange={setEmployeeId} required>
               <option value="">Select employee</option>
               {props.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name ?? employee.full_name} ({employee.employee_no})</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Attendance date"><Input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></Field>
           <Field label="Status">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value as AttendanceStatus)}>
+            <SelectField value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}>
               {statusOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Clock in"><Input type="datetime-local" value={clockIn} onChange={(event) => setClockIn(event.target.value)} /></Field>
           <Field label="Clock out"><Input type="datetime-local" value={clockOut} onChange={(event) => setClockOut(event.target.value)} /></Field>
           <Field label="Work minutes"><Input type="number" min="0" value={workMinutes} onChange={(event) => setWorkMinutes(event.target.value)} /></Field>
           <Field label="Late minutes"><Input type="number" min="0" value={lateMinutes} onChange={(event) => setLateMinutes(event.target.value)} /></Field>
           <Field label="Early checkout minutes"><Input type="number" min="0" value={earlyMinutes} onChange={(event) => setEarlyMinutes(event.target.value)} /></Field>
-          <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={missedPunch} onChange={(event) => setMissedPunch(event.target.checked)} /> Missed punch</label>
+          <CheckboxField label="Missed punch" checked={missedPunch} onChange={setMissedPunch} />
           <Field label="Notes"><Input value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
           {props.record ? <div className="space-y-1.5 md:col-span-2"><Label>Reason for change</Label><Input value={reason} onChange={(event) => setReason(event.target.value)} required placeholder="Required for audited attendance edits" /></div> : null}
         </div>

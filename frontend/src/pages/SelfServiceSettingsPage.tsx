@@ -3,6 +3,7 @@ import { Save } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
+import { CheckboxField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -140,10 +141,5 @@ export function SelfServiceSettingsPage() {
 }
 
 function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
-  return (
-    <label className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
-      <span>{label}</span>
-      <input type="checkbox" className="h-4 w-4" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
-    </label>
-  );
+  return <CheckboxField label={label} checked={checked} disabled={disabled} onChange={onChange} />;
 }

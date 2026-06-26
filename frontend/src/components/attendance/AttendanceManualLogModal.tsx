@@ -6,6 +6,7 @@ import type { Employee } from "../../types/employees";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SelectField } from "../ui/page-shell";
 
 const logTypes: AttendanceLog["log_type"][] = ["IN", "OUT", "BREAK_IN", "BREAK_OUT", "UNKNOWN"];
 
@@ -56,16 +57,16 @@ export function AttendanceManualLogModal(props: {
         <div className="grid gap-3 p-4 md:grid-cols-2">
           {error ? <div className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
           <Field label="Employee">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} required>
+            <SelectField value={employeeId} onValueChange={setEmployeeId} required>
               <option value="">Select employee</option>
               {props.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name ?? employee.full_name} ({employee.employee_no})</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Log time"><Input type="datetime-local" value={logTime} onChange={(event) => setLogTime(event.target.value)} required /></Field>
           <Field label="Punch type">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={logType} onChange={(event) => setLogType(event.target.value as AttendanceLog["log_type"])}>
+            <SelectField value={logType} onValueChange={(value) => setLogType(value as AttendanceLog["log_type"])}>
               {logTypes.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Reason / notes"><Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Required when manual entry reasons are enabled" /></Field>
         </div>

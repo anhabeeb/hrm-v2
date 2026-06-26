@@ -2,10 +2,12 @@ import { Check, Plus, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceCorrectionModal } from "../components/attendance/AttendanceCorrectionModal";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
+import { SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -117,9 +119,9 @@ export function AttendanceCorrectionsPage() {
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-6">
           <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["PENDING", "APPROVED", "REJECTED", "CANCELLED"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
+          <SelectField aria-label="Status" value={status} onValueChange={setStatus}><option value="">All statuses</option>{["PENDING", "APPROVED", "REJECTED", "CANCELLED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
+          <SelectField aria-label="Department" value={departmentId} onValueChange={setDepartmentId}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectField>
+          <SelectField aria-label="Location" value={locationId} onValueChange={setLocationId}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</SelectField>
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Date from" />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Date to" />
         </div>
@@ -130,7 +132,7 @@ export function AttendanceCorrectionsPage() {
               const current = parseSnapshot(correction.current_values_json);
               const pending = correction.status === "PENDING" || correction.status === "SUBMITTED";
               return <TableRow key={correction.id}>
-                <TableCell><div className="font-medium">{correction.employee_name}</div><div className="font-mono text-xs text-muted-foreground">{correction.employee_no}</div></TableCell>
+                <TableCell><EmployeeIdentityCell employeeId={correction.employee_id} employeeName={correction.employee_name ?? "-"} employeeNumber={correction.employee_no ?? ""} departmentName={correction.department_name} locationName={correction.location_name} size="sm" /></TableCell>
                 <TableCell>{correction.attendance_date}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{String(current.status ?? "-")} · {String(current.first_clock_in ?? "-")} / {String(current.last_clock_out ?? "-")}</TableCell>
                 <TableCell>{correction.requested_status ?? "-"} · {correction.requested_clock_in ? new Date(correction.requested_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {correction.requested_clock_out ? new Date(correction.requested_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</TableCell>

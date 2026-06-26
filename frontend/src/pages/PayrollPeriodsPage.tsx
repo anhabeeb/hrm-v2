@@ -6,6 +6,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
+import { SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -107,8 +108,8 @@ export function PayrollPeriodsPage() {
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-6">
           <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search period" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
           <Input value={year} onChange={(event) => setYear(event.target.value)} placeholder="Year" />
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={month} onChange={(event) => setMonth(event.target.value)}><option value="">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}>{statuses.map((item) => <option key={item || "all"} value={item}>{item || "All statuses"}</option>)}</select>
+          <SelectField aria-label="Month" value={month} onValueChange={setMonth}><option value="">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</SelectField>
+          <SelectField aria-label="Status" value={status} onValueChange={setStatus}>{statuses.map((item) => <option key={item || "all"} value={item}>{item || "All statuses"}</option>)}</SelectField>
         </div>
         <div className="overflow-x-auto">
           <Table>

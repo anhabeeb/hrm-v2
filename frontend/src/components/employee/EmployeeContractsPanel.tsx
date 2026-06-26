@@ -6,6 +6,7 @@ import { DataTableFrame } from "../ui/data-table";
 import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SelectField } from "../ui/page-shell";
 import { Panel } from "../ui/panel";
 import { StatusBadge } from "../ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -219,7 +220,7 @@ function CreateContractDialog({ types, onClose, onSave }: { types: Row[]; onClos
   return (
     <ModalShell title="Create contract" onClose={onClose}>
       <form onSubmit={(event) => void submit(event)} className="grid gap-3 md:grid-cols-2">
-        <Field label="Contract type"><select required className="h-9 rounded-md border bg-white px-3 text-sm" value={form.contract_type_id} onChange={(event) => setForm({ ...form, contract_type_id: event.target.value })}><option value="">Select type</option>{types.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}</option>)}</select></Field>
+        <SelectField required label="Contract type" value={form.contract_type_id} onValueChange={(contract_type_id) => setForm({ ...form, contract_type_id })}><option value="">Select type</option>{types.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}</option>)}</SelectField>
         <Field label="Contract number"><Input value={form.contract_number} onChange={(event) => setForm({ ...form, contract_number: event.target.value })} placeholder="Auto if blank" /></Field>
         <Field label="Title"><Input value={form.contract_title} onChange={(event) => setForm({ ...form, contract_title: event.target.value })} /></Field>
         <Field label="Start date"><Input type="date" required value={form.contract_start_date} onChange={(event) => setForm({ ...form, contract_start_date: event.target.value })} /></Field>

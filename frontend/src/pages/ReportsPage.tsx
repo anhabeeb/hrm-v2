@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { Input } from "../components/ui/input";
-import { PageHeader, PageShell } from "../components/ui/page-shell";
+import { AlertBanner, ExportActionBar, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -243,16 +243,13 @@ export function ReportsPage() {
           <Button variant={tab === "reports" ? "primary" : "outline"} size="sm" onClick={() => setTab("reports")}>Reports</Button>
           <Button variant={tab === "exports" ? "primary" : "outline"} size="sm" onClick={() => setTab("exports")}><History className="h-4 w-4" /> Export History</Button>
           <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Run</Button>
-          <Button size="sm" onClick={() => void exportCsv()} disabled={!canExport || !report?.rows.length}><Download className="h-4 w-4" /> CSV</Button>
-          <Button variant="outline" size="sm" onClick={() => disabledExport("Excel")} disabled={!canExport}><FileSpreadsheet className="h-4 w-4" /> Excel later</Button>
-          <Button variant="outline" size="sm" onClick={() => disabledExport("PDF")} disabled={!canExport}><FileText className="h-4 w-4" /> PDF later</Button>
         </div>
         }
       />
 
       <Panel className="p-3">
         <div className="grid gap-2 lg:grid-cols-4 xl:grid-cols-6">
-          <select className="h-9 rounded-md border bg-white px-3 text-sm xl:col-span-2" value={selected} onChange={(event) => setSelected(event.target.value)}>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm xl:col-span-2" value={selected} onChange={(event) => setSelected(event.target.value)}>
             {groupedReports.map(([group, reports]) => (
               <optgroup key={group} label={group}>
                 {reports.map((option) => (
@@ -260,7 +257,7 @@ export function ReportsPage() {
                 ))}
               </optgroup>
             ))}
-          </select>
+          </SelectField>
           <div className="relative lg:col-span-2">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input className="pl-9" placeholder="Search employee, report row, action..." value={filters.search} onChange={(event) => setFilter(setFilters, "search", event.target.value)} />
@@ -308,8 +305,20 @@ export function ReportsPage() {
             {filterChips.map(([key, value]) => <span key={key} className="rounded border bg-muted px-2 py-1 text-xs text-muted-foreground">{key}: {value}</span>)}
           </div>
         ) : null}
-        {message ? <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{message}</div> : null}
+        {message ? <div className="mt-3"><AlertBanner tone="warning">{message}</AlertBanner></div> : null}
       </Panel>
+
+      <ExportActionBar>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-900">Export selected report</p>
+          <p className="text-xs text-muted-foreground">CSV export uses the same active filters and is audit logged. Excel/PDF remain future placeholders.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => void exportCsv()} disabled={!canExport || !report?.rows.length}><Download className="h-4 w-4" /> CSV</Button>
+          <Button variant="outline" size="sm" onClick={() => disabledExport("Excel")} disabled={!canExport}><FileSpreadsheet className="h-4 w-4" /> Excel later</Button>
+          <Button variant="outline" size="sm" onClick={() => disabledExport("PDF")} disabled={!canExport}><FileText className="h-4 w-4" /> PDF later</Button>
+        </div>
+      </ExportActionBar>
 
       {tab === "reports" ? (
         <Panel className="overflow-hidden">
@@ -367,22 +376,22 @@ function setFilter(setFilters: Dispatch<SetStateAction<FilterState>>, key: keyof
 
 function SelectFilter({ label, value, options, onChange }: { label: string; value: string; options: Option[]; onChange: (value: string) => void }) {
   return (
-    <select className="h-9 rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)} title={label}>
+    <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)} title={label}>
       <option value="">{label}</option>
       {options.map((option) => (
         <option key={`${label}-${option.id}`} value={option.id}>{option.label}</option>
       ))}
-    </select>
+    </SelectField>
   );
 }
 
 function SelectStatic({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
   return (
-    <select className="h-9 rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)} title={label}>
+    <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)} title={label}>
       <option value="">{label}</option>
       {options.map((option) => (
         <option key={option} value={option}>{option.replace(/_/g, " ")}</option>
       ))}
-    </select>
+    </SelectField>
   );
 }

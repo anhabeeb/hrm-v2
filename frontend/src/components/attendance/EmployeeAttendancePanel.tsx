@@ -91,26 +91,28 @@ export function EmployeeAttendancePanel({ token, employee, permissions }: { toke
           <Input className="w-40" type="month" value={month} onChange={(event) => { setMonth(event.target.value); setSelectedDate(`${event.target.value}-01`); }} />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse text-sm">
-            <thead className="bg-muted/70"><tr>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <th key={day} className="h-9 border px-2 text-left text-xs font-semibold uppercase text-muted-foreground">{day}</th>)}</tr></thead>
-            <tbody>
-              {weeks.map((week, index) => <tr key={index}>{week.map((date, dayIndex) => {
+          <Table className="min-w-[760px]">
+            <TableHeader><TableRow>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <TableHead key={day} className="border px-2">{day}</TableHead>)}</TableRow></TableHeader>
+            <TableBody className="divide-y-0">
+              {weeks.map((week, index) => <TableRow key={index} className="hover:bg-transparent">{week.map((date, dayIndex) => {
                 const record = date ? byDate.get(date) : null;
                 const active = date === selectedDate;
                 return (
-                  <td key={date ?? `empty-${index}-${dayIndex}`} className={`h-28 w-[14.28%] border align-top ${active ? "bg-cyan-50" : "bg-white"}`}>
-                    {date ? <button className="h-full w-full p-2 text-left hover:bg-muted/40" onClick={() => setSelectedDate(date)}>
-                      <div className="flex items-center justify-between"><span className="font-mono text-xs">{date.slice(8)}</span>{record ? <Badge tone={tone(record.status)}>{record.status}</Badge> : <span className="text-xs text-muted-foreground">-</span>}</div>
-                      {record ? <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                        <div>{record.first_clock_in ? new Date(record.first_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {record.last_clock_out ? new Date(record.last_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</div>
-                        <div className="flex flex-wrap gap-1">{record.missed_punch ? <Badge tone="warning">Missed</Badge> : null}{Number(record.late_minutes ?? 0) > 0 ? <Badge tone="warning">Late</Badge> : null}{record.payroll_impact_json ? <Badge tone="info">Payroll</Badge> : null}</div>
-                      </div> : null}
-                    </button> : null}
-                  </td>
+                  <TableCell key={date ?? `empty-${index}-${dayIndex}`} className={`h-28 w-[14.28%] border p-0 align-top ${active ? "bg-cyan-50" : "bg-white"}`}>
+                    {date ? <Button variant="ghost" className="h-full w-full justify-start rounded-none p-2 text-left hover:bg-muted/40" onClick={() => setSelectedDate(date)}>
+                      <div className="w-full">
+                        <div className="flex items-center justify-between"><span className="font-mono text-xs">{date.slice(8)}</span>{record ? <Badge tone={tone(record.status)}>{record.status}</Badge> : <span className="text-xs text-muted-foreground">-</span>}</div>
+                        {record ? <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                          <div>{record.first_clock_in ? new Date(record.first_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {record.last_clock_out ? new Date(record.last_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</div>
+                          <div className="flex flex-wrap gap-1">{record.missed_punch ? <Badge tone="warning">Missed</Badge> : null}{Number(record.late_minutes ?? 0) > 0 ? <Badge tone="warning">Late</Badge> : null}{record.payroll_impact_json ? <Badge tone="info">Payroll</Badge> : null}</div>
+                        </div> : null}
+                      </div>
+                    </Button> : null}
+                  </TableCell>
                 );
-              })}</tr>)}
-            </tbody>
-          </table>
+              })}</TableRow>)}
+            </TableBody>
+          </Table>
         </div>
         <div className="border-t p-3">
           <h4 className="text-sm font-semibold">Daily detail: {selectedDate}</h4>

@@ -1,6 +1,7 @@
 import { CheckCircle2, FileDown, RefreshCw, ShieldAlert } from "lucide-react";
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
@@ -10,10 +11,12 @@ import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { Timeline } from "../components/ui/timeline";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
 import type { LifecycleSettings, LifecycleTask, OffboardingCase, OnboardingCase } from "../types/lifecycle";
+import { CheckboxField, SelectField } from "../components/ui/page-shell";
 
 type Mode =
   | "onboarding-dashboard"
@@ -260,7 +263,7 @@ function DashboardSection({ data, loading, error }: { data: Row; loading: boolea
             {rows.map((row) => (
               <TableRow key={String(row.id)}>
                 <TableCell>{text(row.case_number)}</TableCell>
-                <TableCell>{text(row.employee_name ?? row.employee_name_snapshot)}</TableCell>
+                <TableCell><EmployeeIdentityCell employeeId={text(row.employee_id)} employeeName={text(row.employee_name ?? row.employee_name_snapshot)} employeeNumber={text(row.employee_no ?? row.employee_number_snapshot)} departmentName={text(row.department_name)} locationName={text(row.location_name ?? row.worksite_name)} size="sm" /></TableCell>
                 <TableCell><StatusBadge value={row.onboarding_status ?? row.offboarding_status} /></TableCell>
                 <TableCell>{text(row.due_date)}</TableCell>
               </TableRow>
@@ -289,7 +292,7 @@ function CasesSection({ kind, cases, loading, error, onCreate, onSelect }: { kin
             {cases.map((row) => (
               <TableRow key={row.id}>
                 <TableCell className="font-medium">{row.case_number}</TableCell>
-                <TableCell>{row.employee_name ?? row.employee_name_snapshot ?? "-"}</TableCell>
+                <TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name ?? row.employee_name_snapshot ?? "-"} employeeNumber={row.employee_no ?? row.employee_number_snapshot} departmentName={row.department_name} locationName={row.location_name} size="sm" /></TableCell>
                 <TableCell>{row.department_name ?? "-"}</TableCell>
                 <TableCell>{row.location_name ?? "-"}</TableCell>
                 <TableCell><StatusBadge value={"onboarding_status" in row ? row.onboarding_status : row.offboarding_status} /></TableCell>
@@ -316,10 +319,12 @@ function SettingsSection({ settings, kind, loading, error, onSave }: { settings:
     <Panel className="p-4">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {fields.map((field) => (
-          <label key={field} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
-            <span>{title(field)}</span>
-            <input type="checkbox" checked={isEnabled(draft[field])} onChange={(event) => setDraft({ ...draft, [field]: event.target.checked ? 1 : 0 })} />
-          </label>
+          <CheckboxField
+            key={field}
+            label={title(field)}
+            checked={isEnabled(draft[field])}
+            onChange={(checked) => setDraft({ ...draft, [field]: checked ? 1 : 0 })}
+          />
         ))}
       </div>
       <div className="mt-4 flex justify-end">
@@ -336,7 +341,7 @@ function AlertsSection({ alerts, loading, error, onRefresh }: { alerts: Row[]; l
       <DataTableFrame loading={loading} error={error} empty={!loading && alerts.length === 0}>
         <Table>
           <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Type</TableHead><TableHead>Severity</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead></TableRow></TableHeader>
-          <TableBody>{alerts.map((row) => <TableRow key={String(row.id)}><TableCell>{text(row.employee_name)}</TableCell><TableCell>{text(row.alert_type)}</TableCell><TableCell><Badge tone="warning">{text(row.severity)}</Badge></TableCell><TableCell><StatusBadge value={row.status} /></TableCell><TableCell>{text(row.created_at)}</TableCell></TableRow>)}</TableBody>
+          <TableBody>{alerts.map((row) => <TableRow key={String(row.id)}><TableCell><EmployeeIdentityCell employeeId={text(row.employee_id)} employeeName={text(row.employee_name)} employeeNumber={text(row.employee_no ?? row.employee_number_snapshot)} size="sm" /></TableCell><TableCell>{text(row.alert_type)}</TableCell><TableCell><Badge tone="warning">{text(row.severity)}</Badge></TableCell><TableCell><StatusBadge value={row.status} /></TableCell><TableCell>{text(row.created_at)}</TableCell></TableRow>)}</TableBody>
         </Table>
       </DataTableFrame>
     </div>
@@ -350,9 +355,9 @@ function ReportsSection({ reportKey, setReportKey, rows, loading, error, onExpor
       <Panel className="flex flex-col gap-3 p-3 sm:flex-row sm:items-end">
         <div className="max-w-md flex-1">
           <Label>Lifecycle report</Label>
-          <select className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={reportKey} onChange={(event) => setReportKey(event.target.value)}>
+          <SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={reportKey} onChange={(event) => setReportKey(event.target.value)}>
             {reportKeys.map((key) => <option key={key} value={key}>{title(key)}</option>)}
-          </select>
+          </SelectField>
         </div>
         <Button variant="outline" size="sm" onClick={onExport}><FileDown className="h-4 w-4" /> Export CSV</Button>
       </Panel>
@@ -388,10 +393,10 @@ function CreateCaseModal({ kind, employees, onClose, onCreated }: { kind: CaseKi
   return (
     <Modal title={`Create ${kind} case`} onClose={onClose}>
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-        <div><Label>Employee</Label><select className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={employeeId} onChange={(event) => setEmployeeId(event.target.value)}>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</select></div>
+        <div><Label>Employee</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={employeeId} onChange={(event) => setEmployeeId(event.target.value)}>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</SelectField></div>
         {kind === "offboarding" ? (
           <>
-            <div><Label>Exit type</Label><select className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={exitType} onChange={(event) => setExitType(event.target.value)}>{["RESIGNED", "TERMINATED", "END_OF_CONTRACT", "ABSCONDED", "RETIRED", "DECEASED", "OTHER"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</select></div>
+            <div><Label>Exit type</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={exitType} onChange={(event) => setExitType(event.target.value)}>{["RESIGNED", "TERMINATED", "END_OF_CONTRACT", "ABSCONDED", "RETIRED", "DECEASED", "OTHER"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField></div>
             <div><Label>Last working day</Label><Input type="date" value={lastWorkingDay} onChange={(event) => setLastWorkingDay(event.target.value)} /></div>
             <div><Label>Exit reason</Label><Input value={exitReason} onChange={(event) => setExitReason(event.target.value)} /></div>
           </>
@@ -436,6 +441,13 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
             <Info label="Status" value={"onboarding_status" in detail.case ? detail.case.onboarding_status : detail.case.offboarding_status} />
             <Info label="Readiness" value={"activation_status" in detail.case ? detail.case.activation_status : detail.case.finalization_status} />
           </div>
+          <Timeline
+            items={[
+              { title: "Lifecycle case opened", description: detail.case.case_number, meta: text((detail.case as unknown as Row).created_at) },
+              { title: "Current readiness", description: text("activation_status" in detail.case ? detail.case.activation_status : detail.case.finalization_status) },
+              { title: "Current workflow status", description: text("onboarding_status" in detail.case ? detail.case.onboarding_status : detail.case.offboarding_status) }
+            ]}
+          />
           <div className="grid gap-3 md:grid-cols-2">
             <Panel className="p-3"><h3 className="text-sm font-semibold">Blocking items</h3><List values={blockers} /></Panel>
             <Panel className="p-3"><h3 className="text-sm font-semibold">Warnings</h3><List values={warnings} /></Panel>

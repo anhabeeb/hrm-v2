@@ -2,6 +2,7 @@ import { Eye, FilePlus, Link2, Repeat2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { AssetsNav } from "../components/assets/AssetsNav";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -16,6 +17,7 @@ import type { AssetAssignment, AssetAssignmentEvent, AssetCategory, AssetItem } 
 import type { EmployeeDocument } from "../types/documents";
 import type { Employee } from "../types/employees";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
+import { SelectField as UiSelectField } from "../components/ui/page-shell";
 
 type LifecycleAction = "return" | "mark-damaged" | "mark-lost" | "write-off";
 type ModalState =
@@ -101,7 +103,7 @@ export function AssetAssignmentsPage() {
             <TableBody>
               {rows.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell><Link className="font-medium text-primary" to={`/employees/${row.employee_id}`}>{row.employee_name ?? row.employee_no ?? row.employee_id}</Link><div className="text-xs text-muted-foreground">{row.department_name ?? "-"} / {row.location_name ?? "-"}</div></TableCell>
+                  <TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} departmentName={row.department_name} locationName={row.location_name} size="sm" to={`/employees/${row.employee_id}`} /></TableCell>
                   <TableCell>{row.asset_code} / {row.asset_name}</TableCell>
                   <TableCell>{row.category_name ?? "-"}</TableCell>
                   <TableCell><Badge tone={row.status === "ISSUED" ? "success" : row.status === "RETURNED" ? "neutral" : "warning"}>{row.status}</Badge></TableCell>
@@ -261,11 +263,11 @@ function ReadDialog({ title, children, onClose }: { title: string; children: Rea
 }
 
 function Select({ value, onChange, options, empty }: { value: string; onChange: (value: string) => void; options: Array<string | [string, string]>; empty: string }) {
-  return <select className="h-9 rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">{empty}</option>{options.map((option) => { const id = Array.isArray(option) ? option[0] : option; const label = Array.isArray(option) ? option[1] : option; return <option key={id} value={id}>{label}</option>; })}</select>;
+  return <UiSelectField value={value} onValueChange={onChange}><option value="">{empty}</option>{options.map((option) => { const id = Array.isArray(option) ? option[0] : option; const label = Array.isArray(option) ? option[1] : option; return <option key={id} value={id}>{label}</option>; })}</UiSelectField>;
 }
 
 function SelectField({ label, value, onChange, options, empty }: { label: string; value: string; onChange: (value: string) => void; options: Array<[string, string]>; empty?: string }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{empty ? <option value="">{empty}</option> : null}{options.map(([id, labelText]) => <option key={id} value={id}>{labelText}</option>)}</select></div>;
+  return <UiSelectField label={label} value={value} onValueChange={onChange}>{empty ? <option value="">{empty}</option> : null}{options.map(([id, labelText]) => <option key={id} value={id}>{labelText}</option>)}</UiSelectField>;
 }
 
 function Field({ label, value, type = "text", onChange }: { label: string; value: string; type?: string; onChange: (value: string) => void }) {

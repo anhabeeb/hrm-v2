@@ -7,6 +7,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { CheckboxField, TextareaField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -155,9 +156,9 @@ function ShiftTemplateModal({ template, onClose, onSave }: { template?: ShiftTem
           <Field label="Total work minutes"><Input type="number" min="0" value={form.total_work_minutes ?? 0} onChange={(event) => update("total_work_minutes", Number(event.target.value))} /></Field>
           <Field label="Color label"><Input type="color" value={form.color_label ?? "#dbeafe"} onChange={(event) => update("color_label", event.target.value)} /></Field>
           <Field label="Sort order"><Input type="number" value={form.sort_order ?? 100} onChange={(event) => update("sort_order", Number(event.target.value))} /></Field>
-          <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={Boolean(form.is_overnight)} onChange={(event) => update("is_overnight", event.target.checked)} /> Overnight shift</label>
-          <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={Boolean(form.is_active)} onChange={(event) => update("is_active", event.target.checked)} /> Active</label>
-          <div className="space-y-1.5 md:col-span-2"><Label>Description</Label><textarea className="min-h-20 w-full rounded-md border bg-white px-3 py-2 text-sm" value={form.description ?? ""} onChange={(event) => update("description", event.target.value)} /></div>
+          <CheckboxField label="Overnight shift" checked={Boolean(form.is_overnight)} onChange={(checked) => update("is_overnight", checked)} />
+          <CheckboxField label="Active" checked={Boolean(form.is_active)} onChange={(checked) => update("is_active", checked)} />
+          <div className="md:col-span-2"><TextareaField label="Description" value={form.description ?? ""} onChange={(event) => update("description", event.target.value)} /></div>
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => onSave(form)}>Save</Button></div>
       </div>

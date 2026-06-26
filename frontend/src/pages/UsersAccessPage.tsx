@@ -22,6 +22,7 @@ import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { CheckboxField, SelectField as UiSelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -936,23 +937,23 @@ function UserFormModal(props: {
           <Label>Roles</Label>
           <div className="mt-2 max-h-60 overflow-y-auto rounded-md border">
             {props.roles.map((role) => (
-              <label key={role.id} className={cn("flex items-start gap-3 border-b px-3 py-2 text-sm last:border-b-0", !role.is_active && "opacity-50")}>
-                <input
-                  className="mt-1"
-                  type="checkbox"
-                  checked={roleIds.includes(role.id)}
-                  disabled={!role.is_active || Boolean(lastOwner && props.ownerRole?.id === role.id)}
-                  onChange={() => toggleRole(role)}
-                />
-                <span className="min-w-0 flex-1">
+              <CheckboxField
+                key={role.id}
+                checked={roleIds.includes(role.id)}
+                disabled={!role.is_active || Boolean(lastOwner && props.ownerRole?.id === role.id)}
+                onChange={() => toggleRole(role)}
+                className={cn("items-start rounded-none border-0 border-b last:border-b-0", !role.is_active && "opacity-50")}
+                label={(
+                  <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-2 font-medium">
                     {role.name}
                     {role.is_protected ? <Badge tone="warning">Protected</Badge> : null}
                     {!role.is_active ? <Badge tone="danger">Inactive</Badge> : null}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">{role.description ?? "No description"}</span>
-                </span>
-              </label>
+                  </span>
+                )}
+              />
             ))}
           </div>
         </div>
@@ -1044,23 +1045,23 @@ function RoleFormModal(props: {
                     {modulePermissions.map((permission) => {
                       const locked = Boolean(props.role?.is_protected && permission.is_critical);
                       return (
-                        <label key={permission.key} className="flex items-start gap-3 px-3 py-2 text-sm">
-                          <input
-                            className="mt-1"
-                            type="checkbox"
-                            checked={permissionKeys.includes(permission.key) || locked}
-                            disabled={readonly || locked}
-                            onChange={() => togglePermission(permission)}
-                          />
-                          <span className="min-w-0 flex-1">
+                        <CheckboxField
+                          key={permission.key}
+                          checked={permissionKeys.includes(permission.key) || locked}
+                          disabled={readonly || locked}
+                          onChange={() => togglePermission(permission)}
+                          className="items-start rounded-none border-0 px-3 py-2"
+                          label={(
+                            <span className="min-w-0 flex-1">
                             <span className="flex flex-wrap items-center gap-2 font-mono text-xs">
                               {permission.key}
                               {permission.is_critical ? <Badge tone="warning">Critical</Badge> : null}
                               {locked ? <ShieldAlert className="h-4 w-4 text-amber-700" /> : null}
                             </span>
                             <span className="block text-xs text-muted-foreground">{permission.description}</span>
-                          </span>
-                        </label>
+                            </span>
+                          )}
+                        />
                       );
                     })}
                   </div>
@@ -1182,11 +1183,11 @@ function AccessScopeModal(props: { mode: ScopeModalMode; scope?: AccessScopeRule
 }
 
 function ChecklistPanel(props: { title: string; empty: string; items: Array<{ id: string; label: string }>; selected: string[]; onToggle: (id: string) => void }) {
-  return <div className="rounded-md border"><div className="border-b bg-muted/60 px-3 py-2 text-sm font-semibold">{props.title}</div>{props.items.length === 0 ? <div className="px-3 py-4 text-sm text-muted-foreground">{props.empty}</div> : null}<div className="grid max-h-56 gap-0 overflow-y-auto sm:grid-cols-2">{props.items.map((item) => <label key={item.id} className="flex items-center gap-2 border-b px-3 py-2 text-sm"><input type="checkbox" checked={props.selected.includes(item.id)} onChange={() => props.onToggle(item.id)} /><span className="truncate">{item.label}</span></label>)}</div></div>;
+  return <div className="rounded-md border"><div className="border-b bg-muted/60 px-3 py-2 text-sm font-semibold">{props.title}</div>{props.items.length === 0 ? <div className="px-3 py-4 text-sm text-muted-foreground">{props.empty}</div> : null}<div className="grid max-h-56 gap-0 overflow-y-auto sm:grid-cols-2">{props.items.map((item) => <CheckboxField key={item.id} label={<span className="truncate">{item.label}</span>} checked={props.selected.includes(item.id)} onChange={() => props.onToggle(item.id)} className="rounded-none border-0 border-b" />)}</div></div>;
 }
 
 function Check(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"><input type="checkbox" checked={props.checked} onChange={(event) => props.onChange(event.target.checked)} /> {props.label}</label>;
+  return <CheckboxField label={props.label} checked={props.checked} onChange={props.onChange} />;
 }
 
 function Modal(props: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) {
@@ -1250,14 +1251,13 @@ function Select(props: {
   disabled?: boolean;
 }) {
   return (
-    <select
+    <UiSelectField
       value={props.value}
-      onChange={(event) => props.onChange(event.target.value)}
+      onValueChange={props.onChange}
       disabled={props.disabled}
-      className="h-9 rounded-md border border-input bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/20 disabled:opacity-60"
     >
       {props.children}
-    </select>
+    </UiSelectField>
   );
 }
 

@@ -38,7 +38,7 @@ export function EmployeeAvatar({ employee, token, size = "md" }: { employee: Emp
   }, [employee.id, employee.profile_photo_document_id, employee.updated_at, token]);
 
   return (
-    <div className={`${classes} flex shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted font-semibold text-muted-foreground`}>
+    <div className={`${classes} flex shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted font-semibold text-muted-foreground`}>
       {url ? <img src={url} alt={employee.full_name} className="h-full w-full object-cover" /> : initials(employee) || <UserRound className="h-5 w-5 text-muted-foreground" />}
     </div>
   );

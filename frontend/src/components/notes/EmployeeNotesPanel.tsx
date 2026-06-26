@@ -7,6 +7,7 @@ import { ConfirmDialog } from "../ui/dialogs";
 import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { CheckboxField, SelectField as UiSelectField, TextareaField } from "../ui/page-shell";
 import { Panel } from "../ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { useAuth } from "../../hooks/useAuth";
@@ -88,7 +89,7 @@ export function EmployeeNotesPanel({ employee }: { employee: Employee }) {
           <Select value={filters.linked_module} onChange={(linked_module) => setFilters({ ...filters, linked_module })} empty="All linked modules" options={linkedModules} />
           <Field label="Date from" type="date" value={filters.date_from} onChange={(date_from) => setFilters({ ...filters, date_from })} />
           <Field label="Date to" type="date" value={filters.date_to} onChange={(date_to) => setFilters({ ...filters, date_to })} />
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={filters.include_archived} onChange={(event) => setFilters({ ...filters, include_archived: event.target.checked })} /> Include archived</label>
+          <CheckboxField label="Include archived" checked={filters.include_archived} onChange={(include_archived) => setFilters({ ...filters, include_archived })} />
         </div>
         <div className="mt-3 flex justify-end"><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button></div>
       </Panel>
@@ -155,7 +156,7 @@ function NoteModal({ employee, note, categories, canRestrictedManage, onClose, o
       setSaving(false);
     }
   }
-  return <Dialog title={note ? "Edit note" : "Create note"} error={error} onClose={onClose} onSave={save} saving={saving}><Field label="Title" value={title} onChange={setTitle} /><SelectField label="Category" value={categoryId} onChange={setCategoryId} options={categories.map((category) => [category.id, category.name])} empty="No category" /><SelectField label="Visibility" value={visibility} onChange={(value) => setVisibility(value as NoteVisibility)} options={allowedVisibility.map((value) => [value, value])} /><SelectField label="Linked module" value={linkedModule} onChange={setLinkedModule} options={linkedModules.map((value) => [value, value])} /><div className="space-y-1.5 md:col-span-2"><Label>Note</Label><textarea className="min-h-28 w-full rounded-md border px-3 py-2 text-sm" value={body} onChange={(event) => setBody(event.target.value)} /></div>{note ? <Field label={needsReason ? "Edit reason *" : "Edit reason"} value={reason} onChange={setReason} /> : null}</Dialog>;
+  return <Dialog title={note ? "Edit note" : "Create note"} error={error} onClose={onClose} onSave={save} saving={saving}><Field label="Title" value={title} onChange={setTitle} /><SelectField label="Category" value={categoryId} onChange={setCategoryId} options={categories.map((category) => [category.id, category.name])} empty="No category" /><SelectField label="Visibility" value={visibility} onChange={(value) => setVisibility(value as NoteVisibility)} options={allowedVisibility.map((value) => [value, value])} /><SelectField label="Linked module" value={linkedModule} onChange={setLinkedModule} options={linkedModules.map((value) => [value, value])} /><div className="md:col-span-2"><TextareaField label="Note" value={body} onChange={(event) => setBody(event.target.value)} /></div>{note ? <Field label={needsReason ? "Edit reason *" : "Edit reason"} value={reason} onChange={setReason} /> : null}</Dialog>;
 }
 
 function VersionsModal({ employee, note, onClose }: { employee: Employee; note: EmployeeNote; onClose: () => void }) {
@@ -249,11 +250,11 @@ function ReadDialog({ title, children, onClose }: { title: string; children: Rea
 }
 
 function Select({ value, onChange, options, empty }: { value: string; onChange: (value: string) => void; options: Array<string | [string, string]>; empty: string }) {
-  return <select className="h-9 rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">{empty}</option>{options.map((option) => { const id = Array.isArray(option) ? option[0] : option; const label = Array.isArray(option) ? option[1] : option; return <option key={id} value={id}>{label}</option>; })}</select>;
+  return <UiSelectField value={value} onValueChange={onChange}><option value="">{empty}</option>{options.map((option) => { const id = Array.isArray(option) ? option[0] : option; const label = Array.isArray(option) ? option[1] : option; return <option key={id} value={id}>{label}</option>; })}</UiSelectField>;
 }
 
 function SelectField({ label, value, onChange, options, empty }: { label: string; value: string; onChange: (value: string) => void; options: Array<[string, string]>; empty?: string }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{empty ? <option value="">{empty}</option> : null}{options.map(([id, labelText]) => <option key={id} value={id}>{labelText}</option>)}</select></div>;
+  return <UiSelectField label={label} value={value} onValueChange={onChange}>{empty ? <option value="">{empty}</option> : null}{options.map(([id, labelText]) => <option key={id} value={id}>{labelText}</option>)}</UiSelectField>;
 }
 
 function Field({ label, value, type = "text", onChange }: { label: string; value: string; type?: string; onChange: (value: string) => void }) {

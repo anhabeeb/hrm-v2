@@ -1,6 +1,7 @@
 import { Archive, Download, Eye, History, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -12,6 +13,7 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { DocumentCategory, DocumentType, EmployeeDocument, EmployeeDocumentVersion } from "../types/documents";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
+import { SelectField } from "../components/ui/page-shell";
 
 function tone(status: string) {
   if (status === "VALID") return "success";
@@ -168,9 +170,9 @@ export function DocumentRegistryPage() {
           <FilterSelect value={filters.location_id} onChange={(value) => setFilters({ ...filters, location_id: value })} options={locations.map((item) => ({ value: item.id, label: item.name }))} label="All locations" />
           <FilterSelect value={filters.category_id} onChange={(value) => setFilters({ ...filters, category_id: value })} options={categories.map((item) => ({ value: item.id, label: item.name }))} label="All categories" />
           <FilterSelect value={filters.document_type_id} onChange={(value) => setFilters({ ...filters, document_type_id: value })} options={types.map((item) => ({ value: item.id, label: item.name }))} label="All document types" />
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="">All stored statuses</option>{["ACTIVE", "ARCHIVED", "SOFT_DELETED"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.display_status} onChange={(event) => setFilters({ ...filters, display_status: event.target.value })}><option value="">All display statuses</option>{["VALID", "EXPIRING_SOON", "EXPIRED", "ARCHIVED", "SOFT_DELETED"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.sensitive} onChange={(event) => setFilters({ ...filters, sensitive: event.target.value })}><option value="">All sensitivity</option><option value="true">Sensitive</option><option value="false">Non-sensitive</option></select>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="">All stored statuses</option>{["ACTIVE", "ARCHIVED", "SOFT_DELETED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.display_status} onChange={(event) => setFilters({ ...filters, display_status: event.target.value })}><option value="">All display statuses</option>{["VALID", "EXPIRING_SOON", "EXPIRED", "ARCHIVED", "SOFT_DELETED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.sensitive} onChange={(event) => setFilters({ ...filters, sensitive: event.target.value })}><option value="">All sensitivity</option><option value="true">Sensitive</option><option value="false">Non-sensitive</option></SelectField>
           <DateField label="Issue from" value={filters.issue_from} onChange={(value) => setFilters({ ...filters, issue_from: value })} />
           <DateField label="Issue to" value={filters.issue_to} onChange={(value) => setFilters({ ...filters, issue_to: value })} />
           <DateField label="Expiry from" value={filters.expiry_from} onChange={(value) => setFilters({ ...filters, expiry_from: value })} />
@@ -185,7 +187,7 @@ export function DocumentRegistryPage() {
             <TableBody>
               {documents.map((doc) => (
                 <TableRow key={doc.id}>
-                  <TableCell><Link className="font-medium hover:underline" to={`/employees/${doc.employee_id}`}>{doc.employee_name ?? "-"}</Link><div className="font-mono text-xs text-muted-foreground">{doc.employee_no}</div></TableCell>
+                  <TableCell><EmployeeIdentityCell employeeId={doc.employee_id} employeeName={doc.employee_name} employeeNumber={doc.employee_no} departmentName={doc.department_name} locationName={doc.location_name} size="sm" to={`/employees/${doc.employee_id}`} /></TableCell>
                   <TableCell>{doc.department_name ?? "-"}</TableCell>
                   <TableCell>{doc.position_title ?? "-"}</TableCell>
                   <TableCell>{doc.location_name ?? "-"}</TableCell>
@@ -233,7 +235,7 @@ function DocumentActionModal({ action, onChange, onClose, onConfirm }: { action:
 }
 
 function FilterSelect({ value, onChange, options, label }: { value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }>; label: string }) {
-  return <select className="h-9 rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">{label}</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
+  return <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">{label}</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectField>;
 }
 
 function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {

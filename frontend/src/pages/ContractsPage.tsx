@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
+import { CheckboxField, SelectField } from "../components/ui/page-shell";
 
 type Row = Record<string, unknown>;
 type Tab = "contracts" | "types" | "settings" | "probation" | "renewals" | "alerts";
@@ -160,10 +161,10 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
           <div className="grid gap-2 md:grid-cols-4">
             <Input placeholder="Search employee/contract" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
             <Input placeholder="Status" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} />
-            <select className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.contract_type_id} onChange={(event) => setFilters({ ...filters, contract_type_id: event.target.value })}>
+            <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.contract_type_id} onChange={(event) => setFilters({ ...filters, contract_type_id: event.target.value })}>
               <option value="">All contract types</option>
               {activeTypes.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}</option>)}
-            </select>
+            </SelectField>
             <Button variant="outline" size="sm" onClick={() => void load()}>Apply filters</Button>
           </div>
           <DataTableFrame loading={loading} error={error} empty={!loading && contracts.length === 0}>
@@ -273,8 +274,8 @@ function ContractForm({ employees, types, onClose, onSave }: { employees: Employ
       <form onSubmit={(event) => void submit(event)} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-md border bg-white p-4 shadow-lg">
         <h2 className="text-base font-semibold">Create employee contract</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <Field label="Employee"><select required className="h-9 rounded-md border bg-white px-3 text-sm" value={form.employee_id} onChange={(event) => setForm({ ...form, employee_id: event.target.value })}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</select></Field>
-          <Field label="Contract type"><select required className="h-9 rounded-md border bg-white px-3 text-sm" value={form.contract_type_id} onChange={(event) => setForm({ ...form, contract_type_id: event.target.value })}><option value="">Select type</option>{types.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}</option>)}</select></Field>
+          <Field label="Employee"><SelectField required className="h-9 rounded-md border bg-white px-3 text-sm" value={form.employee_id} onChange={(event) => setForm({ ...form, employee_id: event.target.value })}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</SelectField></Field>
+          <Field label="Contract type"><SelectField required className="h-9 rounded-md border bg-white px-3 text-sm" value={form.contract_type_id} onChange={(event) => setForm({ ...form, contract_type_id: event.target.value })}><option value="">Select type</option>{types.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}</option>)}</SelectField></Field>
           <Field label="Contract number"><Input value={form.contract_number} onChange={(event) => setForm({ ...form, contract_number: event.target.value })} placeholder="Auto if blank" /></Field>
           <Field label="Title"><Input value={form.contract_title} onChange={(event) => setForm({ ...form, contract_title: event.target.value })} /></Field>
           <Field label="Start date"><Input type="date" required value={form.contract_start_date} onChange={(event) => setForm({ ...form, contract_start_date: event.target.value })} /></Field>
@@ -312,7 +313,7 @@ function ContractTypeForm({ type, onClose, onSave }: { type: Row | null; onClose
         <div className="mt-4 grid gap-3">
           <Field label="Code"><Input required value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} /></Field>
           <Field label="Name"><Input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
-          <Field label="Category"><select className="h-9 rounded-md border bg-white px-3 text-sm" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{typeCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></Field>
+          <Field label="Category"><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{typeCategories.map((category) => <option key={category} value={category}>{category}</option>)}</SelectField></Field>
           <Field label="Default duration months"><Input type="number" min="0" value={form.default_duration_months} onChange={(event) => setForm({ ...form, default_duration_months: event.target.value })} /></Field>
           <Field label="Default probation months"><Input type="number" min="0" value={form.default_probation_months} onChange={(event) => setForm({ ...form, default_probation_months: event.target.value })} /></Field>
           <Field label="Description"><Input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field>
@@ -335,7 +336,7 @@ function ContractSettingsPanel({ settings, canEdit, onSave }: { settings: Row | 
         <p className="text-sm text-muted-foreground">Control contract requirement warnings, expiry/probation alerts, salary snapshots, and document expectations.</p>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {switches.map((key) => <label key={key} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"><span>{key.split("_").join(" ")}</span><input type="checkbox" checked={bool(draft[key])} disabled={!canEdit} onChange={(event) => setDraft({ ...draft, [key]: event.target.checked })} /></label>)}
+        {switches.map((key) => <CheckboxField key={key} label={key.split("_").join(" ")} checked={bool(draft[key])} disabled={!canEdit} onChange={(checked) => setDraft({ ...draft, [key]: checked })} />)}
         {numbers.map((key) => <Field key={key} label={key.split("_").join(" ")}><Input type="number" min="0" disabled={!canEdit} value={text(draft[key]) === "-" ? "" : text(draft[key])} onChange={(event) => setDraft({ ...draft, [key]: Number(event.target.value) })} /></Field>)}
       </div>
       {canEdit ? <div className="flex justify-end"><Button onClick={() => onSave(draft)}><Settings className="h-4 w-4" /> Save settings</Button></div> : null}

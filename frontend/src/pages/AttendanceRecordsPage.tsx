@@ -1,5 +1,6 @@
-import { Edit, FileClock, Plus, RefreshCw, Search } from "lucide-react";
+﻿import { Edit, FileClock, Plus, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { AttendanceCorrectionModal } from "../components/attendance/AttendanceCorrectionModal";
 import { AttendanceManualLogModal } from "../components/attendance/AttendanceManualLogModal";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
@@ -15,6 +16,7 @@ import { ApiError, api } from "../lib/api";
 import type { AttendanceLog, AttendanceRawLog, AttendanceRecord } from "../types/attendance";
 import type { Employee } from "../types/employees";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
+import { CheckboxField, SelectField, TextareaField } from "../components/ui/page-shell";
 
 function statusTone(status: string) {
   if (status === "PRESENT") return "success" as const;
@@ -165,24 +167,24 @@ export function AttendanceRecordsPage() {
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-8">
           <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee or number" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={source} onChange={(event) => setSource(event.target.value)}><option value="">All sources</option>{["DEVICE", "MANUAL", "CORRECTION", "LEAVE", "ROSTER", "SYSTEM"].map((item) => <option key={item} value={item}>{item}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={positionId} onChange={(event) => setPositionId(event.target.value)}><option value="">All positions</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={source} onChange={(event) => setSource(event.target.value)}><option value="">All sources</option>{["DEVICE", "MANUAL", "CORRECTION", "LEAVE", "ROSTER", "SYSTEM"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectField>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={positionId} onChange={(event) => setPositionId(event.target.value)}><option value="">All positions</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</SelectField>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</SelectField>
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Date from" />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Date to" />
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={missedPunch} onChange={(event) => setMissedPunch(event.target.value)}><option value="">Missed punch: any</option><option value="true">Missed punch</option><option value="false">No missed punch</option></select>
-          <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={lateOnly} onChange={(event) => setLateOnly(event.target.checked)} /> Late only</label>
-          <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={earlyCheckoutOnly} onChange={(event) => setEarlyCheckoutOnly(event.target.checked)} /> Early checkout</label>
-          <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={payrollImpact} onChange={(event) => setPayrollImpact(event.target.checked)} /> Payroll impact</label>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={missedPunch} onChange={(event) => setMissedPunch(event.target.value)}><option value="">Missed punch: any</option><option value="true">Missed punch</option><option value="false">No missed punch</option></SelectField>
+          <CheckboxField label="Late only" checked={lateOnly} onChange={setLateOnly} />
+          <CheckboxField label="Early checkout" checked={earlyCheckoutOnly} onChange={setEarlyCheckoutOnly} />
+          <CheckboxField label="Payroll impact" checked={payrollImpact} onChange={setPayrollImpact} />
         </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>Clock in/out</TableHead><TableHead>Work</TableHead><TableHead>Late/Early</TableHead><TableHead>Source</TableHead><TableHead>Payroll impact</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>
               {records.map((record) => <TableRow key={record.id}>
-                <TableCell><div className="font-medium">{record.employee_name ?? "-"}</div><div className="font-mono text-xs text-muted-foreground">{record.employee_no}</div></TableCell>
+                <TableCell><EmployeeIdentityCell employeeId={record.employee_id} employeeName={record.employee_name} employeeNumber={record.employee_no} departmentName={record.department_name} locationName={record.location_name} size="sm" /></TableCell>
                 <TableCell>{record.attendance_date}</TableCell>
                 <TableCell><Badge tone={statusTone(record.status)}>{record.status}</Badge>{record.missed_punch ? <Badge tone="warning" className="ml-1">Missed punch</Badge> : null}</TableCell>
                 <TableCell>{record.first_clock_in ? new Date(record.first_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {record.last_clock_out ? new Date(record.last_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</TableCell>
@@ -225,7 +227,7 @@ export function AttendanceRecordsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
           <div className="w-full max-w-2xl rounded-lg border bg-white shadow-xl">
             <div className="border-b px-4 py-3"><h2 className="text-base font-semibold">Import Raw Attendance Logs</h2><p className="text-sm text-muted-foreground">Paste an array of device/API punch objects. Duplicate logs are skipped by the backend.</p></div>
-            <div className="p-4"><textarea className="min-h-64 w-full rounded-md border bg-white p-3 font-mono text-xs" value={rawJson} onChange={(event) => setRawJson(event.target.value)} /></div>
+            <div className="p-4"><TextareaField className="min-h-64 w-full rounded-md border bg-white p-3 font-mono text-xs" value={rawJson} onChange={(event) => setRawJson(event.target.value)} /></div>
             <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" onClick={() => setRawImportOpen(false)}>Cancel</Button><Button onClick={() => void importRawLogs()}>Import logs</Button></div>
           </div>
         </div>

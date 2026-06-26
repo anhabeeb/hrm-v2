@@ -7,6 +7,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Label } from "../ui/label";
+import { SelectField } from "../ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { LeaveTimeline } from "./LeaveTimeline";
 
@@ -97,10 +98,10 @@ export function LeaveRequestDetailModal({
             {canAttach ? <div className="flex flex-col gap-2 rounded-md border p-3 md:flex-row md:items-end">
               <div className="w-full space-y-1.5">
                 <Label>Attach existing employee document</Label>
-                <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={selectedDocumentId} onChange={(event) => setSelectedDocumentId(event.target.value)}>
+                <SelectField value={selectedDocumentId} onValueChange={setSelectedDocumentId}>
                   <option value="">Select document</option>
                   {activeDocs.map((doc) => <option key={doc.id} value={doc.id}>{doc.document_type_name ?? doc.document_type_code} {doc.document_number ? `- ${doc.document_number}` : ""}{doc.is_sensitive ? " (Sensitive)" : ""}</option>)}
-                </select>
+                </SelectField>
               </div>
               <Button size="sm" disabled={!selectedDocumentId} onClick={() => void attach()}><FilePlus className="h-4 w-4" /> Attach</Button>
             </div> : null}

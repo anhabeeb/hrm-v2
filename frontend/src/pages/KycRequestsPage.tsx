@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { Input } from "../components/ui/input";
+import { SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -84,14 +85,14 @@ export function KycRequestsPage() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input className="pl-9" placeholder="Search employee, field, reason..." value={search} onChange={(event) => setSearch(event.target.value)} />
           </div>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}>
+          <SelectField aria-label="Status" value={status} onValueChange={setStatus}>
             <option value="">Status</option>
             {["SUBMITTED", "REVIEWED", "APPROVED", "REJECTED", "CANCELLED"].map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={section} onChange={(event) => setSection(event.target.value)}>
+          </SelectField>
+          <SelectField aria-label="Section" value={section} onValueChange={setSection}>
             <option value="">Section</option>
             {["contact", "personal", "emergency", "other"].map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
+          </SelectField>
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
           <Button variant="outline" size="sm" onClick={() => void load()}>Apply</Button>

@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { CheckboxField, SelectField } from "../components/ui/page-shell";
 import type {
   ApprovalAction,
   ApprovalDelegationRule,
@@ -198,10 +199,10 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
         {!["settings", "templates", "delegations", "reports"].includes(mode) ? (
           <div className="grid gap-2 border-b p-3 md:grid-cols-4">
             <Input placeholder="Search approval title/module" value={search} onChange={(event) => setSearch(event.target.value)} />
-            <select className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}>
+            <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="">All statuses</option>
               {["DRAFT", "ACTIVE", "PENDING", "PARTIALLY_APPROVED", "APPROVED", "REJECTED", "SENT_BACK", "CANCELLED", "ARCHIVED"].map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
+            </SelectField>
           </div>
         ) : null}
         {["inbox", "submitted", "overdue", "escalated", "delegated", "history", "self-service"].includes(mode) ? <ApprovalTable rows={approvals} loading={loading} onOpen={openInstance} /> : null}
@@ -239,7 +240,7 @@ function SettingsPanel({ settings, token, onSaved, onError }: { settings: Approv
       onError(err instanceof ApiError ? err.message : "Unable to save approval settings.");
     }
   }
-  return <div className="grid gap-3 p-3 md:grid-cols-3"><Toggle label="Central approvals enabled" checked={form.approval_workflows_enabled} onChange={(value) => update("approval_workflows_enabled", value)} /><Toggle label="Use central workflows" checked={form.use_central_workflow_for_supported_modules} onChange={(value) => update("use_central_workflow_for_supported_modules", value)} /><Toggle label="Fallback to module approval" checked={form.fallback_to_module_approval_if_no_workflow} onChange={(value) => update("fallback_to_module_approval_if_no_workflow", value)} /><Toggle label="Block self approval by default" checked={form.block_self_approval_by_default} onChange={(value) => update("block_self_approval_by_default", value)} /><Toggle label="Delegation enabled" checked={form.allow_delegation} onChange={(value) => update("allow_delegation", value)} /><Toggle label="Escalation enabled" checked={form.escalation_enabled} onChange={(value) => update("escalation_enabled", value)} /><Toggle label="Reminders enabled" checked={form.reminders_enabled} onChange={(value) => update("reminders_enabled", value)} /><Toggle label="Parallel approvals" checked={form.allow_parallel_approvals} onChange={(value) => update("allow_parallel_approvals", value)} /><Toggle label="Any-one approval mode" checked={form.allow_any_one_approval_mode} onChange={(value) => update("allow_any_one_approval_mode", value)} /><div><Label>Escalation basis</Label><select className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.default_escalation_time_basis} onChange={(event) => update("default_escalation_time_basis", event.target.value)}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option></select></div><div><Label>Employee visibility</Label><select className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.default_employee_visibility_mode} onChange={(event) => update("default_employee_visibility_mode", event.target.value)}><option value="STEP_NAMES_ONLY">Step names only</option><option value="STEP_NAMES_AND_APPROVER_ROLES">Step names and roles</option><option value="FULL_APPROVER_NAMES">Full approver names</option></select></div><div className="flex items-end"><Button size="sm" onClick={() => void save()}><Settings className="h-4 w-4" /> Save settings</Button></div></div>;
+  return <div className="grid gap-3 p-3 md:grid-cols-3"><Toggle label="Central approvals enabled" checked={form.approval_workflows_enabled} onChange={(value) => update("approval_workflows_enabled", value)} /><Toggle label="Use central workflows" checked={form.use_central_workflow_for_supported_modules} onChange={(value) => update("use_central_workflow_for_supported_modules", value)} /><Toggle label="Fallback to module approval" checked={form.fallback_to_module_approval_if_no_workflow} onChange={(value) => update("fallback_to_module_approval_if_no_workflow", value)} /><Toggle label="Block self approval by default" checked={form.block_self_approval_by_default} onChange={(value) => update("block_self_approval_by_default", value)} /><Toggle label="Delegation enabled" checked={form.allow_delegation} onChange={(value) => update("allow_delegation", value)} /><Toggle label="Escalation enabled" checked={form.escalation_enabled} onChange={(value) => update("escalation_enabled", value)} /><Toggle label="Reminders enabled" checked={form.reminders_enabled} onChange={(value) => update("reminders_enabled", value)} /><Toggle label="Parallel approvals" checked={form.allow_parallel_approvals} onChange={(value) => update("allow_parallel_approvals", value)} /><Toggle label="Any-one approval mode" checked={form.allow_any_one_approval_mode} onChange={(value) => update("allow_any_one_approval_mode", value)} /><div><Label>Escalation basis</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.default_escalation_time_basis} onChange={(event) => update("default_escalation_time_basis", event.target.value)}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option></SelectField></div><div><Label>Employee visibility</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.default_employee_visibility_mode} onChange={(event) => update("default_employee_visibility_mode", event.target.value)}><option value="STEP_NAMES_ONLY">Step names only</option><option value="STEP_NAMES_AND_APPROVER_ROLES">Step names and roles</option><option value="FULL_APPROVER_NAMES">Full approver names</option></SelectField></div><div className="flex items-end"><Button size="sm" onClick={() => void save()}><Settings className="h-4 w-4" /> Save settings</Button></div></div>;
 }
 
 function Delegations({ rows, loading, form, setForm, onSave }: { rows: ApprovalDelegationRule[]; loading: boolean; form: Record<string, string>; setForm: (form: any) => void; onSave: () => void }) {
@@ -286,9 +287,9 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 }
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
-  return <div className="space-y-1"><Label>{label}</Label><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>;
+  return <div className="space-y-1"><Label>{label}</Label><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</SelectField></div>;
 }
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /> {label}</label>;
+  return <CheckboxField label={label} checked={checked} onChange={onChange} />;
 }

@@ -12,6 +12,7 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 import type { RosterSettings, ShiftTemplate, WeeklyOffRule } from "../types/roster";
+import { CheckboxField, InputField, SelectField } from "../components/ui/page-shell";
 
 const days: WeeklyOffRule["day_of_week"][] = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 
@@ -107,16 +108,16 @@ export function RosterSettingsPage() {
         {loading || !settings ? <EmptyState title="Loading roster settings" description="Fetching roster configuration." /> : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field label="Default week start day">
-              <select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_week_start_day} onChange={(event) => update("default_week_start_day", event.target.value as RosterSettings["default_week_start_day"])}>
+              <SelectField disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_week_start_day} onChange={(event) => update("default_week_start_day", event.target.value as RosterSettings["default_week_start_day"])}>
                 <option value="MONDAY">Monday</option>
                 <option value="SUNDAY">Sunday</option>
-              </select>
+              </SelectField>
             </Field>
             <Field label="Default shift template">
-              <select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_shift_template_id ?? ""} onChange={(event) => update("default_shift_template_id", event.target.value || null)}>
+              <SelectField disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_shift_template_id ?? ""} onChange={(event) => update("default_shift_template_id", event.target.value || null)}>
                 <option value="">No default</option>
                 {templates.map((template) => <option key={template.id} value={template.id}>{template.code} - {template.name}</option>)}
-              </select>
+              </SelectField>
             </Field>
             <Toggle disabled={!canManage} label="Roster module enabled" checked={Boolean(settings.module_enabled)} onChange={(value) => update("module_enabled", value)} />
             <Toggle disabled={!canManage} label="Allow draft roster editing" checked={Boolean(settings.allow_draft_roster_editing)} onChange={(value) => update("allow_draft_roster_editing", value)} />
@@ -135,19 +136,19 @@ export function RosterSettingsPage() {
             <Toggle disabled={!canManage} label="Manager team roster visibility" checked={Boolean(settings.manager_team_roster_visibility_enabled)} onChange={(value) => update("manager_team_roster_visibility_enabled", value)} />
             <Toggle disabled={!canManage} label="Copy previous week enabled" checked={Boolean(settings.copy_previous_week_enabled)} onChange={(value) => update("copy_previous_week_enabled", value)} />
             <Toggle disabled={!canManage} label="Bulk assignment enabled" checked={Boolean(settings.bulk_assignment_enabled)} onChange={(value) => update("bulk_assignment_enabled", value)} />
-            <Field label="Default break minutes"><input disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" type="number" min="0" value={settings.default_break_minutes ?? 60} onChange={(event) => update("default_break_minutes", Number(event.target.value))} /></Field>
-            <Field label="Default expected work minutes"><input disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" type="number" min="0" value={settings.default_expected_work_minutes ?? 480} onChange={(event) => update("default_expected_work_minutes", Number(event.target.value))} /></Field>
+            <Field label="Default break minutes"><InputField disabled={!canManage} type="number" min="0" value={settings.default_break_minutes ?? 60} onChange={(event) => update("default_break_minutes", Number(event.target.value))} /></Field>
+            <Field label="Default expected work minutes"><InputField disabled={!canManage} type="number" min="0" value={settings.default_expected_work_minutes ?? 480} onChange={(event) => update("default_expected_work_minutes", Number(event.target.value))} /></Field>
             <Field label="Default off-day handling">
-              <select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_off_day_handling_mode ?? "EXPLICIT_ONLY"} onChange={(event) => update("default_off_day_handling_mode", event.target.value)}>
+              <SelectField disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_off_day_handling_mode ?? "EXPLICIT_ONLY"} onChange={(event) => update("default_off_day_handling_mode", event.target.value)}>
                 <option value="EXPLICIT_ONLY">Explicit only</option>
                 <option value="WEEKLY_OFF_RULES">Weekly off rules</option>
-              </select>
+              </SelectField>
             </Field>
             <Field label="Public holiday work assignment">
-              <select disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.public_holiday_work_assignment_mode ?? "ALLOW_EXPLICIT_SHIFT"} onChange={(event) => update("public_holiday_work_assignment_mode", event.target.value)}>
+              <SelectField disabled={!canManage} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.public_holiday_work_assignment_mode ?? "ALLOW_EXPLICIT_SHIFT"} onChange={(event) => update("public_holiday_work_assignment_mode", event.target.value)}>
                 <option value="ALLOW_EXPLICIT_SHIFT">Allow explicit shift</option>
                 <option value="REQUIRE_PUBLIC_HOLIDAY_TEMPLATE">Require public holiday template</option>
-              </select>
+              </SelectField>
             </Field>
             <Toggle disabled={!canManage} label="Allow published roster edits" checked={Boolean(settings.allow_published_roster_edits)} onChange={(value) => update("allow_published_roster_edits", value)} />
             <Toggle disabled={!canManage} label="Require reason for published edits" checked={Boolean(settings.require_reason_for_published_edits)} onChange={(value) => update("require_reason_for_published_edits", value)} />
@@ -193,7 +194,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" disabled={disabled} checked={checked} onChange={(event) => onChange(event.target.checked)} /> {label}</label>;
+  return <CheckboxField label={label} disabled={disabled} checked={checked} onChange={onChange} />;
 }
 
 function WeeklyOffRuleModal({ rule, locations, departments, onClose, onSave }: { rule?: WeeklyOffRule; locations: OrganizationLocation[]; departments: OrganizationDepartment[]; onClose: () => void; onSave: (input: Partial<WeeklyOffRule>) => void }) {
@@ -210,23 +211,23 @@ function WeeklyOffRuleModal({ rule, locations, departments, onClose, onSave }: {
         <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">{rule ? "Edit weekly off rule" : "Create weekly off rule"}</h2></div>
         <div className="grid gap-3 p-4">
           <Field label="Location">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.location_id ?? ""} onChange={(event) => setForm({ ...form, location_id: event.target.value || null })}>
+            <SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.location_id ?? ""} onChange={(event) => setForm({ ...form, location_id: event.target.value || null })}>
               <option value="">All locations</option>
               {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Department">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.department_id ?? ""} onChange={(event) => setForm({ ...form, department_id: event.target.value || null })}>
+            <SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.department_id ?? ""} onChange={(event) => setForm({ ...form, department_id: event.target.value || null })}>
               <option value="">All departments</option>
               {departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Day of week">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.day_of_week} onChange={(event) => setForm({ ...form, day_of_week: event.target.value as WeeklyOffRule["day_of_week"] })}>
+            <SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.day_of_week} onChange={(event) => setForm({ ...form, day_of_week: event.target.value as WeeklyOffRule["day_of_week"] })}>
               {days.map((day) => <option key={day} value={day}>{day}</option>)}
-            </select>
+            </SelectField>
           </Field>
-          <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={Boolean(form.is_active)} onChange={(event) => setForm({ ...form, is_active: event.target.checked })} /> Active</label>
+          <CheckboxField label="Active" checked={Boolean(form.is_active)} onChange={(checked) => setForm({ ...form, is_active: checked })} />
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => onSave(form)}>Save rule</Button></div>
       </div>

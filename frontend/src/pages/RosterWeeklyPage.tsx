@@ -1,5 +1,6 @@
 import { CalendarDays, ClipboardCopy, Edit, Eraser, Lock, Megaphone, Save, Search, Undo2, Unlock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
 import { RosterNav } from "../components/roster/RosterNav";
 import { Badge } from "../components/ui/badge";
@@ -12,6 +13,7 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import type { RosterAssignment, RosterAssignmentStatus, RosterEmployeeRow, ShiftTemplate, WeeklyRoster } from "../types/roster";
+import { CheckboxField, SelectField, TextareaField } from "../components/ui/page-shell";
 
 const statuses: RosterAssignmentStatus[] = ["UNASSIGNED", "DRAFT", "PUBLISHED", "CHANGED_AFTER_PUBLISH", "SCHEDULED", "DAY_OFF", "OFF", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "PUBLIC_HOLIDAY", "CONFLICT", "CANCELLED", "ABSENT_PLACEHOLDER"];
 type RosterAction = "save-published" | "copy-previous" | "clear-week" | "unpublish" | "lock" | "unlock" | null;
@@ -260,10 +262,10 @@ export function RosterWeeklyPage() {
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-8">
           <Input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} aria-label="Week start date" />
           <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee or number" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={positionId} onChange={(event) => setPositionId(event.target.value)}><option value="">All positions</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Any assignment status</option>{statuses.map((status) => <option key={status} value={status}>{status}</option>)}</select>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectField>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={positionId} onChange={(event) => setPositionId(event.target.value)}><option value="">All positions</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</SelectField>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</SelectField>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Any assignment status</option>{statuses.map((status) => <option key={status} value={status}>{status}</option>)}</SelectField>
           <div className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><CalendarDays className="h-4 w-4 text-muted-foreground" /><span>{weekly?.weekStart ?? weekStart} to {weekly?.weekEnd ?? "-"}</span></div>
         </div>
         <div className="overflow-x-auto">
@@ -278,8 +280,7 @@ export function RosterWeeklyPage() {
               {visibleEmployees.map((employee) => (
                 <TableRow key={employee.employee_id}>
                   <TableCell className="sticky left-0 z-10 min-w-60 bg-white">
-                    <div className="font-medium">{employee.full_name}</div>
-                    <div className="font-mono text-xs text-muted-foreground">{employee.employee_no} - {employee.department_name ?? "No department"} - {employee.location_name ?? "No location"}</div>
+                    <EmployeeIdentityCell employeeId={employee.employee_id} employeeName={employee.full_name} employeeNumber={employee.employee_no} departmentName={employee.department_name} locationName={employee.location_name} size="sm" />
                   </TableCell>
                   {(weekly?.days ?? []).map((day) => {
                     const assignment = draft[cellKey(employee.employee_id, day.date)] ?? { status: "UNASSIGNED" };
@@ -288,10 +289,10 @@ export function RosterWeeklyPage() {
                     return (
                       <TableCell key={day.date} className="min-w-40">
                         <div className="flex items-center gap-1">
-                          <select disabled={!canManage} className="h-8 w-full rounded-md border bg-white px-2 text-xs" value={value} onChange={(event) => updateCell(employee, day.date, event.target.value)}>
+                          <SelectField disabled={!canManage} className="h-8 w-full rounded-md border bg-white px-2 text-xs" value={value} onChange={(event) => updateCell(employee, day.date, event.target.value)}>
                             {statuses.filter((item) => !["SCHEDULED"].includes(item)).map((item) => <option key={item} value={item}>{item}</option>)}
                             {(weekly?.shift_templates ?? []).map((template) => <option key={template.id} value={`shift:${template.id}`}>{template.code}</option>)}
-                          </select>
+                          </SelectField>
                           {canManage ? <Button title="Edit assignment details" variant="ghost" size="icon" onClick={() => openEdit(employee, day.date)}><Edit className="h-4 w-4" /></Button> : null}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-1">
@@ -362,10 +363,10 @@ function RosterActionDialog({ action, reason, overwrite, onReasonChange, onOverw
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="space-y-3 p-4">
-          {copy ? <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" checked={overwrite} onChange={(event) => onOverwriteChange(event.target.checked)} /> Overwrite existing assignments</label> : null}
+          {copy ? <CheckboxField label="Overwrite existing assignments" checked={overwrite} onChange={onOverwriteChange} /> : null}
           <div className="space-y-1.5">
             <label className="text-xs font-medium">{requiresReason ? "Reason required" : "Reason optional"}</label>
-            <textarea className="min-h-24 w-full rounded-md border bg-white px-3 py-2 text-sm" value={reason} onChange={(event) => onReasonChange(event.target.value)} placeholder="Reason for audit log" />
+            <TextareaField className="min-h-24 w-full rounded-md border bg-white px-3 py-2 text-sm" value={reason} onChange={(event) => onReasonChange(event.target.value)} placeholder="Reason for audit log" />
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">

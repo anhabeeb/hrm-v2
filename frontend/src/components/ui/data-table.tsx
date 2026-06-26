@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { EmptyState } from "./empty-state";
+import { ErrorState, LoadingSkeleton } from "./page-shell";
+import { ResponsiveTableWrapper } from "./data-table-shell";
 
 interface DataTableFrameProps {
   children: ReactNode;
@@ -22,11 +24,11 @@ export function DataTableFrame({
   className
 }: DataTableFrameProps) {
   if (loading) {
-    return <div className={cn("rounded-md border bg-white px-4 py-8 text-center text-sm text-muted-foreground", className)}>Loading records...</div>;
+    return <LoadingSkeleton rows={5} />;
   }
 
   if (error) {
-    return <div className={cn("rounded-md border border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-700", className)}>{error}</div>;
+    return <ErrorState title="Unable to load records" description={error} />;
   }
 
   if (empty) {
@@ -37,5 +39,5 @@ export function DataTableFrame({
     );
   }
 
-  return <div className={cn("overflow-x-auto rounded-md border bg-white", className)}>{children}</div>;
+  return <div className={cn("overflow-hidden rounded-md border bg-white shadow-panel", className)}><ResponsiveTableWrapper>{children}</ResponsiveTableWrapper></div>;
 }

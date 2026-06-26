@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { CheckboxField, SelectField } from "../ui/page-shell";
 import { Panel } from "../ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { useAuth } from "../../hooks/useAuth";
@@ -119,8 +120,8 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
         <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label="Basic salary"><Input disabled={!editing} type="number" min={0} value={form.basic_salary} onChange={(event) => update("basic_salary", Number(event.target.value))} /></Field>
           <Field label="Currency"><Input disabled={!editing} value={form.currency} onChange={(event) => update("currency", event.target.value)} /></Field>
-          <Field label="Payment method"><select disabled={!editing} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.payment_method} onChange={(event) => update("payment_method", event.target.value as EmployeePayrollProfile["payment_method"])}><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select></Field>
-          <Field label="Daily rate mode"><select disabled={!editing} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.daily_rate_mode} onChange={(event) => update("daily_rate_mode", event.target.value as EmployeePayrollProfile["daily_rate_mode"])}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></select></Field>
+          <SelectField label="Payment method" disabled={!editing} value={form.payment_method} onValueChange={(value) => update("payment_method", value as EmployeePayrollProfile["payment_method"])}><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></SelectField>
+          <SelectField label="Daily rate mode" disabled={!editing} value={form.daily_rate_mode} onValueChange={(value) => update("daily_rate_mode", value as EmployeePayrollProfile["daily_rate_mode"])}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></SelectField>
           <Field label="Bank name"><Input disabled={!editing} value={form.bank_name ?? ""} onChange={(event) => update("bank_name", event.target.value || null)} /></Field>
           <Field label="Bank account no"><Input disabled={!editing} value={form.bank_account_no ?? ""} onChange={(event) => update("bank_account_no", event.target.value || null)} /></Field>
           <Field label="Bank account name"><Input disabled={!editing} value={form.bank_account_name ?? ""} onChange={(event) => update("bank_account_name", event.target.value || null)} /></Field>
@@ -192,5 +193,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><input type="checkbox" disabled={disabled} checked={checked} onChange={(event) => onChange(event.target.checked)} /> {label}</label>;
+  return <CheckboxField label={label} disabled={disabled} checked={checked} onChange={onChange} />;
 }

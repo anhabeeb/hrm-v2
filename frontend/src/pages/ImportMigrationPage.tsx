@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -110,9 +111,9 @@ export function ImportMigrationPage() {
 
       <Panel className="p-4">
         <form onSubmit={(event) => void validate(event)} className="grid gap-3 md:grid-cols-[220px_1fr_auto]">
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={importType} onChange={(event) => setImportType(event.target.value)}>
+          <SelectField aria-label="Import type" value={importType} onValueChange={setImportType}>
             {(status?.supported_placeholders ?? Object.keys(labels)).map((key) => <option key={key} value={key}>{labels[key] ?? key}</option>)}
-          </select>
+          </SelectField>
           <Input value={filename} onChange={(event) => setFilename(event.target.value)} placeholder="Optional CSV filename for audit note" />
           <Button type="submit" disabled={!canValidate}>
             <FileSearch className="h-4 w-4" />

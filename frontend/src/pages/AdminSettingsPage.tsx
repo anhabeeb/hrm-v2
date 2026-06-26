@@ -26,6 +26,7 @@ import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { clearCurrentBrowserCache, getFrontendCacheDiagnostics, preserveSafeUiPreferences } from "../lib/cache/hrmCache";
+import { CheckboxField, SelectField } from "../components/ui/page-shell";
 
 type Row = Record<string, unknown>;
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
@@ -69,6 +70,10 @@ function text(value: unknown) {
   if (Array.isArray(value)) return value.join(", ") || "-";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function SettingsToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return <CheckboxField label={label} checked={checked} onChange={onChange} />;
 }
 
 function statusTone(value: unknown): Tone {
@@ -371,10 +376,10 @@ export function AdminSettingsPage() {
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
-              <button key={tab.key} type="button" onClick={() => selectTab(tab.key)} className={`flex h-9 items-center gap-2 rounded-md px-3 text-sm ${active === tab.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>
+              <Button key={tab.key} type="button" size="sm" variant={active === tab.key ? "primary" : "ghost"} onClick={() => selectTab(tab.key)} className="whitespace-nowrap">
                 <Icon className="h-4 w-4" />
                 {tab.label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -447,15 +452,15 @@ export function AdminSettingsPage() {
             <label className="grid gap-1 text-sm font-medium">Password min length<Input type="number" value={text(securitySettings.password_policy_min_length)} onChange={(e) => setSecuritySettings({ ...securitySettings, password_policy_min_length: e.target.value })} /></label>
           </div>
           <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
-            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.idle_timeout_enabled ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, idle_timeout_enabled: e.target.checked })} /> Idle timeout enabled</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.extend_session_on_activity ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, extend_session_on_activity: e.target.checked })} /> Extend session on activity</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.apply_idle_timeout_to_admin ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, apply_idle_timeout_to_admin: e.target.checked })} /> Apply to admin</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.apply_idle_timeout_to_self_service ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, apply_idle_timeout_to_self_service: e.target.checked })} /> Apply to self-service</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.stricter_timeout_for_sensitive_pages ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, stricter_timeout_for_sensitive_pages: e.target.checked })} /> Stricter sensitive-page timeout</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.audit_timeout_logout ?? 1)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_timeout_logout: e.target.checked })} /> Audit timeout logout</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.audit_failed_permission_checks)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_failed_permission_checks: e.target.checked })} /> Audit failed permission checks</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.audit_sensitive_views)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_sensitive_views: e.target.checked })} /> Audit sensitive views</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={boolInput(securitySettings.audit_sensitive_exports)} onChange={(e) => setSecuritySettings({ ...securitySettings, audit_sensitive_exports: e.target.checked })} /> Audit sensitive exports</label>
+            <SettingsToggle label="Idle timeout enabled" checked={boolInput(securitySettings.idle_timeout_enabled ?? 1)} onChange={(checked) => setSecuritySettings({ ...securitySettings, idle_timeout_enabled: checked })} />
+            <SettingsToggle label="Extend session on activity" checked={boolInput(securitySettings.extend_session_on_activity ?? 1)} onChange={(checked) => setSecuritySettings({ ...securitySettings, extend_session_on_activity: checked })} />
+            <SettingsToggle label="Apply to admin" checked={boolInput(securitySettings.apply_idle_timeout_to_admin ?? 1)} onChange={(checked) => setSecuritySettings({ ...securitySettings, apply_idle_timeout_to_admin: checked })} />
+            <SettingsToggle label="Apply to self-service" checked={boolInput(securitySettings.apply_idle_timeout_to_self_service ?? 1)} onChange={(checked) => setSecuritySettings({ ...securitySettings, apply_idle_timeout_to_self_service: checked })} />
+            <SettingsToggle label="Stricter sensitive-page timeout" checked={boolInput(securitySettings.stricter_timeout_for_sensitive_pages ?? 1)} onChange={(checked) => setSecuritySettings({ ...securitySettings, stricter_timeout_for_sensitive_pages: checked })} />
+            <SettingsToggle label="Audit timeout logout" checked={boolInput(securitySettings.audit_timeout_logout ?? 1)} onChange={(checked) => setSecuritySettings({ ...securitySettings, audit_timeout_logout: checked })} />
+            <SettingsToggle label="Audit failed permission checks" checked={boolInput(securitySettings.audit_failed_permission_checks)} onChange={(checked) => setSecuritySettings({ ...securitySettings, audit_failed_permission_checks: checked })} />
+            <SettingsToggle label="Audit sensitive views" checked={boolInput(securitySettings.audit_sensitive_views)} onChange={(checked) => setSecuritySettings({ ...securitySettings, audit_sensitive_views: checked })} />
+            <SettingsToggle label="Audit sensitive exports" checked={boolInput(securitySettings.audit_sensitive_exports)} onChange={(checked) => setSecuritySettings({ ...securitySettings, audit_sensitive_exports: checked })} />
           </div>
           <div className="rounded-md border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">PBKDF2 expected value is display-only and remains locked at 100000. MFA and force logout controls are placeholders only.</div>
           <Button size="sm" onClick={() => void saveSecuritySettings()}>Save security settings</Button>
@@ -496,12 +501,12 @@ export function AdminSettingsPage() {
 
       {active === "retention" ? <Panel className="space-y-4 p-4"><div className="grid gap-3 md:grid-cols-3"><Input type="number" value={text(retention.audit_log_retention_days)} onChange={(e) => setRetention({ ...retention, audit_log_retention_days: e.target.value })} /><Input type="number" value={text(retention.security_event_retention_days)} onChange={(e) => setRetention({ ...retention, security_event_retention_days: e.target.value })} /><Input type="number" value={text(retention.notification_retention_days)} onChange={(e) => setRetention({ ...retention, notification_retention_days: e.target.value })} /></div><div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Automatic destructive cleanup is not implemented in Prompt 21. These are future-job settings only.</div><Button size="sm" onClick={() => void saveRetention()}>Save retention settings</Button></Panel> : null}
 
-      {active === "export-security" ? <Panel className="space-y-4 p-4"><div className="grid gap-3 md:grid-cols-2"><Input type="number" value={text(exportSecurity.max_export_rows)} onChange={(e) => setExportSecurity({ ...exportSecurity, max_export_rows: e.target.value })} /><Input type="number" placeholder="Max date range days" value={text(exportSecurity.max_export_date_range_days)} onChange={(e) => setExportSecurity({ ...exportSecurity, max_export_date_range_days: e.target.value })} /></div><div className="flex flex-wrap gap-4 text-sm"><label><input type="checkbox" checked={boolInput(exportSecurity.csv_export_enabled)} onChange={(e) => setExportSecurity({ ...exportSecurity, csv_export_enabled: e.target.checked })} /> CSV export</label><label><input type="checkbox" checked={boolInput(exportSecurity.json_export_enabled)} onChange={(e) => setExportSecurity({ ...exportSecurity, json_export_enabled: e.target.checked })} /> JSON export</label><label><input type="checkbox" checked={boolInput(exportSecurity.sensitive_export_requires_reason)} onChange={(e) => setExportSecurity({ ...exportSecurity, sensitive_export_requires_reason: e.target.checked })} /> Sensitive export reason</label><label><input type="checkbox" checked={boolInput(exportSecurity.sensitive_export_audit_enabled)} onChange={(e) => setExportSecurity({ ...exportSecurity, sensitive_export_audit_enabled: e.target.checked })} /> Sensitive export audit</label></div><Button size="sm" onClick={() => void saveExportSecurity()}>Save export controls</Button></Panel> : null}
+      {active === "export-security" ? <Panel className="space-y-4 p-4"><div className="grid gap-3 md:grid-cols-2"><Input type="number" value={text(exportSecurity.max_export_rows)} onChange={(e) => setExportSecurity({ ...exportSecurity, max_export_rows: e.target.value })} /><Input type="number" placeholder="Max date range days" value={text(exportSecurity.max_export_date_range_days)} onChange={(e) => setExportSecurity({ ...exportSecurity, max_export_date_range_days: e.target.value })} /></div><div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4"><SettingsToggle label="CSV export" checked={boolInput(exportSecurity.csv_export_enabled)} onChange={(checked) => setExportSecurity({ ...exportSecurity, csv_export_enabled: checked })} /><SettingsToggle label="JSON export" checked={boolInput(exportSecurity.json_export_enabled)} onChange={(checked) => setExportSecurity({ ...exportSecurity, json_export_enabled: checked })} /><SettingsToggle label="Sensitive export reason" checked={boolInput(exportSecurity.sensitive_export_requires_reason)} onChange={(checked) => setExportSecurity({ ...exportSecurity, sensitive_export_requires_reason: checked })} /><SettingsToggle label="Sensitive export audit" checked={boolInput(exportSecurity.sensitive_export_audit_enabled)} onChange={(checked) => setExportSecurity({ ...exportSecurity, sensitive_export_audit_enabled: checked })} /></div><Button size="sm" onClick={() => void saveExportSecurity()}>Save export controls</Button></Panel> : null}
 
       {active === "readiness" ? <div className="space-y-4"><Button size="sm" onClick={() => runAction("Production readiness checks completed.", async () => { if (token) setReadiness((await api.runProductionReadiness(token)).checks); })}>Run readiness checks</Button><RowsTable rows={readiness} columns={["status", "category", "check_name", "message", "last_checked_at"]} empty="No readiness checks yet." /></div> : null}
       {active === "environment" ? <div className="space-y-4"><Button size="sm" onClick={() => runAction("Environment safety checked.", async () => { if (token) setEnvironment((await api.runEnvironmentSafety(token)).environment_safety); })}>Run environment safety check</Button><JsonPanel title="Environment safety" data={environment} /></div> : null}
       {active === "alerts" ? <div className="space-y-4"><Button size="sm" onClick={() => runAction("Admin alerts refreshed.", async () => { if (token) setAlerts((await api.refreshAdminSystemAlerts(token)).alerts); })}>Refresh admin alerts</Button><RowsTable rows={alerts} columns={["severity", "status", "alert_type", "module_key", "title", "message", "created_at"]} empty="No admin alerts." /></div> : null}
-      {active === "reports" ? <div className="space-y-4"><Panel className="flex flex-wrap gap-2 p-4"><select className="h-9 rounded-md border bg-white px-3 text-sm" value={reportKey} onChange={(e) => setReportKey(e.target.value)}>{reportOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select><Button size="sm" onClick={() => void loadReport()}>Load report</Button></Panel><RowsTable rows={reportRows} columns={Object.keys(reportRows[0] ?? { status: "", message: "" }).slice(0, 8)} empty="No report rows loaded." /></div> : null}
+      {active === "reports" ? <div className="space-y-4"><Panel className="flex flex-wrap gap-2 p-4"><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={reportKey} onChange={(e) => setReportKey(e.target.value)}>{reportOptions.map((option) => <option key={option} value={option}>{option}</option>)}</SelectField><Button size="sm" onClick={() => void loadReport()}>Load report</Button></Panel><RowsTable rows={reportRows} columns={Object.keys(reportRows[0] ?? { status: "", message: "" }).slice(0, 8)} empty="No report rows loaded." /></div> : null}
       <ConfirmDialog open={cacheClearConfirm} title="Clear local cache?" description="This clears the current browser's IndexedDB HRM cache only. Server records are not changed." confirmLabel="Clear cache" cancelLabel="Cancel" onConfirm={() => void clearLocalCache()} onCancel={() => setCacheClearConfirm(false)} />
     </div>
   );

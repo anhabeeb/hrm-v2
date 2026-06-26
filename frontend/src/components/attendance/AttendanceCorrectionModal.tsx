@@ -6,6 +6,7 @@ import type { Employee } from "../../types/employees";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SelectField } from "../ui/page-shell";
 
 const statusOptions: Array<"" | AttendanceStatus> = ["", "PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "CORRECTED"];
 
@@ -58,18 +59,18 @@ export function AttendanceCorrectionModal(props: {
           {error ? <div className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
           <div className="space-y-1.5 md:col-span-2">
             <Label>Employee</Label>
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={employeeId} disabled={Boolean(props.employeeId)} onChange={(event) => setEmployeeId(event.target.value)} required>
+            <SelectField value={employeeId} disabled={Boolean(props.employeeId)} onValueChange={setEmployeeId} required>
               <option value="">Select employee</option>
               {props.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name ?? employee.full_name} ({employee.employee_no})</option>)}
-            </select>
+            </SelectField>
           </div>
           <div className="space-y-1.5"><Label>Attendance date</Label><Input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></div>
           <div className="space-y-1.5">
             <Label>Requested status</Label>
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value as "" | AttendanceStatus)}>
+            <SelectField value={status} onValueChange={(value) => setStatus(value as "" | AttendanceStatus)}>
               <option value="">No status change</option>
               {statusOptions.filter(Boolean).map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
+            </SelectField>
           </div>
           <div className="space-y-1.5"><Label>Requested clock in</Label><Input type="datetime-local" value={clockIn} onChange={(event) => setClockIn(event.target.value)} /></div>
           <div className="space-y-1.5"><Label>Requested clock out</Label><Input type="datetime-local" value={clockOut} onChange={(event) => setClockOut(event.target.value)} /></div>

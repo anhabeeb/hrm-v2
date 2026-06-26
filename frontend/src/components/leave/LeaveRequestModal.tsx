@@ -5,6 +5,7 @@ import type { LeaveRequest, LeaveType } from "../../types/leave";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SelectField } from "../ui/page-shell";
 
 type LeaveRequestForm = {
   employee_id: string;
@@ -90,25 +91,25 @@ export function LeaveRequestModal({
         <div className="grid gap-3 p-4 md:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Employee</Label>
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.employee_id} disabled={Boolean(employeeId)} onChange={(event) => setForm({ ...form, employee_id: event.target.value })}>
+            <SelectField value={form.employee_id} disabled={Boolean(employeeId)} onValueChange={(employee_id) => setForm({ ...form, employee_id })}>
               {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} · {employee.employee_no}</option>)}
-            </select>
+            </SelectField>
           </div>
           <div className="space-y-1.5">
             <Label>Leave type</Label>
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.leave_type_id} onChange={(event) => setForm({ ...form, leave_type_id: event.target.value })}>
+            <SelectField value={form.leave_type_id} onValueChange={(leave_type_id) => setForm({ ...form, leave_type_id })}>
               {leaveTypes.filter((type) => Boolean(type.is_active)).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
-            </select>
+            </SelectField>
           </div>
           <Field label="Start date" type="date" value={form.start_date} onChange={(value) => setForm({ ...form, start_date: value })} />
           <Field label="End date" type="date" value={form.end_date} onChange={(value) => setForm({ ...form, end_date: value })} />
           <div className="space-y-1.5">
             <Label>Half day</Label>
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.half_day_type} onChange={(event) => setForm({ ...form, half_day_type: event.target.value as LeaveRequestForm["half_day_type"] })}>
+            <SelectField value={form.half_day_type} onValueChange={(half_day_type) => setForm({ ...form, half_day_type: half_day_type as LeaveRequestForm["half_day_type"] })}>
               <option value="NONE">None</option>
               <option value="FIRST_HALF">First half</option>
               <option value="SECOND_HALF">Second half</option>
-            </select>
+            </SelectField>
           </div>
           <div className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">Estimated requested days</p><p className="text-lg font-semibold">{days}</p></div>
           <div className="space-y-1.5 md:col-span-2"><Label>Reason</Label><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></div>

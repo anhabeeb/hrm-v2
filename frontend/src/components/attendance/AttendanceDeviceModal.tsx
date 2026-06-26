@@ -6,6 +6,7 @@ import type { OrganizationLocation } from "../../types/organization";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { CheckboxField, SelectField } from "../ui/page-shell";
 
 const deviceTypes: DeviceType[] = ["BIOMETRIC", "MANUAL_IMPORT", "API", "BRIDGE", "PUSH_ADMS", "OTHER"];
 type DeviceVendor = NonNullable<AttendanceDevice["vendor"]>;
@@ -94,31 +95,31 @@ export function AttendanceDeviceModal(props: {
           <Field label="Name"><Input value={name} onChange={(event) => setName(event.target.value)} required /></Field>
           <Field label="Device code"><Input value={deviceCode} onChange={(event) => setDeviceCode(event.target.value)} required /></Field>
           <Field label="Vendor">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={vendor} onChange={(event) => setVendor(event.target.value as DeviceVendor)}>
+            <SelectField value={vendor} onValueChange={(value) => setVendor(value as DeviceVendor)}>
               {vendors.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Model"><Input value={model} onChange={(event) => setModel(event.target.value)} /></Field>
           <Field label="Type">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={type} onChange={(event) => setType(event.target.value as DeviceType)}>
+            <SelectField value={type} onValueChange={(value) => setType(value as DeviceType)}>
               {deviceTypes.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Device mode">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={deviceMode} onChange={(event) => setDeviceMode(event.target.value as DeviceMode)}>
+            <SelectField value={deviceMode} onValueChange={(value) => setDeviceMode(value as DeviceMode)}>
               {deviceModes.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Direction mode">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={directionMode} onChange={(event) => setDirectionMode(event.target.value as DirectionMode)}>
+            <SelectField value={directionMode} onValueChange={(value) => setDirectionMode(value as DirectionMode)}>
               {directionModes.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Location">
-            <select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}>
+            <SelectField value={locationId} onValueChange={setLocationId}>
               <option value="">No location</option>
               {props.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-            </select>
+            </SelectField>
           </Field>
           <Field label="IP address"><Input value={ipAddress} onChange={(event) => setIpAddress(event.target.value)} /></Field>
           <Field label="Port"><Input type="number" min="1" value={port} onChange={(event) => setPort(event.target.value)} /></Field>
@@ -127,10 +128,10 @@ export function AttendanceDeviceModal(props: {
           <Field label="External device ID"><Input value={externalDeviceId} onChange={(event) => setExternalDeviceId(event.target.value)} /></Field>
           <Field label="ADMS device key"><Input value={admsDeviceKey} onChange={(event) => setAdmsDeviceKey(event.target.value)} /></Field>
           <div className="grid gap-2 rounded-md border p-3 text-sm md:col-span-2">
-            <label className="flex items-center gap-2"><input type="checkbox" checked={syncEnabled} onChange={(event) => setSyncEnabled(event.target.checked)} /> Sync enabled placeholder</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={allowCsvImport} onChange={(event) => setAllowCsvImport(event.target.checked)} /> Allow CSV import</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={allowBridgeImport} onChange={(event) => setAllowBridgeImport(event.target.checked)} /> Allow local bridge ingestion</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={allowPushAdms} onChange={(event) => setAllowPushAdms(event.target.checked)} /> Allow ADMS push placeholder</label>
+            <CheckboxField label="Sync enabled placeholder" checked={syncEnabled} onChange={setSyncEnabled} />
+            <CheckboxField label="Allow CSV import" checked={allowCsvImport} onChange={setAllowCsvImport} />
+            <CheckboxField label="Allow local bridge ingestion" checked={allowBridgeImport} onChange={setAllowBridgeImport} />
+            <CheckboxField label="Allow ADMS push placeholder" checked={allowPushAdms} onChange={setAllowPushAdms} />
           </div>
           <div className="space-y-1.5 md:col-span-2"><Label>Notes</Label><Input value={notes} onChange={(event) => setNotes(event.target.value)} /></div>
         </div>

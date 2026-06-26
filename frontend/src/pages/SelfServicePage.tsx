@@ -1,12 +1,13 @@
 import { Bell, CalendarDays, CreditCard, Download, Eye, FileText, Landmark, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
-import { PageHeader, PageShell } from "../components/ui/page-shell";
+import { MobileListCard, PageHeader, PageShell, QuickActionCard, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -227,6 +228,11 @@ function SelfServiceDashboardSection({ data }: { data: Record<string, unknown> |
           <Badge tone="neutral">{text(employee.employee_no)}</Badge>
         </div>
       </Panel>
+      <div className="grid gap-3 md:grid-cols-3">
+        <QuickActionCard title="Request leave" description="Open your leave balance and requests." action={<Link to="/self-service/leave" className="text-xs font-medium text-primary hover:underline">Open leave</Link>} />
+        <QuickActionCard title="Attendance correction" description="Review attendance and submit corrections." action={<Link to="/self-service/attendance" className="text-xs font-medium text-primary hover:underline">Open attendance</Link>} />
+        <QuickActionCard title="My documents" description="Review document compliance and submissions." action={<Link to="/self-service/documents" className="text-xs font-medium text-primary hover:underline">Open documents</Link>} />
+      </div>
       <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-4">
         <SummaryBox label="Open leave requests" value={summary.open_leave_requests ?? 0} />
         <SummaryBox label="Attendance corrections" value={summary.pending_attendance_corrections ?? 0} />
@@ -236,6 +242,13 @@ function SelfServiceDashboardSection({ data }: { data: Record<string, unknown> |
         <SummaryBox label="Submitted approvals" value={summary.submitted_approvals ?? 0} />
         <SummaryBox label="Profile updates" value={summary.pending_profile_updates ?? 0} />
         <SummaryBox label="Unread notifications" value={data?.unread_notifications ?? 0} />
+      </div>
+      <div className="grid gap-3 md:hidden">
+        {notifications.slice(0, 3).map((notification, index) => (
+          <MobileListCard key={String(notification.id ?? index)} title={text(notification.title)} meta={text(notification.created_at)}>
+            <StatusBadge value={notification.severity ?? notification.type} />
+          </MobileListCard>
+        ))}
       </div>
       <SimpleTable title="Upcoming roster" rows={Array.isArray(summary.upcoming_roster) ? summary.upcoming_roster as Row[] : []} columns={["roster_date", "status", "shift_code", "shift_name", "start_time", "end_time"]} />
       <SimpleTable title="Recent notifications" rows={notifications} columns={["type", "title", "severity", "created_at"]} />
@@ -382,29 +395,23 @@ function ProfileSection({ data, token, reload }: { data: Record<string, unknown>
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-md border bg-muted text-sm font-semibold">{text(employee.full_name).slice(0, 2).toUpperCase()}</div>
-          <div>
-            <h2 className="text-base font-semibold">{text(employee.full_name)}</h2>
-            <p className="text-sm text-muted-foreground">{text(employee.employee_no)}</p>
-          </div>
-        </div>
+        <EmployeeIdentityCell employeeId={text(employee.id)} employeeName={text(employee.full_name)} employeeNumber={text(employee.employee_no)} departmentName={text(employee.department_name)} locationName={text(employee.location_name)} status={text(employee.status_name)} showStatus size="md" />
         <Link to="/self-service/kyc-requests"><Button size="sm"><Plus className="h-4 w-4" />Submit update request</Button></Link>
       </div>
       <form onSubmit={(event) => void submit(event)} className="grid gap-2 rounded-md border p-3 md:grid-cols-[150px_180px_1fr_1fr_auto]">
-        <select className="h-9 rounded-md border bg-white px-3 text-sm" value={form.section} onChange={(event) => setForm({ ...form, section: event.target.value })}>
+        <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={form.section} onChange={(event) => setForm({ ...form, section: event.target.value })}>
           <option value="personal">Personal</option>
           <option value="contact">Contact</option>
           <option value="emergency">Emergency</option>
           <option value="other">Other</option>
-        </select>
-        <select className="h-9 rounded-md border bg-white px-3 text-sm" value={form.field_key} onChange={(event) => setForm({ ...form, field_key: event.target.value })}>
+        </SelectField>
+        <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={form.field_key} onChange={(event) => setForm({ ...form, field_key: event.target.value })}>
           <option value="display_name">Display name</option>
           <option value="nationality">Nationality</option>
           <option value="gender">Gender</option>
           <option value="date_of_birth">Date of birth</option>
           <option value="confirmation_date">Confirmation date</option>
-        </select>
+        </SelectField>
         <Input required placeholder="Requested value" value={form.requested_value} onChange={(event) => setForm({ ...form, requested_value: event.target.value })} />
         <Input placeholder="Reason" value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
         <Button type="submit"><FileText className="h-4 w-4" />Submit</Button>
@@ -569,17 +576,17 @@ function LeaveSection({ data, token, reload }: { data: Record<string, unknown> |
       {message ? <div className="rounded-md border bg-muted px-3 py-2 text-sm">{message}</div> : null}
       {open ? (
         <form onSubmit={(event) => void submit(event)} className="grid gap-2 rounded-md border p-3 md:grid-cols-[1fr_150px_150px_150px_1fr_auto]">
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" required value={form.leave_type_id} onChange={(event) => setForm({ ...form, leave_type_id: event.target.value })}>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" required value={form.leave_type_id} onChange={(event) => setForm({ ...form, leave_type_id: event.target.value })}>
             <option value="">Leave type</option>
             {leaveTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
-          </select>
+          </SelectField>
           <Input type="date" required value={form.start_date} onChange={(event) => setForm({ ...form, start_date: event.target.value })} />
           <Input type="date" required value={form.end_date} onChange={(event) => setForm({ ...form, end_date: event.target.value })} />
-          <select className="h-9 rounded-md border bg-white px-3 text-sm" value={form.half_day_type} onChange={(event) => setForm({ ...form, half_day_type: event.target.value })}>
+          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={form.half_day_type} onChange={(event) => setForm({ ...form, half_day_type: event.target.value })}>
             <option value="NONE">Full day</option>
             <option value="FIRST_HALF">First half</option>
             <option value="SECOND_HALF">Second half</option>
-          </select>
+          </SelectField>
           <Input placeholder="Reason" value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />
           <Button type="submit">Submit</Button>
         </form>
@@ -923,12 +930,12 @@ function KycSection({ data, token, reload }: { data: Record<string, unknown> | n
   return (
     <div className="space-y-4 p-4">
       <form onSubmit={(event) => void submit(event)} className="grid gap-2 rounded-md border p-3 md:grid-cols-[140px_1fr_1fr_1fr_auto]">
-        <select className="h-9 rounded-md border bg-white px-3 text-sm" value={form.section} onChange={(event) => setForm({ ...form, section: event.target.value })}>
+        <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={form.section} onChange={(event) => setForm({ ...form, section: event.target.value })}>
           <option value="contact">Contact</option>
           <option value="personal">Personal</option>
           <option value="emergency">Emergency</option>
           <option value="other">Other</option>
-        </select>
+        </SelectField>
         <Input placeholder="Field" value={form.field_key} onChange={(event) => setForm({ ...form, field_key: event.target.value })} />
         <Input required placeholder="Requested value" value={form.requested_value} onChange={(event) => setForm({ ...form, requested_value: event.target.value })} />
         <Input placeholder="Reason" value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} />

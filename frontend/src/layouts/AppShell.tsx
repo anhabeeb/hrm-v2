@@ -214,8 +214,9 @@ export function AppShell() {
                   const groupContent = (
                     <div key={group.label} className="rounded-lg">
                       {!collapsed ? (
-                        <button
-                          type="button"
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => toggleGroup(group.label)}
                           className={cn(
                             "mb-1 flex h-8 w-full items-center justify-between rounded-md px-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800",
@@ -225,7 +226,7 @@ export function AppShell() {
                         >
                           <span className="truncate">{group.label}</span>
                           <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform duration-200", !expanded && "-rotate-90")} />
-                        </button>
+                        </Button>
                       ) : null}
                       <div
                         className={cn(
@@ -283,7 +284,7 @@ export function AppShell() {
           </div>
         </aside>
 
-        {mobileOpen ? <button className="fixed inset-0 z-30 bg-slate-900/25 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" /> : null}
+        {mobileOpen ? <Button variant="ghost" className="fixed inset-0 z-30 h-auto w-auto rounded-none border-0 bg-slate-900/25 p-0 hover:bg-slate-900/25 focus:ring-0 focus:ring-offset-0 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" /> : null}
 
         <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
           <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b bg-white/90 px-4 backdrop-blur lg:px-6">

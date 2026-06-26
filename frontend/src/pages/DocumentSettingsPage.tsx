@@ -13,6 +13,7 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { DocumentCategory, DocumentRequiredRule, DocumentType, DocumentTypeInput } from "../types/documents";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
+import { CheckboxField, SelectField, TextareaField } from "../components/ui/page-shell";
 
 type Tab = "categories" | "types" | "rules";
 
@@ -114,7 +115,7 @@ export function DocumentSettingsPage() {
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="flex overflow-x-auto border-b">
-          {(["categories", "types", "rules"] as Tab[]).map((item) => <button key={item} className={`h-11 border-b-2 px-4 text-sm font-medium ${tab === item ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:bg-muted/50"}`} onClick={() => setTab(item)}>{item === "categories" ? "Categories" : item === "types" ? "Document Types" : "Required Rules"}</button>)}
+          {(["categories", "types", "rules"] as Tab[]).map((item) => <Button key={item} variant={tab === item ? "primary" : "ghost"} size="sm" className="h-9 whitespace-nowrap" onClick={() => setTab(item)}>{item === "categories" ? "Categories" : item === "types" ? "Document Types" : "Required Rules"}</Button>)}
         </div>
         {tab === "categories" ? <Categories categories={categories} canManage={canManage} onNew={() => setCategoryModal("new")} onEdit={setCategoryModal} onAction={(item) => void categoryAction(item)} loading={loading} /> : null}
         {tab === "types" ? <Types types={types} canManage={canManage} onNew={() => setTypeModal("new")} onEdit={setTypeModal} onAction={(item) => void typeAction(item)} loading={loading} /> : null}
@@ -197,7 +198,7 @@ function TypeModal({ token, type, categories, onClose, onSaved }: { token: strin
   }
   return (
     <Modal title={type ? "Edit document type" : "Create document type"} error={error} onClose={onClose} onSave={save}>
-      <div className="md:col-span-2"><Label>Category</Label><select className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.category_id ?? ""} onChange={(event) => update("category_id", event.target.value)}><option value="">No category</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div>
+      <div className="md:col-span-2"><Label>Category</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.category_id ?? ""} onChange={(event) => update("category_id", event.target.value)}><option value="">No category</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</SelectField></div>
       <Field label="Code" value={form.code} onChange={(value) => update("code", value)} />
       <Field label="Name" value={form.name} onChange={(value) => update("name", value)} />
       <Field label="Description" value={form.description ?? ""} onChange={(value) => update("description", value)} />
@@ -205,7 +206,7 @@ function TypeModal({ token, type, categories, onClose, onSaved }: { token: strin
       <Field label="Max file size MB" type="number" value={String(form.max_file_size_mb)} onChange={(value) => update("max_file_size_mb", Number(value) || 1)} />
       <Field label="Sort order" type="number" value={String(form.sort_order)} onChange={(value) => update("sort_order", Number(value) || 100)} />
       <div className="md:col-span-2"><Field label="Allowed file types" value={form.allowed_file_types.join(", ")} onChange={(value) => update("allowed_file_types", value.split(",").map((item) => item.trim()).filter(Boolean))} /></div>
-      {(["is_sensitive", "allow_multiple_files", "requires_document_number", "requires_issue_date", "requires_expiry_date"] as const).map((key) => <label key={key} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(form[key])} onChange={(event) => update(key, event.target.checked)} /> {key.replace(/_/g, " ")}</label>)}
+      {(["is_sensitive", "allow_multiple_files", "requires_document_number", "requires_issue_date", "requires_expiry_date"] as const).map((key) => <CheckboxField key={key} label={key.replace(/_/g, " ")} checked={Boolean(form[key])} onChange={(checked) => update(key, checked)} />)}
     </Modal>
   );
 }
@@ -262,15 +263,15 @@ function RuleModal({
   }
   return (
     <Modal title={rule ? "Edit required rule" : "Create required rule"} error={error} onClose={onClose} onSave={save}>
-      <div className="md:col-span-2"><Label>Document type</Label><select className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={documentTypeId} onChange={(event) => setDocumentTypeId(event.target.value)}>{types.filter((type) => type.is_active).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select></div>
+      <div className="md:col-span-2"><Label>Document type</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={documentTypeId} onChange={(event) => setDocumentTypeId(event.target.value)}>{types.filter((type) => type.is_active).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</SelectField></div>
       <Select label="Employee type" value={employeeType} onChange={setEmployeeType} options={["", "LOCAL", "FOREIGN", "OTHER"]} />
       <Select label="Employment type" value={employmentType} onChange={setEmploymentType} options={["", "FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]} />
       <OptionSelect label="Department" value={departmentId} onChange={setDepartmentId} options={departments.map((item) => ({ value: item.id, label: item.name }))} />
       <OptionSelect label="Position/designation" value={positionId} onChange={setPositionId} options={positions.map((item) => ({ value: item.id, label: item.title }))} />
       <OptionSelect label="Outlet/location" value={locationId} onChange={setLocationId} options={locations.map((item) => ({ value: item.id, label: item.name }))} />
       <Field label="Rule priority" type="number" value={priority} onChange={setPriority} />
-      <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={isRequired} onChange={(event) => setIsRequired(event.target.checked)} /> Required document</label>
-      <div className="md:col-span-2"><Label>Custom condition JSON</Label><textarea className="mt-1 min-h-20 w-full rounded-md border bg-white px-3 py-2 font-mono text-xs" value={customCondition} onChange={(event) => setCustomCondition(event.target.value)} placeholder='{"future":"condition"}' /></div>
+      <CheckboxField label="Required document" checked={isRequired} onChange={setIsRequired} className="self-end" />
+      <div className="md:col-span-2"><Label>Custom condition JSON</Label><TextareaField className="mt-1 min-h-20 w-full rounded-md border bg-white px-3 py-2 font-mono text-xs" value={customCondition} onChange={(event) => setCustomCondition(event.target.value)} placeholder='{"future":"condition"}' /></div>
     </Modal>
   );
 }
@@ -284,9 +285,9 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
 }
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option || "any"} value={option}>{option || "Any"}</option>)}</select></div>;
+  return <div className="space-y-1.5"><Label>{label}</Label><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option || "any"} value={option}>{option || "Any"}</option>)}</SelectField></div>;
 }
 
 function OptionSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><select className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">Any</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>;
+  return <div className="space-y-1.5"><Label>{label}</Label><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">Any</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectField></div>;
 }

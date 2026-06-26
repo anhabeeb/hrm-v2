@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 
@@ -73,6 +73,10 @@ export function SectionCard({ title, description, actions, children, className, 
   );
 }
 
+export function SettingsCard(props: Parameters<typeof SectionCard>[0]) {
+  return <SectionCard {...props} />;
+}
+
 export function StatCard({ label, value, icon, trend, tone = "neutral", href }: { label: ReactNode; value: ReactNode; icon?: ReactNode; trend?: ReactNode; tone?: "neutral" | "success" | "warning" | "danger" | "info"; href?: string }) {
   const toneClass = {
     neutral: "bg-slate-50 text-slate-600",
@@ -113,6 +117,87 @@ export function QuickActionCard({ title, description, icon, action }: { title: R
   );
 }
 
+export function TaskListCard({ title, tasks, action }: { title: ReactNode; tasks: Array<{ label: ReactNode; status?: ReactNode; meta?: ReactNode }>; action?: ReactNode }) {
+  return (
+    <SectionCard title={title} actions={action} bodyClassName="p-0">
+      <div className="divide-y">
+        {tasks.map((task, index) => (
+          <div key={index} className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-900">{task.label}</p>
+              {task.meta ? <p className="mt-1 truncate text-xs text-muted-foreground">{task.meta}</p> : null}
+            </div>
+            {task.status ? <div className="shrink-0">{task.status}</div> : null}
+          </div>
+        ))}
+        {!tasks.length ? <div className="px-4 py-6 text-sm text-muted-foreground">No tasks to show.</div> : null}
+      </div>
+    </SectionCard>
+  );
+}
+
+export function UpcomingActivityCard({ title, items }: { title: ReactNode; items: Array<{ title: ReactNode; when?: ReactNode; description?: ReactNode }> }) {
+  return <ActivityListCard title={title} items={items} />;
+}
+
+export function RecentActivityCard({ title, items }: { title: ReactNode; items: Array<{ title: ReactNode; when?: ReactNode; description?: ReactNode }> }) {
+  return <ActivityListCard title={title} items={items} />;
+}
+
+export function RecentTransactionCard({ title, items }: { title: ReactNode; items: Array<{ title: ReactNode; amount?: ReactNode; description?: ReactNode }> }) {
+  return (
+    <SectionCard title={title} bodyClassName="p-0">
+      <div className="divide-y">
+        {items.map((item, index) => (
+          <div key={index} className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-900">{item.title}</p>
+              {item.description ? <p className="mt-1 truncate text-xs text-muted-foreground">{item.description}</p> : null}
+            </div>
+            {item.amount ? <div className="shrink-0 text-sm font-semibold">{item.amount}</div> : null}
+          </div>
+        ))}
+        {!items.length ? <div className="px-4 py-6 text-sm text-muted-foreground">No recent transactions.</div> : null}
+      </div>
+    </SectionCard>
+  );
+}
+
+function ActivityListCard({ title, items }: { title: ReactNode; items: Array<{ title: ReactNode; when?: ReactNode; description?: ReactNode }> }) {
+  return (
+    <SectionCard title={title} bodyClassName="p-0">
+      <div className="divide-y">
+        {items.map((item, index) => (
+          <div key={index} className="px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="min-w-0 truncate text-sm font-medium text-slate-900">{item.title}</p>
+              {item.when ? <p className="shrink-0 text-xs text-muted-foreground">{item.when}</p> : null}
+            </div>
+            {item.description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p> : null}
+          </div>
+        ))}
+        {!items.length ? <div className="px-4 py-6 text-sm text-muted-foreground">No activity yet.</div> : null}
+      </div>
+    </SectionCard>
+  );
+}
+
+export function ProfileCard({ avatar, title, subtitle, meta, actions }: { avatar?: ReactNode; title: ReactNode; subtitle?: ReactNode; meta?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-4 rounded-lg border bg-white p-4 shadow-panel sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-3">
+        {avatar ? <div className="shrink-0">{avatar}</div> : null}
+        <div className="min-w-0">
+          <h2 className="truncate text-lg font-semibold text-slate-950">{title}</h2>
+          {subtitle ? <p className="mt-1 truncate text-sm text-muted-foreground">{subtitle}</p> : null}
+          {meta ? <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">{meta}</div> : null}
+        </div>
+      </div>
+      {actions ? <div className="flex shrink-0 flex-wrap gap-2">{actions}</div> : null}
+    </div>
+  );
+}
+
 export function MetricGrid({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-4", className)}>{children}</div>;
 }
@@ -123,6 +208,23 @@ export function ActionBar({ children, className }: { children: ReactNode; classN
 
 export function FilterBar({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("grid gap-2 rounded-lg border bg-white p-3 shadow-panel sm:grid-cols-2 lg:grid-cols-4", className)}>{children}</div>;
+}
+
+export function FilterDrawer({ open, title = "Filters", children, onClose, actions }: { open: boolean; title?: ReactNode; children: ReactNode; onClose: () => void; actions?: ReactNode }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/25">
+      <button className="absolute inset-0" aria-label="Close filters" onClick={onClose} />
+      <aside className="relative flex h-full w-full max-w-md flex-col border-l bg-white shadow-xl">
+        <header className="flex items-center justify-between border-b px-5 py-4">
+          <h2 className="text-sm font-semibold text-slate-950">{title}</h2>
+          <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+        {actions ? <footer className="border-t bg-slate-50 px-5 py-3">{actions}</footer> : null}
+      </aside>
+    </div>
+  );
 }
 
 export function FormSection({ title, description, children }: { title: ReactNode; description?: ReactNode; children: ReactNode }) {
@@ -141,8 +243,164 @@ export function SettingsSection(props: Parameters<typeof FormSection>[0]) {
   return <FormSection {...props} />;
 }
 
+export function FormWizard({ steps, activeStep }: { steps: Array<{ label: ReactNode; description?: ReactNode }>; activeStep: number }) {
+  const progress = steps.length ? Math.round(((activeStep + 1) / steps.length) * 100) : 0;
+  return (
+    <div className="rounded-lg border bg-white p-4 shadow-panel">
+      <ProgressBar value={progress} />
+      <ol className="mt-4 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        {steps.map((step, index) => (
+          <li key={index} className={cn("rounded-md border px-3 py-2", index === activeStep ? "border-primary bg-primary/5" : index < activeStep ? "border-emerald-200 bg-emerald-50" : "bg-slate-50")}>
+            <p className="truncate text-xs font-semibold">{step.label}</p>
+            {step.description ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{step.description}</p> : null}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+export function RepeaterFieldGroup({ title, children, action }: { title: ReactNode; children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="rounded-lg border bg-white">
+      <div className="flex items-center justify-between gap-3 border-b bg-slate-50 px-3 py-2">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        {action}
+      </div>
+      <div className="grid gap-3 p-3">{children}</div>
+    </div>
+  );
+}
+
+export function ComboboxField({ label, children, helper }: { label: ReactNode; children: ReactNode; helper?: ReactNode }) {
+  return <FieldFrame label={label} helper={helper}>{children}</FieldFrame>;
+}
+
+export function DatePickerField({ label, children, helper }: { label: ReactNode; children: ReactNode; helper?: ReactNode }) {
+  return <FieldFrame label={label} helper={helper}>{children}</FieldFrame>;
+}
+
+type StandardInputProps = InputHTMLAttributes<HTMLInputElement> & {
+  label?: ReactNode;
+  helper?: ReactNode;
+};
+
+type StandardSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
+  label?: ReactNode;
+  helper?: ReactNode;
+  onValueChange?: (value: string) => void;
+};
+
+type StandardTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  label?: ReactNode;
+  helper?: ReactNode;
+};
+
+export function InputField({ label, helper, className, ...props }: StandardInputProps) {
+  const control = <input {...props} className={cn("h-9 w-full rounded-md border bg-white px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-muted-foreground", className)} />;
+  return label ? <FieldFrame label={label} helper={helper}>{control}</FieldFrame> : control;
+}
+
+export function SelectField({ label, helper, className, children, onChange, onValueChange, ...props }: StandardSelectProps) {
+  const control = (
+    <select
+      {...props}
+      onChange={(event) => {
+        onChange?.(event);
+        onValueChange?.(event.target.value);
+      }}
+      className={cn("h-9 w-full rounded-md border bg-white px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-muted-foreground", className)}
+    >
+      {children}
+    </select>
+  );
+  return label ? <FieldFrame label={label} helper={helper}>{control}</FieldFrame> : control;
+}
+
+export function TextareaField({ label, helper, className, ...props }: StandardTextareaProps) {
+  const control = <textarea {...props} className={cn("min-h-24 w-full rounded-md border bg-white px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-muted-foreground", className)} />;
+  return label ? <FieldFrame label={label} helper={helper}>{control}</FieldFrame> : control;
+}
+
+export function CheckboxField({ label, helper, checked, onChange, disabled, className }: { label: ReactNode; helper?: ReactNode; checked?: boolean; disabled?: boolean; className?: string; onChange?: (checked: boolean) => void }) {
+  return (
+    <label className={cn("flex min-h-9 items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm transition hover:bg-slate-50", disabled && "cursor-not-allowed opacity-60", className)}>
+      <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/20" checked={checked} disabled={disabled} onChange={(event) => onChange?.(event.target.checked)} />
+      <span className="min-w-0 flex-1">{label}</span>
+      {helper ? <span className="text-xs text-muted-foreground">{helper}</span> : null}
+    </label>
+  );
+}
+
+export function SwitchField(props: Parameters<typeof CheckboxField>[0]) {
+  return <CheckboxField {...props} className={cn("justify-between", props.className)} />;
+}
+
+export function RadioGroupField({ label, children, helper }: { label: ReactNode; children: ReactNode; helper?: ReactNode }) {
+  return <FieldFrame label={label} helper={helper}><div className="flex flex-wrap gap-2">{children}</div></FieldFrame>;
+}
+
+export function FileUploadField({ label, helper, className, ...props }: StandardInputProps) {
+  return <InputField {...props} type="file" label={label} helper={helper} className={cn("pt-1.5 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-xs file:font-medium file:text-slate-700", className)} />;
+}
+
+export function FormFooter({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("flex flex-col-reverse gap-2 border-t bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-end", className)}>{children}</div>;
+}
+
+function FieldFrame({ label, helper, children }: { label: ReactNode; helper?: ReactNode; children: ReactNode }) {
+  return (
+    <label className="grid gap-1.5 text-sm">
+      <span className="font-medium text-slate-800">{label}</span>
+      {children}
+      {helper ? <span className="text-xs leading-5 text-muted-foreground">{helper}</span> : null}
+    </label>
+  );
+}
+
+export function CommandPalette({ placeholder = "Search commands...", children }: { placeholder?: string; children?: ReactNode }) {
+  return (
+    <div className="rounded-lg border bg-white p-2 shadow-panel">
+      <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm text-muted-foreground">{placeholder}</div>
+      {children ? <div className="mt-2">{children}</div> : null}
+    </div>
+  );
+}
+
+export const CommandSearch = CommandPalette;
+
+export function TabsShell({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("overflow-x-auto rounded-lg border bg-white p-1 shadow-panel", className)}>{children}</div>;
+}
+
+export function AccordionSection({ title, children, defaultOpen = true }: { title: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
+  return (
+    <details className="rounded-lg border bg-white shadow-panel" open={defaultOpen}>
+      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-950">{title}</summary>
+      <div className="border-t p-4">{children}</div>
+    </details>
+  );
+}
+
+export function TooltipHelp({ text }: { text: string }) {
+  return <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border bg-slate-50 text-[11px] font-semibold text-slate-600" title={text}>?</span>;
+}
+
+export function ExportActionBar({ children, className }: { children: ReactNode; className?: string }) {
+  return <ActionBar className={cn("border-primary/20 bg-primary/5", className)}>{children}</ActionBar>;
+}
+
 export function DashboardWidget({ title, description, children, actions }: { title: ReactNode; description?: ReactNode; children: ReactNode; actions?: ReactNode }) {
   return <SectionCard title={title} description={description} actions={actions}>{children}</SectionCard>;
+}
+
+export function ProgressBar({ value, className }: { value: number; className?: string }) {
+  const safeValue = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+  return (
+    <div className={cn("h-2 overflow-hidden rounded-full bg-slate-100", className)}>
+      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${safeValue}%` }} />
+    </div>
+  );
 }
 
 export function WarningPanel({ children, tone = "warning" }: { children: ReactNode; tone?: "warning" | "danger" | "info" | "success" }) {
@@ -157,6 +415,21 @@ export function WarningPanel({ children, tone = "warning" }: { children: ReactNo
 
 export function InfoPanel({ children }: { children: ReactNode }) {
   return <WarningPanel tone="info">{children}</WarningPanel>;
+}
+
+export const AlertBanner = WarningPanel;
+export const NotificationBanner = WarningPanel;
+
+export function LoadingSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="rounded-lg border bg-white p-4 shadow-panel">
+      <div className="space-y-3">
+        {Array.from({ length: rows }).map((_, index) => (
+          <div key={index} className="h-4 animate-pulse rounded bg-slate-100" style={{ width: `${90 - index * 8}%` }} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function LoadingState({ title = "Loading", description = "Fetching the latest records." }: { title?: string; description?: string }) {
@@ -190,6 +463,10 @@ export function PermissionDeniedState({ action }: { action?: ReactNode }) {
 
 export function ModuleDisabledState({ action }: { action?: ReactNode }) {
   return <ErrorState title="Module disabled" description="This module is currently disabled or unavailable for your account." action={action} />;
+}
+
+export function NoSearchResultsState({ action }: { action?: ReactNode }) {
+  return <ErrorState title="No matching records" description="No results match the current search and filters." action={action} />;
 }
 
 export function ResponsiveTabs({ items, active, onChange }: { items: Array<{ key: string; label: ReactNode }>; active: string; onChange: (key: string) => void }) {

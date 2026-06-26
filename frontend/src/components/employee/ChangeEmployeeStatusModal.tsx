@@ -3,6 +3,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SelectField } from "../ui/page-shell";
 import type { Employee, EmployeeStatusSetting } from "../../types/employees";
 
 interface ChangeEmployeeStatusModalProps {
@@ -70,17 +71,13 @@ export function ChangeEmployeeStatusModal({ employee, statuses, error, saving, o
             </div>
             <div className="space-y-1.5">
               <Label>New status</Label>
-              <select
-                value={statusId}
-                onChange={(event) => setStatusId(event.target.value)}
-                className="h-9 w-full rounded-md border bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
+              <SelectField value={statusId} onValueChange={setStatusId}>
                 {statuses.filter((status) => status.is_active).map((status) => (
                   <option key={status.id} value={status.id}>
                     {status.name}
                   </option>
                 ))}
-              </select>
+              </SelectField>
             </div>
           </div>
 

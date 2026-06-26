@@ -1,4 +1,4 @@
-import {
+﻿import {
   Archive,
   ClipboardCheck,
   Database,
@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { FileUploadField, SelectField, TextareaField } from "../components/ui/page-shell";
 
 type Row = Record<string, unknown>;
 type Mode = "imports" | "templates" | "exports" | "backup" | "migration" | "remote-d1" | "qa" | "smoke" | "deployment" | "settings";
@@ -344,16 +345,16 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
         <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
           <Panel className="space-y-3 p-4">
             <h2 className="text-sm font-semibold">Create import batch</h2>
-            <select className="h-9 w-full rounded-md border px-2 text-sm" value={importForm.import_type} onChange={(event) => setImportForm({ ...importForm, import_type: event.target.value })}>
+            <SelectField className="h-9 w-full rounded-md border px-2 text-sm" value={importForm.import_type} onChange={(event) => setImportForm({ ...importForm, import_type: event.target.value })}>
               {importTypes.map((type) => <option key={String(type.key)} value={String(type.key)}>{text(type.label)}</option>)}
-            </select>
-            <select className="h-9 w-full rounded-md border px-2 text-sm" value={importForm.import_mode} onChange={(event) => setImportForm({ ...importForm, import_mode: event.target.value })}>
+            </SelectField>
+            <SelectField className="h-9 w-full rounded-md border px-2 text-sm" value={importForm.import_mode} onChange={(event) => setImportForm({ ...importForm, import_mode: event.target.value })}>
               {["VALIDATE_ONLY", "CREATE_ONLY", "UPDATE_ONLY", "UPSERT"].map((option) => <option key={option} value={option}>{option}</option>)}
-            </select>
+            </SelectField>
             <Input placeholder="Reason for sensitive imports" value={importForm.reason} onChange={(event) => setImportForm({ ...importForm, reason: event.target.value })} />
-            <input
-              className="block w-full text-sm"
-              type="file"
+            <FileUploadField
+              label="CSV file"
+              helper="Accepted formats: .csv, text/csv, text/plain."
               accept=".csv,text/csv,text/plain"
               onChange={(event) => {
                 const file = event.target.files?.[0];
@@ -361,7 +362,7 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
                 void file.text().then((csv_text) => setImportForm((current) => ({ ...current, csv_text, source_file_name: file.name })));
               }}
             />
-            <textarea className="min-h-36 w-full rounded-md border p-2 text-xs" placeholder="Paste CSV text here" value={importForm.csv_text} onChange={(event) => setImportForm({ ...importForm, csv_text: event.target.value })} />
+            <TextareaField className="min-h-36 w-full rounded-md border p-2 text-xs" placeholder="Paste CSV text here" value={importForm.csv_text} onChange={(event) => setImportForm({ ...importForm, csv_text: event.target.value })} />
             <Button size="sm" onClick={() => void createBatch()} disabled={loading || !importForm.csv_text}><Upload className="h-4 w-4" /> Upload batch</Button>
           </Panel>
           <div className="space-y-4">
@@ -401,9 +402,9 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
         <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
           <Panel className="space-y-3 p-4">
             <h2 className="text-sm font-semibold">Run export</h2>
-            <select className="h-9 w-full rounded-md border px-2 text-sm" value={exportForm.export_type} onChange={(event) => setExportForm({ ...exportForm, export_type: event.target.value })}>
+            <SelectField className="h-9 w-full rounded-md border px-2 text-sm" value={exportForm.export_type} onChange={(event) => setExportForm({ ...exportForm, export_type: event.target.value })}>
               {exportTypes.map((type) => <option key={String(type.key)} value={String(type.key)}>{text(type.label)}</option>)}
-            </select>
+            </SelectField>
             <Input placeholder="Reason for sensitive exports" value={exportForm.reason} onChange={(event) => setExportForm({ ...exportForm, reason: event.target.value })} />
             <Button size="sm" onClick={() => void runExport()}><Download className="h-4 w-4" /> Run export</Button>
             {lastExport ? <pre className="max-h-64 overflow-auto rounded bg-slate-50 p-2 text-xs">{text(lastExport.file_name)}{"\n"}{String(lastExport.csv_text ?? "").slice(0, 1500)}</pre> : null}
