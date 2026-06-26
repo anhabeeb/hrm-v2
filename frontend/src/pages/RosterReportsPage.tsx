@@ -79,10 +79,8 @@ export function RosterReportsPage() {
   if (moduleDisabled) {
     return (
       <div className="space-y-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div><h1 className="text-lg font-semibold">Roster Reports</h1><p className="text-sm text-muted-foreground">Roster module is disabled.</p></div>
-          <RosterNav />
-        </div>
+        <div><h1 className="text-lg font-semibold">Roster Reports</h1><p className="text-sm text-muted-foreground">Roster module is disabled.</p></div>
+        <RosterNav />
         <Panel><EmptyState title="Roster module is disabled" description="Enable roster from settings before viewing roster reports." /></Panel>
       </div>
     );
@@ -92,8 +90,9 @@ export function RosterReportsPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div><h1 className="text-lg font-semibold">Roster Reports</h1><p className="text-sm text-muted-foreground">Weekly schedule summaries prepared for payroll and operations exports.</p></div>
-        <div className="flex flex-wrap gap-2"><RosterNav />{canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}</div>
+        <div className="flex flex-wrap gap-2">{canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}</div>
       </div>
+      <RosterNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-6">

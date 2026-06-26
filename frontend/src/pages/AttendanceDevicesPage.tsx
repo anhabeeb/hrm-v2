@@ -84,8 +84,9 @@ export function AttendanceDevicesPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div><h1 className="text-lg font-semibold">Attendance Devices</h1><p className="text-sm text-muted-foreground">Biometric, bridge, API, and manual import device registry.</p></div>
-        <div className="flex flex-wrap gap-2"><AttendanceNav />{canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add device</Button> : null}</div>
+        <div className="flex flex-wrap gap-2">{canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add device</Button> : null}</div>
       </div>
+      <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="border-b p-3"><div className="relative max-w-md"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search devices" value={search} onChange={(event) => setSearch(event.target.value)} /></div></div>

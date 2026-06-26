@@ -2,12 +2,12 @@ import { Archive, Check, Landmark, PiggyBank, Plus, RefreshCw, ReceiptText, Wall
 import { useEffect, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { PayrollNav } from "../components/payroll/PayrollNav";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
+import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
@@ -387,7 +387,7 @@ export function PayrollPensionPage() {
 
 function PayrollPageShell({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   const helpTarget = title.includes("Bank") ? "bankLoans" : title.includes("Pension") ? "pension" : "payroll";
-  return <div className="space-y-4"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="text-xl font-semibold">{title}</h1><p className="text-sm text-muted-foreground">{description}</p></div><div className="flex flex-wrap gap-2"><PayrollNav /><AdminHelpLink target={helpTarget} label="View Payroll Guide" /></div></div>{children}</div>;
+  return <div className="space-y-4"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div className="min-w-0"><h1 className="text-xl font-semibold">{title}</h1><p className="text-sm text-muted-foreground">{description}</p></div><div className="flex flex-wrap gap-2"><AdminHelpLink target={helpTarget} label="View Payroll Guide" /></div></div><PayrollNav />{children}</div>;
 }
 
 function Header({ icon, title, action }: { icon: React.ReactNode; title: string; action?: React.ReactNode }) {
@@ -404,7 +404,7 @@ function DataTable({ rows, columns, actions, empty }: { rows: unknown[]; columns
 }
 
 function renderValue(column: string, value: unknown) {
-  if (column.includes("status") && value) return <Badge tone="neutral">{String(value)}</Badge>;
+  if (column.includes("status") && value) return <StatusBadge value={value} />;
   if (typeof value === "number") return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "boolean") return value ? "Yes" : "No";

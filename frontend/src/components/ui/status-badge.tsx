@@ -1,7 +1,30 @@
 import { Badge } from "./badge";
+import type { HTMLAttributes } from "react";
 
-function normalize(value: unknown) {
-  return String(value ?? "UNKNOWN").replace(/_/g, " ");
+const statusLabels: Record<string, string> = {
+  APPROVED_PLACEHOLDER: "Approved",
+  BANK_NOTIFICATION_PENDING: "Bank notice pending",
+  BANK_NOTIFIED: "Bank notified",
+  BANK_TO_COLLECT_DIRECTLY_FROM_EMPLOYEE: "Bank direct collection",
+  CALCULATING: "Calculating",
+  FINALIZED_PLACEHOLDER: "Finalized",
+  MANUALLY_CONFIRMED_PAID: "Manual paid",
+  MANUALLY_CONFIRMED_PAID_TO_BANK: "Bank paid",
+  PENDING_RELEASE: "Pending release",
+  READY_FOR_REVIEW: "Ready for review",
+  SKIPPED_MINIMUM_NET_PROTECTION: "Skipped: min net",
+  SUBMITTED_FOR_APPROVAL: "Submitted"
+};
+
+export function humanizeStatus(value: unknown) {
+  const raw = String(value ?? "UNKNOWN");
+  const upper = raw.toUpperCase();
+  return statusLabels[upper] ?? raw
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export function statusTone(value: unknown): "neutral" | "success" | "warning" | "danger" | "info" {
@@ -23,6 +46,7 @@ export function statusTone(value: unknown): "neutral" | "success" | "warning" | 
   return "neutral";
 }
 
-export function StatusBadge({ value }: { value: unknown }) {
-  return <Badge tone={statusTone(value)}>{normalize(value)}</Badge>;
+export function StatusBadge({ value, className }: { value: unknown; className?: HTMLAttributes<HTMLSpanElement>["className"] }) {
+  const raw = String(value ?? "UNKNOWN");
+  return <Badge tone={statusTone(value)} title={raw} className={className}>{humanizeStatus(value)}</Badge>;
 }

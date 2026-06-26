@@ -74,14 +74,12 @@ export function AttendanceCalendarPage() {
   }, [token, canView, filters]);
 
   if (!canView) return <Panel><EmptyState title="Attendance calendar unavailable" description="Your account needs attendance.view permission." /></Panel>;
-  if (attendanceDisabled) return <div className="space-y-4"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="text-lg font-semibold">Attendance Calendar</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /></div><Panel><EmptyState title="Attendance module is disabled." description="Attendance calendar data is hidden until an administrator enables the module." /></Panel></div>;
+  if (attendanceDisabled) return <div className="space-y-4"><div><h1 className="text-lg font-semibold">Attendance Calendar</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Attendance calendar data is hidden until an administrator enables the module." /></Panel></div>;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div><h1 className="text-lg font-semibold">Attendance Calendar</h1><p className="text-sm text-muted-foreground">Compact date-based attendance foundation for teams and outlets.</p></div>
-        <AttendanceNav />
-      </div>
+      <div><h1 className="text-lg font-semibold">Attendance Calendar</h1><p className="text-sm text-muted-foreground">Compact date-based attendance foundation for teams and outlets.</p></div>
+      <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-7">

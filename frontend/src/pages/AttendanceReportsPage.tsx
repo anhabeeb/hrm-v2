@@ -76,14 +76,15 @@ export function AttendanceReportsPage() {
   }
 
   if (!canView) return <Panel><EmptyState title="Attendance reports unavailable" description="Your account needs attendance.reports.view permission." /></Panel>;
-  if (attendanceDisabled) return <div className="space-y-4"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="text-lg font-semibold">Attendance Reports</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /></div><Panel><EmptyState title="Attendance module is disabled." description="Attendance report data and exports are hidden until an administrator enables the module." /></Panel></div>;
+  if (attendanceDisabled) return <div className="space-y-4"><div><h1 className="text-lg font-semibold">Attendance Reports</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Attendance report data and exports are hidden until an administrator enables the module." /></Panel></div>;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div><h1 className="text-lg font-semibold">Attendance Reports</h1><p className="text-sm text-muted-foreground">Attendance summary exports prepared for payroll reconciliation.</p></div>
-        <div className="flex flex-wrap gap-2"><AttendanceNav />{canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}</div>
+        <div className="flex flex-wrap gap-2">{canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}</div>
       </div>
+      <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-5">

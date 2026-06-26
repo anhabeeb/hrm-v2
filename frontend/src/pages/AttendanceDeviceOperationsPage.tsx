@@ -57,10 +57,10 @@ export function AttendanceDeviceOperationsPage({ mode }: { mode: Mode }) {
           <p className="text-sm text-muted-foreground">ZKTeco import, bridge, ADMS placeholder, reconciliation, and protected payroll-lock handling.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <AttendanceNav />
           <AdminHelpLink target="zkteco" label="View ZKTeco Guide" />
         </div>
       </div>
+      <AttendanceNav />
       {mode === "settings" ? <DeviceSettings token={token} /> : null}
       {mode === "mappings" ? <BiometricMappings token={token} /> : null}
       {mode === "imports" ? <ImportBatches token={token} canManage={canManage} /> : null}

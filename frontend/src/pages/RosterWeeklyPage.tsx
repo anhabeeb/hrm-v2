@@ -229,10 +229,8 @@ export function RosterWeeklyPage() {
   if (moduleDisabled) {
     return (
       <div className="space-y-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div><h1 className="text-lg font-semibold">Weekly Roster</h1><p className="text-sm text-muted-foreground">Roster module is disabled.</p></div>
-          <RosterNav />
-        </div>
+        <div><h1 className="text-lg font-semibold">Weekly Roster</h1><p className="text-sm text-muted-foreground">Roster module is disabled.</p></div>
+        <RosterNav />
         <Panel><EmptyState title="Roster module is disabled" description="Roster settings remain available to permitted admins." /></Panel>
       </div>
     );
@@ -246,7 +244,6 @@ export function RosterWeeklyPage() {
           <p className="text-sm text-muted-foreground">Table-first weekly planning with leave, attendance, payroll, and audit hooks prepared.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <RosterNav />
           {canManage ? <Button variant="outline" size="sm" onClick={() => { setAction("copy-previous"); setActionReason(""); setOverwrite(false); }}><ClipboardCopy className="h-4 w-4" /> Copy previous</Button> : null}
           {canManage ? <Button variant="outline" size="sm" onClick={() => { setAction("clear-week"); setActionReason(""); }}><Eraser className="h-4 w-4" /> Clear</Button> : null}
           {canManage ? <Button size="sm" onClick={() => void save()}><Save className="h-4 w-4" /> Save</Button> : null}
@@ -256,6 +253,7 @@ export function RosterWeeklyPage() {
           {weekly?.period?.status === "LOCKED" && canUnlock ? <Button variant="outline" size="sm" onClick={() => { setAction("unlock"); setActionReason(""); }}><Unlock className="h-4 w-4" /> Unlock</Button> : null}
         </div>
       </div>
+      <RosterNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
       <Panel className="overflow-hidden">

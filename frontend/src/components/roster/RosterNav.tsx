@@ -1,8 +1,8 @@
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { ApiError, api } from "../../lib/api";
-import { Button } from "../ui/button";
+import { ModuleNavigationBar, ModuleNavigationItem } from "../ui/navigation-tabs";
 
 const links: Array<{ label: string; to: string; permissions: string[] }> = [
   { label: "Weekly", to: "/roster", permissions: ["roster.view", "roster.team.view", "roster.assignments.view"] },
@@ -27,15 +27,13 @@ export function RosterNav() {
   }, [token, user?.permissions]);
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <ModuleNavigationBar label="Roster navigation">
       {links.filter((link) => link.permissions.some((permission) => permissions.has(permission))).filter((link) => moduleEnabled || link.to === "/roster/settings").map((link) => {
-        const active = link.to === "/roster" ? location.pathname === "/roster" || location.pathname === "/roster/weekly" : location.pathname === link.to;
+        const active = link.to === "/roster" ? location.pathname === "/roster" || location.pathname === "/roster/weekly" : location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
         return (
-          <Link key={link.to} to={link.to}>
-            <Button variant={active ? "primary" : "outline"} size="sm">{link.label}</Button>
-          </Link>
+          <ModuleNavigationItem key={link.to} to={link.to} active={active}>{link.label}</ModuleNavigationItem>
         );
       })}
-    </div>
+    </ModuleNavigationBar>
   );
 }

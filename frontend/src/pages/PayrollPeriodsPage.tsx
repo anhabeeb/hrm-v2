@@ -2,12 +2,12 @@ import { CalendarPlus, Edit, PlayCircle, Search, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { PayrollNav } from "../components/payroll/PayrollNav";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
+import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -22,14 +22,6 @@ function normalizePeriodStatus(status: string) {
   if (status === "APPROVED") return "APPROVED_PLACEHOLDER";
   if (status === "PAID" || status === "CLOSED") return "FINALIZED_PLACEHOLDER";
   return status;
-}
-
-function statusTone(status: string) {
-  const normalized = normalizePeriodStatus(status);
-  if (normalized === "FINALIZED_PLACEHOLDER" || normalized === "LOCKED") return "success" as const;
-  if (normalized === "CANCELLED") return "danger" as const;
-  if (normalized === "CALCULATING" || normalized === "READY_FOR_REVIEW") return "warning" as const;
-  return "neutral" as const;
 }
 
 export function PayrollPeriodsPage() {
@@ -101,22 +93,23 @@ export function PayrollPeriodsPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div><h1 className="text-lg font-semibold">Payroll Periods</h1><p className="text-sm text-muted-foreground">Create month-end payroll windows and generate runs.</p></div>
-        <div className="flex flex-wrap gap-2"><PayrollNav />{canCreate ? <Button size="sm" onClick={() => { setForm({ period_month: String(new Date().getMonth() + 1), period_year: String(new Date().getFullYear()) }); setModal({ type: "create" }); }}><CalendarPlus className="h-4 w-4" /> Create period</Button> : null}</div>
+        <div className="flex flex-wrap gap-2">{canCreate ? <Button size="sm" onClick={() => { setForm({ period_month: String(new Date().getMonth() + 1), period_year: String(new Date().getFullYear()) }); setModal({ type: "create" }); }}><CalendarPlus className="h-4 w-4" /> Create period</Button> : null}</div>
       </div>
+      <PayrollNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-6">
           <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search period" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
           <Input value={year} onChange={(event) => setYear(event.target.value)} placeholder="Year" />
           <SelectField aria-label="Month" value={month} onValueChange={setMonth}><option value="">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</SelectField>
-          <SelectField aria-label="Status" value={status} onValueChange={setStatus}>{statuses.map((item) => <option key={item || "all"} value={item}>{item || "All statuses"}</option>)}</SelectField>
+          <SelectField aria-label="Status" value={status} onValueChange={setStatus}>{statuses.map((item) => <option key={item || "all"} value={item}>{item ? humanizeStatus(item) : "All statuses"}</option>)}</SelectField>
         </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Month/year</TableHead><TableHead>Start</TableHead><TableHead>End</TableHead><TableHead>Payment date</TableHead><TableHead>Status</TableHead><TableHead>Created by</TableHead><TableHead>Approved</TableHead><TableHead>Paid</TableHead><TableHead>Closed</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>{periods.map((period) => {
               const displayStatus = normalizePeriodStatus(period.status);
-              return <TableRow key={period.id}><TableCell className="font-medium">{period.period_month}/{period.period_year}</TableCell><TableCell>{period.start_date}</TableCell><TableCell>{period.end_date}</TableCell><TableCell>{period.salary_payment_date ?? "-"}</TableCell><TableCell><Badge tone={statusTone(period.status)}>{displayStatus}</Badge></TableCell><TableCell>{period.created_by_name ?? "-"}</TableCell><TableCell>{period.approved_at ?? "-"}</TableCell><TableCell>{period.paid_at ?? "-"}</TableCell><TableCell>{period.closed_at ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><Link to={`/payroll/runs?period_id=${period.id}`}><Button title="Open runs" variant="ghost" size="icon"><Search className="h-4 w-4" /></Button></Link>{canUpdate ? <Button title="Edit period" variant="ghost" size="icon" onClick={() => { setForm({ start_date: period.start_date, end_date: period.end_date, salary_payment_date: period.salary_payment_date ?? "" }); setModal({ type: "edit", period }); }}><Edit className="h-4 w-4" /></Button> : null}{canCalculate ? <Button title="Generate run" variant="ghost" size="icon" onClick={() => { setForm({}); setModal({ type: "generate", period }); }}><PlayCircle className="h-4 w-4" /></Button> : null}{canCancel && !["FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"].includes(displayStatus) ? <Button title="Cancel period" variant="ghost" size="icon" onClick={() => { setForm({ reason: "" }); setModal({ type: "cancel", period }); }}><XCircle className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
+              return <TableRow key={period.id}><TableCell className="font-medium">{period.period_month}/{period.period_year}</TableCell><TableCell>{period.start_date}</TableCell><TableCell>{period.end_date}</TableCell><TableCell>{period.salary_payment_date ?? "-"}</TableCell><TableCell><StatusBadge value={displayStatus} /></TableCell><TableCell>{period.created_by_name ?? "-"}</TableCell><TableCell>{period.approved_at ?? "-"}</TableCell><TableCell>{period.paid_at ?? "-"}</TableCell><TableCell>{period.closed_at ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><Link to={`/payroll/runs?period_id=${period.id}`}><Button title="Open runs" variant="ghost" size="icon"><Search className="h-4 w-4" /></Button></Link>{canUpdate ? <Button title="Edit period" variant="ghost" size="icon" onClick={() => { setForm({ start_date: period.start_date, end_date: period.end_date, salary_payment_date: period.salary_payment_date ?? "" }); setModal({ type: "edit", period }); }}><Edit className="h-4 w-4" /></Button> : null}{canCalculate ? <Button title="Generate run" variant="ghost" size="icon" onClick={() => { setForm({}); setModal({ type: "generate", period }); }}><PlayCircle className="h-4 w-4" /></Button> : null}{canCancel && !["FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"].includes(displayStatus) ? <Button title="Cancel period" variant="ghost" size="icon" onClick={() => { setForm({ reason: "" }); setModal({ type: "cancel", period }); }}><XCircle className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
             })}</TableBody>
           </Table>
         </div>
@@ -137,7 +130,7 @@ function PeriodModal({ modal, form, setForm, onClose, onSubmit }: { modal: { typ
         <div className="grid gap-3 p-4 md:grid-cols-2">
           {modal.type === "create" ? <><Input value={form.period_month ?? ""} onChange={(event) => update("period_month", event.target.value)} placeholder="Month" /><Input value={form.period_year ?? ""} onChange={(event) => update("period_year", event.target.value)} placeholder="Year" /></> : null}
           {modal.type === "create" || modal.type === "edit" ? <><Input type="date" value={form.start_date ?? ""} onChange={(event) => update("start_date", event.target.value)} aria-label="Start date" /><Input type="date" value={form.end_date ?? ""} onChange={(event) => update("end_date", event.target.value)} aria-label="End date" /><Input type="date" value={form.salary_payment_date ?? ""} onChange={(event) => update("salary_payment_date", event.target.value)} aria-label="Salary payment date" className="md:col-span-2" /></> : null}
-          {modal.type === "generate" ? <p className="md:col-span-2 text-sm text-slate-700">Generate a Payroll Core run. The run will calculate, then move to READY_FOR_REVIEW.</p> : null}
+          {modal.type === "generate" ? <p className="md:col-span-2 text-sm text-slate-700">Generate a Payroll Core run. The run will calculate, then move to Ready for review.</p> : null}
           {modal.type === "cancel" ? <Input className="md:col-span-2" value={form.reason ?? ""} onChange={(event) => update("reason", event.target.value)} placeholder="Cancellation reason" /> : null}
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={onSubmit}>Confirm</Button></div>

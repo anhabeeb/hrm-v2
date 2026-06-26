@@ -2,12 +2,13 @@ import { Calculator, CheckCircle2, FileText, Lock, Plus, RefreshCw, Send, Settin
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { PayrollNav } from "../components/payroll/PayrollNav";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
+import { SubNavigationBar, SubNavigationItem } from "../components/ui/navigation-tabs";
+import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
@@ -33,13 +34,6 @@ function money(value: unknown) {
 
 function bool(value: unknown) {
   return value === true || value === 1;
-}
-
-function tone(status?: string) {
-  if (["APPROVED", "FINALIZED", "LOCKED", "CLEARED", "MANUALLY_CONFIRMED_PAID"].includes(status ?? "")) return "success";
-  if (["READY_FOR_REVIEW", "SUBMITTED_FOR_APPROVAL", "PENDING", "PREPARED"].includes(status ?? "")) return "warning";
-  if (["REJECTED", "CANCELLED", "BLOCKED"].includes(status ?? "")) return "danger";
-  return "neutral";
 }
 
 function ErrorMessage({ error }: { error: string | null }) {
@@ -284,25 +278,26 @@ export function FinalSettlementPage() {
           <h1 className="text-lg font-semibold">Exit Payroll / Final Settlement</h1>
           <p className="text-sm text-muted-foreground">Manage Final Settlement cases, clearance, approval, finalization, and manual payment register rows.</p>
         </div>
-        <div className="flex flex-wrap gap-2"><PayrollNav /><AdminHelpLink target="finalSettlement" label="View Exit Payroll Guide" />{canCreate ? <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New case</Button> : null}</div>
+        <div className="flex flex-wrap gap-2"><AdminHelpLink target="finalSettlement" label="View Exit Payroll Guide" />{canCreate ? <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New case</Button> : null}</div>
       </div>
+      <PayrollNav />
 
       <ErrorMessage error={error} />
 
-      <div className="flex flex-wrap gap-2 border-b p-1">
+      <SubNavigationBar label="Exit payroll section tabs">
         {(["cases", "payments", "reports", "settings"] as Tab[]).map((item) => (
-          <Button key={item} size="sm" variant={tab === item ? "primary" : "ghost"} className="whitespace-nowrap" onClick={() => setTab(item)}>
+          <SubNavigationItem key={item} active={tab === item} onClick={() => setTab(item)}>
             {item === "cases" ? "Cases" : item === "payments" ? "Payment Register" : item === "reports" ? "Reports" : "Settings"}
-          </Button>
+          </SubNavigationItem>
         ))}
-      </div>
+      </SubNavigationBar>
 
       {tab === "cases" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
           <Panel className="overflow-hidden">
             <div className="grid gap-2 border-b p-3 md:grid-cols-4">
               <Input placeholder="Search employee, department, location" value={search} onChange={(event) => setSearch(event.target.value)} />
-              <SelectField value={status} onChange={setStatus}><option value="">All statuses</option>{["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "SUBMITTED_FOR_APPROVAL", "APPROVED", "REJECTED", "SENT_BACK", "FINALIZED", "LOCKED", "CANCELLED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
+              <SelectField value={status} onChange={setStatus}><option value="">All statuses</option>{["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "SUBMITTED_FOR_APPROVAL", "APPROVED", "REJECTED", "SENT_BACK", "FINALIZED", "LOCKED", "CANCELLED"].map((item) => <option key={item} value={item}>{humanizeStatus(item)}</option>)}</SelectField>
               <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>
             </div>
             <div className="overflow-x-auto">
@@ -312,10 +307,10 @@ export function FinalSettlementPage() {
                   <TableRow key={row.id}>
                     <TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name ?? row.employee_name_snapshot ?? row.full_name} employeeNumber={row.employee_no ?? row.employee_number_snapshot} departmentName={row.department_name ?? row.department_snapshot} locationName={row.location_name ?? row.location_snapshot ?? row.worksite_snapshot} size="sm" /></TableCell>
                     <TableCell><div>{row.exit_type}</div><div className="text-xs text-muted-foreground">{row.exit_date} / {row.last_working_day}</div></TableCell>
-                    <TableCell><Badge tone={tone(row.status)}>{row.status}</Badge></TableCell>
-                    <TableCell><Badge tone={tone(row.clearance_status)}>{row.clearance_status}</Badge></TableCell>
+                    <TableCell><StatusBadge value={row.status} /></TableCell>
+                    <TableCell><StatusBadge value={row.clearance_status} /></TableCell>
                     <TableCell className="font-semibold">{money(row.net_settlement_amount)}</TableCell>
-                    <TableCell>{row.payment_status ? <Badge tone={tone(row.payment_status)}>{row.payment_status}</Badge> : "-"}</TableCell>
+                    <TableCell>{row.payment_status ? <StatusBadge value={row.payment_status} /> : "-"}</TableCell>
                     <TableCell><div className="flex justify-end gap-1">
                       <Button variant="ghost" size="icon" title="View details" onClick={() => void loadDetails(row)}><FileText className="h-4 w-4" /></Button>
                       {canCalculate ? <Button variant="ghost" size="icon" title="Calculate" onClick={() => void calculate(row, row.status !== "DRAFT")}><Calculator className="h-4 w-4" /></Button> : null}
@@ -376,7 +371,7 @@ function CaseDetails({ selected, lineItems, clearance, events, canApprove, canFi
     <Panel className="space-y-4 p-4">
       <div className="flex items-start justify-between gap-3">
         <EmployeeIdentityCell employeeId={selected.employee_id} employeeName={selected.employee_name ?? selected.employee_name_snapshot ?? selected.full_name} employeeNumber={selected.employee_no ?? selected.employee_number_snapshot} departmentName={selected.department_name ?? selected.department_snapshot} locationName={selected.location_name ?? selected.location_snapshot ?? selected.worksite_snapshot} status={selected.status} showStatus size="md" />
-        <Badge tone={tone(selected.status)}>{selected.status}</Badge>
+        <StatusBadge value={selected.status} />
       </div>
       <div className="grid grid-cols-3 gap-2 text-sm">
         <Metric label="Earnings" value={money(selected.total_earnings)} />
@@ -399,7 +394,7 @@ function CaseDetails({ selected, lineItems, clearance, events, canApprove, canFi
       <div>
         <h3 className="mb-2 text-sm font-semibold">Clearance</h3>
         <div className="space-y-2">
-          {clearance.map((item) => <div key={item.id} className="rounded-md border p-2 text-sm"><div className="flex justify-between gap-2"><div><div className="font-medium">{item.clearance_type}</div><div className="text-xs text-muted-foreground">{item.description}</div></div><Badge tone={tone(item.status)}>{item.status}</Badge></div><div className="mt-2 flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={() => onClearance(item, "CLEARED")}>Clear</Button><Button size="sm" variant="outline" onClick={() => onClearance(item, "BLOCKED")}>Block</Button><Input className="max-w-[180px]" placeholder="Waiver reason" value={waiverReason} onChange={(event) => onWaiverReason(event.target.value)} /><Button size="sm" variant="outline" onClick={() => onWaive(item)}>Waive</Button></div></div>)}
+          {clearance.map((item) => <div key={item.id} className="rounded-md border p-2 text-sm"><div className="flex justify-between gap-2"><div className="min-w-0"><div className="font-medium">{item.clearance_type}</div><div className="text-xs text-muted-foreground">{item.description}</div></div><StatusBadge value={item.status} /></div><div className="mt-2 flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={() => onClearance(item, "CLEARED")}>Clear</Button><Button size="sm" variant="outline" onClick={() => onClearance(item, "BLOCKED")}>Block</Button><Input className="max-w-[180px]" placeholder="Waiver reason" value={waiverReason} onChange={(event) => onWaiverReason(event.target.value)} /><Button size="sm" variant="outline" onClick={() => onWaive(item)}>Waive</Button></div></div>)}
           {clearance.length === 0 ? <EmptyState title="No clearance rows" description="Calculation will create asset, uniform, document, payroll, and HR clearance rows." /> : null}
         </div>
       </div>
@@ -435,7 +430,7 @@ function CaseActionDialog({ action, row, note, reason, amount, adjustmentType, o
 function PaymentTable({ rows, canManage, onAction }: { rows: FinalSettlementPaymentRegister[]; canManage: boolean; onAction: (type: PaymentAction, row: FinalSettlementPaymentRegister) => void }) {
   return <Panel className="overflow-hidden"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Direction</TableHead><TableHead>Net</TableHead><TableHead>Method</TableHead><TableHead>Institution</TableHead><TableHead>Status</TableHead><TableHead>Reference</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => {
     const actionable = row.payment_status === "PENDING" || row.payment_status === "PREPARED";
-    return <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot} employeeNumber={row.employee_number_snapshot ?? row.employee_no_snapshot} size="sm" /></TableCell><TableCell>{row.payment_direction}</TableCell><TableCell>{row.net_settlement_amount == null ? "Restricted" : money(row.net_settlement_amount)}</TableCell><TableCell>{row.payment_method_type_snapshot ?? row.payment_method_snapshot ?? "-"}</TableCell><TableCell>{row.payment_institution_snapshot ?? row.bank_name_snapshot ?? "-"}</TableCell><TableCell><Badge tone={tone(row.payment_status)}>{row.payment_status}</Badge></TableCell><TableCell>{row.confirmation_reference ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <Button variant="ghost" size="icon" title="Confirm manual payment" disabled={!actionable} onClick={() => onAction("confirm-paid", row)}><CheckCircle2 className="h-4 w-4" /></Button> : null}{canManage ? <Button variant="ghost" size="icon" title="Cancel row" disabled={!actionable} onClick={() => onAction("cancel-payment", row)}><XCircle className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
+    return <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot} employeeNumber={row.employee_number_snapshot ?? row.employee_no_snapshot} size="sm" /></TableCell><TableCell>{row.payment_direction}</TableCell><TableCell>{row.net_settlement_amount == null ? "Restricted" : money(row.net_settlement_amount)}</TableCell><TableCell>{row.payment_method_type_snapshot ?? row.payment_method_snapshot ?? "-"}</TableCell><TableCell>{row.payment_institution_snapshot ?? row.bank_name_snapshot ?? "-"}</TableCell><TableCell><StatusBadge value={row.payment_status} /></TableCell><TableCell>{row.confirmation_reference ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <Button variant="ghost" size="icon" title="Confirm manual payment" disabled={!actionable} onClick={() => onAction("confirm-paid", row)}><CheckCircle2 className="h-4 w-4" /></Button> : null}{canManage ? <Button variant="ghost" size="icon" title="Cancel row" disabled={!actionable} onClick={() => onAction("cancel-payment", row)}><XCircle className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
   })}</TableBody></Table></div>{rows.length === 0 ? <EmptyState title="No payment register rows" description="Finalize a settlement and prepare a manual payment row." /> : null}</Panel>;
 }
 

@@ -7,7 +7,7 @@ import { ConfirmDialog } from "../components/ui/dialogs";
 import { Input } from "../components/ui/input";
 import { AlertBanner, FilterBar, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { DataTableShell } from "../components/ui/data-table-shell";
-import { StatusBadge } from "../components/ui/status-badge";
+import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -101,11 +101,11 @@ export function PayrollRunsPage() {
         title="Payroll Runs"
         description="Review, approve as placeholder, finalize later, and export generated payroll runs."
         breadcrumbs={[{ label: "Payroll", href: "/payroll" }, { label: "Runs" }]}
-        actions={<PayrollNav />}
       />
+      <PayrollNav />
       <FilterBar>
           <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search run" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <SelectField aria-label="Status" value={status} onValueChange={setStatus}><option value="">All statuses</option>{["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
+          <SelectField aria-label="Status" value={status} onValueChange={setStatus}><option value="">All statuses</option>{["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"].map((item) => <option key={item} value={item}>{humanizeStatus(item)}</option>)}</SelectField>
       </FilterBar>
       <DataTableShell loading={loading} error={error} empty={!runs.length} emptyTitle="No payroll runs" emptyDescription="Generate a run from a payroll period.">
           <Table>

@@ -1,6 +1,6 @@
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
-import { Button } from "../ui/button";
+import { ModuleNavigationBar, ModuleNavigationItem } from "../ui/navigation-tabs";
 
 const links = [
   { label: "Dashboard", to: "/payroll", permission: "payroll.view" },
@@ -28,15 +28,13 @@ export function PayrollNav() {
   const permissions = new Set(user?.permissions ?? []);
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <ModuleNavigationBar label="Payroll navigation">
       {links.filter((link) => permissions.has(link.permission) || Boolean(link.fallback && permissions.has(link.fallback))).map((link) => {
-        const active = link.to === "/payroll" ? location.pathname === "/payroll" : location.pathname === link.to;
+        const active = link.to === "/payroll" ? location.pathname === "/payroll" : location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
         return (
-          <Link key={link.to} to={link.to}>
-            <Button variant={active ? "primary" : "outline"} size="sm">{link.label}</Button>
-          </Link>
+          <ModuleNavigationItem key={link.to} to={link.to} active={active}>{link.label}</ModuleNavigationItem>
         );
       })}
-    </div>
+    </ModuleNavigationBar>
   );
 }

@@ -98,10 +98,8 @@ export function RosterSettingsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div><h1 className="text-lg font-semibold">Roster Settings</h1><p className="text-sm text-muted-foreground">Global weekly roster behavior and edit controls.</p></div>
-        <RosterNav />
-      </div>
+      <div><h1 className="text-lg font-semibold">Roster Settings</h1><p className="text-sm text-muted-foreground">Global weekly roster behavior and edit controls.</p></div>
+      <RosterNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
       <Panel className="p-4">

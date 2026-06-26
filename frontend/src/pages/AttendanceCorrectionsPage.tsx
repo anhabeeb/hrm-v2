@@ -107,14 +107,15 @@ export function AttendanceCorrectionsPage() {
   }
 
   if (!canView) return <Panel><EmptyState title="Attendance corrections unavailable" description="Your account needs attendance correction view permission." /></Panel>;
-  if (attendanceDisabled) return <div className="space-y-4"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div><h1 className="text-lg font-semibold">Attendance Corrections</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /></div><Panel><EmptyState title="Attendance module is disabled." description="Correction lists and review actions are hidden until an administrator enables attendance." /></Panel></div>;
+  if (attendanceDisabled) return <div className="space-y-4"><div><h1 className="text-lg font-semibold">Attendance Corrections</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Correction lists and review actions are hidden until an administrator enables attendance." /></Panel></div>;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div><h1 className="text-lg font-semibold">Attendance Corrections</h1><p className="text-sm text-muted-foreground">Missed punch and status correction approval workflow foundation.</p></div>
-        <div className="flex flex-wrap gap-2"><AttendanceNav />{canCorrect ? <Button size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New correction</Button> : null}</div>
+        <div className="flex flex-wrap gap-2">{canCorrect ? <Button size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New correction</Button> : null}</div>
       </div>
+      <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-6">

@@ -1,8 +1,8 @@
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { api } from "../../lib/api";
-import { Button } from "../ui/button";
+import { ModuleNavigationBar, ModuleNavigationItem } from "../ui/navigation-tabs";
 
 const links = [
   { label: "Records", to: "/attendance", requiresModule: true },
@@ -42,15 +42,13 @@ export function AttendanceNav() {
   }, [token]);
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <ModuleNavigationBar label="Attendance navigation">
       {links.filter((link) => moduleEnabled || !link.requiresModule).map((link) => {
-        const active = link.to === "/attendance" ? location.pathname === "/attendance" || location.pathname === "/attendance/records" : location.pathname === link.to;
+        const active = link.to === "/attendance" ? location.pathname === "/attendance" || location.pathname === "/attendance/records" : location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
         return (
-          <Link key={link.to} to={link.to}>
-            <Button variant={active ? "primary" : "outline"} size="sm">{link.label}</Button>
-          </Link>
+          <ModuleNavigationItem key={link.to} to={link.to} active={active}>{link.label}</ModuleNavigationItem>
         );
       })}
-    </div>
+    </ModuleNavigationBar>
   );
 }

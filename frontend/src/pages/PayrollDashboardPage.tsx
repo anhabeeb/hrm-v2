@@ -2,11 +2,11 @@ import { Link } from "react-router-dom";
 import { AlertCircle, Banknote, CalendarDays, CheckCircle2, Clock3, FileWarning, PauseCircle, WalletCards } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PayrollNav } from "../components/payroll/PayrollNav";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { DashboardWidget, MetricGrid, PageHeader, PageShell, StatCard, WarningPanel } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
+import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { PayrollDashboard } from "../types/payroll";
@@ -58,8 +58,8 @@ export function PayrollDashboardPage() {
         title="Payroll"
         eyebrow="Payroll Core"
         description="Month-end payroll foundation with scoped periods, review runs, advances, deductions, reports, and cutoff-aware warnings."
-        actions={<PayrollNav />}
       />
+      <PayrollNav />
       {error ? <WarningPanel tone="danger">{error}</WarningPanel> : null}
       {loading ? <Panel><EmptyState title="Loading payroll dashboard" description="Fetching payroll counters and current period status." /></Panel> : null}
       {!loading && dashboard ? (
@@ -83,7 +83,7 @@ export function PayrollDashboardPage() {
                 <Info label="Month/year" value={`${dashboard.current_period.period_month}/${dashboard.current_period.period_year}`} />
                 <Info label="Date range" value={`${dashboard.current_period.start_date} to ${dashboard.current_period.end_date}`} />
                 <Info label="Payment date" value={dashboard.current_period.salary_payment_date ?? "-"} />
-                <div><p className="text-xs text-muted-foreground">Status</p><Badge tone={dashboard.current_period.status === "FINALIZED_PLACEHOLDER" ? "success" : "neutral"}>{dashboard.current_period.status}</Badge></div>
+                <div><p className="text-xs text-muted-foreground">Status</p><StatusBadge value={dashboard.current_period.status} /></div>
               </div>
             ) : <EmptyState title="No current payroll period" description="Create an open payroll period before generating runs." />}
           </DashboardWidget>
@@ -93,7 +93,7 @@ export function PayrollDashboardPage() {
               {["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER"].map((status, index) => (
                 <div key={status} className="rounded-md border bg-slate-50 px-3 py-2">
                   <p className="text-xs text-muted-foreground">Step {index + 1}</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-900">{status.replace(/_/g, " ")}</p>
+                  <p className="mt-1 truncate text-xs font-semibold text-slate-900" title={status}>{humanizeStatus(status)}</p>
                 </div>
               ))}
             </div>
