@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateAttendanceRosterRules, validateOrganizationCascade } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
@@ -389,6 +390,17 @@ async function readAssignmentInput(c: Context<AppBindings>, body: Record<string,
   if (!(await canAssignEmployeeToRoster(c, input.employee_id, "manage"))) return { input, error: "You do not have roster access to this employee." };
   if (!bool(employee.roster_eligible, true) || !bool(employee.include_in_roster, true)) return { input, error: "Employee is not roster eligible." };
   const targetLocationId = input.location_id ?? optionalString(period.location_id) ?? optionalString(employee.primary_location_id);
+  const targetDepartmentId = input.department_id ?? optionalString(period.department_id) ?? optionalString(employee.primary_department_id);
+  const cascadeIssues = await validateOrganizationCascade(c.env.DB, {
+    employee_id: input.employee_id,
+    department_id: targetDepartmentId,
+    location_id: targetLocationId,
+    position_id: optionalString(employee.primary_position_id),
+    job_level_id: optionalString(employee.job_level_id)
+  });
+  const rosterIssues = validateAttendanceRosterRules({ date: input.roster_date, locked: String(period.status) === "LOCKED", startTime: input.custom_start_time, endTime: input.custom_end_time });
+  const issues = [...cascadeIssues, ...rosterIssues];
+  if (hasValidationErrors(issues)) return { input, error: issues[0].message, errorCode: issues[0].code, validationIssues: issues };
   if (targetLocationId && employee.primary_location_id && targetLocationId !== employee.primary_location_id && !hasAny(c, ["roster.assignments.cross_worksite", "roster.assignments.manage", "roster.manage"])) {
     return { input, error: "You do not have permission to assign employees across worksites.", errorCode: "CROSS_WORKSITE_PERMISSION_REQUIRED" };
   }

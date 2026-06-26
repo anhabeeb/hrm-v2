@@ -1,6 +1,7 @@
 import { FileText, Plus, RefreshCw, Settings, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
@@ -11,6 +12,7 @@ import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
 import { CheckboxField, SelectField } from "../components/ui/page-shell";
@@ -53,6 +55,7 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
   const [renewals, setRenewals] = useState<Row[]>([]);
   const [alerts, setAlerts] = useState<Row[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const organizationRefs = useOrganizationReferences(token);
   const [filters, setFilters] = useState({ search: "", status: "", contract_type_id: "" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,7 +193,7 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
         </Panel>
       ) : null}
 
-      {contractModal ? <ContractForm employees={employees} types={activeTypes} onClose={() => setContractModal(false)} onSave={async (employeeId, input) => { if (!token) return; await api.createEmployeeContract(token, employeeId, input); setContractModal(false); await load(); }} /> : null}
+      {contractModal ? <ContractForm employees={employees} organizationRefs={organizationRefs} types={activeTypes} onClose={() => setContractModal(false)} onSave={async (employeeId, input) => { if (!token) return; await api.createEmployeeContract(token, employeeId, input); setContractModal(false); await load(); }} /> : null}
       {typeModal ? <ContractTypeForm type={Object.keys(typeModal).length ? typeModal : null} onClose={() => setTypeModal(null)} onSave={async (input) => { if (!token) return; await api.createContractType(token, input); setTypeModal(null); await load(); }} /> : null}
       {actionTarget ? (
         <ReasonDialog
@@ -245,7 +248,7 @@ function ContractTable({ rows, canManage, onAction }: { rows: Row[]; canManage: 
   );
 }
 
-function ContractForm({ employees, types, onClose, onSave }: { employees: Employee[]; types: Row[]; onClose: () => void; onSave: (employeeId: string, input: Row) => Promise<void> }) {
+function ContractForm({ employees, organizationRefs, types, onClose, onSave }: { employees: Employee[]; organizationRefs: ReturnType<typeof useOrganizationReferences>; types: Row[]; onClose: () => void; onSave: (employeeId: string, input: Row) => Promise<void> }) {
   const [form, setForm] = useState({ employee_id: "", contract_type_id: "", contract_number: "", contract_title: "", contract_start_date: "", contract_end_date: "", probation_end_date: "", confirmation_due_date: "", basic_salary_snapshot: "", salary_currency_snapshot: "MVR", notes: "" });
   const [error, setError] = useState<string | null>(null);
   async function submit(event: FormEvent) {
@@ -274,7 +277,7 @@ function ContractForm({ employees, types, onClose, onSave }: { employees: Employ
       <form onSubmit={(event) => void submit(event)} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-md border bg-white p-4 shadow-lg">
         <h2 className="text-base font-semibold">Create employee contract</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <Field label="Employee"><SelectField required className="h-9 rounded-md border bg-white px-3 text-sm" value={form.employee_id} onChange={(event) => setForm({ ...form, employee_id: event.target.value })}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</SelectField></Field>
+          <div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employee_id) => setForm({ ...form, employee_id })} /></div>
           <Field label="Contract type"><SelectField required className="h-9 rounded-md border bg-white px-3 text-sm" value={form.contract_type_id} onChange={(event) => setForm({ ...form, contract_type_id: event.target.value })}><option value="">Select type</option>{types.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}</option>)}</SelectField></Field>
           <Field label="Contract number"><Input value={form.contract_number} onChange={(event) => setForm({ ...form, contract_number: event.target.value })} placeholder="Auto if blank" /></Field>
           <Field label="Title"><Input value={form.contract_title} onChange={(event) => setForm({ ...form, contract_title: event.target.value })} /></Field>

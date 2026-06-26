@@ -9,10 +9,11 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { DocumentCategory, DocumentRequiredRule, DocumentType, DocumentTypeInput } from "../types/documents";
-import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
+import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import { CheckboxField, SelectField, TextareaField } from "../components/ui/page-shell";
 
 type Tab = "categories" | "types" | "rules";
@@ -44,6 +45,7 @@ export function DocumentSettingsPage() {
   const [rules, setRules] = useState<DocumentRequiredRule[]>([]);
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
   const [positions, setPositions] = useState<OrganizationPosition[]>([]);
+  const [jobLevels, setJobLevels] = useState<OrganizationJobLevel[]>([]);
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [categoryModal, setCategoryModal] = useState<DocumentCategory | "new" | null>(null);
   const [typeModal, setTypeModal] = useState<DocumentType | "new" | null>(null);
@@ -56,12 +58,13 @@ export function DocumentSettingsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [categoryResult, typeResult, ruleResult, departmentResult, positionResult, locationResult] = await Promise.all([
+      const [categoryResult, typeResult, ruleResult, departmentResult, positionResult, jobLevelResult, locationResult] = await Promise.all([
         api.listDocumentCategories(token),
         api.listDocumentTypes(token),
         api.listDocumentRequiredRules(token),
         api.listDepartments(token),
         api.listPositions(token),
+        api.listJobLevels(token),
         api.listLocations(token)
       ]);
       setCategories(categoryResult.categories);
@@ -69,6 +72,7 @@ export function DocumentSettingsPage() {
       setRules(ruleResult.rules);
       setDepartments(departmentResult.departments);
       setPositions(positionResult.positions);
+      setJobLevels(jobLevelResult.job_levels);
       setLocations(locationResult.locations);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load document settings.");
@@ -123,7 +127,7 @@ export function DocumentSettingsPage() {
       </Panel>
       {categoryModal ? <CategoryModal token={token!} category={categoryModal === "new" ? undefined : categoryModal} onClose={() => setCategoryModal(null)} onSaved={load} /> : null}
       {typeModal ? <TypeModal token={token!} type={typeModal === "new" ? undefined : typeModal} categories={categories} onClose={() => setTypeModal(null)} onSaved={load} /> : null}
-      {ruleModal ? <RuleModal token={token!} rule={ruleModal === "new" ? undefined : ruleModal} types={types} departments={departments} positions={positions} locations={locations} onClose={() => setRuleModal(null)} onSaved={load} /> : null}
+      {ruleModal ? <RuleModal token={token!} rule={ruleModal === "new" ? undefined : ruleModal} types={types} departments={departments} positions={positions} jobLevels={jobLevels} locations={locations} onClose={() => setRuleModal(null)} onSaved={load} /> : null}
     </div>
   );
 }
@@ -217,6 +221,7 @@ function RuleModal({
   types,
   departments,
   positions,
+  jobLevels,
   locations,
   onClose,
   onSaved
@@ -226,6 +231,7 @@ function RuleModal({
   types: DocumentType[];
   departments: OrganizationDepartment[];
   positions: OrganizationPosition[];
+  jobLevels: OrganizationJobLevel[];
   locations: OrganizationLocation[];
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -235,11 +241,18 @@ function RuleModal({
   const [employmentType, setEmploymentType] = useState(rule?.employment_type ?? "");
   const [departmentId, setDepartmentId] = useState(rule?.department_id ?? "");
   const [positionId, setPositionId] = useState(rule?.position_id ?? "");
+  const [jobLevelId, setJobLevelId] = useState("");
   const [locationId, setLocationId] = useState(rule?.location_id ?? "");
   const [isRequired, setIsRequired] = useState(rule?.is_required === undefined ? true : Boolean(rule.is_required));
   const [priority, setPriority] = useState(String(rule?.rule_priority ?? 100));
   const [customCondition, setCustomCondition] = useState(rule?.custom_condition_json ?? "");
   const [error, setError] = useState<string | null>(null);
+  const updateCascade = (next: { locationId?: string; departmentId?: string; jobLevelId?: string; positionId?: string }) => {
+    setLocationId(next.locationId ?? "");
+    setDepartmentId(next.departmentId ?? "");
+    setJobLevelId(next.jobLevelId ?? "");
+    setPositionId(next.positionId ?? "");
+  };
   async function save() {
     try {
       const input = {
@@ -266,9 +279,20 @@ function RuleModal({
       <div className="md:col-span-2"><Label>Document type</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={documentTypeId} onChange={(event) => setDocumentTypeId(event.target.value)}>{types.filter((type) => type.is_active).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</SelectField></div>
       <Select label="Employee type" value={employeeType} onChange={setEmployeeType} options={["", "LOCAL", "FOREIGN", "OTHER"]} />
       <Select label="Employment type" value={employmentType} onChange={setEmploymentType} options={["", "FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]} />
-      <OptionSelect label="Department" value={departmentId} onChange={setDepartmentId} options={departments.map((item) => ({ value: item.id, label: item.name }))} />
-      <OptionSelect label="Position/designation" value={positionId} onChange={setPositionId} options={positions.map((item) => ({ value: item.id, label: item.title }))} />
-      <OptionSelect label="Outlet/location" value={locationId} onChange={setLocationId} options={locations.map((item) => ({ value: item.id, label: item.name }))} />
+      <div className="md:col-span-2">
+        <OrganizationCascadeSelector
+          includeLocation
+          mode="document-rule"
+          departments={departments}
+          locations={locations}
+          jobLevels={jobLevels}
+          positions={positions}
+          value={{ locationId, departmentId, jobLevelId, positionId }}
+          labels={{ locationId: "Outlet/location", departmentId: "Department", jobLevelId: "Job level (position filter)", positionId: "Position/designation" }}
+          onChange={updateCascade}
+          className="grid gap-3 md:grid-cols-2"
+        />
+      </div>
       <Field label="Rule priority" type="number" value={priority} onChange={setPriority} />
       <CheckboxField label="Required document" checked={isRequired} onChange={setIsRequired} className="self-end" />
       <div className="md:col-span-2"><Label>Custom condition JSON</Label><TextareaField className="mt-1 min-h-20 w-full rounded-md border bg-white px-3 py-2 font-mono text-xs" value={customCondition} onChange={(event) => setCustomCondition(event.target.value)} placeholder='{"future":"condition"}' /></div>
@@ -286,8 +310,4 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
   return <div className="space-y-1.5"><Label>{label}</Label><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option || "any"} value={option}>{option || "Any"}</option>)}</SelectField></div>;
-}
-
-function OptionSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}><option value="">Any</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectField></div>;
 }

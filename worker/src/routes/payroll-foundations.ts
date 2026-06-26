@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateDateRange, validatePayrollRules } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
@@ -122,6 +123,7 @@ function readCustomDeductionTemplateInput(body: Row, old?: Row) {
   if (!code || !name) return { error: "Template code and name are required." };
   if (!CUSTOM_DEDUCTION_TYPES.has(deductionType)) return { error: "A valid deduction type is required." };
   if (!CUSTOM_DEDUCTION_AMOUNT_TYPES.has(amountType)) return { error: "A valid amount type is required." };
+  if (hasValidationErrors(validatePayrollRules({ amount: defaultAmount }))) return { error: "Default amount cannot be negative." };
   if (defaultAmount !== null && (!Number.isFinite(defaultAmount) || defaultAmount < 0)) return { error: "Default amount cannot be negative." };
   if (defaultPercentage !== null && (!Number.isFinite(defaultPercentage) || defaultPercentage < 0 || defaultPercentage > 100)) return { error: "Default percentage must be between 0 and 100." };
   if (defaultInstallments !== null && (!Number.isFinite(defaultInstallments) || defaultInstallments <= 0)) return { error: "Default installment count must be positive." };
@@ -205,10 +207,12 @@ function readEmployeeCustomDeductionInput(body: Row, template: Row, settings: Ro
   if (["PERCENTAGE_OF_BASIC", "PERCENTAGE_OF_GROSS"].includes(amountType) && assignedPercentage === null) return { error: "Percentage custom deductions require an assigned percentage." };
   if (deductionType === "INSTALLMENT" && (installmentCount === null || !Number.isFinite(installmentCount) || installmentCount <= 0)) return { error: "Installment deductions require a positive installment count." };
   const effectiveFrom = hasInput(body, "effective_from") ? text(body.effective_from) : text(old?.effective_from) || now().slice(0, 10);
-  const effectiveTo = hasInput(body, "effective_to") ? text(body.effective_to) || null : old?.effective_to ?? null;
-  const startDate = hasInput(body, "start_date") ? text(body.start_date) || null : old?.start_date ?? effectiveFrom;
-  const endDate = hasInput(body, "end_date") ? text(body.end_date) || null : old?.end_date ?? null;
+  const effectiveTo = hasInput(body, "effective_to") ? text(body.effective_to) || null : text(old?.effective_to) || null;
+  const startDate = hasInput(body, "start_date") ? text(body.start_date) || null : text(old?.start_date) || effectiveFrom;
+  const endDate = hasInput(body, "end_date") ? text(body.end_date) || null : text(old?.end_date) || null;
   if (!validDate(effectiveFrom) || !validDate(effectiveTo) || !validDate(startDate) || !validDate(endDate)) return { error: "Dates must use YYYY-MM-DD format." };
+  if (hasValidationErrors(validateDateRange({ start: effectiveFrom, end: effectiveTo, startField: "effective_from", endField: "effective_to", label: "Effective to date" }))) return { error: "Effective to date cannot be before effective from date." };
+  if (hasValidationErrors(validateDateRange({ start: startDate, end: endDate, startField: "start_date", endField: "end_date", label: "End date" }))) return { error: "End date cannot be before start date." };
   if (startDate && endDate && endDate < startDate) return { error: "End date cannot be before start date." };
   const remainingBalance = hasInput(body, "remaining_balance")
     ? nullableNumberValue(body.remaining_balance)
@@ -474,6 +478,7 @@ function readLoanInput(body: Row, old?: Row): BankLoanInputResult {
   if (outstandingBalance !== null && (!Number.isFinite(outstandingBalance) || outstandingBalance < 0)) return { error: "Outstanding balance cannot be negative." };
   if (priorityNumber !== null && (!Number.isFinite(priorityNumber) || priorityNumber < 0)) return { error: "Priority number cannot be negative." };
   if (!validDate(deductionStartDate) || !validDate(deductionEndDate)) return { error: "Deduction start and end dates must use YYYY-MM-DD format." };
+  if (hasValidationErrors(validateDateRange({ start: deductionStartDate, end: deductionEndDate, startField: "deduction_start_date", endField: "deduction_end_date", label: "Deduction end date" }))) return { error: "Deduction end date cannot be before start date." };
   if (deductionStartDate && deductionEndDate && deductionEndDate < deductionStartDate) return { error: "Deduction end date cannot be before start date." };
   return {
     loan_reference_number: loanReferenceNumber,
@@ -1486,6 +1491,8 @@ payrollFoundationRoutes.get("/reports/custom-deduction-applications", requireAny
 payrollFoundationRoutes.get("/pension-schemes", requireAnyPermission(["payroll.pension_schemes.view", "payroll.pension_schemes.manage", "payroll.view"]), async (c) => ok(c, { schemes: (await c.env.DB.prepare("SELECT * FROM pension_schemes WHERE status != 'ARCHIVED' ORDER BY effective_from DESC, scheme_name").all<Row>()).results }));
 payrollFoundationRoutes.post("/pension-schemes", requireAnyPermission(["payroll.pension_schemes.create", "payroll.pension_schemes.manage"]), async (c) => {
   const body = await c.req.json<Row>();
+  const dateIssues = validateDateRange({ start: text(body.effective_from) || now().slice(0, 10), end: text(body.effective_to) || null, startField: "effective_from", endField: "effective_to", label: "Effective to date" });
+  if (hasValidationErrors(dateIssues)) return fail(c, 400, "VALIDATION_ERROR", dateIssues[0].message);
   const id = crypto.randomUUID();
   await c.env.DB.prepare("INSERT INTO pension_schemes (id, scheme_code, scheme_name, country_code, employee_contribution_percent, employer_contribution_percent, contribution_basis, include_allowances, min_employee_age, max_employee_age, local_employee_required, foreign_employee_allowed, foreign_employee_default_required, employer_can_pay_employee_share, effective_from, notes, created_by_user_id, updated_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, text(body.scheme_code).toUpperCase(), text(body.scheme_name), text(body.country_code) || "MV", numberValue(body.employee_contribution_percent), numberValue(body.employer_contribution_percent), text(body.contribution_basis) || "BASIC_SALARY_ONLY", bool(body.include_allowances, false) ? 1 : 0, body.min_employee_age ?? null, body.max_employee_age ?? null, bool(body.local_employee_required, true) ? 1 : 0, bool(body.foreign_employee_allowed, true) ? 1 : 0, bool(body.foreign_employee_default_required, false) ? 1 : 0, bool(body.employer_can_pay_employee_share, true) ? 1 : 0, text(body.effective_from) || now().slice(0, 10), text(body.notes) || null, c.get("currentUser").id, c.get("currentUser").id).run();
   await audit(c, "payroll.pension_scheme.created", "pension_scheme", id, { newValue: body });
@@ -1496,6 +1503,8 @@ payrollFoundationRoutes.patch("/pension-schemes/:schemeId", requireAnyPermission
   const old = await c.env.DB.prepare("SELECT * FROM pension_schemes WHERE id = ?").bind(c.req.param("schemeId")).first<Row>();
   if (!old) return fail(c, 404, "NOT_FOUND", "Pension scheme was not found.");
   const body = await c.req.json<Row>();
+  const dateIssues = validateDateRange({ start: text(body.effective_from) || text(old.effective_from), end: text(body.effective_to) || text(old.effective_to) || null, startField: "effective_from", endField: "effective_to", label: "Effective to date" });
+  if (hasValidationErrors(dateIssues)) return fail(c, 400, "VALIDATION_ERROR", dateIssues[0].message);
   await c.env.DB.prepare("UPDATE pension_schemes SET scheme_name = ?, employee_contribution_percent = ?, employer_contribution_percent = ?, contribution_basis = ?, include_allowances = ?, effective_from = ?, effective_to = ?, status = ?, notes = ?, updated_by_user_id = ?, updated_at = ? WHERE id = ?").bind(text(body.scheme_name) || old.scheme_name, numberValue(body.employee_contribution_percent, Number(old.employee_contribution_percent)), numberValue(body.employer_contribution_percent, Number(old.employer_contribution_percent)), text(body.contribution_basis) || old.contribution_basis, bool(body.include_allowances, Boolean(old.include_allowances)) ? 1 : 0, text(body.effective_from) || old.effective_from, text(body.effective_to) || old.effective_to, text(body.status) || old.status, text(body.notes) || old.notes, c.get("currentUser").id, now(), old.id).run();
   await audit(c, "payroll.pension_scheme.updated", "pension_scheme", String(old.id), { oldValue: old, newValue: body });
   return ok(c, { scheme: await c.env.DB.prepare("SELECT * FROM pension_schemes WHERE id = ?").bind(old.id).first<Row>() });

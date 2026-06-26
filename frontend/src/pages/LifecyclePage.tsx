@@ -2,6 +2,7 @@ import { CheckCircle2, FileDown, RefreshCw, ShieldAlert } from "lucide-react";
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
@@ -13,6 +14,7 @@ import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Timeline } from "../components/ui/timeline";
 import { useAuth } from "../hooks/useAuth";
+import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
 import type { LifecycleSettings, LifecycleTask, OffboardingCase, OnboardingCase } from "../types/lifecycle";
@@ -122,6 +124,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
   const [reportKey, setReportKey] = useState(reportKeys[0]);
   const [reportRows, setReportRows] = useState<Row[]>([]);
   const [reasonAction, setReasonAction] = useState<{ title: string; submit: (reason: string) => Promise<void> } | null>(null);
+  const organizationRefs = useOrganizationReferences(token);
 
   const activeKind: CaseKind = mode.startsWith("offboarding") ? "offboarding" : "onboarding";
   const activeCases = activeKind === "onboarding" ? onboardingCases : offboardingCases;
@@ -228,7 +231,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
       {mode === "onboarding-alerts" ? <AlertsSection alerts={alerts} loading={loading} error={error} onRefresh={() => void refreshAlerts()} /> : null}
       {mode === "lifecycle-reports" ? <ReportsSection reportKey={reportKey} setReportKey={setReportKey} rows={reportRows} loading={loading} error={error} onExport={() => void exportReport()} /> : null}
 
-      {createKind ? <CreateCaseModal kind={createKind} employees={employees} onClose={() => setCreateKind(null)} onCreated={() => { setCreateKind(null); void load(); }} /> : null}
+      {createKind ? <CreateCaseModal kind={createKind} employees={employees} organizationRefs={organizationRefs} onClose={() => setCreateKind(null)} onCreated={() => { setCreateKind(null); void load(); }} /> : null}
       {selected ? (
         <CaseDetailModal
           kind={selected.kind}
@@ -371,7 +374,7 @@ function ReportsSection({ reportKey, setReportKey, rows, loading, error, onExpor
   );
 }
 
-function CreateCaseModal({ kind, employees, onClose, onCreated }: { kind: CaseKind; employees: Employee[]; onClose: () => void; onCreated: () => void }) {
+function CreateCaseModal({ kind, employees, organizationRefs, onClose, onCreated }: { kind: CaseKind; employees: Employee[]; organizationRefs: ReturnType<typeof useOrganizationReferences>; onClose: () => void; onCreated: () => void }) {
   const { token } = useAuth();
   const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? "");
   const [lastWorkingDay, setLastWorkingDay] = useState(new Date().toISOString().slice(0, 10));
@@ -393,7 +396,7 @@ function CreateCaseModal({ kind, employees, onClose, onCreated }: { kind: CaseKi
   return (
     <Modal title={`Create ${kind} case`} onClose={onClose}>
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-        <div><Label>Employee</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={employeeId} onChange={(event) => setEmployeeId(event.target.value)}>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</SelectField></div>
+        <EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={employeeId} onChange={setEmployeeId} />
         {kind === "offboarding" ? (
           <>
             <div><Label>Exit type</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={exitType} onChange={(event) => setExitType(event.target.value)}>{["RESIGNED", "TERMINATED", "END_OF_CONTRACT", "ABSCONDED", "RETIRED", "DECEASED", "OTHER"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField></div>

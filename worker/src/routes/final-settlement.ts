@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateDateRange, validateLockedState, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, Env } from "../types";
@@ -1031,6 +1032,7 @@ export async function createFinalSettlementCase(c: Context<AppBindings>, input: 
   const lastWorkingDay = readString(input.last_working_day ?? employee.exit_date ?? input.exit_date);
   if (!isDate(exitDate)) throw new Error("INVALID_EXIT_DATE");
   if (!isDate(lastWorkingDay) || lastWorkingDay > exitDate) throw new Error("INVALID_LAST_WORKING_DAY");
+  if (hasValidationErrors(validateDateRange({ start: lastWorkingDay, end: exitDate, startField: "last_working_day", endField: "exit_date", label: "Exit date" }))) throw new Error("INVALID_LAST_WORKING_DAY");
 
   const duplicate = await c.env.DB
     .prepare("SELECT id FROM final_settlement_cases WHERE employee_id = ? AND status NOT IN ('CANCELLED', 'FINALIZED', 'LOCKED') LIMIT 1")
@@ -1457,6 +1459,12 @@ finalSettlementRoutes.patch("/cases/:caseId", requireAnyPermission(["final_settl
   if (!settlementCase) return fail(c, 404, "SETTLEMENT_CASE_NOT_FOUND", "Final settlement case not found.");
   if (LOCKED_CASE_STATUSES.has(readString(settlementCase.status)) && !has(c, "final_settlement.override_finalized")) return fail(c, 409, "SETTLEMENT_FINALIZED", "This settlement is finalized and locked.");
   const body = await readJsonBody(c.req.raw);
+  const lockedIssues = validateLockedState({ status: readString(settlementCase.status), field: "status", message: "This settlement is locked/finalized. Use the authorized unlock or adjustment flow." });
+  if (hasValidationErrors(lockedIssues) && !has(c, "final_settlement.override_finalized")) return validationResponse(c, lockedIssues, 423);
+  const periodStart = readString(body.settlement_period_start_date ?? settlementCase.settlement_period_start_date);
+  const periodEnd = readString(body.settlement_period_end_date ?? settlementCase.settlement_period_end_date);
+  const dateIssues = validateDateRange({ start: periodStart || null, end: periodEnd || null, startField: "settlement_period_start_date", endField: "settlement_period_end_date", label: "Settlement period end date" });
+  if (hasValidationErrors(dateIssues)) return validationResponse(c, dateIssues);
   const fields = ["exit_date", "last_working_day", "settlement_period_start_date", "settlement_period_end_date", "reason", "notes"] as const;
   const assignments: string[] = [];
   const values: BindValue[] = [];

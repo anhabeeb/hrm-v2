@@ -5,6 +5,7 @@ import { recordAudit } from "../db/audit";
 import { getRoleById } from "../db/roles";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
+import { hasValidationErrors, validateAccessScope, validateOrganizationCascade, validationIssue, validationResponse } from "../lib/moduleValidation";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
@@ -229,28 +230,46 @@ async function readMappingInput(c: Context<AppBindings>, body: Record<string, un
   const name = readString(body.name ?? existing?.name);
   if (!name) return { error: fail(c, 400, "VALIDATION_ERROR", "Mapping name is required.") };
 
-  return {
-    input: {
-      name,
-      description: optional(body.description ?? existing?.description),
-      default_role_id: roleId,
-      employee_type: employeeType,
-      employment_type: employmentType,
-      department_id: optional(body.department_id ?? existing?.department_id),
-      position_id: optional(body.position_id ?? existing?.position_id),
-      location_id: optional(body.location_id ?? existing?.location_id),
-      job_level_id: optional(body.job_level_id ?? existing?.job_level_id),
-      default_scope_type: scopeType,
-      allowed_department_ids_json: stringifyIdList(body.allowed_department_ids) ?? existing?.allowed_department_ids_json ?? null,
-      allowed_location_ids_json: stringifyIdList(body.allowed_location_ids) ?? existing?.allowed_location_ids_json ?? null,
-      include_sub_departments: bool(body.include_sub_departments, existing?.include_sub_departments === 1),
-      include_reporting_chain: bool(body.include_reporting_chain, existing?.include_reporting_chain === 1),
-      can_view: bool(body.can_view, existing?.can_view !== 0),
-      can_manage: bool(body.can_manage, existing?.can_manage === 1),
-      priority: num(body.priority, existing?.priority ?? 100),
-      is_active: bool(body.is_active, existing?.is_active !== 0)
-    }
+  const input = {
+    name,
+    description: optional(body.description ?? existing?.description),
+    default_role_id: roleId,
+    employee_type: employeeType,
+    employment_type: employmentType,
+    department_id: optional(body.department_id ?? existing?.department_id),
+    position_id: optional(body.position_id ?? existing?.position_id),
+    location_id: optional(body.location_id ?? existing?.location_id),
+    job_level_id: optional(body.job_level_id ?? existing?.job_level_id),
+    default_scope_type: scopeType,
+    allowed_department_ids_json: stringifyIdList(body.allowed_department_ids) ?? existing?.allowed_department_ids_json ?? null,
+    allowed_location_ids_json: stringifyIdList(body.allowed_location_ids) ?? existing?.allowed_location_ids_json ?? null,
+    include_sub_departments: bool(body.include_sub_departments, existing?.include_sub_departments === 1),
+    include_reporting_chain: bool(body.include_reporting_chain, existing?.include_reporting_chain === 1),
+    can_view: bool(body.can_view, existing?.can_view !== 0),
+    can_manage: bool(body.can_manage, existing?.can_manage === 1),
+    priority: num(body.priority, existing?.priority ?? 100),
+    is_active: bool(body.is_active, existing?.is_active !== 0)
   };
+  const scopeIssues = await validateAccessScope(c.env.DB, c.get("currentUser"), {
+    departmentIds: parseIds(input.allowed_department_ids_json),
+    locationIds: parseIds(input.allowed_location_ids_json),
+    requestedScopeType: input.default_scope_type
+  });
+  const allowedDepartmentIds = parseIds(input.allowed_department_ids_json);
+  const allowedLocationIds = parseIds(input.allowed_location_ids_json);
+  const mappingScopeIssues = [
+    ...(scopeType === "SELECTED_DEPARTMENTS" && input.department_id && !allowedDepartmentIds.includes(input.department_id)
+      ? [validationIssue("ROLE_MAPPING_DEPARTMENT_OUTSIDE_SCOPE", "department_id", "Selected mapping department is outside the allowed department scope.", "error", { departmentId: input.department_id, allowedDepartmentIds })]
+      : []),
+    ...(scopeType === "SELECTED_LOCATIONS" && input.location_id && !allowedLocationIds.includes(input.location_id)
+      ? [validationIssue("ROLE_MAPPING_LOCATION_OUTSIDE_SCOPE", "location_id", "Selected mapping location is outside the allowed location scope.", "error", { locationId: input.location_id, allowedLocationIds })]
+      : [])
+  ];
+  const cascadeIssues = await validateOrganizationCascade(c.env.DB, input);
+  const issues = [...cascadeIssues, ...scopeIssues, ...mappingScopeIssues];
+  if (hasValidationErrors(issues)) return { error: validationResponse(c, issues) };
+
+  return { input };
 }
 
 roleMappingRoutes.get("/", requirePermission("role_mappings.view"), async (c) => ok(c, { role_mappings: (await listMappings(c.env.DB)).map(toMappingApi) }));

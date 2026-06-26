@@ -14,6 +14,7 @@ import {
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
+import { hasValidationErrors, validateDuplicateConflict, validateLockedState, validationResponse } from "../lib/moduleValidation";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
@@ -67,9 +68,8 @@ roleRoutes.post("/", requirePermission("roles.create"), async (c) => {
   }
 
   const existing = await getRoleByName(c.env.DB, name);
-  if (existing) {
-    return fail(c, 409, "ROLE_NAME_EXISTS", "A role with this name already exists.");
-  }
+  const duplicateIssues = validateDuplicateConflict(existing, "name", "A role with this name already exists.");
+  if (hasValidationErrors(duplicateIssues)) return validationResponse(c, duplicateIssues, 409);
 
   const roleId = crypto.randomUUID();
   await c.env.DB
@@ -113,11 +113,12 @@ roleRoutes.patch("/:id", requirePermission("roles.update"), async (c) => {
   }
 
   const duplicate = await getRoleByName(c.env.DB, name);
-  if (duplicate && duplicate.id !== role.id) {
-    return fail(c, 409, "ROLE_NAME_EXISTS", "A role with this name already exists.");
-  }
+  const duplicateIssues = validateDuplicateConflict(duplicate && duplicate.id !== role.id ? duplicate : null, "name", "A role with this name already exists.");
+  if (hasValidationErrors(duplicateIssues)) return validationResponse(c, duplicateIssues, 409);
 
   if (role.is_protected === 1 && isActive === false) {
+    const lockedIssues = validateLockedState({ locked: true, field: "is_active", message: "Protected Owner/Super Admin role cannot be disabled." });
+    if (hasValidationErrors(lockedIssues)) return validationResponse(c, lockedIssues, 423);
     await auditBlocked(c, role.id, "Protected Owner/Super Admin role cannot be disabled.");
     return fail(c, 409, "PROTECTED_ROLE", "Protected Owner/Super Admin role cannot be disabled.");
   }

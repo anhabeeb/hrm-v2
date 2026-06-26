@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateApprovalWorkflowRules, validateOrganizationCascade, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
@@ -727,6 +728,11 @@ leaveRoutes.get("/workflows/:id", requirePermission("leave.view"), async (c) => 
 leaveRoutes.post("/workflows", requirePermission("leave.workflow.manage"), async (c) => {
   const input = readWorkflowBody(await readJsonBody(c.req.raw));
   if (!input.name) return fail(c, 400, "VALIDATION_ERROR", "Workflow name is required.");
+  const workflowIssues = [
+    ...(await validateOrganizationCascade(c.env.DB, input)),
+    ...validateApprovalWorkflowRules({ hasActiveStep: true, allowAutoApprove: input.is_default, allowSelfApproval: false })
+  ];
+  if (hasValidationErrors(workflowIssues)) return validationResponse(c, workflowIssues);
   const id = crypto.randomUUID();
   await c.env.DB.prepare("INSERT INTO leave_approval_workflows (id, name, description, applies_to_leave_type_id, applies_to_employee_type, applies_to_employment_type, department_id, location_id, position_id, job_level_id, min_duration_days, max_duration_days, payroll_impact_only, is_default, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.name, input.description, input.applies_to_leave_type_id, input.applies_to_employee_type, input.applies_to_employment_type, input.department_id, input.location_id, input.position_id, input.job_level_id, input.min_duration_days, input.max_duration_days, input.payroll_impact_only ? 1 : 0, input.is_default ? 1 : 0, input.priority).run();
   await auditLeave(c, { action: "leave.workflow.created", entityType: "leave_workflow", entityId: id, newValue: input });
@@ -739,6 +745,11 @@ leaveRoutes.patch("/workflows/:id", requirePermission("leave.workflow.manage"), 
   if (!old) return fail(c, 404, "NOT_FOUND", "Workflow was not found.");
   const input = readWorkflowBody(await readJsonBody(c.req.raw));
   if (!input.name) return fail(c, 400, "VALIDATION_ERROR", "Workflow name is required.");
+  const workflowIssues = [
+    ...(await validateOrganizationCascade(c.env.DB, input)),
+    ...validateApprovalWorkflowRules({ hasActiveStep: true, allowAutoApprove: input.is_default, allowSelfApproval: false })
+  ];
+  if (hasValidationErrors(workflowIssues)) return validationResponse(c, workflowIssues);
   await c.env.DB.prepare("UPDATE leave_approval_workflows SET name = ?, description = ?, applies_to_leave_type_id = ?, applies_to_employee_type = ?, applies_to_employment_type = ?, department_id = ?, location_id = ?, position_id = ?, job_level_id = ?, min_duration_days = ?, max_duration_days = ?, payroll_impact_only = ?, is_default = ?, priority = ?, updated_at = ? WHERE id = ?").bind(input.name, input.description, input.applies_to_leave_type_id, input.applies_to_employee_type, input.applies_to_employment_type, input.department_id, input.location_id, input.position_id, input.job_level_id, input.min_duration_days, input.max_duration_days, input.payroll_impact_only ? 1 : 0, input.is_default ? 1 : 0, input.priority, new Date().toISOString(), id).run();
   await auditLeave(c, { action: "leave.workflow.updated", entityType: "leave_workflow", entityId: id, oldValue: old, newValue: input });
   return ok(c, { updated: true });

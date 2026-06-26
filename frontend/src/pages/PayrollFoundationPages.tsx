@@ -1,6 +1,7 @@
 import { Archive, Check, Landmark, PiggyBank, Plus, RefreshCw, ReceiptText, WalletCards } from "lucide-react";
 import { useEffect, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -11,6 +12,7 @@ import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
+import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
 import type { BankLoanEligibilityRule, BankLoanRemittanceBatch, CustomDeductionTemplate, EmployeeBankLoan, EmployeeBankLoanPayment, EmployeeCustomDeduction, EmployeeCustomDeductionApplication, PaymentInstitution, PayrollPensionContribution, PensionRemittanceBatch, PensionScheme } from "../types/payroll";
@@ -189,6 +191,7 @@ export function PayrollCustomDeductionsPage() {
   const [assignmentForm, setAssignmentForm] = useState<AssignmentForm | null>(null);
   const [actionForm, setActionForm] = useState<{ id: string; action: "approve" | "reject" | "pause" | "resume" | "cancel"; reason: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const organizationRefs = useOrganizationReferences(token);
 
   async function load() {
     if (!token) return;
@@ -317,7 +320,7 @@ export function PayrollCustomDeductionsPage() {
     <Panel className="overflow-hidden"><Header icon={<ReceiptText className="h-4 w-4" />} title="Payroll application history" /><DataTable rows={applications} columns={["employee_no", "employee_name", "template_name_snapshot", "scheduled_amount", "deducted_amount", "shortfall_amount", "remaining_balance_after", "application_status", "created_at"]} empty="No payroll application history yet." /></Panel>
 
     {templateForm ? <TemplateModal form={templateForm} onChange={setTemplateForm} onClose={() => setTemplateForm(null)} onConfirm={() => void saveTemplate()} /> : null}
-    {assignmentForm ? <AssignmentModal form={assignmentForm} templates={templates.filter((template) => template.status === "ACTIVE")} employees={employees} onChange={setAssignmentForm} onClose={() => setAssignmentForm(null)} onConfirm={() => void saveAssignment()} /> : null}
+    {assignmentForm ? <AssignmentModal form={assignmentForm} templates={templates.filter((template) => template.status === "ACTIVE")} employees={employees} organizationRefs={organizationRefs} onChange={setAssignmentForm} onClose={() => setAssignmentForm(null)} onConfirm={() => void saveAssignment()} /> : null}
     {actionForm ? <Modal title={`${actionForm.action} custom deduction`} onClose={() => setActionForm(null)} onConfirm={() => void runAction()} disabled={(actionForm.action === "reject" || actionForm.action === "cancel") && !actionForm.reason.trim()}>
       <div className="md:col-span-2"><Field label={actionForm.action === "reject" || actionForm.action === "cancel" ? "Reason required" : "Reason"}><Input value={actionForm.reason} onChange={(event) => setActionForm({ ...actionForm, reason: event.target.value })} /></Field></div>
     </Modal> : null}
@@ -515,7 +518,7 @@ function TemplateModal({ form, onChange, onClose, onConfirm }: { form: TemplateF
   </Modal>;
 }
 
-function AssignmentModal({ form, templates, employees, onChange, onClose, onConfirm }: { form: AssignmentForm; templates: CustomDeductionTemplate[]; employees: Employee[]; onChange: (form: AssignmentForm) => void; onClose: () => void; onConfirm: () => void }) {
+function AssignmentModal({ form, templates, employees, organizationRefs, onChange, onClose, onConfirm }: { form: AssignmentForm; templates: CustomDeductionTemplate[]; employees: Employee[]; organizationRefs: ReturnType<typeof useOrganizationReferences>; onChange: (form: AssignmentForm) => void; onClose: () => void; onConfirm: () => void }) {
   function chooseTemplate(templateId: string) {
     const template = templates.find((item) => item.id === templateId);
     onChange({
@@ -530,7 +533,7 @@ function AssignmentModal({ form, templates, employees, onChange, onClose, onConf
   }
 
   return <Modal title="Assign employee custom deduction" onClose={onClose} onConfirm={onConfirm} disabled={!form.employee_id || !form.template_id || !form.effective_from || !form.reason.trim()}>
-    <Field label="Employee"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.employee_id} onChange={(event) => onChange({ ...form, employee_id: event.target.value })}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</SelectField></Field>
+    <div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employee_id) => onChange({ ...form, employee_id })} mode="payroll-filter" /></div>
     <Field label="Template"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.template_id} onChange={(event) => chooseTemplate(event.target.value)}><option value="">Select template</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.code} - {template.name}</option>)}</SelectField></Field>
     <Field label="Assigned amount"><Input type="number" min={0} step="0.01" value={form.assigned_amount} onChange={(event) => onChange({ ...form, assigned_amount: event.target.value })} /></Field>
     <Field label="Assigned percentage"><Input type="number" min={0} max={100} step="0.01" value={form.assigned_percentage} onChange={(event) => onChange({ ...form, assigned_percentage: event.target.value })} /></Field>

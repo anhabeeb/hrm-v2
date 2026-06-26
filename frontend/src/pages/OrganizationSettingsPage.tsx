@@ -1,6 +1,7 @@
 import { Building2, Eye, Pencil, Plus, RotateCcw, Save, Search, ToggleLeft, ToggleRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
@@ -389,6 +390,7 @@ export function OrganizationSettingsPage() {
           modal={modal}
           departments={departments.filter((department) => department.is_active && department.id !== modal.record?.id)}
           jobLevels={jobLevels.filter((level) => level.is_active)}
+          positions={positions.filter((position) => position.is_active)}
           saving={saving}
           canManage={canManage}
           onClose={() => setModal(null)}
@@ -866,6 +868,7 @@ function OrganizationModal({
   modal,
   departments,
   jobLevels,
+  positions,
   saving,
   canManage,
   onClose,
@@ -874,6 +877,7 @@ function OrganizationModal({
   modal: ModalState;
   departments: OrganizationDepartment[];
   jobLevels: OrganizationJobLevel[];
+  positions: OrganizationPosition[];
   saving: boolean;
   canManage: boolean;
   onClose: () => void;
@@ -981,22 +985,23 @@ function OrganizationModal({
             <>
               <Field label="Code" value={form.code ?? ""} disabled={readOnly} onChange={(value) => update("code", value)} />
               <Field label="Title" value={form.title ?? ""} disabled={readOnly} onChange={(value) => update("title", value)} />
-              <SelectField label="Department" value={form.department_id ?? ""} disabled={readOnly} onChange={(value) => update("department_id", value)}>
-                <option value="">None</option>
-                {departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </SelectField>
-              <SelectField label="Job level" value={form.level_id ?? ""} disabled={readOnly} onChange={(value) => update("level_id", value)}>
-                <option value="">None</option>
-                {jobLevels.map((level) => (
-                  <option key={level.id} value={level.id}>
-                    {level.name}
-                  </option>
-                ))}
-              </SelectField>
+              <div className="md:col-span-2">
+                <OrganizationCascadeSelector
+                  departments={departments}
+                  jobLevels={jobLevels}
+                  positions={positions}
+                  value={{ departmentId: form.department_id ?? "", jobLevelId: form.level_id ?? "" }}
+                  onChange={(next) => setForm((current) => ({ ...current, department_id: next.departmentId ?? "", level_id: next.jobLevelId ?? "" }))}
+                  labels={{ departmentId: "Department", jobLevelId: "Job level" }}
+                  mode="general"
+                  className="grid gap-3 md:grid-cols-2"
+                  allowEmpty
+                  includePosition={false}
+                  disabled={readOnly}
+                  requireJobLevelForPosition={false}
+                />
+                {readOnly ? <p className="mt-1 text-xs text-muted-foreground">Organization cascade shown read-only by permissions.</p> : null}
+              </div>
               <div className="md:col-span-2">
                 <Field label="Description" value={form.description ?? ""} disabled={readOnly} onChange={(value) => update("description", value)} />
               </div>

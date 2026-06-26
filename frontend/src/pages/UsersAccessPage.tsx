@@ -20,6 +20,10 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
+import { FormBlockingAlert } from "../components/forms/FormBlockingAlert";
+import { FormWarningAlert } from "../components/forms/FormWarningAlert";
+import { ValidationSummary } from "../components/forms/ValidationSummary";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { CheckboxField, SelectField as UiSelectField } from "../components/ui/page-shell";
@@ -28,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { cn } from "../lib/utils";
+import type { ValidationIssue } from "../lib/validation";
 import type { AccessScopeRule, AccessScopeType, AccessUser, Permission, Role, RoleMappingRule, UserStatus } from "../types/auth";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 
@@ -1108,6 +1113,38 @@ function RoleMappingModal(props: {
   const [isActive, setIsActive] = useState(props.mapping?.is_active ?? true);
   const [validation, setValidation] = useState("");
   const assignableRoles = props.roles.filter((role) => role.is_active && !role.is_protected);
+  const scopedDepartmentIds = scopeType === "SELECTED_DEPARTMENTS" ? departmentIds : undefined;
+  const scopedLocationIds = scopeType === "SELECTED_LOCATIONS" ? locationIds : undefined;
+  const roleMappingDepartmentOutsideScopeCode = "ROLE_MAPPING_DEPARTMENT_OUTSIDE_SCOPE";
+  const roleMappingLocationOutsideScopeCode = "ROLE_MAPPING_LOCATION_OUTSIDE_SCOPE";
+  const mappingValidationCode = validation?.includes("department")
+    ? roleMappingDepartmentOutsideScopeCode
+    : validation?.includes("location")
+      ? roleMappingLocationOutsideScopeCode
+      : "ROLE_MAPPING_VALIDATION";
+  const mappingValidationIssues: ValidationIssue[] = validation ? [{ code: mappingValidationCode, message: validation, severity: "error" }] : [];
+  const blockingMappingIssues = mappingValidationIssues.filter((issue) => issue.severity === "error");
+  const warningMappingIssues = mappingValidationIssues.filter((issue) => issue.severity === "warning");
+  const updateCascade = (next: { locationId?: string; departmentId?: string; jobLevelId?: string; positionId?: string }) => {
+    setLocationId(next.locationId ?? "");
+    setDepartmentId(next.departmentId ?? "");
+    setJobLevelId(next.jobLevelId ?? "");
+    setPositionId(next.positionId ?? "");
+  };
+
+  useEffect(() => {
+    if (scopeType === "SELECTED_DEPARTMENTS" && departmentId && !departmentIds.includes(departmentId)) {
+      setDepartmentId("");
+      setJobLevelId("");
+      setPositionId("");
+    }
+  }, [departmentId, departmentIds, scopeType]);
+
+  useEffect(() => {
+    if (scopeType === "SELECTED_LOCATIONS" && locationId && !locationIds.includes(locationId)) {
+      setLocationId("");
+    }
+  }, [locationId, locationIds, scopeType]);
 
   function toggle(list: string[], value: string, setter: (next: string[]) => void) {
     setter(list.includes(value) ? list.filter((id) => id !== value) : [...list, value]);
@@ -1119,6 +1156,8 @@ function RoleMappingModal(props: {
     if (!defaultRoleId) return setValidation("Default role is required.");
     if (scopeType === "SELECTED_DEPARTMENTS" && departmentIds.length === 0) return setValidation("Select at least one allowed department.");
     if (scopeType === "SELECTED_LOCATIONS" && locationIds.length === 0) return setValidation("Select at least one allowed location.");
+    if (scopeType === "SELECTED_DEPARTMENTS" && departmentId && !departmentIds.includes(departmentId)) return setValidation("Selected mapping department is outside the allowed department scope.");
+    if (scopeType === "SELECTED_LOCATIONS" && locationId && !locationIds.includes(locationId)) return setValidation("Selected mapping location is outside the allowed location scope.");
     await props.onSubmit({ name, description: description || null, default_role_id: defaultRoleId, employee_type: employeeType || null, employment_type: employmentType || null, department_id: departmentId || null, position_id: positionId || null, location_id: locationId || null, job_level_id: jobLevelId || null, default_scope_type: scopeType, allowed_department_ids: departmentIds, allowed_location_ids: locationIds, include_sub_departments: includeSubDepartments, include_reporting_chain: includeReportingChain, can_view: canView, can_manage: canManage, priority: Number(priority) || 100, is_active: isActive });
   }
   return (
@@ -1129,10 +1168,23 @@ function RoleMappingModal(props: {
           <Field label="Default role"><Select value={defaultRoleId} onChange={setDefaultRoleId}><option value="">Select role</option>{assignableRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</Select><p className="text-xs text-muted-foreground">Protected Owner/Super Admin roles cannot be assigned through mapping.</p></Field>
           <Field label="Employee type"><Select value={employeeType} onChange={setEmployeeType}><option value="">Any employee type</option><option value="LOCAL">Local</option><option value="FOREIGN">Foreign</option><option value="OTHER">Other</option></Select></Field>
           <Field label="Employment type"><Select value={employmentType} onChange={setEmploymentType}><option value="">Any employment type</option><option value="FULL_TIME">Full time</option><option value="PART_TIME">Part time</option><option value="INTERN">Intern</option><option value="TEMPORARY">Temporary</option><option value="CONTRACT">Contract</option></Select></Field>
-          <Field label="Department"><Select value={departmentId} onChange={setDepartmentId}><option value="">Any department</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</Select></Field>
-          <Field label="Position"><Select value={positionId} onChange={setPositionId}><option value="">Any position</option>{props.positions.map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</Select></Field>
-          <Field label="Location/outlet"><Select value={locationId} onChange={setLocationId}><option value="">Any location</option>{props.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
-          <Field label="Job level"><Select value={jobLevelId} onChange={setJobLevelId}><option value="">Any job level</option>{props.jobLevels.map((level) => <option key={level.id} value={level.id}>{level.name}</option>)}</Select></Field>
+          <div className="md:col-span-2">
+            <OrganizationCascadeSelector
+              includeLocation
+              departments={props.departments}
+              locations={props.locations}
+              jobLevels={props.jobLevels}
+              positions={props.positions}
+              allowedDepartmentIds={scopedDepartmentIds}
+              allowedLocationIds={scopedLocationIds}
+              mode="role-mapping"
+              childPrerequisiteMessage="Select allowed department scope first"
+              value={{ locationId, departmentId, jobLevelId, positionId }}
+              labels={{ departmentId: "Department", jobLevelId: "Job level", positionId: "Position", locationId: "Location/outlet" }}
+              onChange={updateCascade}
+              className="grid gap-3 md:grid-cols-2"
+            />
+          </div>
           <Field label="Default scope"><Select value={scopeType} onChange={(value) => setScopeType(value as AccessScopeType)}>{Object.entries(SCOPE_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
           <Field label="Priority"><Input type="number" value={priority} onChange={(event) => setPriority(event.target.value)} /><p className="text-xs text-muted-foreground">Higher priority rules win when multiple mappings match.</p></Field>
           <Field label="Active status"><Select value={isActive ? "ACTIVE" : "INACTIVE"} onChange={(value) => setIsActive(value === "ACTIVE")}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></Select></Field>
@@ -1141,7 +1193,9 @@ function RoleMappingModal(props: {
         {scopeType === "SELECTED_DEPARTMENTS" ? <ChecklistPanel title="Allowed departments" empty="No departments configured." items={props.departments.map((department) => ({ id: department.id, label: `${department.code} - ${department.name}` }))} selected={departmentIds} onToggle={(id) => toggle(departmentIds, id, setDepartmentIds)} /> : null}
         {scopeType === "SELECTED_LOCATIONS" ? <ChecklistPanel title="Allowed locations" empty="No locations configured." items={props.locations.map((location) => ({ id: location.id, label: `${location.code} - ${location.name}` }))} selected={locationIds} onToggle={(id) => toggle(locationIds, id, setLocationIds)} /> : null}
         <div className="grid gap-3 md:grid-cols-2"><Check label="Include sub-departments" checked={includeSubDepartments} onChange={setIncludeSubDepartments} /><Check label="Include reporting chain" checked={includeReportingChain} onChange={setIncludeReportingChain} /><Check label="Can view" checked={canView} onChange={setCanView} /><Check label="Can manage" checked={canManage} onChange={setCanManage} /></div>
-        {validation ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{validation}</div> : null}
+        <ValidationSummary issues={mappingValidationIssues} />
+        <FormBlockingAlert issues={blockingMappingIssues} />
+        <FormWarningAlert issues={warningMappingIssues} />
         <ModalActions onCancel={props.onClose} submitLabel="Save mapping" />
       </form>
     </Modal>

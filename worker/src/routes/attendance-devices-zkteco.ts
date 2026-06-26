@@ -3,6 +3,7 @@ import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
 import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateDuplicateConflict, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser } from "../types";
@@ -592,12 +593,29 @@ async function upsertBiometricMapping(c: Context<AppBindings>, employeeId: strin
   return { input };
 }
 
+async function validateBiometricMappingUniqueness(c: Context<AppBindings>, input: { biometricUserId: string; attendanceDeviceId?: string | null; excludeMappingId?: string | null }) {
+  const existing = await c.env.DB
+    .prepare(
+      `SELECT id FROM employee_biometric_mappings
+       WHERE status = 'ACTIVE'
+         AND biometric_user_id = ?
+         AND COALESCE(attendance_device_id, '') = COALESCE(?, '')
+         AND (? IS NULL OR id != ?)
+       LIMIT 1`
+    )
+    .bind(input.biometricUserId, input.attendanceDeviceId ?? null, input.excludeMappingId ?? null, input.excludeMappingId ?? null)
+    .first<{ id: string }>();
+  return validateDuplicateConflict(existing, "biometric_user_id", "An active mapping already exists for this device and biometric user ID.");
+}
+
 attendanceDeviceSyncRoutes.post("/biometric-mappings", requireAnyPermission(["attendance.biometric_mappings.manage"]), async (c) => {
   const body = await readJsonBody(c.req.raw);
   const employeeId = readString(body.employee_id);
   if (!employeeId) return fail(c, 400, "VALIDATION_ERROR", "Employee is required.");
   const prepared = await upsertBiometricMapping(c, employeeId);
   if ("status" in prepared) return prepared;
+  const duplicateIssues = await validateBiometricMappingUniqueness(c, { biometricUserId: prepared.input.biometric_user_id, attendanceDeviceId: prepared.input.attendance_device_id });
+  if (hasValidationErrors(duplicateIssues)) return validationResponse(c, duplicateIssues, 409);
   const id = crypto.randomUUID();
   try {
     await c.env.DB.prepare(
@@ -618,6 +636,8 @@ attendanceDeviceSyncRoutes.patch("/biometric-mappings/:mappingId", requireAnyPer
   if (!old) return fail(c, 404, "NOT_FOUND", "Biometric mapping was not found.");
   const prepared = await upsertBiometricMapping(c, String(old.employee_id), old);
   if ("status" in prepared) return prepared;
+  const duplicateIssues = await validateBiometricMappingUniqueness(c, { biometricUserId: prepared.input.biometric_user_id, attendanceDeviceId: prepared.input.attendance_device_id, excludeMappingId: id });
+  if (hasValidationErrors(duplicateIssues)) return validationResponse(c, duplicateIssues, 409);
   await c.env.DB.prepare(
     `UPDATE employee_biometric_mappings SET attendance_device_id = ?, biometric_user_id = ?, biometric_user_name = ?,
        external_employee_code = ?, mapping_source = ?, status = ?, is_primary = ?, notes = ?, updated_by_user_id = ?, updated_at = ?

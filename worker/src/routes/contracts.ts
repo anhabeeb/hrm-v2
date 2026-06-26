@@ -5,6 +5,7 @@ import { recordAudit } from "../db/audit";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, Env } from "../types";
+import { hasValidationErrors, validateContractRules, validationResponse } from "../lib/moduleValidation";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
 
@@ -431,6 +432,19 @@ function validateContractDates(input: ReturnType<typeof readContractBody>) {
   if (input.contract_end_date && input.contract_start_date && input.contract_end_date < input.contract_start_date) return "CONTRACT_DATE_INVALID";
   if (input.probation_start_date && input.probation_end_date && input.probation_end_date < input.probation_start_date) return "CONTRACT_DATE_INVALID";
   return null;
+}
+
+function validateContractInput(input: ReturnType<typeof readContractBody>) {
+  return [
+    ...validateContractRules({
+      startDate: input.contract_start_date,
+      endDate: input.contract_end_date
+    }),
+    ...validateContractRules({
+      startDate: input.probation_start_date,
+      endDate: input.probation_end_date
+    })
+  ];
 }
 
 async function activeContractConflict(db: Env["DB"], employeeId: string, excludeContractId?: string) {
@@ -895,6 +909,8 @@ contractRoutes.patch("/:contractId", requireAnyPermission(CONTRACT_UPDATE), asyn
   const input = readContractBody({ ...contract, ...body });
   const dateError = validateContractDates(input);
   if (dateError) return fail(c, 400, dateError, "Contract dates are invalid.");
+  const ruleIssues = validateContractInput(input);
+  if (hasValidationErrors(ruleIssues)) return validationResponse(c, ruleIssues);
   if (!(await validateDocumentLink(c.env.DB, contract.employee_id, input.document_id))) return fail(c, 400, "CONTRACT_DOCUMENT_INVALID", "Linked contract document must belong to this employee and be active.");
   const updates = [
     "contract_title = ?",
@@ -1182,6 +1198,8 @@ employeeContractRoutes.post("/:employeeId/contracts", requireAnyPermission(CONTR
   if (type.requires_end_date === 1 && !input.contract_end_date) return fail(c, 400, "CONTRACT_DATE_INVALID", "This contract type requires an end date.");
   const dateError = validateContractDates(input);
   if (dateError) return fail(c, 400, dateError, "Contract dates are invalid.");
+  const ruleIssues = validateContractInput(input);
+  if (hasValidationErrors(ruleIssues)) return validationResponse(c, ruleIssues);
   if (!(await validateDocumentLink(c.env.DB, employeeId, input.document_id))) return fail(c, 400, "CONTRACT_DOCUMENT_INVALID", "Linked contract document must belong to this employee and be active.");
   const id = crypto.randomUUID();
   const contractNumber = input.contract_number ?? buildContractNumber(employee);

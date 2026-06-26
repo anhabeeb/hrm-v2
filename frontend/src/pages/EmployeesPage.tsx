@@ -5,6 +5,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { DataTableShell } from "../components/ui/data-table-shell";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -361,6 +362,15 @@ function EmployeeFormModal(props: {
 }) {
   const [form, setForm] = useState<EmployeeInput>(() => toInput(props.employee));
   const update = (key: keyof EmployeeInput, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
+  const updateCascade = (next: { locationId?: string; departmentId?: string; jobLevelId?: string; positionId?: string }) => {
+    setForm((current) => ({
+      ...current,
+      primary_location_id: next.locationId ?? "",
+      primary_department_id: next.departmentId ?? "",
+      job_level_id: next.jobLevelId ?? "",
+      primary_position_id: next.positionId ?? ""
+    }));
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
       <div className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-lg border bg-white shadow-xl">
@@ -379,10 +389,23 @@ function EmployeeFormModal(props: {
             <UiSelectField label="Employee type" value={form.employee_type} onValueChange={(v) => update("employee_type", v)}>{employeeTypes.map((t) => <option key={t} value={t}>{t}</option>)}</UiSelectField>
             <UiSelectField label="Employment type" value={form.employment_type} onValueChange={(v) => update("employment_type", v)}>{employmentTypes.map((t) => <option key={t} value={t}>{t}</option>)}</UiSelectField>
             <UiSelectField label="Status" value={form.status_id ?? ""} onValueChange={(v) => update("status_id", v)}><option value="">Draft / Onboarding default</option>{props.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</UiSelectField>
-            <UiSelectField label="Department" value={form.primary_department_id ?? ""} onValueChange={(v) => update("primary_department_id", v)}><option value="">None</option>{props.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</UiSelectField>
-            <UiSelectField label="Position" value={form.primary_position_id ?? ""} onValueChange={(v) => update("primary_position_id", v)}><option value="">None</option>{props.positions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</UiSelectField>
-            <UiSelectField label="Outlet/location" value={form.primary_location_id ?? ""} onValueChange={(v) => update("primary_location_id", v)}><option value="">None</option>{props.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</UiSelectField>
-            <UiSelectField label="Job level" value={form.job_level_id ?? ""} onValueChange={(v) => update("job_level_id", v)}><option value="">None</option>{props.jobLevels.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</UiSelectField>
+            <div className="md:col-span-3">
+              <OrganizationCascadeSelector
+                includeLocation
+                departments={props.departments}
+                locations={props.locations}
+                jobLevels={props.jobLevels}
+                positions={props.positions}
+                value={{
+                  locationId: form.primary_location_id ?? "",
+                  departmentId: form.primary_department_id ?? "",
+                  jobLevelId: form.job_level_id ?? "",
+                  positionId: form.primary_position_id ?? ""
+                }}
+                labels={{ departmentId: "Department", jobLevelId: "Job level", positionId: "Position", locationId: "Outlet/location" }}
+                onChange={updateCascade}
+              />
+            </div>
             <UiSelectField label="Reporting manager" value={form.reporting_manager_employee_id ?? ""} onValueChange={(v) => update("reporting_manager_employee_id", v)}><option value="">None</option>{props.employees.filter((e) => e.id !== props.employee?.id).map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}</UiSelectField>
             <Field label="Joining date" type="date" value={form.joining_date ?? ""} onChange={(v) => update("joining_date", v)} />
             <Field label="Confirmation date" type="date" value={form.confirmation_date ?? ""} onChange={(v) => update("confirmation_date", v)} />

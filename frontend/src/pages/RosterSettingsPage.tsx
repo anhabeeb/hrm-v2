@@ -1,6 +1,7 @@
 import { Edit, Plus, Save } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterNav } from "../components/roster/RosterNav";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -208,18 +209,19 @@ function WeeklyOffRuleModal({ rule, locations, departments, onClose, onSave }: {
       <div className="w-full max-w-lg rounded-lg border bg-white shadow-xl">
         <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">{rule ? "Edit weekly off rule" : "Create weekly off rule"}</h2></div>
         <div className="grid gap-3 p-4">
-          <Field label="Location">
-            <SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.location_id ?? ""} onChange={(event) => setForm({ ...form, location_id: event.target.value || null })}>
-              <option value="">All locations</option>
-              {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-            </SelectField>
-          </Field>
-          <Field label="Department">
-            <SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.department_id ?? ""} onChange={(event) => setForm({ ...form, department_id: event.target.value || null })}>
-              <option value="">All departments</option>
-              {departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
-            </SelectField>
-          </Field>
+          <OrganizationCascadeSelector
+            value={{ locationId: form.location_id ?? "", departmentId: form.department_id ?? "" }}
+            onChange={(next) => setForm({ ...form, location_id: next.locationId || null, department_id: next.departmentId || null })}
+            departments={departments}
+            locations={locations}
+            jobLevels={[]}
+            positions={[]}
+            includeLocation
+            includeJobLevel={false}
+            includePosition={false}
+            labels={{ locationId: "Location", departmentId: "Department" }}
+            className="grid gap-3 md:grid-cols-2"
+          />
           <Field label="Day of week">
             <SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.day_of_week} onChange={(event) => setForm({ ...form, day_of_week: event.target.value as WeeklyOffRule["day_of_week"] })}>
               {days.map((day) => <option key={day} value={day}>{day}</option>)}

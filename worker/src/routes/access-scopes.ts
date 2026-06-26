@@ -6,6 +6,7 @@ import { getRoleById } from "../db/roles";
 import { getUserById } from "../db/users";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
+import { hasValidationErrors, validateAccessScope, validationResponse } from "../lib/moduleValidation";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
@@ -28,6 +29,15 @@ function bool(value: unknown, fallback = false) {
 function optional(value: unknown) {
   const text = readString(value);
   return text || null;
+}
+
+function parseIds(value: string | null) {
+  try {
+    const parsed = JSON.parse(value ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 async function listScopes(db: AppBindings["Bindings"]["DB"]) {
@@ -105,25 +115,31 @@ async function readScopeInput(c: Context<AppBindings>, body: Record<string, unkn
   const allowedDepartmentIdsJson = stringifyIdList(body.allowed_department_ids) ?? existing?.allowed_department_ids_json ?? null;
   const allowedLocationIdsJson = stringifyIdList(body.allowed_location_ids) ?? existing?.allowed_location_ids_json ?? null;
 
-  return {
-    input: {
-      name,
-      description: optional(body.description ?? existing?.description),
-      scope_owner_type: scopeOwnerType,
-      role_id: scopeOwnerType === "ROLE" ? roleId : null,
-      user_id: scopeOwnerType === "USER" ? userId : null,
-      role_mapping_rule_id: scopeOwnerType === "ROLE_MAPPING_RULE" ? roleMappingRuleId : null,
-      module_key: optional(body.module_key ?? existing?.module_key),
-      scope_type: scopeType,
-      allowed_department_ids_json: allowedDepartmentIdsJson,
-      allowed_location_ids_json: allowedLocationIdsJson,
-      include_sub_departments: bool(body.include_sub_departments, existing?.include_sub_departments === 1),
-      include_reporting_chain: bool(body.include_reporting_chain, existing?.include_reporting_chain === 1),
-      can_view: bool(body.can_view, existing?.can_view !== 0),
-      can_manage: bool(body.can_manage, existing?.can_manage === 1),
-      is_active: bool(body.is_active, existing?.is_active !== 0)
-    }
+  const input = {
+    name,
+    description: optional(body.description ?? existing?.description),
+    scope_owner_type: scopeOwnerType,
+    role_id: scopeOwnerType === "ROLE" ? roleId : null,
+    user_id: scopeOwnerType === "USER" ? userId : null,
+    role_mapping_rule_id: scopeOwnerType === "ROLE_MAPPING_RULE" ? roleMappingRuleId : null,
+    module_key: optional(body.module_key ?? existing?.module_key),
+    scope_type: scopeType,
+    allowed_department_ids_json: allowedDepartmentIdsJson,
+    allowed_location_ids_json: allowedLocationIdsJson,
+    include_sub_departments: bool(body.include_sub_departments, existing?.include_sub_departments === 1),
+    include_reporting_chain: bool(body.include_reporting_chain, existing?.include_reporting_chain === 1),
+    can_view: bool(body.can_view, existing?.can_view !== 0),
+    can_manage: bool(body.can_manage, existing?.can_manage === 1),
+    is_active: bool(body.is_active, existing?.is_active !== 0)
   };
+  const accessIssues = await validateAccessScope(c.env.DB, c.get("currentUser"), {
+    departmentIds: parseIds(input.allowed_department_ids_json),
+    locationIds: parseIds(input.allowed_location_ids_json),
+    requestedScopeType: input.scope_type
+  });
+  if (hasValidationErrors(accessIssues)) return { error: validationResponse(c, accessIssues) };
+
+  return { input };
 }
 
 accessScopeRoutes.get("/", requirePermission("access_scopes.view"), async (c) => ok(c, { access_scopes: (await listScopes(c.env.DB)).map(accessScopeToApi) }));

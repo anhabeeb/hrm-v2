@@ -9,6 +9,8 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -18,6 +20,7 @@ import type { EmployeeDocument } from "../types/documents";
 import type { Employee } from "../types/employees";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 import { SelectField as UiSelectField } from "../components/ui/page-shell";
+import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 
 type LifecycleAction = "return" | "mark-damaged" | "mark-lost" | "write-off";
 type ModalState =
@@ -81,8 +84,22 @@ export function AssetAssignmentsPage() {
         <AssetsNav />
         <div className="grid gap-2 p-4 md:grid-cols-4 xl:grid-cols-6">
           <Input placeholder="Employee or asset" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
-          <Select value={filters.department_id} onChange={(department_id) => setFilters({ ...filters, department_id })} empty="All departments" options={departments.map((row) => [row.id, row.name])} />
-          <Select value={filters.location_id} onChange={(location_id) => setFilters({ ...filters, location_id })} empty="All locations" options={locations.map((row) => [row.id, row.name])} />
+          <div className="md:col-span-2">
+            <OrganizationCascadeSelector
+              value={{ locationId: filters.location_id, departmentId: filters.department_id }}
+              onChange={(next) => setFilters({ ...filters, location_id: next.locationId ?? "", department_id: next.departmentId ?? "" })}
+              departments={departments}
+              locations={locations}
+              jobLevels={[]}
+              positions={[]}
+              includeLocation
+              includeJobLevel={false}
+              includePosition={false}
+              mode="asset-rule"
+              labels={{ locationId: "Location", departmentId: "Department" }}
+              className="grid gap-2 md:grid-cols-2"
+            />
+          </div>
           <Select value={filters.category_id} onChange={(category_id) => setFilters({ ...filters, category_id })} empty="All categories" options={categories.map((row) => [row.id, row.name])} />
           <Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} empty="All status" options={["ISSUED","RETURNED","DAMAGED","LOST","REPLACED","WRITTEN_OFF"]} />
           <Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>
@@ -141,6 +158,7 @@ export function AssetAssignmentsPage() {
 
 function IssueModal({ employees, items, onClose, onSaved }: { employees: Employee[]; items: AssetItem[]; onClose: () => void; onSaved: () => void }) {
   const { token } = useAuth();
+  const organizationRefs = useOrganizationReferences(token);
   const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? "");
   const [assetItemId, setAssetItemId] = useState(items[0]?.id ?? "");
   const [issuedDate, setIssuedDate] = useState(new Date().toISOString().slice(0, 10));
@@ -156,7 +174,7 @@ function IssueModal({ employees, items, onClose, onSaved }: { employees: Employe
       setError(err instanceof ApiError ? err.message : "Unable to issue asset.");
     }
   }
-  return <Dialog title="Issue asset" error={error} onClose={onClose} onSave={save} saveLabel="Issue"><SelectField label="Employee" value={employeeId} onChange={setEmployeeId} options={employees.map((employee) => [employee.id, `${employee.employee_no} / ${employee.full_name}`])} /><SelectField label="Asset item" value={assetItemId} onChange={setAssetItemId} options={items.map((item) => [item.id, `${item.code} / ${item.name}`])} /><Field label="Issued date" type="date" value={issuedDate} onChange={setIssuedDate} /><Field label="Expected return" type="date" value={expectedReturnDate} onChange={setExpectedReturnDate} /><Field label="Notes" value={notes} onChange={setNotes} /></Dialog>;
+  return <Dialog title="Issue asset" error={error} onClose={onClose} onSave={save} saveLabel="Issue"><div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={employeeId} onChange={setEmployeeId} mode="asset-rule" /></div><SelectField label="Asset item" value={assetItemId} onChange={setAssetItemId} options={items.map((item) => [item.id, `${item.code} / ${item.name}`])} /><Field label="Issued date" type="date" value={issuedDate} onChange={setIssuedDate} /><Field label="Expected return" type="date" value={expectedReturnDate} onChange={setExpectedReturnDate} /><Field label="Notes" value={notes} onChange={setNotes} /></Dialog>;
 }
 
 function LifecycleModal({ row, action, onClose, onSaved }: { row: AssetAssignment; action: LifecycleAction; onClose: () => void; onSaved: () => void }) {

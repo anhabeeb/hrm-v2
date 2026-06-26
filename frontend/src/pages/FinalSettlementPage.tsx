@@ -1,6 +1,7 @@
 import { Calculator, CheckCircle2, FileText, Lock, Plus, RefreshCw, Send, Settings, Wallet, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -12,6 +13,7 @@ import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
+import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
 import { CheckboxField, SelectField as UiSelectField } from "../components/ui/page-shell";
@@ -93,6 +95,7 @@ export function FinalSettlementPage() {
   const [adjustmentType, setAdjustmentType] = useState<"EARNING" | "DEDUCTION">("EARNING");
   const [amount, setAmount] = useState("");
   const [form, setForm] = useState({ employee_id: "", exit_type: "RESIGNED", exit_date: "", last_working_day: "", reason: "" });
+  const organizationRefs = useOrganizationReferences(token);
 
   const filteredCases = useMemo(() => cases.filter((row) => {
     const text = `${row.employee_no ?? row.employee_number_snapshot ?? ""} ${row.employee_name ?? row.employee_name_snapshot ?? row.full_name ?? ""} ${row.department_snapshot ?? ""} ${row.location_snapshot ?? row.worksite_snapshot ?? ""}`.toLowerCase();
@@ -342,7 +345,7 @@ export function FinalSettlementPage() {
       {tab === "reports" ? <ReportsPanel reports={reports} /> : null}
       {tab === "settings" ? <SettingsPanel settings={settingsData} canManage={permissions.has("final_settlement.settings.update") || permissions.has("final_settlement.settings.manage")} onChange={setSettingsData} onSave={() => void saveSettings()} /> : null}
 
-      {createOpen ? <CreateCaseDialog form={form} employees={employees} onChange={setForm} onClose={() => setCreateOpen(false)} onSave={() => void createCase()} /> : null}
+      {createOpen ? <CreateCaseDialog form={form} employees={employees} organizationRefs={organizationRefs} onChange={setForm} onClose={() => setCreateOpen(false)} onSave={() => void createCase()} /> : null}
       {caseAction ? <CaseActionDialog action={caseAction.type} row={caseAction.row} note={note} reason={reason} amount={amount} adjustmentType={adjustmentType} onNote={setNote} onReason={setReason} onAmount={setAmount} onAdjustmentType={setAdjustmentType} onClose={() => setCaseAction(null)} onSave={() => void runCaseAction()} /> : null}
       {paymentAction ? <PaymentActionDialog action={paymentAction.type} row={paymentAction.row} reason={reason} note={note} reference={reference} onReason={setReason} onNote={setNote} onReference={setReference} onClose={() => setPaymentAction(null)} onSave={() => void submitPaymentAction()} /> : null}
     </div>
@@ -417,9 +420,9 @@ function MiniTable({ title, rows }: { title: string; rows: FinalSettlementLineIt
   return <div><h3 className="mb-2 text-sm font-semibold">{title}</h3><div className="max-h-48 overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>Description</TableHead><TableHead>Source</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell><div className="font-medium">{row.component_name}</div>{row.notes ? <div className="text-xs text-muted-foreground">{row.notes}</div> : null}</TableCell><TableCell>{row.component_source}</TableCell><TableCell className="text-right">{row.amount == null ? "Restricted" : money(row.amount)}</TableCell></TableRow>)}</TableBody></Table>{rows.length === 0 ? <div className="p-3 text-sm text-muted-foreground">No rows.</div> : null}</div></div>;
 }
 
-function CreateCaseDialog({ form, employees, onChange, onClose, onSave }: { form: { employee_id: string; exit_type: string; exit_date: string; last_working_day: string; reason: string }; employees: Employee[]; onChange: (form: { employee_id: string; exit_type: string; exit_date: string; last_working_day: string; reason: string }) => void; onClose: () => void; onSave: () => void }) {
+function CreateCaseDialog({ form, employees, organizationRefs, onChange, onClose, onSave }: { form: { employee_id: string; exit_type: string; exit_date: string; last_working_day: string; reason: string }; employees: Employee[]; organizationRefs: ReturnType<typeof useOrganizationReferences>; onChange: (form: { employee_id: string; exit_type: string; exit_date: string; last_working_day: string; reason: string }) => void; onClose: () => void; onSave: () => void }) {
   const update = (key: keyof typeof form, value: string) => onChange({ ...form, [key]: value });
-  return <Dialog title="Create exit payroll case" footer={<><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={onSave}>Create case</Button></>}><div className="grid gap-3 md:grid-cols-2"><Field label="Employee"><SelectField value={form.employee_id} onChange={(value) => update("employee_id", value)}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</SelectField></Field><Field label="Exit type"><SelectField value={form.exit_type} onChange={(value) => update("exit_type", value)}>{["RESIGNED", "TERMINATED", "END_OF_CONTRACT", "ABSCONDED", "RETIRED", "DECEASED", "OTHER"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field><Field label="Exit date"><Input type="date" value={form.exit_date} onChange={(event) => update("exit_date", event.target.value)} /></Field><Field label="Last working day"><Input type="date" value={form.last_working_day} onChange={(event) => update("last_working_day", event.target.value)} /></Field><Field label="Reason"><Input value={form.reason} onChange={(event) => update("reason", event.target.value)} /></Field></div></Dialog>;
+  return <Dialog title="Create exit payroll case" footer={<><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={onSave}>Create case</Button></>}><div className="grid gap-3 md:grid-cols-2"><div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employeeId) => update("employee_id", employeeId)} /></div><Field label="Exit type"><SelectField value={form.exit_type} onChange={(value) => update("exit_type", value)}>{["RESIGNED", "TERMINATED", "END_OF_CONTRACT", "ABSCONDED", "RETIRED", "DECEASED", "OTHER"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field><Field label="Exit date"><Input type="date" value={form.exit_date} onChange={(event) => update("exit_date", event.target.value)} /></Field><Field label="Last working day"><Input type="date" value={form.last_working_day} onChange={(event) => update("last_working_day", event.target.value)} /></Field><Field label="Reason"><Input value={form.reason} onChange={(event) => update("reason", event.target.value)} /></Field></div></Dialog>;
 }
 
 function CaseActionDialog({ action, row, note, reason, amount, adjustmentType, onNote, onReason, onAmount, onAdjustmentType, onClose, onSave }: { action: CaseAction; row: FinalSettlementCase; note: string; reason: string; amount: string; adjustmentType: "EARNING" | "DEDUCTION"; onNote: (value: string) => void; onReason: (value: string) => void; onAmount: (value: string) => void; onAdjustmentType: (value: "EARNING" | "DEDUCTION") => void; onClose: () => void; onSave: () => void }) {

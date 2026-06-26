@@ -3,6 +3,7 @@ import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
 import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateDateRange, validateDuplicateConflict, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser } from "../types";
@@ -1002,7 +1003,10 @@ employeeLifecycleRoutes.post("/:employeeId/onboarding/cases", requireAnyPermissi
   const result = await createOnboardingCase(c, c.req.param("employeeId"));
   if (!result) return fail(c, 404, "LIFECYCLE_SCOPE_DENIED", "Employee was not found or is outside your access scope.");
   if ("disabled" in result) return fail(c, 403, "ONBOARDING_DISABLED", "Onboarding workflow is disabled.");
-  if ("duplicate" in result) return fail(c, 409, "ONBOARDING_DUPLICATE_CASE", "This employee already has an active onboarding case.");
+  if ("duplicate" in result) {
+    const duplicateIssues = validateDuplicateConflict(result, "employee_id", "This employee already has an active onboarding case.");
+    if (hasValidationErrors(duplicateIssues)) return validationResponse(c, duplicateIssues, 409);
+  }
   return ok(c, { case_id: result.id }, 201);
 });
 employeeLifecycleRoutes.get("/:employeeId/onboarding", requireAnyPermission(["onboarding.cases.view", "employees.lifecycle.view", "employees.view"]), async (c) => {
@@ -1011,10 +1015,22 @@ employeeLifecycleRoutes.get("/:employeeId/onboarding", requireAnyPermission(["on
   return ok(c, { onboarding: summary.onboarding, tasks: summary.onboarding_tasks });
 });
 employeeLifecycleRoutes.post("/:employeeId/offboarding/cases", requireAnyPermission(["offboarding.cases.create", "offboarding.cases.manage", "employees.lifecycle.manage"]), async (c) => {
-  const result = await createOffboardingCase(c, c.req.param("employeeId"), await readBody(c));
+  const body = await readBody(c);
+  const dateIssues = validateDateRange({
+    start: optionalText(body.exit_notice_date),
+    end: optionalText(body.last_working_day) ?? new Date().toISOString().slice(0, 10),
+    startField: "exit_notice_date",
+    endField: "last_working_day",
+    label: "Last working day"
+  });
+  if (hasValidationErrors(dateIssues)) return validationResponse(c, dateIssues);
+  const result = await createOffboardingCase(c, c.req.param("employeeId"), body);
   if (!result) return fail(c, 404, "LIFECYCLE_SCOPE_DENIED", "Employee was not found or is outside your access scope.");
   if ("disabled" in result) return fail(c, 403, "OFFBOARDING_DISABLED", "Offboarding workflow is disabled.");
-  if ("duplicate" in result) return fail(c, 409, "OFFBOARDING_DUPLICATE_CASE", "This employee already has an active offboarding case.");
+  if ("duplicate" in result) {
+    const duplicateIssues = validateDuplicateConflict(result, "employee_id", "This employee already has an active offboarding case.");
+    if (hasValidationErrors(duplicateIssues)) return validationResponse(c, duplicateIssues, 409);
+  }
   if ("invalid" in result) return fail(c, 400, "EMPLOYEE_EXIT_NOT_READY", "Exit type is invalid.");
   return ok(c, { case_id: result.id }, 201);
 });

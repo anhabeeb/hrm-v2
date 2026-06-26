@@ -8,6 +8,7 @@ import { createApprovalForModuleEntity, getModuleEntityApprovalSummary } from ".
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AccessRealtimePayload } from "../realtime/publisher";
 import type { AppBindings, Env } from "../types";
+import { hasValidationErrors, validateAssetUniformRules, validationResponse } from "../lib/moduleValidation";
 import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
 
@@ -517,6 +518,8 @@ export async function issueAssetToEmployee(c: Context<AppBindings>, input: Row):
   const id = crypto.randomUUID();
   const issuedDate = optionalText(input.issued_date ?? input.assigned_date) ?? today();
   const expectedReturnDate = optionalText(input.expected_return_date);
+  const issueIssues = validateAssetUniformRules({ issueDate: issuedDate, returnDate: expectedReturnDate });
+  if (hasValidationErrors(issueIssues)) return { response: validationResponse(c, issueIssues) };
   const assignmentStatus = boolValue(input.require_approval, false) ? "PENDING_APPROVAL" : "ASSIGNED";
   await c.env.DB
     .prepare(
@@ -560,6 +563,8 @@ export async function returnEmployeeAsset(c: Context<AppBindings>, assignmentId:
   const assignment = gate.assignment;
   const returnDate = optionalText(input.returned_date) ?? today();
   const condition = optionalText(input.returned_condition_status ?? input.condition_on_return) ?? "GOOD";
+  const returnIssues = validateAssetUniformRules({ issueDate: optionalText(assignment.issued_date), returnDate, status: condition, reason: optionalText(input.reason ?? input.notes) });
+  if (hasValidationErrors(returnIssues)) return { response: validationResponse(c, returnIssues) };
   const itemStatus = condition === "DAMAGED" ? "DAMAGED" : "AVAILABLE";
   const lifecycle = condition === "DAMAGED" ? "DAMAGED" : "RETURNED";
   await c.env.DB.prepare("UPDATE employee_asset_assignments SET status = 'RETURNED', assignment_status = 'RETURNED', clearance_status = 'RETURNED', returned_date = ?, returned_to_user_id = ?, returned_condition_status = ?, condition_on_return = ?, notes = COALESCE(?, notes), updated_at = ? WHERE id = ?").bind(returnDate, c.get("currentUser").id, condition, condition, optionalText(input.notes ?? input.reason), nowIso(), assignment.id).run();
@@ -609,6 +614,8 @@ async function markAssetException(c: Context<AppBindings>, assignmentId: string,
   if (gate.response) return { response: gate.response };
   const assignment = gate.assignment;
   const reason = optionalText(input.reason);
+  const exceptionIssues = validateAssetUniformRules({ status, reason });
+  if (hasValidationErrors(exceptionIssues)) return { response: validationResponse(c, exceptionIssues) };
   if (!reason) return { response: fail(c, 400, "REASON_REQUIRED", "Reason is required.") };
   const deductionAmount = numberValue(input.deduction_amount, numberValue(assignment.current_value, numberValue(assignment.replacement_cost, null)));
   const assignmentStatus = status === "DAMAGED" ? "DAMAGED" : "LOST";
@@ -696,6 +703,8 @@ export async function issueUniformToEmployee(c: Context<AppBindings>, input: Row
   if (invalidDocument) return { response: invalidDocument };
   const id = crypto.randomUUID();
   const issuedDate = optionalText(input.issued_date) ?? today();
+  const issueIssues = validateAssetUniformRules({ issueDate: issuedDate, returnDate: optionalText(input.expected_return_date), quantity: integerValue(input.quantity_issued, 1) });
+  if (hasValidationErrors(issueIssues)) return { response: validationResponse(c, issueIssues) };
   await c.env.DB
     .prepare(
       `INSERT INTO employee_uniform_assignments
@@ -736,6 +745,8 @@ export async function returnEmployeeUniform(c: Context<AppBindings>, assignmentI
   const outstanding = Math.max(0, integerValue(assignment.quantity_issued) - integerValue(assignment.quantity_returned) - integerValue(assignment.quantity_damaged) - integerValue(assignment.quantity_lost));
   const quantity = Math.min(outstanding, Math.max(1, integerValue(input.quantity_returned, outstanding || 1)));
   if (quantity <= 0) return { response: fail(c, 400, "UNIFORM_ALREADY_CLEARED", "No outstanding uniform quantity is available to return.") };
+  const returnIssues = validateAssetUniformRules({ issueDate: optionalText(assignment.issued_date), returnDate: optionalText(input.returned_date) ?? today(), quantity: integerValue(input.quantity_returned, outstanding || 1), reason: optionalText(input.reason ?? input.notes) });
+  if (hasValidationErrors(returnIssues)) return { response: validationResponse(c, returnIssues) };
   const totalReturned = integerValue(assignment.quantity_returned) + quantity;
   const fullyReturned = totalReturned + integerValue(assignment.quantity_damaged) + integerValue(assignment.quantity_lost) >= integerValue(assignment.quantity_issued);
   const status = fullyReturned ? "RETURNED" : "PARTIALLY_RETURNED";
@@ -761,6 +772,8 @@ async function markUniformException(c: Context<AppBindings>, assignmentId: strin
   if (gate.response) return { response: gate.response };
   const assignment = gate.assignment;
   const reason = optionalText(input.reason);
+  const exceptionIssues = validateAssetUniformRules({ status, reason, quantity: integerValue(input.quantity, 1) });
+  if (hasValidationErrors(exceptionIssues)) return { response: validationResponse(c, exceptionIssues) };
   if (!reason) return { response: fail(c, 400, "REASON_REQUIRED", "Reason is required.") };
   const outstanding = Math.max(0, integerValue(assignment.quantity_issued) - integerValue(assignment.quantity_returned) - integerValue(assignment.quantity_damaged) - integerValue(assignment.quantity_lost));
   const quantity = Math.min(outstanding || integerValue(assignment.quantity_issued), Math.max(1, integerValue(input.quantity, outstanding || 1)));

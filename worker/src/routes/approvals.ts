@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateApprovalWorkflowRules, validateDateRange, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
@@ -325,6 +326,23 @@ export async function validateApprovalWorkflowCondition(input: Record<string, un
     }
   }
   return { ok: true, operator };
+}
+
+function validateApprovalWorkflowPayload(body: Record<string, unknown>, options: { hasActiveStep?: boolean } = {}) {
+  return [
+    ...validateDateRange({
+      start: nullableStr(body.effective_from),
+      end: nullableStr(body.effective_to),
+      startField: "effective_from",
+      endField: "effective_to",
+      label: "Workflow effective end date"
+    }),
+    ...validateApprovalWorkflowRules({
+      hasActiveStep: options.hasActiveStep ?? true,
+      allowAutoApprove: str(body.fallback_behavior) === "AUTO_APPROVE",
+      allowSelfApproval: Boolean(body.allow_self_approval)
+    })
+  ];
 }
 
 export async function getApprovalConditionContext(db: Db, input: ApprovalContext) {
@@ -1220,6 +1238,8 @@ approvalRoutes.post("/workflows", async (c) => {
   const actionKey = str(body.action_key);
   const entityType = str(body.applies_to_entity_type, "generic");
   if (!code || !name || !moduleKey || !actionKey) return fail(c, 400, "APPROVAL_STEP_INVALID", "Workflow code, name, module, and action are required.");
+  const workflowIssues = validateApprovalWorkflowPayload(body);
+  if (hasValidationErrors(workflowIssues)) return validationResponse(c, workflowIssues);
   const id = crypto.randomUUID();
   await c.env.DB
     .prepare(
@@ -1271,6 +1291,8 @@ approvalRoutes.patch("/workflows/:workflowId", async (c) => {
   const oldWorkflow = await c.env.DB.prepare("SELECT * FROM approval_workflows WHERE id = ?").bind(id).first<WorkflowRow>();
   if (!oldWorkflow) return fail(c, 404, "APPROVAL_WORKFLOW_NOT_FOUND", "Approval workflow was not found.");
   const body = await c.req.json<Record<string, unknown>>();
+  const workflowIssues = validateApprovalWorkflowPayload({ ...oldWorkflow, ...body });
+  if (hasValidationErrors(workflowIssues)) return validationResponse(c, workflowIssues);
   await c.env.DB
     .prepare(
       `UPDATE approval_workflows
@@ -1358,6 +1380,8 @@ approvalRoutes.post("/workflows/:workflowId/steps", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const stepName = str(body.step_name);
   if (!stepName) return fail(c, 400, "APPROVAL_STEP_INVALID", "Step name is required.");
+  const stepIssues = validateApprovalWorkflowRules({ hasActiveStep: true, allowSelfApproval: bool(body.allow_self_approval) });
+  if (hasValidationErrors(stepIssues)) return validationResponse(c, stepIssues);
   const id = crypto.randomUUID();
   await c.env.DB
     .prepare(
@@ -1381,6 +1405,8 @@ approvalRoutes.patch("/workflows/:workflowId/steps/:stepId", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const oldStep = await c.env.DB.prepare("SELECT * FROM approval_workflow_steps WHERE id = ? AND workflow_id = ?").bind(c.req.param("stepId"), c.req.param("workflowId")).first<StepRow>();
   if (!oldStep) return fail(c, 404, "APPROVAL_STEP_INVALID", "Workflow step was not found.");
+  const stepIssues = validateApprovalWorkflowRules({ hasActiveStep: true, allowSelfApproval: body.allow_self_approval === undefined ? oldStep.allow_self_approval === 1 : bool(body.allow_self_approval) });
+  if (hasValidationErrors(stepIssues)) return validationResponse(c, stepIssues);
   await c.env.DB
     .prepare(
       `UPDATE approval_workflow_steps

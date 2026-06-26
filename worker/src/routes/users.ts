@@ -7,6 +7,7 @@ import { getActiveOwnerCount, getUserByEmail, getUserById, setUserStatus, toSafe
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
+import { hasValidationErrors, validateDuplicateConflict, validationResponse } from "../lib/moduleValidation";
 import type { AppBindings, DbUser, UserStatus } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { isEmail, normalizeEmail, readJsonBody, readString } from "../utils/validation";
@@ -203,14 +204,13 @@ userRoutes.post("/", requirePermission("users.create"), async (c) => {
   if (!isStrongPassword(password)) {
     return fail(c, 400, "VALIDATION_ERROR", "Password must be at least 12 characters and include letters and numbers.");
   }
-  if (await getUserByEmail(c.env.DB, email)) {
-    return fail(c, 409, "EMAIL_EXISTS", "A user with this email already exists.");
-  }
+  const existingEmailForCreate = await getUserByEmail(c.env.DB, email);
+  const emailIssues = validateDuplicateConflict(existingEmailForCreate, "email", "A user with this email already exists.");
+  if (hasValidationErrors(emailIssues)) return validationResponse(c, emailIssues, 409);
   if (username) {
     const existingUsername = await c.env.DB.prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE").bind(username).first<{ id: string }>();
-    if (existingUsername) {
-      return fail(c, 409, "USERNAME_EXISTS", "A user with this username already exists.");
-    }
+    const usernameIssues = validateDuplicateConflict(existingUsername, "username", "A user with this username already exists.");
+    if (hasValidationErrors(usernameIssues)) return validationResponse(c, usernameIssues, 409);
   }
 
   const assignment = await getRolesForAssignment(c, roleIds);
@@ -275,14 +275,12 @@ userRoutes.patch("/:id", requirePermission("users.update"), async (c) => {
   }
 
   const existingEmail = await getUserByEmail(c.env.DB, email);
-  if (existingEmail && existingEmail.id !== user.id) {
-    return fail(c, 409, "EMAIL_EXISTS", "A user with this email already exists.");
-  }
+  const emailIssues = validateDuplicateConflict(existingEmail && existingEmail.id !== user.id ? existingEmail : null, "email", "A user with this email already exists.");
+  if (hasValidationErrors(emailIssues)) return validationResponse(c, emailIssues, 409);
   if (username) {
     const existingUsername = await c.env.DB.prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE").bind(username).first<{ id: string }>();
-    if (existingUsername && existingUsername.id !== user.id) {
-      return fail(c, 409, "USERNAME_EXISTS", "A user with this username already exists.");
-    }
+    const usernameIssues = validateDuplicateConflict(existingUsername && existingUsername.id !== user.id ? existingUsername : null, "username", "A user with this username already exists.");
+    if (hasValidationErrors(usernameIssues)) return validationResponse(c, usernameIssues, 409);
   }
 
   await c.env.DB

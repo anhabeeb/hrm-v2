@@ -3,6 +3,8 @@ import { useState } from "react";
 import { ApiError, api } from "../../lib/api";
 import type { AttendanceRecord, AttendanceStatus } from "../../types/attendance";
 import type { Employee } from "../../types/employees";
+import { useOrganizationReferences } from "../../hooks/useOrganizationReferences";
+import { EmployeeCascadeSelect } from "../organization/EmployeeCascadeSelect";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -17,6 +19,7 @@ export function AttendanceRecordModal(props: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const organizationRefs = useOrganizationReferences(props.token);
   const [employeeId, setEmployeeId] = useState(props.record?.employee_id ?? "");
   const [date, setDate] = useState(props.record?.attendance_date ?? new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState<AttendanceStatus>(props.record?.status ?? "PRESENT");
@@ -69,12 +72,19 @@ export function AttendanceRecordModal(props: {
         </div>
         <div className="grid gap-3 p-4 md:grid-cols-2">
           {error ? <div className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-          <Field label="Employee">
-            <SelectField value={employeeId} disabled={Boolean(props.record)} onValueChange={setEmployeeId} required>
-              <option value="">Select employee</option>
-              {props.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name ?? employee.full_name} ({employee.employee_no})</option>)}
-            </SelectField>
-          </Field>
+          <div className="md:col-span-2">
+            <EmployeeCascadeSelect
+              employees={props.employees}
+              departments={organizationRefs.departments}
+              locations={organizationRefs.locations}
+              jobLevels={organizationRefs.jobLevels}
+              positions={organizationRefs.positions}
+              value={employeeId}
+              onChange={setEmployeeId}
+              disabled={Boolean(props.record)}
+              mode="report-filter"
+            />
+          </div>
           <Field label="Attendance date"><Input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></Field>
           <Field label="Status">
             <SelectField value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}>

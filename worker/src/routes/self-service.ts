@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateAttendanceRosterRules, validateDateRange, validateLeaveRules, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
@@ -884,6 +885,8 @@ selfServiceRoutes.get("/attendance", async (c) => {
   if (gate.response) return gate.response;
   const from = c.req.query("date_from") ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
   const to = c.req.query("date_to") ?? new Date().toISOString().slice(0, 10);
+  const rangeIssues = validateDateRange({ start: from, end: to, startField: "date_from", endField: "date_to", label: "Attendance date to" });
+  if (hasValidationErrors(rangeIssues)) return validationResponse(c, rangeIssues);
   const records = (
     await c.env.DB
       .prepare(
@@ -930,6 +933,8 @@ selfServiceRoutes.get("/attendance/calendar", async (c) => {
   if (gate.response) return gate.response;
   const from = c.req.query("date_from") ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
   const to = c.req.query("date_to") ?? new Date().toISOString().slice(0, 10);
+  const rangeIssues = validateDateRange({ start: from, end: to, startField: "date_from", endField: "date_to", label: "Attendance date to" });
+  if (hasValidationErrors(rangeIssues)) return validationResponse(c, rangeIssues);
   return ok(c, { records: await getSelfServiceAttendanceCalendar(c, gate.employeeId!, from, to), filters: { date_from: from, date_to: to } });
 });
 
@@ -941,6 +946,8 @@ selfServiceRoutes.get("/attendance/daily-records", async (c) => {
   if (gate.response) return gate.response;
   const from = c.req.query("date_from") ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
   const to = c.req.query("date_to") ?? new Date().toISOString().slice(0, 10);
+  const rangeIssues = validateDateRange({ start: from, end: to, startField: "date_from", endField: "date_to", label: "Attendance date to" });
+  if (hasValidationErrors(rangeIssues)) return validationResponse(c, rangeIssues);
   return ok(c, { records: await getSelfServiceAttendanceCalendar(c, gate.employeeId!, from, to), filters: { date_from: from, date_to: to } });
 });
 
@@ -977,6 +984,13 @@ selfServiceRoutes.post("/attendance/corrections", async (c) => {
     requested_clock_out: readString(body.requested_clock_out) || null,
     requested_status: parseAttendanceStatus(body.requested_status)
   };
+  const correctionIssues = validateAttendanceRosterRules({
+    date: attendanceDate,
+    locked: Number(current?.locked_for_payroll ?? 0) === 1,
+    startTime: requested.requested_clock_in,
+    endTime: requested.requested_clock_out
+  });
+  if (hasValidationErrors(correctionIssues)) return validationResponse(c, correctionIssues, Number(current?.locked_for_payroll ?? 0) === 1 ? 423 : 400);
   const id = crypto.randomUUID();
   await c.env.DB
     .prepare(
@@ -1012,6 +1026,13 @@ selfServiceRoutes.post("/attendance/correction-requests", async (c) => {
   if (!attendanceDate || !reason) return fail(c, 400, "VALIDATION_ERROR", "Attendance date and reason are required.");
   const current = await c.env.DB.prepare("SELECT * FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(gate.employeeId, attendanceDate).first<Record<string, unknown>>();
   const requested = { requested_clock_in: readString(body.requested_clock_in) || null, requested_clock_out: readString(body.requested_clock_out) || null, requested_status: parseAttendanceStatus(body.requested_status) };
+  const correctionIssues = validateAttendanceRosterRules({
+    date: attendanceDate,
+    locked: Number(current?.locked_for_payroll ?? 0) === 1,
+    startTime: requested.requested_clock_in,
+    endTime: requested.requested_clock_out
+  });
+  if (hasValidationErrors(correctionIssues)) return validationResponse(c, correctionIssues, Number(current?.locked_for_payroll ?? 0) === 1 ? 423 : 400);
   const id = crypto.randomUUID();
   await c.env.DB.prepare(
     `INSERT INTO attendance_correction_requests
@@ -1098,6 +1119,8 @@ selfServiceRoutes.post("/leave/requests", async (c) => {
   if (!leaveTypeId || !startDate || !endDate) {
     return fail(c, 400, "VALIDATION_ERROR", "Leave type, start date, and end date are required.");
   }
+  const leaveIssues = validateLeaveRules({ startDate, endDate, hasApprover: true });
+  if (hasValidationErrors(leaveIssues)) return validationResponse(c, leaveIssues);
   const employee = await selfServiceEmployee(c, gate.employeeId);
   if (!employee) return fail(c, 400, "INVALID_EMPLOYEE", "Linked employee profile was not found or is archived.");
   const leaveType = await c.env.DB.prepare("SELECT * FROM leave_types WHERE id = ? AND is_active = 1").bind(leaveTypeId).first<Row>();

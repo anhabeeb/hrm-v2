@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { validateImportRows } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
@@ -484,8 +485,10 @@ async function validateDataImportBatch(db: Env["DB"], user: AuthUser, batchId: s
   const rows = await db.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? ORDER BY row_number").bind(batchId).all<ImportResultRow>();
   const seen = new Set<string>();
   const summary = { valid: 0, invalid: 0, warning: 0, duplicate: 0, create: 0, update: 0, skipped: 0, errors: 0 };
+  const processedRows: Array<{ row_number?: number; errors?: string[] }> = [];
   for (const row of rows.results) {
     const result = await validateImportRow(db, user, definition, parseJson(row.raw_row_json, {}), seen);
+    processedRows.push({ row_number: row.row_number, errors: result.errors });
     if (result.validationStatus === "VALID") summary.valid += 1;
     if (result.validationStatus === "WARNING") summary.warning += 1;
     if (result.validationStatus === "INVALID") summary.invalid += 1;
@@ -496,6 +499,8 @@ async function validateDataImportBatch(db: Env["DB"], user: AuthUser, batchId: s
       .bind(JSON.stringify(result.normalized), definition.key, result.action, result.validationStatus, result.errors.length ? "VALIDATION_ERROR" : null, result.errors.join(" ") || null, result.warnings.length ? JSON.stringify(result.warnings) : null, JSON.stringify({ sensitive: definition.sensitiveColumns.some((column) => result.normalized[column]) }), now(), row.id)
       .run();
   }
+  const sharedIssues = validateImportRows(processedRows);
+  if (sharedIssues.length) summary.errors = Math.max(summary.errors, sharedIssues.length);
   const status: ImportStatus = summary.invalid || summary.duplicate ? "VALIDATION_FAILED" : "READY_TO_APPLY";
   await db.prepare("UPDATE data_import_batches SET status = ?, validated_by_user_id = ?, validated_at = ?, valid_row_count = ?, invalid_row_count = ?, warning_count = ?, duplicate_count = ?, create_count = ?, update_count = ?, skipped_count = ?, error_count = ?, validation_summary_json = ?, updated_at = ? WHERE id = ?")
     .bind(status, user.id, now(), summary.valid, summary.invalid, summary.warning, summary.duplicate, summary.create, summary.update, summary.skipped, summary.errors, JSON.stringify(summary), now(), batchId)

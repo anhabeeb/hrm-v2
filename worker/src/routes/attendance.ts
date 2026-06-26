@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateAttendanceRosterRules, validateDuplicateConflict, validateLockedState, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
@@ -275,9 +276,12 @@ function dailyDerived(input: { status: AttendanceStatus; first_clock_in?: string
 }
 
 async function requireAttendanceRecordUnlocked(c: Context<AppBindings>, record: Record<string, unknown>) {
-  if (Number(record.locked_for_payroll ?? 0) === 1 && !canOverrideAttendanceLock(c)) {
-    return fail(c, 423, "ATTENDANCE_RECORD_LOCKED", "This attendance record is locked for payroll. Override permission is required.");
-  }
+  const issues = validateLockedState({
+    locked: Number(record.locked_for_payroll ?? 0) === 1 && !canOverrideAttendanceLock(c),
+    field: "locked_for_payroll",
+    message: "This attendance record is locked for payroll. Override permission is required."
+  });
+  if (hasValidationErrors(issues)) return validationResponse(c, issues, 423);
   return null;
 }
 
@@ -507,10 +511,13 @@ attendanceRoutes.post("/records", requirePermission("attendance.manage"), async 
   const input = readRecordInput(body);
   const validation = validateRecord(input);
   if (validation) return fail(c, 400, "VALIDATION_ERROR", validation);
+  const ruleIssues = validateAttendanceRosterRules({ date: input.attendance_date, startTime: input.first_clock_in, endTime: input.last_clock_out });
+  if (hasValidationErrors(ruleIssues)) return validationResponse(c, ruleIssues);
   if (!(await getEmployee(c, input.employee_id))) return fail(c, 400, "INVALID_EMPLOYEE", "Employee was not found or is archived.");
   if (!(await canManageAttendanceForEmployee(c, input.employee_id))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
   const duplicate = await c.env.DB.prepare("SELECT id FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(input.employee_id, input.attendance_date).first();
-  if (duplicate) return fail(c, 409, "DUPLICATE_RECORD", "A daily attendance record already exists. Update the existing record instead.");
+  const duplicateIssues = validateDuplicateConflict(duplicate, "attendance_date", "A daily attendance record already exists. Update the existing record instead.");
+  if (hasValidationErrors(duplicateIssues)) return validationResponse(c, duplicateIssues, 409);
   const id = crypto.randomUUID();
   const total = input.total_work_minutes ?? minutesBetween(input.first_clock_in, input.last_clock_out);
   const impact = payrollImpact({ ...input, source: input.source });
@@ -547,6 +554,8 @@ attendanceRoutes.patch("/records/:id", requirePermission("attendance.manage"), a
   const input = readRecordInput(body, old);
   const validation = validateRecord(input);
   if (validation) return fail(c, 400, "VALIDATION_ERROR", validation);
+  const ruleIssues = validateAttendanceRosterRules({ date: input.attendance_date, startTime: input.first_clock_in, endTime: input.last_clock_out });
+  if (hasValidationErrors(ruleIssues)) return validationResponse(c, ruleIssues);
   const changedImportant = ["status", "first_clock_in", "last_clock_out", "late_minutes", "early_checkout_minutes", "missed_punch"].some((key) => String(old[key] ?? "") !== String((input as Record<string, unknown>)[key] ?? ""));
   if (changedImportant && !reason) return fail(c, 400, "REASON_REQUIRED", "Manual attendance updates require a reason.");
   const total = input.total_work_minutes ?? minutesBetween(input.first_clock_in, input.last_clock_out);
@@ -898,6 +907,9 @@ attendanceRoutes.post("/logs/manual", requireAnyPermission(["attendance.logs.man
   if (!input.employee_id || !input.log_time || Number.isNaN(new Date(input.log_time).getTime())) return fail(c, 400, "VALIDATION_ERROR", "Employee and valid log time are required.");
   if (Number(settings.require_reason_for_manual_entries ?? 1) === 1 && !input.notes) return fail(c, 400, "REASON_REQUIRED", "Manual attendance entries require a reason.");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), input.employee_id, "attendance", "manage"))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
+  const existingRecord = await c.env.DB.prepare("SELECT locked_for_payroll FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(input.employee_id, input.attendance_date).first<Record<string, unknown>>();
+  const ruleIssues = validateAttendanceRosterRules({ date: input.attendance_date, locked: Number(existingRecord?.locked_for_payroll ?? 0) === 1 && !canOverrideAttendanceLock(c) });
+  if (hasValidationErrors(ruleIssues)) return validationResponse(c, ruleIssues, 423);
   const id = crypto.randomUUID();
   await c.env.DB.prepare(
     `INSERT INTO attendance_logs (id, employee_id, device_id, external_employee_code, log_time, log_type, source, attendance_date, notes, raw_payload_json, created_by_user_id, updated_by_user_id)
@@ -915,6 +927,9 @@ attendanceRoutes.patch("/logs/:id", requireAnyPermission(["attendance.logs.manag
   if (old.employee_id && !(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "attendance", "manage"))) return fail(c, 404, "NOT_FOUND", "Attendance log was not found.");
   const input = readAttendanceLogInput(await readJsonBody(c.req.raw), old);
   if (!input.log_time || Number.isNaN(new Date(input.log_time).getTime())) return fail(c, 400, "VALIDATION_ERROR", "Valid log time is required.");
+  const existingRecord = input.employee_id ? await c.env.DB.prepare("SELECT locked_for_payroll FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(input.employee_id, input.attendance_date).first<Record<string, unknown>>() : null;
+  const ruleIssues = validateAttendanceRosterRules({ date: input.attendance_date, locked: Number(existingRecord?.locked_for_payroll ?? 0) === 1 && !canOverrideAttendanceLock(c) });
+  if (hasValidationErrors(ruleIssues)) return validationResponse(c, ruleIssues, 423);
   await c.env.DB.prepare("UPDATE attendance_logs SET employee_id = ?, device_id = ?, external_employee_code = ?, log_time = ?, log_type = ?, source = ?, attendance_date = ?, notes = ?, raw_payload_json = ?, updated_by_user_id = ?, updated_at = ? WHERE id = ?")
     .bind(input.employee_id, input.device_id, input.external_employee_code, input.log_time, input.log_type, input.source, input.attendance_date, input.notes, input.raw_payload_json, c.get("currentUser").id, new Date().toISOString(), routeParam(c, "id")).run();
   if (input.employee_id) await reconcileEmployeeDate(c, input.employee_id, input.attendance_date);
@@ -988,6 +1003,13 @@ attendanceRoutes.post("/corrections", async (c) => {
   if (!body.requested_clock_in && !body.requested_clock_out && !body.requested_status) return fail(c, 400, "VALIDATION_ERROR", "At least one requested correction field is required.");
   const current = await c.env.DB.prepare("SELECT * FROM attendance_daily_records WHERE employee_id = ? AND attendance_date = ?").bind(employeeId, attendanceDate).first<Record<string, unknown>>();
   if (clockOutBeforeIn(optionalString(body.requested_clock_in), optionalString(body.requested_clock_out))) return fail(c, 400, "VALIDATION_ERROR", "Requested clock-out cannot be before clock-in.");
+  const correctionIssues = validateAttendanceRosterRules({
+    date: attendanceDate,
+    locked: Number(current?.locked_for_payroll ?? 0) === 1 && !canOverrideAttendanceLock(c),
+    startTime: optionalString(body.requested_clock_in),
+    endTime: optionalString(body.requested_clock_out)
+  });
+  if (hasValidationErrors(correctionIssues)) return validationResponse(c, correctionIssues, Number(current?.locked_for_payroll ?? 0) === 1 ? 423 : 400);
   const status = body.requested_status ? normalizeAttendanceStatus(body.requested_status) : null;
   const id = crypto.randomUUID();
   const requested = {

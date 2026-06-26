@@ -1,6 +1,7 @@
 import { CalendarDays, ClipboardCopy, Edit, Eraser, Lock, Megaphone, Save, Search, Undo2, Unlock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
 import { RosterNav } from "../components/roster/RosterNav";
 import { Badge } from "../components/ui/badge";
@@ -11,7 +12,7 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
-import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
+import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import type { RosterAssignment, RosterAssignmentStatus, RosterEmployeeRow, ShiftTemplate, WeeklyRoster } from "../types/roster";
 import { CheckboxField, SelectField, TextareaField } from "../components/ui/page-shell";
 
@@ -52,11 +53,13 @@ export function RosterWeeklyPage() {
   const [weekStart, setWeekStart] = useState(mondayOf(new Date()));
   const [search, setSearch] = useState("");
   const [departmentId, setDepartmentId] = useState("");
+  const [jobLevelId, setJobLevelId] = useState("");
   const [positionId, setPositionId] = useState("");
   const [locationId, setLocationId] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [weekly, setWeekly] = useState<WeeklyRoster | null>(null);
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
+  const [jobLevels, setJobLevels] = useState<OrganizationJobLevel[]>([]);
   const [positions, setPositions] = useState<OrganizationPosition[]>([]);
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [draft, setDraft] = useState<Record<string, Partial<RosterAssignment>>>({});
@@ -78,14 +81,16 @@ export function RosterWeeklyPage() {
     setError(null);
     setModuleDisabled(false);
     try {
-      const [weeklyResult, departmentResult, positionResult, locationResult] = await Promise.all([
+      const [weeklyResult, departmentResult, jobLevelResult, positionResult, locationResult] = await Promise.all([
         api.getWeeklyRoster(token, filters),
         api.listDepartments(token),
+        api.listJobLevels(token),
         api.listPositions(token),
         api.listLocations(token)
       ]);
       setWeekly(weeklyResult);
       setDepartments(departmentResult.departments);
+      setJobLevels(jobLevelResult.job_levels);
       setPositions(positionResult.positions);
       setLocations(locationResult.locations);
       setDraft(weeklyResult.assignment_map ?? {});
@@ -110,13 +115,14 @@ export function RosterWeeklyPage() {
     const rows = weekly?.employees ?? [];
     return rows.filter((employee) => {
       if (positionId && employee.position_title !== positions.find((position) => position.id === positionId)?.title) return false;
+      if (jobLevelId && employee.job_level_name !== jobLevels.find((level) => level.id === jobLevelId)?.name) return false;
       if (statusFilter) {
         const hasStatus = (weekly?.days ?? []).some((day) => (draft[cellKey(employee.employee_id, day.date)]?.status ?? "UNASSIGNED") === statusFilter);
         if (!hasStatus) return false;
       }
       return true;
     });
-  }, [weekly, positionId, positions, statusFilter, draft]);
+  }, [weekly, positionId, positions, jobLevelId, jobLevels, statusFilter, draft]);
 
   function updateCell(employee: RosterEmployeeRow, date: string, value: string) {
     const key = cellKey(employee.employee_id, date);
@@ -260,9 +266,25 @@ export function RosterWeeklyPage() {
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-8">
           <Input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} aria-label="Week start date" />
           <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee or number" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectField>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={positionId} onChange={(event) => setPositionId(event.target.value)}><option value="">All positions</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</SelectField>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</SelectField>
+          <div className="md:col-span-3">
+            <OrganizationCascadeSelector
+              includeLocation
+              mode="report-filter"
+              departments={departments}
+              jobLevels={jobLevels}
+              positions={positions}
+              locations={locations}
+              value={{ departmentId, jobLevelId, positionId, locationId }}
+              onChange={(next) => {
+                setDepartmentId(next.departmentId ?? "");
+                setJobLevelId(next.jobLevelId ?? "");
+                setPositionId(next.positionId ?? "");
+                setLocationId(next.locationId ?? "");
+              }}
+              labels={{ locationId: "Location filter", departmentId: "Department filter", jobLevelId: "Job level filter", positionId: "Position filter" }}
+              className="grid gap-2 md:grid-cols-2 xl:grid-cols-4"
+            />
+          </div>
           <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Any assignment status</option>{statuses.map((status) => <option key={status} value={status}>{status}</option>)}</SelectField>
           <div className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><CalendarDays className="h-4 w-4 text-muted-foreground" /><span>{weekly?.weekStart ?? weekStart} to {weekly?.weekEnd ?? "-"}</span></div>
         </div>

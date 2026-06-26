@@ -5,6 +5,7 @@ import { recordAudit } from "../db/audit";
 import { getUserById } from "../db/users";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
+import { hasValidationErrors, validateOrganizationCascadeWithScope, validationResponse } from "../lib/moduleValidation";
 import { publishAccessEvent } from "../realtime/publisher";
 import { applyRoleMappingToEmployee, roleMappingPreviewForEmployee } from "./role-mappings";
 import type { AppBindings } from "../types";
@@ -369,6 +370,15 @@ async function validateEmployeeRefs(
     if (id && !(await activeEntityExists(c.env.DB, table, id))) {
       return fail(c, 400, "INVALID_REFERENCE", message);
     }
+  }
+  const cascadeIssues = await validateOrganizationCascadeWithScope(c.env.DB, c.get("currentUser"), {
+    department_id: input.primary_department_id,
+    location_id: input.primary_location_id,
+    position_id: input.primary_position_id,
+    job_level_id: input.job_level_id
+  });
+  if (hasValidationErrors(cascadeIssues)) {
+    return validationResponse(c, cascadeIssues);
   }
   if (input.reporting_manager_employee_id) {
     if (input.reporting_manager_employee_id === employeeId) {

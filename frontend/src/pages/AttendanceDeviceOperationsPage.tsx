@@ -2,6 +2,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
+import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -11,6 +12,7 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
+import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceDevice, AttendanceDeviceSettings, AttendanceImportBatch, AttendanceImportRowError, AttendanceLockedDayWarning, AttendanceRawLog, AttendanceUnmatchedLog, AttendanceVendorIntegration, EmployeeBiometricMapping } from "../types/attendance";
 import type { Employee } from "../types/employees";
@@ -298,6 +300,7 @@ function DeviceReports({ token }: { token: string }) {
 }
 
 function MappingModal({ token, mapping, employees, devices, onClose, onSaved }: { token: string; mapping?: EmployeeBiometricMapping | null; employees: Employee[]; devices: AttendanceDevice[]; onClose: () => void; onSaved: () => Promise<void> }) {
+  const organizationRefs = useOrganizationReferences(token);
   const [form, setForm] = useState({
     employee_id: mapping?.employee_id ?? "",
     attendance_device_id: mapping?.attendance_device_id ?? "",
@@ -318,10 +321,11 @@ function MappingModal({ token, mapping, employees, devices, onClose, onSaved }: 
       setError(err instanceof ApiError ? err.message : "Unable to save mapping.");
     }
   }
-  return <Modal title={mapping ? "Edit Biometric Mapping" : "Add Biometric Mapping"} onClose={onClose}><form onSubmit={(event) => void submit(event)} className="grid gap-3 md:grid-cols-2"><StatusLine error={error} /><Field label="Employee"><SelectField required className="h-9 rounded-md border bg-white px-3 text-sm" value={form.employee_id} onChange={(event) => setForm({ ...form, employee_id: event.target.value })}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</SelectField></Field><Field label="Device"><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={form.attendance_device_id} onChange={(event) => setForm({ ...form, attendance_device_id: event.target.value })}><option value="">Any device</option>{devices.map((device) => <option key={device.id} value={device.id}>{device.name}</option>)}</SelectField></Field><Field label="Biometric user ID"><Input required value={form.biometric_user_id} onChange={(event) => setForm({ ...form, biometric_user_id: event.target.value })} /></Field><Field label="Biometric user name"><Input value={form.biometric_user_name} onChange={(event) => setForm({ ...form, biometric_user_name: event.target.value })} /></Field><Field label="External employee code"><Input value={form.external_employee_code} onChange={(event) => setForm({ ...form, external_employee_code: event.target.value })} /></Field><Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field><div className="flex justify-end gap-2 md:col-span-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button type="submit">Save mapping</Button></div></form></Modal>;
+  return <Modal title={mapping ? "Edit Biometric Mapping" : "Add Biometric Mapping"} onClose={onClose}><form onSubmit={(event) => void submit(event)} className="grid gap-3 md:grid-cols-2"><StatusLine error={error} /><div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employee_id) => setForm({ ...form, employee_id })} /></div><Field label="Device"><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={form.attendance_device_id} onChange={(event) => setForm({ ...form, attendance_device_id: event.target.value })}><option value="">Any device</option>{devices.map((device) => <option key={device.id} value={device.id}>{device.name}</option>)}</SelectField></Field><Field label="Biometric user ID"><Input required value={form.biometric_user_id} onChange={(event) => setForm({ ...form, biometric_user_id: event.target.value })} /></Field><Field label="Biometric user name"><Input value={form.biometric_user_name} onChange={(event) => setForm({ ...form, biometric_user_name: event.target.value })} /></Field><Field label="External employee code"><Input value={form.external_employee_code} onChange={(event) => setForm({ ...form, external_employee_code: event.target.value })} /></Field><Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field><div className="flex justify-end gap-2 md:col-span-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button type="submit">Save mapping</Button></div></form></Modal>;
 }
 
 function ResolveUnmatchedModal({ token, log, employees, onClose, onSaved }: { token: string; log: AttendanceUnmatchedLog; employees: Employee[]; onClose: () => void; onSaved: () => Promise<void> }) {
+  const organizationRefs = useOrganizationReferences(token);
   const [employeeId, setEmployeeId] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -335,7 +339,7 @@ function ResolveUnmatchedModal({ token, log, employees, onClose, onSaved }: { to
       setError(err instanceof ApiError ? err.message : "Unable to resolve unmatched log.");
     }
   }
-  return <Modal title="Resolve unmatched biometric log" onClose={onClose}><form onSubmit={(event) => void submit(event)} className="space-y-3"><StatusLine error={error} /><p className="text-sm text-muted-foreground">Biometric ID {log.biometric_user_id ?? "-"} at {log.punch_time ?? "-"}.</p><Field label="Employee"><SelectField required className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={employeeId} onChange={(event) => setEmployeeId(event.target.value)}><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_no} - {employee.full_name}</option>)}</SelectField></Field><Field label="Resolution note"><Input value={note} onChange={(event) => setNote(event.target.value)} /></Field><div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button type="submit">Resolve</Button></div></form></Modal>;
+  return <Modal title="Resolve unmatched biometric log" onClose={onClose}><form onSubmit={(event) => void submit(event)} className="space-y-3"><StatusLine error={error} /><p className="text-sm text-muted-foreground">Biometric ID {log.biometric_user_id ?? "-"} at {log.punch_time ?? "-"}.</p><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={employeeId} onChange={setEmployeeId} /><Field label="Resolution note"><Input value={note} onChange={(event) => setNote(event.target.value)} /></Field><div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button type="submit">Resolve</Button></div></form></Modal>;
 }
 
 function VendorModal({ token, onClose, onSaved }: { token: string; onClose: () => void; onSaved: () => Promise<void> }) {

@@ -5,6 +5,7 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -12,7 +13,7 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceRecord } from "../types/attendance";
 import type { Employee } from "../types/employees";
-import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
+import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 
 function tone(status: string) {
   if (status === "PRESENT") return "success" as const;
@@ -27,6 +28,8 @@ export function AttendanceCalendarPage() {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
+  const [jobLevels, setJobLevels] = useState<OrganizationJobLevel[]>([]);
+  const [positions, setPositions] = useState<OrganizationPosition[]>([]);
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [search, setSearch] = useState("");
   const [employeeId, setEmployeeId] = useState("");
@@ -47,15 +50,19 @@ export function AttendanceCalendarPage() {
     setError(null);
     try {
       setAttendanceDisabled(false);
-      const [calendarResult, employeeResult, departmentResult, locationResult] = await Promise.all([
+      const [calendarResult, employeeResult, departmentResult, jobLevelResult, positionResult, locationResult] = await Promise.all([
         api.getAttendanceCalendar(token, filters),
         api.listEmployees(token),
         api.listDepartments(token),
+        api.listJobLevels(token),
+        api.listPositions(token),
         api.listLocations(token)
       ]);
       setRecords(calendarResult.calendar);
       setEmployees(employeeResult.employees);
       setDepartments(departmentResult.departments);
+      setJobLevels(jobLevelResult.job_levels);
+      setPositions(positionResult.positions);
       setLocations(locationResult.locations);
     } catch (err) {
       if (err instanceof ApiError && err.code === "ATTENDANCE_MODULE_DISABLED") {
@@ -84,9 +91,29 @@ export function AttendanceCalendarPage() {
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-7">
           <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <SelectField aria-label="Employee" value={employeeId} onValueChange={setEmployeeId}><option value="">All employees</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name ?? employee.full_name} ({employee.employee_no})</option>)}</SelectField>
-          <SelectField aria-label="Department" value={departmentId} onValueChange={setDepartmentId}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectField>
-          <SelectField aria-label="Location" value={locationId} onValueChange={setLocationId}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</SelectField>
+          <div className="md:col-span-4 xl:col-span-4">
+            <OrganizationCascadeSelector
+              value={{ locationId, departmentId, employeeId }}
+              onChange={(next) => {
+                setLocationId(next.locationId ?? "");
+                setDepartmentId(next.departmentId ?? "");
+                setEmployeeId(next.employeeId ?? "");
+              }}
+              departments={departments}
+              locations={locations}
+              jobLevels={jobLevels}
+              positions={positions}
+              employees={employees}
+              includeLocation
+              includeJobLevel={false}
+              includePosition={false}
+              includeEmployee
+              requireDepartmentForJobLevel={false}
+              mode="report-filter"
+              labels={{ locationId: "Location", departmentId: "Department", employeeId: "Employee" }}
+              className="grid gap-2 md:grid-cols-3"
+            />
+          </div>
           <SelectField aria-label="Status" value={status} onValueChange={setStatus}><option value="">All statuses</option>{["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Date from" />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Date to" />

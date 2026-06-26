@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateDateRange, validateDocumentRules, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, Env } from "../types";
@@ -1283,14 +1284,18 @@ documentComplianceRoutes.patch("/renewal-cases/:caseId", async (c) => {
   const body = await readJsonBody(c.req.raw);
   const status = readString(body.status) as RenewalCaseStatus;
   const priority = readString(body.priority) as RenewalCaseRow["priority"];
+  const targetRenewalDate = nullableString(body.target_renewal_date) ?? current.target_renewal_date;
+  const dueDate = nullableString(body.due_date) ?? current.due_date;
+  const dateIssues = validateDateRange({ start: targetRenewalDate, end: dueDate, startField: "target_renewal_date", endField: "due_date", label: "Renewal due date" });
+  if (hasValidationErrors(dateIssues)) return validationResponse(c, dateIssues);
   await c.env.DB.prepare(
     `UPDATE document_renewal_cases SET status = ?, priority = ?, target_renewal_date = ?, due_date = ?,
       assigned_to_user_id = ?, notes = ?, updated_at = ?, updated_by_user_id = ? WHERE id = ?`
   ).bind(
     status || current.status,
     ["LOW", "NORMAL", "HIGH", "URGENT"].includes(priority) ? priority : current.priority,
-    nullableString(body.target_renewal_date) ?? current.target_renewal_date,
-    nullableString(body.due_date) ?? current.due_date,
+    targetRenewalDate,
+    dueDate,
     nullableString(body.assigned_to_user_id) ?? current.assigned_to_user_id,
     nullableString(body.notes) ?? current.notes,
     nowIso(),
@@ -1440,7 +1445,17 @@ employeeDocumentComplianceRoutes.post("/:employeeId/documents/waivers", async (c
   const body = await readJsonBody(c.req.raw);
   const documentTypeId = readString(body.document_type_id);
   const reason = nullableString(body.waiver_reason ?? body.reason);
-  if (!documentTypeId) return fail(c, 400, "DOCUMENT_TYPE_REQUIRED", "Document type is required.");
+  const waiverIssues = [
+    ...validateDocumentRules({ documentTypeId }),
+    ...validateDateRange({
+      start: nullableString(body.waiver_start_date) ?? today(),
+      end: nullableString(body.waiver_end_date),
+      startField: "waiver_start_date",
+      endField: "waiver_end_date",
+      label: "Waiver end date"
+    })
+  ];
+  if (hasValidationErrors(waiverIssues)) return validationResponse(c, waiverIssues);
   if (settings.require_reason_for_document_waiver === 1 && !reason) return fail(c, 400, "REASON_REQUIRED", "Waiver reason is required.");
   const type = await c.env.DB.prepare("SELECT id FROM document_types WHERE id = ? AND is_active = 1").bind(documentTypeId).first<{ id: string }>();
   if (!type) return fail(c, 400, "INVALID_DOCUMENT_TYPE", "Document type was not found.");
@@ -1463,7 +1478,17 @@ employeeDocumentComplianceRoutes.post("/:employeeId/documents/renewal-cases", as
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   const body = await readJsonBody(c.req.raw);
   const documentTypeId = readString(body.document_type_id);
-  if (!documentTypeId) return fail(c, 400, "DOCUMENT_TYPE_REQUIRED", "Document type is required.");
+  const caseIssues = [
+    ...validateDocumentRules({ documentTypeId }),
+    ...validateDateRange({
+      start: nullableString(body.target_renewal_date),
+      end: nullableString(body.due_date),
+      startField: "target_renewal_date",
+      endField: "due_date",
+      label: "Renewal due date"
+    })
+  ];
+  if (hasValidationErrors(caseIssues)) return validationResponse(c, caseIssues);
   const documentId = nullableString(body.document_id);
   const document = documentId ? await c.env.DB.prepare("SELECT id, current_version_id, expiry_date FROM employee_documents WHERE id = ? AND employee_id = ?").bind(documentId, employeeId).first<{ id: string; current_version_id: string | null; expiry_date: string | null }>() : null;
   const row = await createRenewalCase(c.env.DB, {

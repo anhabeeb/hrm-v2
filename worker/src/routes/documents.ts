@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateDocumentRules, validateOrganizationCascade, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
@@ -585,6 +586,11 @@ async function validateRuleRefs(c: Context<AppBindings>, rule: ReturnType<typeof
       if (!exists) return fail(c, 400, "INVALID_REFERENCE", message);
     }
   }
+  const issues = [
+    ...validateDocumentRules({ documentTypeId: rule.document_type_id }),
+    ...(await validateOrganizationCascade(c.env.DB, rule))
+  ];
+  if (hasValidationErrors(issues)) return validationResponse(c, issues);
   return null;
 }
 

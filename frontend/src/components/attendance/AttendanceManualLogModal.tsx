@@ -3,6 +3,8 @@ import { useState } from "react";
 import { ApiError, api } from "../../lib/api";
 import type { AttendanceLog } from "../../types/attendance";
 import type { Employee } from "../../types/employees";
+import { useOrganizationReferences } from "../../hooks/useOrganizationReferences";
+import { EmployeeCascadeSelect } from "../organization/EmployeeCascadeSelect";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -17,6 +19,7 @@ export function AttendanceManualLogModal(props: {
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }) {
+  const organizationRefs = useOrganizationReferences(props.token);
   const [employeeId, setEmployeeId] = useState(props.log?.employee_id ?? "");
   const [logTime, setLogTime] = useState(props.log?.log_time?.slice(0, 16) ?? new Date().toISOString().slice(0, 16));
   const [logType, setLogType] = useState<AttendanceLog["log_type"]>(props.log?.log_type ?? "IN");
@@ -56,12 +59,18 @@ export function AttendanceManualLogModal(props: {
         </div>
         <div className="grid gap-3 p-4 md:grid-cols-2">
           {error ? <div className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-          <Field label="Employee">
-            <SelectField value={employeeId} onValueChange={setEmployeeId} required>
-              <option value="">Select employee</option>
-              {props.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.display_name ?? employee.full_name} ({employee.employee_no})</option>)}
-            </SelectField>
-          </Field>
+          <div className="md:col-span-2">
+            <EmployeeCascadeSelect
+              employees={props.employees}
+              departments={organizationRefs.departments}
+              locations={organizationRefs.locations}
+              jobLevels={organizationRefs.jobLevels}
+              positions={organizationRefs.positions}
+              value={employeeId}
+              onChange={setEmployeeId}
+              mode="report-filter"
+            />
+          </div>
           <Field label="Log time"><Input type="datetime-local" value={logTime} onChange={(event) => setLogTime(event.target.value)} required /></Field>
           <Field label="Punch type">
             <SelectField value={logType} onValueChange={(value) => setLogType(value as AttendanceLog["log_type"])}>

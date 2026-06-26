@@ -1,7 +1,9 @@
 import { Download, FileSpreadsheet, FileText, History, RefreshCw, Search } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Button } from "../components/ui/button";
+import { ValidatedDateRangeField } from "../components/forms/ValidatedDateRangeField";
 import { DataTableFrame } from "../components/ui/data-table";
 import { Input } from "../components/ui/input";
 import { AlertBanner, ExportActionBar, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
@@ -10,6 +12,7 @@ import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
+import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
 
 type Row = Record<string, unknown>;
 type Option = { id: string; label: string };
@@ -90,9 +93,9 @@ export function ReportsPage() {
   const [report, setReport] = useState<{ key: string; label: string; group?: string; columns: string[]; rows: Row[]; pagination?: Row } | null>(null);
   const [available, setAvailable] = useState<ReportOption[]>([]);
   const [exportLogs, setExportLogs] = useState<Row[]>([]);
-  const [departments, setDepartments] = useState<Option[]>([]);
-  const [positions, setPositions] = useState<Option[]>([]);
-  const [locations, setLocations] = useState<Option[]>([]);
+  const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
+  const [positions, setPositions] = useState<OrganizationPosition[]>([]);
+  const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [documentTypes, setDocumentTypes] = useState<Option[]>([]);
   const [documentCategories, setDocumentCategories] = useState<Option[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<Option[]>([]);
@@ -185,9 +188,9 @@ export function ReportsPage() {
       api.listPensionSchemes(token)
     ]).then((results) => {
       const [departmentResult, positionResult, locationResult, documentTypeResult, documentCategoryResult, leaveTypeResult, payrollPeriodResult, shiftTemplateResult, assetCategoryResult, userResult, institutionResult, templateResult, pensionResult] = results;
-      if (departmentResult.status === "fulfilled") setDepartments(departmentResult.value.departments.map((item) => ({ id: item.id, label: item.name })));
-      if (positionResult.status === "fulfilled") setPositions(positionResult.value.positions.map((item) => ({ id: item.id, label: item.title })));
-      if (locationResult.status === "fulfilled") setLocations(locationResult.value.locations.map((item) => ({ id: item.id, label: item.name })));
+      if (departmentResult.status === "fulfilled") setDepartments(departmentResult.value.departments);
+      if (positionResult.status === "fulfilled") setPositions(positionResult.value.positions);
+      if (locationResult.status === "fulfilled") setLocations(locationResult.value.locations);
       if (documentTypeResult.status === "fulfilled") setDocumentTypes(documentTypeResult.value.document_types.map((item) => ({ id: item.id, label: item.name })));
       if (documentCategoryResult.status === "fulfilled") setDocumentCategories(documentCategoryResult.value.categories.map((item) => ({ id: item.id, label: item.name })));
       if (leaveTypeResult.status === "fulfilled") setLeaveTypes(leaveTypeResult.value.leave_types.map((item) => ({ id: item.id, label: item.name })));
@@ -264,12 +267,32 @@ export function ReportsPage() {
           </div>
           <Input placeholder="Employee no" value={filters.employee_number} onChange={(event) => setFilter(setFilters, "employee_number", event.target.value)} />
           <SelectStatic label="Export format" value={filters.export_format} options={["CSV", "JSON", "EXCEL", "PDF"]} onChange={(value) => setFilter(setFilters, "export_format", value)} />
-          <Input type="date" value={filters.date_from} onChange={(event) => setFilter(setFilters, "date_from", event.target.value)} />
-          <Input type="date" value={filters.date_to} onChange={(event) => setFilter(setFilters, "date_to", event.target.value)} />
+          <ValidatedDateRangeField start={filters.date_from} end={filters.date_to} onStartChange={(value) => setFilter(setFilters, "date_from", value)} onEndChange={(value) => setFilter(setFilters, "date_to", value)} />
           <SelectFilter label="Payroll period" value={filters.payroll_period_id} options={payrollPeriods} onChange={(value) => setFilter(setFilters, "payroll_period_id", value)} />
-          <SelectFilter label="Department" value={filters.department_id} options={departments} onChange={(value) => setFilter(setFilters, "department_id", value)} />
-          <SelectFilter label="Position" value={filters.position_id} options={positions} onChange={(value) => setFilter(setFilters, "position_id", value)} />
-          <SelectFilter label="Worksite/location" value={filters.location_id} options={locations} onChange={(value) => setFilter(setFilters, "location_id", value)} />
+          <div className="lg:col-span-3">
+            <OrganizationCascadeSelector
+              value={{ locationId: filters.location_id, departmentId: filters.department_id, positionId: filters.position_id }}
+              onChange={(next) => {
+                setFilters((current) => ({
+                  ...current,
+                  location_id: next.locationId ?? "",
+                  department_id: next.departmentId ?? "",
+                  position_id: next.positionId ?? "",
+                  page: "1"
+                }));
+              }}
+              departments={departments}
+              locations={locations}
+              jobLevels={[]}
+              positions={positions}
+              includeLocation
+              includeJobLevel={false}
+              requireJobLevelForPosition={false}
+              mode="report-filter"
+              labels={{ locationId: "Worksite/location", departmentId: "Department", positionId: "Position" }}
+              className="grid gap-2 md:grid-cols-3"
+            />
+          </div>
           <SelectStatic label="Employee type" value={filters.employee_type} options={["LOCAL", "FOREIGN", "OTHER"]} onChange={(value) => setFilter(setFilters, "employee_type", value)} />
           <SelectStatic label="Employment type" value={filters.employment_type} options={["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]} onChange={(value) => setFilter(setFilters, "employment_type", value)} />
           <Input placeholder="Employee status" value={filters.employee_status} onChange={(event) => setFilter(setFilters, "employee_status", event.target.value)} />

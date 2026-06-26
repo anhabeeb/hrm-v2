@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { buildEmployeeScopeWhereClause } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { hasValidationErrors, validateDateRange, validateOrganizationCascade, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
@@ -588,7 +589,7 @@ function parseReportDateRange(c: Context<AppBindings>): ReportDateRange {
   const f = filters(c);
   if (f.date_from && Number.isNaN(Date.parse(f.date_from))) return { error: "REPORT_DATE_RANGE_INVALID" as const };
   if (f.date_to && Number.isNaN(Date.parse(f.date_to))) return { error: "REPORT_DATE_RANGE_INVALID" as const };
-  if (f.date_from && f.date_to && f.date_from > f.date_to) return { error: "REPORT_DATE_RANGE_INVALID" as const };
+  if (hasValidationErrors(validateDateRange({ start: f.date_from, end: f.date_to, startField: "date_from", endField: "date_to", label: "Report date to" }))) return { error: "REPORT_DATE_RANGE_INVALID" as const };
   return { date_from: f.date_from, date_to: f.date_to };
 }
 
@@ -2310,6 +2311,13 @@ async function createReportExportLog(c: Context<AppBindings>, input: { reportKey
 async function runConfiguredReport(c: Context<AppBindings>, reportKey: string, config: ReportConfig) {
   const dateRange = parseReportDateRange(c);
   if ("error" in dateRange) return { error: fail(c, 400, dateRange.error, "The report date range is invalid.") };
+  const f = filters(c);
+  const filterIssues = await validateOrganizationCascade(c.env.DB, {
+    department_id: f.department_id,
+    location_id: f.location_id,
+    position_id: f.position_id
+  });
+  if (hasValidationErrors(filterIssues)) return { error: validationResponse(c, filterIssues) };
   const result = await runReport(c, reportKey);
   const rows = maskSensitiveReportFields(c, config, result.rows);
   return { report: { key: reportKey, label: config.label, group: config.group, columns: config.columns, rows, pagination: result.pagination } };

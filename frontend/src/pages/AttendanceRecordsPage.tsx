@@ -9,13 +9,14 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceLog, AttendanceRawLog, AttendanceRecord } from "../types/attendance";
 import type { Employee } from "../types/employees";
-import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
+import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import { CheckboxField, SelectField, TextareaField } from "../components/ui/page-shell";
 
 function statusTone(status: string) {
@@ -38,6 +39,7 @@ export function AttendanceRecordsPage() {
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
+  const [jobLevels, setJobLevels] = useState<OrganizationJobLevel[]>([]);
   const [positions, setPositions] = useState<OrganizationPosition[]>([]);
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [search, setSearch] = useState("");
@@ -89,11 +91,12 @@ export function AttendanceRecordsPage() {
     setError(null);
     try {
       setAttendanceDisabled(false);
-      const [recordResult, logResult, employeeResult, departmentResult, positionResult, locationResult] = await Promise.all([
+      const [recordResult, logResult, employeeResult, departmentResult, jobLevelResult, positionResult, locationResult] = await Promise.all([
         api.listAttendanceRecords(token, filters),
         api.listAttendanceRawLogs(token, rawLogFilters),
         api.listEmployees(token),
         api.listDepartments(token),
+        api.listJobLevels(token),
         api.listPositions(token),
         api.listLocations(token)
       ]);
@@ -103,6 +106,7 @@ export function AttendanceRecordsPage() {
       setLogs(attendanceLogs.logs);
       setEmployees(employeeResult.employees);
       setDepartments(departmentResult.departments);
+      setJobLevels(jobLevelResult.job_levels);
       setPositions(positionResult.positions);
       setLocations(locationResult.locations);
     } catch (err) {
@@ -169,9 +173,26 @@ export function AttendanceRecordsPage() {
           <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee or number" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
           <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
           <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={source} onChange={(event) => setSource(event.target.value)}><option value="">All sources</option>{["DEVICE", "MANUAL", "CORRECTION", "LEAVE", "ROSTER", "SYSTEM"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectField>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={positionId} onChange={(event) => setPositionId(event.target.value)}><option value="">All positions</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</SelectField>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</SelectField>
+          <div className="md:col-span-4 xl:col-span-3">
+            <OrganizationCascadeSelector
+              value={{ locationId, departmentId, positionId }}
+              onChange={(next) => {
+                setLocationId(next.locationId ?? "");
+                setDepartmentId(next.departmentId ?? "");
+                setPositionId(next.positionId ?? "");
+              }}
+              departments={departments}
+              locations={locations}
+              jobLevels={jobLevels}
+              positions={positions}
+              includeLocation
+              includeJobLevel={false}
+              requireJobLevelForPosition={false}
+              mode="report-filter"
+              labels={{ locationId: "Location", departmentId: "Department", positionId: "Position" }}
+              className="grid gap-2 md:grid-cols-3"
+            />
+          </div>
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Date from" />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Date to" />
           <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={missedPunch} onChange={(event) => setMissedPunch(event.target.value)}><option value="">Missed punch: any</option><option value="true">Missed punch</option><option value="false">No missed punch</option></SelectField>
