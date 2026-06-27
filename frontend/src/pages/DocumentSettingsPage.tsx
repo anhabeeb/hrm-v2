@@ -14,7 +14,7 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { DocumentCategory, DocumentRequiredRule, DocumentType, DocumentTypeInput } from "../types/documents";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
-import { CheckboxField, SelectField, TextareaField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField, StandardTabs, TextareaField } from "../components/ui/page-shell";
 
 type Tab = "categories" | "types" | "rules";
 
@@ -103,24 +103,29 @@ export function DocumentSettingsPage() {
     await load();
   }
 
-  if (!canView) return <Panel><EmptyState title="Document settings unavailable" description="Your account needs documents.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Document settings unavailable" description="Your account needs documents.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">Document Management Settings</h1>
-        <p className="text-sm text-muted-foreground">Document categories, types, required rules, and compliance foundations.</p>
-        <div className="mt-3 flex flex-wrap gap-2">
+    <PageShell>
+      <PageHeader
+        title="Document Management Settings"
+        description="Document categories, types, required rules, and compliance foundations."
+        actions={
+          <>
           <Link to="/settings/documents/compliance"><Button variant="outline" size="sm">Compliance settings</Button></Link>
           <Link to="/settings/documents/compliance/types"><Button variant="outline" size="sm">Type compliance rules</Button></Link>
           <Link to="/documents/compliance"><Button variant="outline" size="sm">Compliance dashboard</Button></Link>
-        </div>
-      </div>
+          </>
+        }
+      />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      <StandardTabs
+        items={(["categories", "types", "rules"] as Tab[]).map((item) => ({ key: item, label: item === "categories" ? "Categories" : item === "types" ? "Document Types" : "Required Rules" }))}
+        active={tab}
+        onChange={(key) => setTab(key as Tab)}
+        label="Document settings section tabs"
+      />
       <Panel className="overflow-hidden">
-        <div className="flex overflow-x-auto border-b">
-          {(["categories", "types", "rules"] as Tab[]).map((item) => <Button key={item} variant={tab === item ? "primary" : "ghost"} size="sm" className="h-9 whitespace-nowrap" onClick={() => setTab(item)}>{item === "categories" ? "Categories" : item === "types" ? "Document Types" : "Required Rules"}</Button>)}
-        </div>
         {tab === "categories" ? <Categories categories={categories} canManage={canManage} onNew={() => setCategoryModal("new")} onEdit={setCategoryModal} onAction={(item) => void categoryAction(item)} loading={loading} /> : null}
         {tab === "types" ? <Types types={types} canManage={canManage} onNew={() => setTypeModal("new")} onEdit={setTypeModal} onAction={(item) => void typeAction(item)} loading={loading} /> : null}
         {tab === "rules" ? <Rules rules={rules} canManage={canRules} onNew={() => setRuleModal("new")} onEdit={setRuleModal} onAction={(item) => void ruleAction(item)} loading={loading} /> : null}
@@ -128,7 +133,7 @@ export function DocumentSettingsPage() {
       {categoryModal ? <CategoryModal token={token!} category={categoryModal === "new" ? undefined : categoryModal} onClose={() => setCategoryModal(null)} onSaved={load} /> : null}
       {typeModal ? <TypeModal token={token!} type={typeModal === "new" ? undefined : typeModal} categories={categories} onClose={() => setTypeModal(null)} onSaved={load} /> : null}
       {ruleModal ? <RuleModal token={token!} rule={ruleModal === "new" ? undefined : ruleModal} types={types} departments={departments} positions={positions} jobLevels={jobLevels} locations={locations} onClose={() => setRuleModal(null)} onSaved={load} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -64,17 +64,15 @@ export function MissingDocumentsPage() {
     void load();
   }, [token, canView, activeFilters]);
 
-  if (!canView) return <Panel><EmptyState title="Missing documents unavailable" description="Your account needs documents.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Missing documents unavailable" description="Your account needs documents.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Missing Required Documents</h1>
-          <p className="text-sm text-muted-foreground">Required-rule gaps prepared for compliance follow-up.</p>
-        </div>
-        <Link to="/documents"><Button variant="outline" size="sm">Back to registry</Button></Link>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Missing Required Documents"
+        description="Required-rule gaps prepared for compliance follow-up."
+        actions={<Link to="/documents"><Button variant="outline" size="sm">Back to registry</Button></Link>}
+      />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 lg:grid-cols-6">
@@ -98,7 +96,7 @@ export function MissingDocumentsPage() {
         {loading ? <EmptyState title="Loading missing documents" description="Checking required-rule gaps." /> : rows.length === 0 ? <EmptyState title="No missing documents" description="Required documents are currently satisfied for the loaded rules." /> : null}
       </Panel>
       {uploadRow && token ? <MissingUploadModal token={token} row={uploadRow} type={types.find((item) => item.id === uploadRow.document_type_id)} onClose={() => setUploadRow(null)} onSaved={load} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

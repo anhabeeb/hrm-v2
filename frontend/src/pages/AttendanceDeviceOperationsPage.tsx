@@ -17,7 +17,7 @@ import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceDevice, AttendanceDeviceSettings, AttendanceImportBatch, AttendanceImportRowError, AttendanceLockedDayWarning, AttendanceRawLog, AttendanceUnmatchedLog, AttendanceVendorIntegration, EmployeeBiometricMapping } from "../types/attendance";
 import type { Employee } from "../types/employees";
-import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 
 type Mode = "settings" | "mappings" | "imports" | "raw-logs" | "unmatched" | "errors" | "locked-warnings" | "diagnostics" | "vendor-integrations" | "reports";
 
@@ -50,19 +50,15 @@ export function AttendanceDeviceOperationsPage({ mode }: { mode: Mode }) {
   const canManage = permissions.has("attendance.devices.manage") || permissions.has("attendance.import_batches.manage");
 
   if (!token) return null;
-  if (!canDeviceView && mode !== "reports") return <Panel><EmptyState title="Attendance device access unavailable" description="Your account needs attendance device permissions." /></Panel>;
+  if (!canDeviceView && mode !== "reports") return <PageShell><Panel><EmptyState title="Attendance device access unavailable" description="Your account needs attendance device permissions." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">{titleFor(mode)}</h1>
-          <p className="text-sm text-muted-foreground">ZKTeco import, bridge, ADMS placeholder, reconciliation, and protected payroll-lock handling.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <AdminHelpLink target="zkteco" label="View ZKTeco Guide" />
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={titleFor(mode)}
+        description="ZKTeco import, bridge, ADMS placeholder, reconciliation, and protected payroll-lock handling."
+        actions={<AdminHelpLink target="zkteco" label="View ZKTeco Guide" />}
+      />
       <AttendanceNav />
       {mode === "settings" ? <DeviceSettings token={token} canManage={canManage} /> : null}
       {mode === "mappings" ? <BiometricMappings token={token} /> : null}
@@ -74,7 +70,7 @@ export function AttendanceDeviceOperationsPage({ mode }: { mode: Mode }) {
       {mode === "diagnostics" ? <Diagnostics token={token} /> : null}
       {mode === "vendor-integrations" ? <VendorIntegrations token={token} canManage={canManage} /> : null}
       {mode === "reports" ? <DeviceReports token={token} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

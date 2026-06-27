@@ -2,6 +2,7 @@ import { MoreHorizontal, Plus } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 
@@ -12,17 +13,18 @@ interface PlaceholderModulePageProps {
 
 export function PlaceholderModulePage({ title, permission }: PlaceholderModulePageProps) {
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">{title}</h1>
-          <p className="text-sm text-muted-foreground">Foundation route prepared for the next implementation phase.</p>
-        </div>
-        <Button size="sm" disabled>
+    <PageShell>
+      <PageHeader
+        title={title}
+        eyebrow="Foundation"
+        description="Foundation route prepared for the next implementation phase."
+        actions={
+          <Button size="sm" disabled>
           <Plus className="h-4 w-4" />
           Add
-        </Button>
-      </div>
+          </Button>
+        }
+      />
 
       <Panel className="overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-3">
@@ -63,6 +65,6 @@ export function PlaceholderModulePage({ title, permission }: PlaceholderModulePa
         </div>
         <div className="px-4 py-3 text-sm text-muted-foreground">Prepared for compact edit, archive, document, and audit actions.</div>
       </Panel>
-    </div>
+    </PageShell>
   );
 }

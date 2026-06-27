@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -57,12 +57,13 @@ export function AssetsReportsPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">Asset Reports</h1><p className="text-sm text-muted-foreground">Export-friendly asset assignment and deduction reporting.</p></div>
-      <Panel className="p-0"><AssetsNav /><div className="grid gap-2 p-4 md:grid-cols-4 xl:grid-cols-7"><Input className="w-full" placeholder="Employee or asset" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /><Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={["ISSUED","RETURNED","DAMAGED","LOST","REPLACED","WRITTEN_OFF"]} empty="All status" /><Select value={filters.category_id} onChange={(category_id) => setFilters({ ...filters, category_id })} options={categories.map((category) => [category.id, category.name])} empty="All categories" /><div className="md:col-span-2"><OrganizationCascadeSelector value={{ locationId: filters.location_id, departmentId: filters.department_id }} onChange={(next) => setFilters({ ...filters, location_id: next.locationId ?? "", department_id: next.departmentId ?? "" })} departments={departments} locations={locations} jobLevels={[]} positions={[]} includeLocation includeJobLevel={false} includePosition={false} mode="asset-rule" labels={{ locationId: "Location", departmentId: "Department" }} className="grid gap-2 md:grid-cols-2" /></div><Input className="w-full" type="date" value={filters.issued_date_from} onChange={(event) => setFilters({ ...filters, issued_date_from: event.target.value })} /><Input className="w-full" type="date" value={filters.issued_date_to} onChange={(event) => setFilters({ ...filters, issued_date_to: event.target.value })} /><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>{canExport ? <Button variant="outline" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</Button> : null}</div></Panel>
+    <PageShell>
+      <PageHeader title="Asset Reports" description="Export-friendly asset assignment and deduction reporting." />
+      <AssetsNav />
+      <Panel className="p-0"><div className="grid gap-2 p-4 md:grid-cols-4 xl:grid-cols-7"><Input className="w-full" placeholder="Employee or asset" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /><Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={["ISSUED","RETURNED","DAMAGED","LOST","REPLACED","WRITTEN_OFF"]} empty="All status" /><Select value={filters.category_id} onChange={(category_id) => setFilters({ ...filters, category_id })} options={categories.map((category) => [category.id, category.name])} empty="All categories" /><div className="md:col-span-2"><OrganizationCascadeSelector value={{ locationId: filters.location_id, departmentId: filters.department_id }} onChange={(next) => setFilters({ ...filters, location_id: next.locationId ?? "", department_id: next.departmentId ?? "" })} departments={departments} locations={locations} jobLevels={[]} positions={[]} includeLocation includeJobLevel={false} includePosition={false} mode="asset-rule" labels={{ locationId: "Location", departmentId: "Department" }} className="grid gap-2 md:grid-cols-2" /></div><Input className="w-full" type="date" value={filters.issued_date_from} onChange={(event) => setFilters({ ...filters, issued_date_from: event.target.value })} /><Input className="w-full" type="date" value={filters.issued_date_to} onChange={(event) => setFilters({ ...filters, issued_date_to: event.target.value })} /><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>{canExport ? <Button variant="outline" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</Button> : null}</div></Panel>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((row, index) => <TableRow key={index}>{columns.map((column) => <TableCell key={column}>{String(row[column] ?? "-")}</TableCell>)}</TableRow>)}</TableBody></Table>{!rows.length ? <EmptyState title="No report rows" description="Adjust filters or issue assets to employees." /> : null}</div></Panel>
-    </div>
+    </PageShell>
   );
 }
 

@@ -9,7 +9,7 @@ import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
-import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -125,21 +125,21 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Leave unavailable" description="Your account needs leave.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Leave unavailable" description="Your account needs leave.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">{approvalsOnly ? "Pending Leave Approvals" : "Leave Requests"}</h1>
-          <p className="text-sm text-muted-foreground">Leave requests, approval status, document status, and salary impact foundation.</p>
-        </div>
-        <div className="flex gap-2">
+    <PageShell>
+      <PageHeader
+        title={approvalsOnly ? "Pending Leave Approvals" : "Leave Requests"}
+        description="Leave requests, approval status, document status, and salary impact foundation."
+        actions={
+          <>
           <Link to="/leave/calendar"><Button variant="outline" size="sm">Calendar</Button></Link>
           <Link to="/leave/settings"><Button variant="outline" size="sm">Settings</Button></Link>
           {canCreate ? <Button size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New request</Button> : null}
-        </div>
-      </div>
+          </>
+        }
+      />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-6">
@@ -180,6 +180,6 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
         onCancel={() => { setActionTarget(null); setActionNote(""); }}
         onConfirm={() => actionTarget ? void action(actionTarget.request, actionTarget.name) : undefined}
       />
-    </div>
+    </PageShell>
   );
 }

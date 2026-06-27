@@ -14,7 +14,7 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import type { RosterAssignment, RosterAssignmentStatus, RosterEmployeeRow, ShiftTemplate, WeeklyRoster } from "../types/roster";
-import { CheckboxField, SelectField, TextareaField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField, TextareaField } from "../components/ui/page-shell";
 
 const statuses: RosterAssignmentStatus[] = ["UNASSIGNED", "DRAFT", "PUBLISHED", "CHANGED_AFTER_PUBLISH", "SCHEDULED", "DAY_OFF", "OFF", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "PUBLIC_HOLIDAY", "CONFLICT", "CANCELLED", "ABSENT_PLACEHOLDER"];
 type RosterAction = "save-published" | "copy-previous" | "clear-week" | "unpublish" | "lock" | "unlock" | null;
@@ -231,25 +231,24 @@ export function RosterWeeklyPage() {
     setOverwrite(false);
   }
 
-  if (!canView) return <Panel><EmptyState title="Roster unavailable" description="Your account needs roster.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Roster unavailable" description="Your account needs roster.view permission." /></Panel></PageShell>;
   if (moduleDisabled) {
     return (
-      <div className="space-y-4">
-        <div><h1 className="text-lg font-semibold">Weekly Roster</h1><p className="text-sm text-muted-foreground">Roster module is disabled.</p></div>
+      <PageShell>
+        <PageHeader title="Weekly Roster" description="Roster module is disabled." />
         <RosterNav />
         <Panel><EmptyState title="Roster module is disabled" description="Roster settings remain available to permitted admins." /></Panel>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Weekly Roster</h1>
-          <p className="text-sm text-muted-foreground">Table-first weekly planning with leave, attendance, payroll, and audit hooks prepared.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <PageShell>
+      <PageHeader
+        title="Weekly Roster"
+        description="Table-first weekly planning with leave, attendance, payroll, and audit hooks prepared."
+        actions={
+          <>
           {canManage ? <Button variant="outline" size="sm" onClick={() => { setAction("copy-previous"); setActionReason(""); setOverwrite(false); }}><ClipboardCopy className="h-4 w-4" /> Copy previous</Button> : null}
           {canManage ? <Button variant="outline" size="sm" onClick={() => { setAction("clear-week"); setActionReason(""); }}><Eraser className="h-4 w-4" /> Clear</Button> : null}
           {canManage ? <Button size="sm" onClick={() => void save()}><Save className="h-4 w-4" /> Save</Button> : null}
@@ -257,8 +256,9 @@ export function RosterWeeklyPage() {
           {weekly?.period?.status === "PUBLISHED" && canUnpublish ? <Button variant="outline" size="sm" onClick={() => { setAction("unpublish"); setActionReason(""); }}><Undo2 className="h-4 w-4" /> Unpublish</Button> : null}
           {weekly?.period?.status === "PUBLISHED" && canLock ? <Button variant="outline" size="sm" onClick={() => { setAction("lock"); setActionReason(""); }}><Lock className="h-4 w-4" /> Lock</Button> : null}
           {weekly?.period?.status === "LOCKED" && canUnlock ? <Button variant="outline" size="sm" onClick={() => { setAction("unlock"); setActionReason(""); }}><Unlock className="h-4 w-4" /> Unlock</Button> : null}
-        </div>
-      </div>
+          </>
+        }
+      />
       <RosterNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
@@ -366,7 +366,7 @@ export function RosterWeeklyPage() {
           onConfirm={() => void confirmAction()}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 

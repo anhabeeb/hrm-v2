@@ -19,7 +19,7 @@ import type { AssetAssignment, AssetAssignmentEvent, AssetCategory, AssetItem } 
 import type { EmployeeDocument } from "../types/documents";
 import type { Employee } from "../types/employees";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
-import { SelectField as UiSelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField as UiSelectField } from "../components/ui/page-shell";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 
 type LifecycleAction = "return" | "mark-damaged" | "mark-lost" | "write-off";
@@ -78,10 +78,10 @@ export function AssetAssignmentsPage() {
   useEffect(() => { void load(); }, [token]);
 
   return (
-    <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">Asset Assignments</h1><p className="text-sm text-muted-foreground">Issue, return, replace, damage/lost, recovery, attachment, and event tracking.</p></div>
+    <PageShell>
+      <PageHeader title="Asset Assignments" description="Issue, return, replace, damage/lost, recovery, attachment, and event tracking." />
+      <AssetsNav />
       <Panel className="p-0">
-        <AssetsNav />
         <div className="grid gap-2 p-4 md:grid-cols-4 xl:grid-cols-6">
           <Input placeholder="Employee or asset" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
           <div className="md:col-span-2">
@@ -152,7 +152,7 @@ export function AssetAssignmentsPage() {
       {modal?.type === "deduction" ? <DeductionModal row={modal.row} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
       {modal?.type === "events" ? <EventsModal row={modal.row} onClose={() => setModal(null)} /> : null}
       {modal?.type === "attachments" ? <AttachmentsModal row={modal.row} onClose={() => setModal(null)} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

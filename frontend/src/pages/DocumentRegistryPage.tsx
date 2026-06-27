@@ -13,7 +13,7 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { DocumentCategory, DocumentType, EmployeeDocument, EmployeeDocumentVersion } from "../types/documents";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 
 function tone(status: string) {
   if (status === "VALID") return "success";
@@ -141,21 +141,21 @@ export function DocumentRegistryPage() {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Documents unavailable" description="Your account needs documents.view or documents.registry.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Documents unavailable" description="Your account needs documents.view or documents.registry.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Document Registry</h1>
-          <p className="text-sm text-muted-foreground">Central employee document tracking, expiry visibility, and compliance status.</p>
-        </div>
-        <div className="flex gap-2">
+    <PageShell>
+      <PageHeader
+        title="Document Registry"
+        description="Central employee document tracking, expiry visibility, and compliance status."
+        actions={
+          <>
           <Link to="/documents/compliance"><Button variant="outline" size="sm">Compliance</Button></Link>
           <Link to="/documents/missing"><Button variant="outline" size="sm">Missing required</Button></Link>
           {canExport ? <Button variant="outline" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
 
@@ -226,7 +226,7 @@ export function DocumentRegistryPage() {
           onConfirm={() => void action(documentAction.document, documentAction.name, documentAction.reason.trim())}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 

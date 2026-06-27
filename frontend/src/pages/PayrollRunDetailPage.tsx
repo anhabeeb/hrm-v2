@@ -6,7 +6,7 @@ import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Panel } from "../components/ui/panel";
-import { InputField } from "../components/ui/page-shell";
+import { InputField, PageHeader, PageShell } from "../components/ui/page-shell";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -131,11 +131,11 @@ export function PayrollRunDetailPage() {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Payroll run unavailable" description="Your account needs payroll.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Payroll run unavailable" description="Your account needs payroll.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">Payroll Run Detail</h1><p className="text-sm text-muted-foreground">{run ? `Run #${run.run_no} for ${run.period_month ?? "-"} / ${run.period_year ?? "-"}` : "Monthly payroll review table."}</p></div>
+    <PageShell>
+      <PageHeader title="Payroll Run Detail" description={run ? `Run #${run.run_no} for ${run.period_month ?? "-"} / ${run.period_year ?? "-"}` : "Monthly payroll review table."} />
       <PayrollNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {run ? <Panel className="p-4">
@@ -173,7 +173,7 @@ export function PayrollRunDetailPage() {
       {selected ? <LinesModal employee={selected} lines={lines} onClose={() => { setSelected(null); setLines(null); }} /> : null}
       {holdModal ? <HoldModal modal={holdModal} reason={holdReason} onReason={setHoldReason} onClose={() => { setHoldModal(null); setHoldReason(""); }} onConfirm={() => void confirmHoldAction()} /> : null}
       {runAction ? <RunActionModal action={runAction} reason={actionReason} onReason={setActionReason} onClose={() => { setRunAction(null); setActionReason(""); }} onConfirm={() => void confirmRunAction()} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

@@ -26,7 +26,7 @@ import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { clearCurrentBrowserCache, getFrontendCacheDiagnostics, preserveSafeUiPreferences } from "../lib/cache/hrmCache";
-import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField, StandardTabs } from "../components/ui/page-shell";
 
 type Row = Record<string, unknown>;
 type Tone = "neutral" | "success" | "warning" | "danger" | "info";
@@ -351,39 +351,35 @@ export function AdminSettingsPage() {
   }
 
   if (!canView) {
-    return <Panel><EmptyState title="Admin controls unavailable" description="Your account needs admin settings or settings view permission." /></Panel>;
+    return <PageShell><Panel><EmptyState title="Admin controls unavailable" description="Your account needs admin settings or settings view permission." /></Panel></PageShell>;
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Admin Settings & Production Controls</h1>
-          <p className="text-sm text-muted-foreground">Central module controls, consistency checks, security logs, and production readiness guardrails.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <PageShell>
+      <PageHeader
+        title="Admin Settings & Production Controls"
+        description="Central module controls, consistency checks, security logs, and production readiness guardrails."
+        actions={
+          <>
           <AdminHelpLink target={active === "cache-sync" ? "cacheTimeout" : active === "data-transfer" ? "dataImport" : "deployment"} label="View Configuration Guide" />
           <Button size="sm" variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" /> Refresh</Button>
           <NavLink to="/settings"><Button size="sm" variant="outline">Settings index</Button></NavLink>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
 
-      <div className="overflow-x-auto rounded-md border bg-white p-2">
-        <div className="flex min-w-max gap-1">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <Button key={tab.key} type="button" size="sm" variant={active === tab.key ? "primary" : "ghost"} onClick={() => selectTab(tab.key)} className="whitespace-nowrap">
-                <Icon className="h-4 w-4" />
-                {tab.label}
-              </Button>
-            );
-          })}
-        </div>
-      </div>
+      <StandardTabs
+        items={tabs.map((tab) => {
+          const Icon = tab.icon;
+          return { key: tab.key, label: <><Icon className="h-4 w-4" />{tab.label}</> };
+        })}
+        active={active}
+        onChange={selectTab}
+        label="Admin settings section tabs"
+      />
 
       {loading ? <Panel className="p-6 text-sm text-muted-foreground">Loading admin controls...</Panel> : null}
 
@@ -508,6 +504,6 @@ export function AdminSettingsPage() {
       {active === "alerts" ? <div className="space-y-4"><Button size="sm" onClick={() => runAction("Admin alerts refreshed.", async () => { if (token) setAlerts((await api.refreshAdminSystemAlerts(token)).alerts); })}>Refresh admin alerts</Button><RowsTable rows={alerts} columns={["severity", "status", "alert_type", "module_key", "title", "message", "created_at"]} empty="No admin alerts." /></div> : null}
       {active === "reports" ? <div className="space-y-4"><Panel className="flex flex-wrap gap-2 p-4"><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={reportKey} onChange={(e) => setReportKey(e.target.value)}>{reportOptions.map((option) => <option key={option} value={option}>{option}</option>)}</SelectField><Button size="sm" onClick={() => void loadReport()}>Load report</Button></Panel><RowsTable rows={reportRows} columns={Object.keys(reportRows[0] ?? { status: "", message: "" }).slice(0, 8)} empty="No report rows loaded." /></div> : null}
       <ConfirmDialog open={cacheClearConfirm} title="Clear local cache?" description="This clears the current browser's IndexedDB HRM cache only. Server records are not changed." confirmLabel="Clear cache" cancelLabel="Cancel" onConfirm={() => void clearLocalCache()} onCancel={() => setCacheClearConfirm(false)} />
-    </div>
+    </PageShell>
   );
 }

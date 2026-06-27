@@ -17,7 +17,7 @@ import { ApiError, api } from "../lib/api";
 import type { AttendanceLog, AttendanceRawLog, AttendanceRecord } from "../types/attendance";
 import type { Employee } from "../types/employees";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
-import { CheckboxField, SelectField, TextareaField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField, TextareaField } from "../components/ui/page-shell";
 
 function statusTone(status: string) {
   if (status === "PRESENT") return "success" as const;
@@ -149,23 +149,23 @@ export function AttendanceRecordsPage() {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Attendance unavailable" description="Your account needs attendance.view permission." /></Panel>;
-  if (attendanceDisabled) return <div className="space-y-4"><div><h1 className="text-lg font-semibold">Attendance Records</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Attendance records and manual actions are hidden until an administrator enables the module in Attendance Settings." /></Panel></div>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Attendance unavailable" description="Your account needs attendance.view permission." /></Panel></PageShell>;
+  if (attendanceDisabled) return <PageShell><PageHeader title="Attendance Records" description="Attendance module is disabled." /><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Attendance records and manual actions are hidden until an administrator enables the module in Attendance Settings." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Attendance Records</h1>
-          <p className="text-sm text-muted-foreground">Daily attendance, raw punches, correction requests, and payroll impact foundation.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <PageShell>
+      <PageHeader
+        title="Attendance Records"
+        description="Daily attendance, raw punches, correction requests, and payroll impact foundation."
+        actions={
+          <>
           {canManageLogs ? <Button variant="outline" size="sm" onClick={() => setEditingLog(null)}><Plus className="h-4 w-4" /> Manual log</Button> : null}
           {canDevices ? <Button variant="outline" size="sm" onClick={() => setRawImportOpen(true)}><FileClock className="h-4 w-4" /> Import raw logs</Button> : null}
           {canCorrect ? <Button variant="outline" size="sm" onClick={() => setCorrectionOpen(true)}>Request correction</Button> : null}
           {canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Manual record</Button> : null}
-        </div>
-      </div>
+          </>
+        }
+      />
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
@@ -253,6 +253,6 @@ export function AttendanceRecordsPage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </PageShell>
   );
 }

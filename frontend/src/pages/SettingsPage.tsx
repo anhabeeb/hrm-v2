@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 
@@ -14,11 +15,8 @@ const settingsRows = [
 
 export function SettingsPage() {
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold">Settings</h1>
-        <p className="text-sm text-muted-foreground">System configuration foundation.</p>
-      </div>
+    <PageShell>
+      <PageHeader title="Settings" description="System configuration foundation." />
 
       <Panel className="overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-3">
@@ -236,6 +234,6 @@ export function SettingsPage() {
       <Panel className="overflow-hidden">
         <EmptyState title="No editable settings yet" description="Settings management will be added after the protected RBAC workflows are expanded." />
       </Panel>
-    </div>
+    </PageShell>
   );
 }

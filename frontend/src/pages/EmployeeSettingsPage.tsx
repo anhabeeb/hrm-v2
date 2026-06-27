@@ -6,7 +6,7 @@ import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { CheckboxField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, StandardTabs } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -91,24 +91,33 @@ export function EmployeeSettingsPage() {
   }
 
   if (!canView) {
-    return <Panel><EmptyState title="Employee settings unavailable" description="Your account needs employees.view permission." /></Panel>;
+    return (
+      <PageShell>
+        <PageHeader title="Employee Settings" eyebrow="Settings" description="Configurable statuses and employee numbering foundation." />
+        <Panel><EmptyState title="Employee settings unavailable" description="Your account needs employees.view permission." /></Panel>
+      </PageShell>
+    );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Employee Settings</h1>
-          <p className="text-sm text-muted-foreground">Configurable statuses and employee numbering foundation.</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Employee Settings"
+        eyebrow="Settings"
+        description="Configurable statuses and employee numbering foundation."
+        actions={<Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>}
+      />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      <StandardTabs
+        label="Employee settings section tabs"
+        active={tab}
+        onChange={(key) => setTab(key as Tab)}
+        items={[
+          { key: "statuses", label: "Employee Statuses" },
+          { key: "numbering", label: "Employee Numbering" }
+        ]}
+      />
       <Panel className="overflow-hidden">
-        <div className="flex border-b">
-          <Button variant={tab === "statuses" ? "primary" : "ghost"} className="h-11 rounded-none border-b-2 border-transparent" onClick={() => setTab("statuses")}>Employee Statuses</Button>
-          <Button variant={tab === "numbering" ? "primary" : "ghost"} className="h-11 rounded-none border-b-2 border-transparent" onClick={() => setTab("numbering")}>Employee Numbering</Button>
-        </div>
         <div className="p-4">
           {tab === "statuses" ? (
             <div className="space-y-3">
@@ -152,7 +161,7 @@ export function EmployeeSettingsPage() {
         onCancel={() => setStatusActionTarget(null)}
         onConfirm={() => statusActionTarget ? void statusAction(statusActionTarget) : undefined}
       />
-    </div>
+    </PageShell>
   );
 }
 

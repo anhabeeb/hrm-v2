@@ -7,7 +7,7 @@ import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -53,9 +53,10 @@ export function AssetsItemsPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">Asset Items</h1><p className="text-sm text-muted-foreground">Inventory register for uniforms, devices, cards, keys, and other controlled items.</p></div>
-      <Panel className="p-0"><AssetsNav /><div className="flex flex-wrap gap-2 p-4"><Input className="w-56" placeholder="Search code/name/serial" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /><SelectField value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="">All status</option>{["AVAILABLE","ISSUED","DAMAGED","LOST","WRITTEN_OFF","ARCHIVED"].map((status) => <option key={status} value={status}>{status}</option>)}</SelectField><SelectField value={filters.category_id} onChange={(event) => setFilters({ ...filters, category_id: event.target.value })}><option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</SelectField><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>{canManage ? <Button size="sm" onClick={() => setModal("new")}>Create item</Button> : null}</div></Panel>
+    <PageShell>
+      <PageHeader title="Asset Items" description="Inventory register for uniforms, devices, cards, keys, and other controlled items." />
+      <AssetsNav />
+      <Panel className="p-0"><div className="flex flex-wrap gap-2 p-4"><Input className="w-56" placeholder="Search code/name/serial" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /><SelectField value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="">All status</option>{["AVAILABLE","ISSUED","DAMAGED","LOST","WRITTEN_OFF","ARCHIVED"].map((status) => <option key={status} value={status}>{status}</option>)}</SelectField><SelectField value={filters.category_id} onChange={(event) => setFilters({ ...filters, category_id: event.target.value })}><option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</SelectField><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>{canManage ? <Button size="sm" onClick={() => setModal("new")}>Create item</Button> : null}</div></Panel>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Category</TableHead><TableHead>Variant</TableHead><TableHead>Size</TableHead><TableHead>Serial</TableHead><TableHead>Condition</TableHead><TableHead>Status</TableHead><TableHead>Replacement cost</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell>{item.code}</TableCell><TableCell>{item.name}</TableCell><TableCell>{item.category_name ?? "-"}</TableCell><TableCell>{item.variant ?? "-"}</TableCell><TableCell>{item.size ?? "-"}</TableCell><TableCell>{item.serial_no ?? item.serial_number ?? "-"}</TableCell><TableCell>{item.condition_status}</TableCell><TableCell><Badge tone={item.status === "AVAILABLE" ? "success" : item.status === "ISSUED" ? "info" : item.status === "ARCHIVED" ? "neutral" : "warning"}>{item.status}</Badge></TableCell><TableCell>{item.replacement_cost ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><Button variant="ghost" size="icon" onClick={() => setModal(item)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => { setArchiveTarget(item); setArchiveReason(""); }}><Trash2 className="h-4 w-4" /></Button></> : "-"}</div></TableCell></TableRow>)}</TableBody></Table>{!items.length ? <EmptyState title="No asset items" description="Create item records before issuing assets to employees." /> : null}</div></Panel>
       {modal ? <ItemModal item={modal === "new" ? undefined : modal} categories={categories} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
@@ -71,7 +72,7 @@ export function AssetsItemsPage() {
         onCancel={() => { setArchiveTarget(null); setArchiveReason(""); }}
         onConfirm={() => archiveTarget ? void archive(archiveTarget) : undefined}
       />
-    </div>
+    </PageShell>
   );
 }
 

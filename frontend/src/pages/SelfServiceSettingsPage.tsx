@@ -4,7 +4,7 @@ import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/M
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
-import { CheckboxField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -123,21 +123,29 @@ export function SelfServiceSettingsPage() {
   }
 
   if (!canView) {
-    return <Panel className="p-6"><EmptyState title="Self-service settings unavailable" description="Your account needs self_service.settings.view permission." /></Panel>;
+    return (
+      <PageShell>
+        <PageHeader
+          title="Employee Self-Service Settings"
+          eyebrow="Settings"
+          description="Configure which employee self-service modules are visible and which employee actions are allowed."
+        />
+        <Panel className="p-6"><EmptyState title="Self-service settings unavailable" description="Your account needs self_service.settings.view permission." /></Panel>
+      </PageShell>
+    );
   }
 
   const moduleEnabled = Boolean(Number(settings?.module_enabled ?? 1));
   const controlsDisabled = !canManage || !moduleEnabled;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Employee Self-Service Settings</h1>
-          <p className="text-sm text-muted-foreground">Configure which employee self-service modules are visible and which employee actions are allowed.</p>
-        </div>
-        {canManage ? <Button form="self-service-settings-form" type="submit" disabled={saving || !settings || !moduleEnabled}><Save className="h-4 w-4" />Save</Button> : null}
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Employee Self-Service Settings"
+        eyebrow="Settings"
+        description="Configure which employee self-service modules are visible and which employee actions are allowed."
+        actions={canManage ? <Button form="self-service-settings-form" type="submit" disabled={saving || !settings || !moduleEnabled}><Save className="h-4 w-4" />Save</Button> : null}
+      />
       {message ? <div className="rounded-md border bg-muted px-3 py-2 text-sm">{message}</div> : null}
       {settings ? (
         <ModuleToggleHeader
@@ -169,7 +177,7 @@ export function SelfServiceSettingsPage() {
           </ModuleSettingsBody>
         </form>
       </DataTableFrame>
-    </div>
+    </PageShell>
   );
 }
 

@@ -16,7 +16,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
-import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField, StandardTabs } from "../components/ui/page-shell";
 
 type Row = Record<string, unknown>;
 type Tab = "contracts" | "types" | "settings" | "probation" | "renewals" | "alerts";
@@ -133,32 +133,26 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
   }
 
   if (!canView) {
-    return <Panel><EmptyState title="Contracts unavailable" description="Your account needs contracts.view or employees.contracts.view permission." /></Panel>;
+    return <PageShell><Panel><EmptyState title="Contracts unavailable" description="Your account needs contracts.view or employees.contracts.view permission." /></Panel></PageShell>;
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Employee Contracts</h1>
-          <p className="text-sm text-muted-foreground">Manage contracts, probation, renewals, expiry alerts, and contract history without legal automation.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <PageShell>
+      <PageHeader
+        title="Employee Contracts"
+        description="Manage contracts, probation, renewals, expiry alerts, and contract history without legal automation."
+        actions={
+          <>
           <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>
           {canCreate ? <Button size="sm" onClick={() => setContractModal(true)}><Plus className="h-4 w-4" /> New contract</Button> : null}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
 
-      <Panel className="overflow-x-auto p-2">
-        <div className="flex min-w-max gap-1">
-          {tabs.map((item) => (
-            <Button key={item.key} size="sm" variant={tab === item.key ? "primary" : "ghost"} onClick={() => setTab(item.key)}>{item.label}</Button>
-          ))}
-        </div>
-      </Panel>
+      <StandardTabs items={tabs} active={tab} onChange={(key) => setTab(key as Tab)} label="Contract section tabs" />
 
       {tab === "contracts" ? (
         <Panel className="space-y-3 p-3">
@@ -205,7 +199,7 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
           onConfirm={(reason) => void runContractAction(reason)}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 

@@ -6,6 +6,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -78,14 +79,15 @@ export function AttendanceDevicesPage() {
 
   const filtered = devices.filter((device) => [device.name, device.device_code, device.location_name, device.type, device.status].some((value) => String(value ?? "").toLowerCase().includes(search.toLowerCase())));
 
-  if (!canView) return <Panel><EmptyState title="Attendance devices unavailable" description="Your account needs attendance.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Attendance devices unavailable" description="Your account needs attendance.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div><h1 className="text-lg font-semibold">Attendance Devices</h1><p className="text-sm text-muted-foreground">Biometric, bridge, API, and manual import device registry.</p></div>
-        <div className="flex flex-wrap gap-2">{canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add device</Button> : null}</div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Attendance Devices"
+        description="Biometric, bridge, API, and manual import device registry."
+        actions={canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add device</Button> : null}
+      />
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
@@ -99,6 +101,6 @@ export function AttendanceDevicesPage() {
         {loading ? <EmptyState title="Loading devices" description="Fetching device registry." /> : filtered.length === 0 ? <EmptyState title="No devices found" description="Add a device or adjust the search." /> : null}
       </Panel>
       {editing !== undefined && token ? <AttendanceDeviceModal token={token} locations={locations} device={editing} onClose={() => setEditing(undefined)} onSaved={load} /> : null}
-    </div>
+    </PageShell>
   );
 }

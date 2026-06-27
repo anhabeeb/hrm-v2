@@ -16,7 +16,7 @@ import type { AccessUser, Role } from "../types/auth";
 import type { DocumentType } from "../types/documents";
 import type { LeavePolicy, LeaveType, LeaveWorkflow, LeaveWorkflowStep } from "../types/leave";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
-import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField, StandardTabs } from "../components/ui/page-shell";
 
 type Tab = "types" | "policies" | "documentRules" | "deductionRules" | "workflows";
 type LeaveWorkflowStepForm = {
@@ -89,17 +89,23 @@ export function LeaveSettingsPage() {
     void load();
   }, [token, canView]);
 
-  if (!canView) return <Panel><EmptyState title="Leave settings unavailable" description="Your account needs leave.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Leave settings unavailable" description="Your account needs leave.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div><h1 className="text-lg font-semibold">Leave Settings</h1><p className="text-sm text-muted-foreground">Leave types, configurable policies, deduction/document rules, and approval workflows.</p></div>
-        <AdminHelpLink target="leave" label="View Leave Guide" />
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Leave Settings"
+        description="Leave types, configurable policies, deduction/document rules, and approval workflows."
+        actions={<AdminHelpLink target="leave" label="View Leave Guide" />}
+      />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      <StandardTabs
+        items={(["types", "policies", "documentRules", "deductionRules", "workflows"] as Tab[]).map((item) => ({ key: item, label: tabLabel(item) }))}
+        active={tab}
+        onChange={(key) => setTab(key as Tab)}
+        label="Leave settings section tabs"
+      />
       <Panel className="overflow-hidden">
-        <div className="flex overflow-x-auto border-b p-1">{(["types", "policies", "documentRules", "deductionRules", "workflows"] as Tab[]).map((item) => <Button key={item} size="sm" variant={tab === item ? "primary" : "ghost"} className="whitespace-nowrap" onClick={() => setTab(item)}>{tabLabel(item)}</Button>)}</div>
         {tab === "types" ? <TypesTable types={types} canManage={canSettings} loading={loading} onNew={() => setTypeModal("new")} onEdit={setTypeModal} onAction={async (row) => { if (!token) return; await api.leaveTypeAction(token, row.id, row.is_active ? "disable" : "enable"); await load(); }} /> : null}
         {tab === "policies" ? <PoliciesTable policies={policies} canManage={canSettings} loading={loading} onNew={() => setPolicyModal("new")} onEdit={setPolicyModal} onAction={async (row) => { if (!token) return; await api.leavePolicyAction(token, row.id, row.is_active ? "disable" : "enable"); await load(); }} /> : null}
         {tab === "documentRules" && token ? <PolicyDocumentRulesTable token={token} policies={policies} documentTypes={documentTypes} canManage={canSettings} /> : null}
@@ -110,7 +116,7 @@ export function LeaveSettingsPage() {
       {policyModal && token ? <PolicyModal token={token} policy={policyModal === "new" ? undefined : policyModal} types={types} departments={departments} positions={positions} locations={locations} onClose={() => setPolicyModal(null)} onSaved={load} /> : null}
       {workflowModal && token ? <WorkflowModal token={token} workflow={workflowModal === "new" ? undefined : workflowModal} types={types} departments={departments} locations={locations} onClose={() => setWorkflowModal(null)} onSaved={load} /> : null}
       {stepsWorkflow && token ? <EditableStepsModal token={token} workflow={stepsWorkflow} roles={roles} users={users} onClose={() => setStepsWorkflow(null)} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

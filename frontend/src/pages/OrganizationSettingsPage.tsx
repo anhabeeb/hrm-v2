@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { cn } from "../lib/utils";
-import { SelectField as UiSelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField as UiSelectField, StandardTabs } from "../components/ui/page-shell";
 import type {
   CompanyInput,
   DepartmentInput,
@@ -83,9 +83,11 @@ function formatDate(value: string | null) {
 
 function PermissionFallback() {
   return (
+    <PageShell>
     <Panel className="overflow-hidden">
       <EmptyState title="Organization settings unavailable" description="Your account needs organization.view permission to open this section." />
     </Panel>
+    </PageShell>
   );
 }
 
@@ -269,34 +271,18 @@ export function OrganizationSettingsPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Organization Settings</h1>
-          <p className="text-sm text-muted-foreground">Company structure and master data used by future employee profiles.</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void loadOrganization()}>
-          <RotateCcw className="h-4 w-4" />
-          Refresh
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Organization Settings"
+        description="Company structure and master data used by future employee profiles."
+        actions={<Button variant="outline" size="sm" onClick={() => void loadOrganization()}><RotateCcw className="h-4 w-4" /> Refresh</Button>}
+      />
 
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
 
+      <StandardTabs items={tabs} active={activeTab} onChange={(key) => setActiveTab(key as TabKey)} label="Organization settings section tabs" />
+
       <Panel className="overflow-hidden">
-        <div className="flex overflow-x-auto border-b">
-          {tabs.map((tab) => (
-            <Button
-              key={tab.key}
-              size="sm"
-              variant={activeTab === tab.key ? "primary" : "ghost"}
-              className={cn("whitespace-nowrap", activeTab !== tab.key && "text-muted-foreground")}
-              onClick={() => setActiveTab(tab.key)}
-            >
-              {tab.label}
-            </Button>
-          ))}
-        </div>
 
         {loading ? (
           <EmptyState title="Loading organization settings" description="Fetching company, locations, departments, positions, and levels." />
@@ -406,7 +392,7 @@ export function OrganizationSettingsPage() {
         onCancel={() => setActionTarget(null)}
         onConfirm={() => actionTarget ? void runAction(actionTarget.kind, actionTarget.id, actionTarget.active) : undefined}
       />
-    </div>
+    </PageShell>
   );
 }
 

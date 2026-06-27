@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -37,18 +37,22 @@ export function EmployeeNotesSettingsPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">Employee Note Settings</h1><p className="text-sm text-muted-foreground">Manage predefined note categories and default visibility for Employee 360 notes.</p></div>
+    <PageShell>
+      <PageHeader
+        title="Employee Note Settings"
+        eyebrow="Settings"
+        description="Manage predefined note categories and default visibility for Employee 360 notes."
+        actions={canManage ? <Button size="sm" onClick={() => setModal("new")}>Create category</Button> : null}
+      />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden p-0">
-        <div className="flex justify-end border-b p-3">{canManage ? <Button size="sm" onClick={() => setModal("new")}>Create category</Button> : null}</div>
         <div className="overflow-x-auto">
           <Table><TableHeader><TableRow><TableHead>Key</TableHead><TableHead>Name</TableHead><TableHead>Visibility</TableHead><TableHead>Description</TableHead><TableHead>Protected</TableHead><TableHead>Status</TableHead><TableHead>Sort</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{categories.map((row) => <TableRow key={row.id}><TableCell>{row.key ?? row.code}</TableCell><TableCell>{row.name}</TableCell><TableCell><Badge tone={row.default_visibility === "RESTRICTED" ? "danger" : row.default_visibility === "HR_ONLY" ? "warning" : "neutral"}>{row.default_visibility}</Badge></TableCell><TableCell>{row.description ?? "-"}</TableCell><TableCell>{row.is_protected ? <Badge tone="info">Protected</Badge> : "-"}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell>{row.sort_order}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><Button variant="ghost" size="icon" onClick={() => setModal(row)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => void toggle(row)}><Power className="h-4 w-4" /></Button></> : "-"}</div></TableCell></TableRow>)}</TableBody></Table>
           {!categories.length ? <EmptyState title="No note categories" description="Seeded note categories appear after seed is applied." /> : null}
         </div>
       </Panel>
       {modal ? <CategoryModal category={modal === "new" ? undefined : modal} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

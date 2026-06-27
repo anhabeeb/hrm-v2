@@ -26,7 +26,7 @@ import { ValidationSummary } from "../components/forms/ValidationSummary";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { CheckboxField, SelectField as UiSelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField as UiSelectField, StandardTabs } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -256,13 +256,12 @@ export function UsersAccessPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Users & Access</h1>
-          <p className="text-sm text-muted-foreground">Manage system users, role templates, and predefined permissions.</p>
-        </div>
-        <div className="flex items-center gap-2">
+    <PageShell>
+      <PageHeader
+        title="Users & Access"
+        description="Manage system users, role templates, and predefined permissions."
+        actions={
+          <>
           <Button variant="outline" size="sm" onClick={() => void loadAccessData()}>
             <RefreshCw className="h-4 w-4" />
             Refresh
@@ -291,26 +290,21 @@ export function UsersAccessPage() {
               Scope
             </Button>
           ) : null}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {notice ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</div> : null}
 
+      <StandardTabs
+        items={(["users", "roles", "permissions", ...(canViewMappings ? ["role_mappings" as const] : []), ...(canViewScopes ? ["access_scopes" as const] : [])] as Tab[]).map((tab) => ({ key: tab, label: MODULE_LABELS[tab] ?? tab }))}
+        active={activeTab}
+        onChange={(key) => setActiveTab(key as Tab)}
+        label="Users and access section tabs"
+      />
+
       <Panel className="overflow-hidden">
-        <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-          {(["users", "roles", "permissions", ...(canViewMappings ? ["role_mappings" as const] : []), ...(canViewScopes ? ["access_scopes" as const] : [])] as Tab[]).map((tab) => (
-            <Button
-              key={tab}
-              variant={activeTab === tab ? "primary" : "ghost"}
-              size="sm"
-              onClick={() => setActiveTab(tab)}
-              className="capitalize"
-            >
-              {MODULE_LABELS[tab] ?? tab}
-            </Button>
-          ))}
-        </div>
 
         {activeTab === "users" ? (
           <UsersTable
@@ -507,7 +501,7 @@ export function UsersAccessPage() {
       <div className="text-xs text-muted-foreground">
         Signed in as {currentUser?.name}. Backend permissions remain the source of truth for every action.
       </div>
-    </div>
+    </PageShell>
   );
 }
 

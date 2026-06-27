@@ -7,12 +7,13 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { SubNavigationBar, SubNavigationItem } from "../components/ui/navigation-tabs";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
-import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import type {
   ApprovalAction,
   ApprovalDelegationRule,
@@ -176,26 +177,27 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Approvals unavailable" description="Your account needs approval workflow permissions." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Approvals unavailable" description="Your account needs approval workflow permissions." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Central Approval Workflows</h1>
-          <p className="text-sm text-muted-foreground">Configurable chains, delegation, escalation, notifications, timelines, and module fallback adapters.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <PageShell>
+      <PageHeader
+        title="Central Approval Workflows"
+        description="Configurable chains, delegation, escalation, notifications, timelines, and module fallback adapters."
+        actions={
+          <>
           <AdminHelpLink target="approvals" label="View Approval Guide" />
           {can(permissions, ["approvals.escalations.manage", "approvals.manage"]) ? <Button variant="outline" size="sm" onClick={async () => { if (token) { await api.refreshApprovalReminders(token); await api.refreshApprovalEscalations(token); await load(); } }}><RefreshCw className="h-4 w-4" /> Refresh reminders</Button> : null}
           <Link to="/reports"><Button variant="outline" size="sm"><FileText className="h-4 w-4" /> Report Center</Button></Link>
-        </div>
-      </div>
+          </>
+        }
+      />
+
+      <SubNavigationBar label="Approval section tabs">
+        {tabs.map((tab) => <SubNavigationItem key={tab.mode} to={tab.to} active={mode === tab.mode}>{tab.label}</SubNavigationItem>)}
+      </SubNavigationBar>
 
       <Panel className="overflow-hidden">
-        <div className="flex overflow-x-auto border-b">
-          {tabs.map((tab) => <Link key={tab.mode} to={tab.to} className={`h-11 whitespace-nowrap border-b-2 px-4 pt-3 text-sm font-medium ${mode === tab.mode ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:bg-muted/50"}`}>{tab.label}</Link>)}
-        </div>
         {error ? <div className="m-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
         {!["settings", "templates", "delegations", "reports"].includes(mode) ? (
           <div className="grid gap-2 border-b p-3 md:grid-cols-4">
@@ -218,7 +220,7 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
       {workflowDetail ? <WorkflowDetail detail={workflowDetail} stepForm={stepForm} setStepForm={setStepForm} conditionForm={conditionForm} setConditionForm={setConditionForm} onClose={() => setWorkflowDetail(null)} onSaveStep={saveStep} onSaveCondition={saveCondition} onPreview={runPreview} preview={preview} canManage={canManage} /> : null}
       {reasonAction ? <ReasonDialog action={reasonAction} setAction={setReasonAction} onSubmit={submitDecision} /> : null}
       {templateEdit && token ? <TemplateDialog token={token} template={templateEdit} onClose={() => setTemplateEdit(null)} onSaved={load} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

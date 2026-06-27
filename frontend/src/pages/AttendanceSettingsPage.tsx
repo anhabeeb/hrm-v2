@@ -7,7 +7,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -88,11 +88,11 @@ export function AttendanceSettingsPage() {
   const moduleEnabled = Boolean(settings?.module_enabled ?? true);
   const controlsDisabled = !canManage || !moduleEnabled;
 
-  if (!canView) return <Panel><EmptyState title="Attendance settings unavailable" description="Your account needs attendance.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Attendance settings unavailable" description="Your account needs attendance.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">Attendance Settings</h1><p className="text-sm text-muted-foreground">Global attendance rules prepared for roster, leave, and payroll integration.</p></div>
+    <PageShell>
+      <PageHeader title="Attendance Settings" description="Global attendance rules prepared for roster, leave, and payroll integration." />
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
@@ -153,7 +153,7 @@ export function AttendanceSettingsPage() {
           </ModuleSettingsBody>
         )}
       </Panel>
-    </div>
+    </PageShell>
   );
 }
 

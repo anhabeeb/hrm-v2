@@ -4,6 +4,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -44,14 +45,14 @@ export function AuditLogPage() {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Audit unavailable" description="Your account needs audit.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Audit unavailable" description="Your account needs audit.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">Audit Log</h1><p className="text-sm text-muted-foreground">System-wide audit trail with module, action, actor, date, and entity filters.</p></div>
+    <PageShell>
+      <PageHeader title="Audit Log" description="System-wide audit trail with module, action, actor, date, and entity filters." />
       <Panel className="flex flex-wrap gap-2 p-4"><Input className="w-56" placeholder="Search" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /><Input className="w-36" placeholder="Module" value={filters.module} onChange={(event) => setFilters({ ...filters, module: event.target.value })} /><Input className="w-40" placeholder="Action" value={filters.action} onChange={(event) => setFilters({ ...filters, action: event.target.value })} /><Input className="w-40" placeholder="Entity type" value={filters.entity_type} onChange={(event) => setFilters({ ...filters, entity_type: event.target.value })} /><Input className="w-40" type="date" value={filters.date_from} onChange={(event) => setFilters({ ...filters, date_from: event.target.value })} /><Input className="w-40" type="date" value={filters.date_to} onChange={(event) => setFilters({ ...filters, date_to: event.target.value })} /><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>{canExport ? <Button variant="outline" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</Button> : null}</Panel>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Created</TableHead><TableHead>Module</TableHead><TableHead>Action</TableHead><TableHead>Entity</TableHead><TableHead>Actor</TableHead><TableHead>Reason</TableHead><TableHead>IP</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell>{row.created_at}</TableCell><TableCell><Badge tone="neutral">{row.module}</Badge></TableCell><TableCell>{row.action}</TableCell><TableCell>{row.entity_type}<div className="text-xs text-muted-foreground">{row.entity_id ?? "-"}</div></TableCell><TableCell>{row.actor_name ?? row.actor_email ?? "-"}</TableCell><TableCell className="max-w-[320px] truncate">{row.reason ?? "-"}</TableCell><TableCell>{row.ip_address ?? "-"}</TableCell></TableRow>)}</TableBody></Table>{!rows.length ? <EmptyState title="No audit entries" description="System activity will appear here." /> : null}</div></Panel>
-    </div>
+    </PageShell>
   );
 }

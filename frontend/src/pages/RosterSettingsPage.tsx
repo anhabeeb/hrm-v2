@@ -14,7 +14,7 @@ import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 import type { RosterSettings, ShiftTemplate, WeeklyOffRule } from "../types/roster";
-import { CheckboxField, InputField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, InputField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 
 const days: WeeklyOffRule["day_of_week"][] = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 
@@ -116,14 +116,14 @@ export function RosterSettingsPage() {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Roster settings unavailable" description="Your account needs roster.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Roster settings unavailable" description="Your account needs roster.view permission." /></Panel></PageShell>;
 
   const moduleEnabled = Boolean(settings?.module_enabled ?? true);
   const controlsDisabled = !canManage || !moduleEnabled;
 
   return (
-    <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">Roster Settings</h1><p className="text-sm text-muted-foreground">Global weekly roster behavior and edit controls.</p></div>
+    <PageShell>
+      <PageHeader title="Roster Settings" description="Global weekly roster behavior and edit controls." />
       <RosterNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
@@ -221,7 +221,7 @@ export function RosterSettingsPage() {
         {!loading && rules.length === 0 ? <EmptyState title="No weekly off rules" description="Create a simple weekly off rule for location or department foundations." /> : null}
       </Panel>
       {editingRule !== undefined ? <WeeklyOffRuleModal rule={editingRule ?? undefined} locations={locations} departments={departments} onClose={() => setEditingRule(undefined)} onSave={(input) => void saveRule(input)} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

@@ -5,7 +5,7 @@ import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -87,14 +87,15 @@ export function PayrollPeriodsPage() {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Payroll periods unavailable" description="Your account needs payroll.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Payroll periods unavailable" description="Your account needs payroll.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div><h1 className="text-lg font-semibold">Payroll Periods</h1><p className="text-sm text-muted-foreground">Create month-end payroll windows and generate runs.</p></div>
-        <div className="flex flex-wrap gap-2">{canCreate ? <Button size="sm" onClick={() => { setForm({ period_month: String(new Date().getMonth() + 1), period_year: String(new Date().getFullYear()) }); setModal({ type: "create" }); }}><CalendarPlus className="h-4 w-4" /> Create period</Button> : null}</div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Payroll Periods"
+        description="Create month-end payroll windows and generate runs."
+        actions={canCreate ? <Button size="sm" onClick={() => { setForm({ period_month: String(new Date().getMonth() + 1), period_year: String(new Date().getFullYear()) }); setModal({ type: "create" }); }}><CalendarPlus className="h-4 w-4" /> Create period</Button> : null}
+      />
       <PayrollNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
@@ -116,7 +117,7 @@ export function PayrollPeriodsPage() {
         {loading ? <EmptyState title="Loading payroll periods" description="Fetching period rows." /> : periods.length === 0 ? <EmptyState title="No payroll periods" description="Create a period before generating payroll runs." /> : null}
       </Panel>
       {modal ? <PeriodModal modal={modal} form={form} setForm={setForm} onClose={() => { setModal(null); setForm({}); }} onSubmit={() => void submitModal()} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

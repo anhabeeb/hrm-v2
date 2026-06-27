@@ -17,7 +17,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
-import { CheckboxField, SelectField as UiSelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField as UiSelectField } from "../components/ui/page-shell";
 import type {
   FinalSettlementCase,
   FinalSettlementClearanceItem,
@@ -273,18 +273,16 @@ export function FinalSettlementPage() {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Exit payroll unavailable" description="Your account needs final settlement access." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Exit payroll unavailable" description="Your account needs final settlement access." /></Panel></PageShell>;
   const finalSettlementEnabled = bool(settingsData?.final_settlement_enabled ?? true);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Exit Payroll / Final Settlement</h1>
-          <p className="text-sm text-muted-foreground">Manage Final Settlement cases, clearance, approval, finalization, and manual payment register rows.</p>
-        </div>
-        <div className="flex flex-wrap gap-2"><AdminHelpLink target="finalSettlement" label="View Exit Payroll Guide" />{canCreate ? <Button size="sm" disabled={!finalSettlementEnabled} onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New case</Button> : null}</div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Exit Payroll / Final Settlement"
+        description="Manage Final Settlement cases, clearance, approval, finalization, and manual payment register rows."
+        actions={<><AdminHelpLink target="finalSettlement" label="View Exit Payroll Guide" />{canCreate ? <Button size="sm" disabled={!finalSettlementEnabled} onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New case</Button> : null}</>}
+      />
       <PayrollNav />
 
       <ErrorMessage error={error} />
@@ -350,7 +348,7 @@ export function FinalSettlementPage() {
       {createOpen ? <CreateCaseDialog form={form} employees={employees} organizationRefs={organizationRefs} onChange={setForm} onClose={() => setCreateOpen(false)} onSave={() => void createCase()} /> : null}
       {caseAction ? <CaseActionDialog action={caseAction.type} row={caseAction.row} note={note} reason={reason} amount={amount} adjustmentType={adjustmentType} onNote={setNote} onReason={setReason} onAmount={setAmount} onAdjustmentType={setAdjustmentType} onClose={() => setCaseAction(null)} onSave={() => void runCaseAction()} /> : null}
       {paymentAction ? <PaymentActionDialog action={paymentAction.type} row={paymentAction.row} reason={reason} note={note} reference={reference} onReason={setReason} onNote={setNote} onReference={setReference} onClose={() => setPaymentAction(null)} onSave={() => void submitPaymentAction()} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

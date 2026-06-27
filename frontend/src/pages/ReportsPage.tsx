@@ -6,7 +6,7 @@ import { Button } from "../components/ui/button";
 import { ValidatedDateRangeField } from "../components/forms/ValidatedDateRangeField";
 import { DataTableFrame } from "../components/ui/data-table";
 import { Input } from "../components/ui/input";
-import { AlertBanner, ExportActionBar, FilterBar, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
+import { AlertBanner, ExportActionBar, FilterBar, PageHeader, PageShell, SelectField, StandardTabs } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -242,12 +242,17 @@ export function ReportsPage() {
         eyebrow="Report Center"
         description="Scoped payroll, pension, bank loan, custom deduction, settlement, variance, payment register reporting, HR, and compliance reporting."
         actions={
-        <div className="flex flex-wrap gap-2">
-          <Button variant={tab === "reports" ? "primary" : "outline"} size="sm" onClick={() => setTab("reports")}>Reports</Button>
-          <Button variant={tab === "exports" ? "primary" : "outline"} size="sm" onClick={() => setTab("exports")}><History className="h-4 w-4" /> Export History</Button>
           <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Run</Button>
-        </div>
         }
+      />
+      <StandardTabs
+        label="Reports section tabs"
+        active={tab}
+        onChange={(key) => setTab(key as Tab)}
+        items={[
+          { key: "reports", label: "Reports" },
+          { key: "exports", label: <><History className="h-4 w-4" />Export History</> }
+        ]}
       />
 
       <Panel className="overflow-hidden">

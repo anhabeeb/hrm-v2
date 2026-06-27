@@ -4,12 +4,16 @@ import path from "node:path";
 const root = process.cwd();
 const failures = [];
 
+function filePath(relativePath) {
+  return path.join(root, relativePath);
+}
+
 function read(relativePath) {
-  return fs.readFileSync(path.join(root, relativePath), "utf8");
+  return fs.readFileSync(filePath(relativePath), "utf8");
 }
 
 function exists(relativePath) {
-  return fs.existsSync(path.join(root, relativePath));
+  return fs.existsSync(filePath(relativePath));
 }
 
 function requireFile(relativePath) {
@@ -17,25 +21,33 @@ function requireFile(relativePath) {
 }
 
 function has(relativePath, marker, message) {
+  if (!exists(relativePath)) return failures.push(`${relativePath}: missing file for check`);
   const content = read(relativePath);
   const ok = marker instanceof RegExp ? marker.test(content) : content.includes(marker);
   if (!ok) failures.push(`${relativePath}: ${message}`);
 }
 
 function hasNo(relativePath, marker, message) {
+  if (!exists(relativePath)) return;
   const content = read(relativePath);
   const ok = marker instanceof RegExp ? !marker.test(content) : !content.includes(marker);
   if (!ok) failures.push(`${relativePath}: ${message}`);
 }
 
 function collectFiles(dir) {
+  const fullDir = filePath(dir);
+  if (!fs.existsSync(fullDir)) return [];
   const files = [];
-  for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+  for (const entry of fs.readdirSync(fullDir, { withFileTypes: true })) {
     const rel = path.join(dir, entry.name);
     if (entry.isDirectory()) files.push(...collectFiles(rel));
     else if (/\.(tsx?|jsx?)$/.test(entry.name)) files.push(rel.replace(/\\/g, "/"));
   }
   return files;
+}
+
+function pageName(relativePath) {
+  return path.basename(relativePath);
 }
 
 const pkg = JSON.parse(read("package.json"));
@@ -58,7 +70,6 @@ const scripts = pkg.scripts ?? {};
   "frontend/src/components/ui/data-table.tsx",
   "frontend/src/pages/DashboardPage.tsx",
   "frontend/src/pages/EmployeeProfilePage.tsx",
-  "frontend/src/components/assets/AssetsNav.tsx",
   "worker/wrangler.toml",
   "worker/src/auth/password.ts",
   "frontend/vite.config.ts"
@@ -113,7 +124,6 @@ const pageShell = "frontend/src/components/ui/page-shell.tsx";
 has("frontend/src/pages/DashboardPage.tsx", "HRM command center", "HRM Command Center header reference marker missing");
 has("frontend/src/pages/DashboardPage.tsx", "PageHeader", "Dashboard must use shared PageHeader");
 has("frontend/src/pages/DashboardPage.tsx", "PageShell", "Dashboard must use shared PageShell");
-
 has("frontend/src/pages/EmployeeProfilePage.tsx", "ResponsiveTabs", "Employee 360 tabs must use shared Employee-style ResponsiveTabs");
 has("frontend/src/pages/EmployeeProfilePage.tsx", "Contacts", "Employee Contact tab reference marker missing");
 
@@ -129,34 +139,129 @@ has("frontend/src/pages/EmployeeProfilePage.tsx", "Contacts", "Employee Contact 
   has(file, label, `${label} accessible label missing`);
 });
 
-const layoutPages = [
+const pageFiles = collectFiles("frontend/src/pages")
+  .filter((file) => !["LoginPage.tsx", "SetupPage.tsx"].includes(pageName(file)));
+
+const shellPattern = /<PageShell\b|<PageLayout\b|<ModulePageLayout\b|<AppContentContainer\b|<PayrollPageShell\b|<PayrollTablePageLayout\b/;
+const headerPattern = /<PageHeader\b|<AppPageHeader\b|<ModulePageHeader\b|<EmployeeProfileCard\b|<PayrollPageHeader\b|<Header\b/;
+const sharedTabsPattern = /\b(?:ResponsiveTabs|StandardTabs|AppTabs|EmployeeStyleTabs|SubNavigationBar|ModuleTabs)\b/;
+const tabIntentPattern = /\b(?:activeTab|setActiveTab|setTab\(|activeSection|section tabs|role="tablist"|TabsList)\b|tab\s*===/;
+
+const shellUsers = [];
+const headerUsers = [];
+const tabbedPages = [];
+const sharedTabUsers = [];
+
+for (const file of pageFiles) {
+  const content = read(file);
+  if (shellPattern.test(content)) shellUsers.push(file);
+  if (headerPattern.test(content)) headerUsers.push(file);
+  if (tabIntentPattern.test(content)) {
+    tabbedPages.push(file);
+    if (sharedTabsPattern.test(content)) sharedTabUsers.push(file);
+  }
+
+  if (/<Table\b/.test(content) && !/(overflow-x-auto|ResponsiveTableWrapper|DataTableFrame|DataTableShell|TableWrap)/.test(content)) {
+    failures.push(`${file}: table content must be wrapped in a responsive overflow/table shell`);
+  }
+
+  if (/return\s*\(\s*<div\s+className="space-y-[46]/.test(content) && !shellPattern.test(content)) {
+    failures.push(`${file}: page returns a one-off page wrapper instead of PageShell/PageLayout`);
+  }
+
+  if (/<h1\b/.test(content) && !headerPattern.test(content)) {
+    failures.push(`${file}: page-level h1 must be provided through the shared PageHeader family`);
+  }
+
+  if (tabIntentPattern.test(content) && !sharedTabsPattern.test(content)) {
+    failures.push(`${file}: tabbed page must use shared StandardTabs/ResponsiveTabs/SubNavigationBar`);
+  }
+
+  if (/setTab\([^)]*\).*border-b-2|border-b-2[\s\S]{0,160}setTab\(/.test(content)) {
+    failures.push(`${file}: one-off tab button classes detected; use shared tab components`);
+  }
+}
+
+const shellCoverage = shellUsers.length / pageFiles.length;
+const headerCoverage = headerUsers.length / pageFiles.length;
+const tabCoverage = tabbedPages.length ? sharedTabUsers.length / tabbedPages.length : 1;
+
+if (shellCoverage < 0.9) {
+  failures.push(`frontend/src/pages: only ${shellUsers.length}/${pageFiles.length} pages use shared shell/layout components`);
+}
+if (headerCoverage < 0.9) {
+  failures.push(`frontend/src/pages: only ${headerUsers.length}/${pageFiles.length} pages use shared header components`);
+}
+if (tabCoverage < 0.9) {
+  failures.push(`frontend/src/pages: only ${sharedTabUsers.length}/${tabbedPages.length} tabbed pages use shared tab components`);
+}
+
+const explicitShellHeaderPages = [
   "frontend/src/pages/DashboardPage.tsx",
   "frontend/src/pages/EmployeesPage.tsx",
   "frontend/src/pages/EmployeeProfilePage.tsx",
   "frontend/src/pages/PayrollDashboardPage.tsx",
+  "frontend/src/pages/PayrollPeriodsPage.tsx",
   "frontend/src/pages/PayrollRunsPage.tsx",
+  "frontend/src/pages/PayrollRunDetailPage.tsx",
   "frontend/src/pages/PayrollAdminPages.tsx",
   "frontend/src/pages/PayrollFoundationPages.tsx",
   "frontend/src/pages/PayrollPrompt11Pages.tsx",
+  "frontend/src/pages/AttendanceRecordsPage.tsx",
+  "frontend/src/pages/AttendanceCalendarPage.tsx",
+  "frontend/src/pages/AttendanceCorrectionsPage.tsx",
+  "frontend/src/pages/AttendanceDevicesPage.tsx",
+  "frontend/src/pages/AttendanceDeviceOperationsPage.tsx",
+  "frontend/src/pages/AttendanceReportsPage.tsx",
+  "frontend/src/pages/AttendanceSettingsPage.tsx",
+  "frontend/src/pages/LeaveRequestsPage.tsx",
+  "frontend/src/pages/LeaveCalendarPage.tsx",
+  "frontend/src/pages/LeaveSettingsPage.tsx",
+  "frontend/src/pages/RosterWeeklyPage.tsx",
+  "frontend/src/pages/RosterShiftTemplatesPage.tsx",
+  "frontend/src/pages/RosterReportsPage.tsx",
+  "frontend/src/pages/RosterSettingsPage.tsx",
+  "frontend/src/pages/DocumentRegistryPage.tsx",
+  "frontend/src/pages/DocumentSettingsPage.tsx",
+  "frontend/src/pages/DocumentCompliancePage.tsx",
+  "frontend/src/pages/MissingDocumentsPage.tsx",
+  "frontend/src/pages/ContractsPage.tsx",
   "frontend/src/pages/ReportsPage.tsx",
+  "frontend/src/pages/ApprovalsPage.tsx",
+  "frontend/src/pages/LifecyclePage.tsx",
   "frontend/src/pages/SelfServicePage.tsx",
-  "frontend/src/pages/AdminHelpGuidePage.tsx",
-  "frontend/src/pages/AssetUniformAdvancedPages.tsx"
+  "frontend/src/pages/SettingsPage.tsx",
+  "frontend/src/pages/AdminSettingsPage.tsx",
+  "frontend/src/pages/SelfServiceSettingsPage.tsx",
+  "frontend/src/pages/OrganizationSettingsPage.tsx",
+  "frontend/src/pages/EmployeeSettingsPage.tsx",
+  "frontend/src/pages/DataTransferPage.tsx",
+  "frontend/src/pages/KycRequestsPage.tsx",
+  "frontend/src/pages/ImportMigrationPage.tsx"
 ];
 
-layoutPages.forEach((file) => {
+explicitShellHeaderPages.forEach((file) => {
   requireFile(file);
-  has(file, /PageHeader|PayrollPageHeader|EmployeeProfileCard|Header title=|<Header\b/, "major page must use shared PageHeader or an approved detail header wrapper");
-  has(file, /PageShell|PayrollPageShell|PayrollTablePageLayout/, "major page must use shared PageShell/PageLayout or an approved wrapper backed by it");
+  has(file, shellPattern, "explicit module page must use shared PageShell/PageLayout family");
+  has(file, headerPattern, "explicit module page must use shared PageHeader family");
 });
 
 [
-  "frontend/src/pages/PayrollAdminPages.tsx",
-  "frontend/src/pages/PayrollFoundationPages.tsx",
-  "frontend/src/pages/PayrollPrompt11Pages.tsx",
-  "frontend/src/pages/AssetUniformAdvancedPages.tsx"
+  "frontend/src/pages/EmployeeProfilePage.tsx",
+  "frontend/src/pages/UsersAccessPage.tsx",
+  "frontend/src/pages/OrganizationSettingsPage.tsx",
+  "frontend/src/pages/LeaveSettingsPage.tsx",
+  "frontend/src/pages/DocumentSettingsPage.tsx",
+  "frontend/src/pages/ContractsPage.tsx",
+  "frontend/src/pages/ApprovalsPage.tsx",
+  "frontend/src/pages/DocumentCompliancePage.tsx",
+  "frontend/src/pages/LifecyclePage.tsx",
+  "frontend/src/pages/AdminSettingsPage.tsx",
+  "frontend/src/pages/DataTransferPage.tsx",
+  "frontend/src/pages/EmployeeSettingsPage.tsx",
+  "frontend/src/pages/ReportsPage.tsx"
 ].forEach((file) => {
-  has(file, "PageHeader", "post-production page header standard missing");
+  has(file, sharedTabsPattern, "explicit tabbed page must use shared tabs/subnavigation");
 });
 
 [
@@ -164,20 +269,10 @@ layoutPages.forEach((file) => {
   "frontend/src/pages/PayrollAdminPages.tsx",
   "frontend/src/pages/PayrollRunsPage.tsx",
   "frontend/src/pages/ReportsPage.tsx",
-  "frontend/src/pages/AssetUniformAdvancedPages.tsx"
-].forEach((file) => {
-  has(file, "FilterBar", "list/report pages should use shared FilterBar");
-});
-
-[
-  "frontend/src/pages/EmployeesPage.tsx",
-  "frontend/src/pages/PayrollRunsPage.tsx",
-  "frontend/src/pages/PayrollFoundationPages.tsx",
-  "frontend/src/pages/PayrollPrompt11Pages.tsx",
   "frontend/src/pages/AssetUniformAdvancedPages.tsx",
-  "frontend/src/pages/ReportsPage.tsx"
+  "frontend/src/pages/KycRequestsPage.tsx"
 ].forEach((file) => {
-  has(file, /DataTableFrame|DataTableShell|ResponsiveTableWrapper|overflow-x-auto/, "table/list page must keep horizontal scroll inside the table wrapper");
+  has(file, /FilterBar|Panel className="p-3"|grid gap-2/, "list/report pages should use aligned filter/action layout");
 });
 
 [
@@ -194,6 +289,8 @@ layoutPages.forEach((file) => {
 
 hasNo("frontend/src/pages/PayrollAdminPages.tsx", /function\s+PageShell\s*\(/, "payroll admin must not define a one-off PageShell");
 hasNo("frontend/src/components/assets/AssetsNav.tsx", /className=.*border-b-2/, "AssetsNav must not use one-off tab classes");
+hasNo("frontend/src/pages/ReportsPage.tsx", /actions=\{[\s\S]{0,240}setTab\(/, "Reports tabs must not be placed inside PageHeader actions");
+hasNo("frontend/src/pages/DataTransferPage.tsx", /actions=\{[\s\S]{0,360}tabs\.map\(/, "Data transfer tabs must not be placed inside PageHeader actions");
 
 has("frontend/vite.config.ts", "manualChunks", "Prompt 13 chunk optimization missing");
 has("worker/wrangler.toml", 'database_name = "hrm-v2"', "D1 database name changed");
@@ -215,4 +312,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("Page layout consistency verification passed.");
+console.log(`Page layout consistency verification passed. Shared shell ${shellUsers.length}/${pageFiles.length}; shared header ${headerUsers.length}/${pageFiles.length}; shared tabs ${sharedTabUsers.length}/${tabbedPages.length}.`);

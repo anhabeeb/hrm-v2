@@ -8,7 +8,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -107,15 +107,16 @@ export function AttendanceCorrectionsPage() {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Attendance corrections unavailable" description="Your account needs attendance correction view permission." /></Panel>;
-  if (attendanceDisabled) return <div className="space-y-4"><div><h1 className="text-lg font-semibold">Attendance Corrections</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Correction lists and review actions are hidden until an administrator enables attendance." /></Panel></div>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Attendance corrections unavailable" description="Your account needs attendance correction view permission." /></Panel></PageShell>;
+  if (attendanceDisabled) return <PageShell><PageHeader title="Attendance Corrections" description="Attendance module is disabled." /><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Correction lists and review actions are hidden until an administrator enables attendance." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div><h1 className="text-lg font-semibold">Attendance Corrections</h1><p className="text-sm text-muted-foreground">Missed punch and status correction approval workflow foundation.</p></div>
-        <div className="flex flex-wrap gap-2">{canCorrect ? <Button size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New correction</Button> : null}</div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Attendance Corrections"
+        description="Missed punch and status correction approval workflow foundation."
+        actions={canCorrect ? <Button size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New correction</Button> : null}
+      />
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
@@ -179,6 +180,6 @@ export function AttendanceCorrectionsPage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </PageShell>
   );
 }

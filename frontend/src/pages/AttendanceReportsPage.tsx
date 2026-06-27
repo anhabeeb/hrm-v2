@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -75,15 +76,16 @@ export function AttendanceReportsPage() {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Attendance reports unavailable" description="Your account needs attendance.reports.view permission." /></Panel>;
-  if (attendanceDisabled) return <div className="space-y-4"><div><h1 className="text-lg font-semibold">Attendance Reports</h1><p className="text-sm text-muted-foreground">Attendance module is disabled.</p></div><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Attendance report data and exports are hidden until an administrator enables the module." /></Panel></div>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Attendance reports unavailable" description="Your account needs attendance.reports.view permission." /></Panel></PageShell>;
+  if (attendanceDisabled) return <PageShell><PageHeader title="Attendance Reports" description="Attendance module is disabled." /><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Attendance report data and exports are hidden until an administrator enables the module." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div><h1 className="text-lg font-semibold">Attendance Reports</h1><p className="text-sm text-muted-foreground">Attendance summary exports prepared for payroll reconciliation.</p></div>
-        <div className="flex flex-wrap gap-2">{canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}</div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Attendance Reports"
+        description="Attendance summary exports prepared for payroll reconciliation."
+        actions={canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}
+      />
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
@@ -119,6 +121,6 @@ export function AttendanceReportsPage() {
         </div>
         {loading ? <EmptyState title="Loading reports" description="Building attendance report data." /> : reports.length === 0 ? <EmptyState title="No report rows found" description="Create attendance records or adjust filters." /> : null}
       </Panel>
-    </div>
+    </PageShell>
   );
 }

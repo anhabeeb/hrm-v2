@@ -4,7 +4,7 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -64,11 +64,11 @@ export function LeaveCalendarPage() {
     void load();
   }, [token, canView, filters]);
 
-  if (!canView) return <Panel><EmptyState title="Leave calendar unavailable" description="Your account needs leave.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Leave calendar unavailable" description="Your account needs leave.view permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">Leave Calendar</h1><p className="text-sm text-muted-foreground">Compact calendar/list foundation for approved and pending leave blocks.</p></div>
+    <PageShell>
+      <PageHeader title="Leave Calendar" description="Compact calendar/list foundation for approved and pending leave blocks." />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-7">
@@ -88,6 +88,6 @@ export function LeaveCalendarPage() {
         </div>
         {loading ? <EmptyState title="Loading leave calendar" description="Fetching calendar blocks." /> : requests.length === 0 ? <EmptyState title="No leave blocks" description="Approved and pending leave requests will appear here." /> : null}
       </Panel>
-    </div>
+    </PageShell>
   );
 }

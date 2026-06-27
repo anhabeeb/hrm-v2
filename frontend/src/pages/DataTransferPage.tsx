@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
-import { FileUploadField, SelectField, TextareaField } from "../components/ui/page-shell";
+import { FileUploadField, PageHeader, PageShell, SelectField, StandardTabs, TextareaField } from "../components/ui/page-shell";
 
 type Row = Record<string, unknown>;
 type Mode = "imports" | "templates" | "exports" | "backup" | "migration" | "remote-d1" | "qa" | "smoke" | "deployment" | "settings";
@@ -315,28 +315,44 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
   }
 
   if (!canView) {
-    return <EmptyState title="Data transfer controls unavailable" description="You do not have permission to view the Prompt 22 data transfer center." />;
+    return (
+      <PageShell>
+        <PageHeader
+          title="Data Import / Export & Deployment Readiness"
+          eyebrow="Data transfer"
+          description="Controlled CSV import, export history, backup guidance, migration readiness, QA, smoke, and deployment status."
+        />
+        <EmptyState title="Data transfer controls unavailable" description="You do not have permission to view the Prompt 22 data transfer center." />
+      </PageShell>
+    );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Data Import / Export & Deployment Readiness</h1>
-          <p className="text-sm text-muted-foreground">Controlled CSV import, export history, backup guidance, migration readiness, QA, smoke, and deployment status.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <PageShell constrained={false}>
+      <PageHeader
+        title="Data Import / Export & Deployment Readiness"
+        eyebrow="Data transfer"
+        description="Controlled CSV import, export history, backup guidance, migration readiness, QA, smoke, and deployment status."
+        actions={
+          <>
           <AdminHelpLink target={active === "deployment" || active === "remote-d1" || active === "qa" || active === "smoke" ? "deployment" : "dataImport"} label="View Operations Guide" />
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" /> Refresh</Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {tabs.map((tab) => {
+      <StandardTabs
+        label="Data transfer section tabs"
+        active={active}
+        onChange={(key) => choose(key as Mode)}
+        items={tabs.map((tab) => {
           const Icon = tab.icon;
-          return <Button key={tab.key} size="sm" variant={active === tab.key ? "primary" : "outline"} onClick={() => choose(tab.key)}><Icon className="h-4 w-4" /> {tab.label}</Button>;
+          return {
+            key: tab.key,
+            label: <><Icon className="h-4 w-4" />{tab.label}</>
+          };
         })}
-      </div>
+      />
 
       {error ? <Panel className="border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</Panel> : null}
       {message ? <Panel className="border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</Panel> : null}
@@ -434,6 +450,6 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
           <Button size="sm" onClick={() => void saveSettings()}>Save settings</Button>
         </Panel>
       ) : null}
-    </div>
+    </PageShell>
   );
 }

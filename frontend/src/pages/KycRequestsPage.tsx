@@ -4,7 +4,7 @@ import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { Input } from "../components/ui/input";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -67,17 +67,18 @@ export function KycRequestsPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">KYC Update Requests</h1>
-          <p className="text-sm text-muted-foreground">Review employee-submitted profile update requests. Approval is review-only in this foundation.</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void load()}>
+    <PageShell constrained={false}>
+      <PageHeader
+        title="KYC Update Requests"
+        eyebrow="Self-service"
+        description="Review employee-submitted profile update requests. Approval is review-only in this foundation."
+        actions={
+          <Button variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="h-4 w-4" />
           Refresh
-        </Button>
-      </div>
+          </Button>
+        }
+      />
 
       <Panel className="p-3">
         <div className="grid gap-2 md:grid-cols-[1fr_150px_150px_150px_150px_auto]">
@@ -164,7 +165,7 @@ export function KycRequestsPage() {
         onCancel={() => { setReviewAction(null); setReviewNote(""); }}
         onConfirm={() => reviewAction?.type === "reject" ? void reject(reviewAction.row) : reviewAction ? void approve(reviewAction.row) : undefined}
       />
-    </div>
+    </PageShell>
   );
 }
 

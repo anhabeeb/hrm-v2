@@ -7,7 +7,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -52,9 +52,9 @@ export function AssetSettingsPage({ mode = "categories" }: { mode?: "categories"
   }
 
   return (
-    <div className="space-y-4">
-      <div><h1 className="text-lg font-semibold">{mode === "categories" ? "Asset Categories" : "Asset Deduction Rules"}</h1><p className="text-sm text-muted-foreground">Configure asset and uniform templates without hard deleting protected defaults.</p></div>
-      <Panel className="p-0"><AssetsNav /></Panel>
+    <PageShell>
+      <PageHeader title={mode === "categories" ? "Asset Categories" : "Asset Deduction Rules"} description="Configure asset and uniform templates without hard deleting protected defaults." />
+      <AssetsNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {mode === "categories" ? (
         <Panel className="overflow-hidden p-0"><div className="flex justify-end border-b p-3">{canManageCategories ? <Button size="sm" onClick={() => setCategoryModal("new")}>Create category</Button> : null}</div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead><TableHead>Sort</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{categories.map((row) => <TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{row.name}</TableCell><TableCell>{row.type ?? row.category_type}</TableCell><TableCell>{row.description ?? "-"}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell>{row.sort_order}</TableCell><TableCell><div className="flex justify-end gap-1">{canManageCategories ? <><Button variant="ghost" size="icon" onClick={() => setCategoryModal(row)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => void toggleCategory(row)}><Power className="h-4 w-4" /></Button></> : "-"}</div></TableCell></TableRow>)}</TableBody></Table>{!categories.length ? <EmptyState title="No categories" description="Seeded defaults appear after schema seed is applied." /> : null}</div></Panel>
@@ -63,7 +63,7 @@ export function AssetSettingsPage({ mode = "categories" }: { mode?: "categories"
       )}
       {categoryModal ? <CategoryModal category={categoryModal === "new" ? undefined : categoryModal} onClose={() => setCategoryModal(null)} onSaved={() => { setCategoryModal(null); void load(); }} /> : null}
       {ruleModal ? <RuleModal rule={ruleModal === "new" ? undefined : ruleModal} categories={categories} onClose={() => setRuleModal(null)} onSaved={() => { setRuleModal(null); void load(); }} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

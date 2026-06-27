@@ -7,7 +7,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { CheckboxField, TextareaField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, TextareaField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -77,23 +77,24 @@ export function RosterShiftTemplatesPage() {
     }
   }
 
-  if (!canView) return <Panel><EmptyState title="Shift templates unavailable" description="Your account needs roster.view permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Shift templates unavailable" description="Your account needs roster.view permission." /></Panel></PageShell>;
   if (moduleDisabled) {
     return (
-      <div className="space-y-4">
-        <div><h1 className="text-lg font-semibold">Shift Templates</h1><p className="text-sm text-muted-foreground">Roster module is disabled.</p></div>
+      <PageShell>
+        <PageHeader title="Shift Templates" description="Roster module is disabled." />
         <RosterNav />
         <Panel><EmptyState title="Roster module is disabled" description="Enable roster from settings before managing shift templates." /></Panel>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div><h1 className="text-lg font-semibold">Shift Templates</h1><p className="text-sm text-muted-foreground">Reusable roster shifts for weekly planning and future attendance/payroll calculations.</p></div>
-        <div className="flex flex-wrap gap-2">{canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> New shift</Button> : null}</div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Shift Templates"
+        description="Reusable roster shifts for weekly planning and future attendance/payroll calculations."
+        actions={canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> New shift</Button> : null}
+      />
       <RosterNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
@@ -123,7 +124,7 @@ export function RosterShiftTemplatesPage() {
         {loading ? <EmptyState title="Loading shift templates" description="Fetching reusable shifts." /> : filtered.length === 0 ? <EmptyState title="No shift templates found" description="Add a shift template or adjust search." /> : null}
       </Panel>
       {editing !== undefined ? <ShiftTemplateModal template={editing ?? undefined} onClose={() => setEditing(undefined)} onSave={(input) => void save(input)} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

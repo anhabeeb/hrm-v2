@@ -3,7 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -56,17 +56,18 @@ export function ImportMigrationPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Import / Migration</h1>
-          <p className="text-sm text-muted-foreground">Validation-only placeholders for future HRM v2 imports.</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void load()}>
+    <PageShell>
+      <PageHeader
+        title="Import / Migration"
+        eyebrow="Data transfer"
+        description="Validation-only placeholders for future HRM v2 imports."
+        actions={
+          <Button variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="h-4 w-4" />
           Refresh
-        </Button>
-      </div>
+          </Button>
+        }
+      />
 
       <Panel className="border-amber-200 bg-amber-50 p-4">
         <div className="flex gap-3 text-amber-900">
@@ -122,6 +123,6 @@ export function ImportMigrationPage() {
         </form>
         {!canValidate ? <p className="mt-2 text-xs text-muted-foreground">Requires `settings.manage` permission.</p> : null}
       </Panel>
-    </div>
+    </PageShell>
   );
 }

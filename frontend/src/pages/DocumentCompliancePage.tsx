@@ -8,12 +8,13 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { SubNavigationBar, SubNavigationItem } from "../components/ui/navigation-tabs";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { DocumentComplianceDashboard, DocumentComplianceSettings, DocumentExpiryAlert, DocumentRenewalCase, DocumentRequirementWaiver, DocumentType } from "../types/documents";
-import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 
 type Mode = "dashboard" | "missing" | "expiring" | "expired" | "alerts" | "renewal-cases" | "waivers" | "settings" | "type-settings";
 
@@ -125,25 +126,26 @@ export function DocumentCompliancePage({ mode = "dashboard" }: { mode?: Mode }) 
     await load();
   }
 
-  if (!canView) return <Panel><EmptyState title="Document compliance unavailable" description="Your account needs document compliance permission." /></Panel>;
+  if (!canView) return <PageShell><Panel><EmptyState title="Document compliance unavailable" description="Your account needs document compliance permission." /></Panel></PageShell>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Document Expiry & Compliance</h1>
-          <p className="text-sm text-muted-foreground">Required documents, expiry alerts, renewal cases, waivers, and compliance settings.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <PageShell>
+      <PageHeader
+        title="Document Expiry & Compliance"
+        description="Required documents, expiry alerts, renewal cases, waivers, and compliance settings."
+        actions={
+          <>
           <Link to="/documents/registry"><Button variant="outline" size="sm">Registry</Button></Link>
           {canManage ? <Button size="sm" variant="outline" onClick={() => void refreshAll()}><RefreshCw className="h-4 w-4" /> Refresh compliance</Button> : null}
-        </div>
-      </div>
+          </>
+        }
+      />
+
+      <SubNavigationBar label="Document compliance section tabs">
+        {tabs.map((tab) => <SubNavigationItem key={tab.mode} to={tab.to} active={mode === tab.mode}>{tab.label}</SubNavigationItem>)}
+      </SubNavigationBar>
 
       <Panel className="overflow-hidden">
-        <div className="flex overflow-x-auto border-b">
-          {tabs.map((tab) => <Link key={tab.mode} to={tab.to} className={`h-11 whitespace-nowrap border-b-2 px-4 pt-3 text-sm font-medium ${mode === tab.mode ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:bg-muted/50"}`}>{tab.label}</Link>)}
-        </div>
         {error ? <div className="m-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
 
         {mode !== "dashboard" && mode !== "settings" && mode !== "type-settings" ? (
@@ -167,7 +169,7 @@ export function DocumentCompliancePage({ mode = "dashboard" }: { mode?: Mode }) 
 
       {reasonAction ? <ReasonModal action={reasonAction} onClose={() => setReasonAction(null)} /> : null}
       {typeModal && token ? <TypeComplianceModal token={token} type={typeModal} onClose={() => setTypeModal(null)} onSaved={load} /> : null}
-    </div>
+    </PageShell>
   );
 }
 

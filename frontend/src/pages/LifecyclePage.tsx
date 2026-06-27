@@ -10,6 +10,8 @@ import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { SubNavigationBar, SubNavigationItem } from "../components/ui/navigation-tabs";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -211,27 +213,16 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Employee Lifecycle</h1>
-          <p className="text-sm text-muted-foreground">Onboarding, offboarding, lifecycle tasks, activation readiness, and exit readiness.</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void load()}>
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Employee Lifecycle"
+        description="Onboarding, offboarding, lifecycle tasks, activation readiness, and exit readiness."
+        actions={<Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>}
+      />
 
-      <Panel className="overflow-x-auto p-2">
-        <div className="flex min-w-max gap-1">
-          {nav.map((item) => (
-            <Link key={item.mode} to={item.to} className={`rounded-md px-3 py-2 text-sm ${mode === item.mode ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      </Panel>
+      <SubNavigationBar label="Employee lifecycle section tabs">
+        {nav.map((item) => <SubNavigationItem key={item.mode} to={item.to} active={mode === item.mode}>{item.label}</SubNavigationItem>)}
+      </SubNavigationBar>
 
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
 
@@ -261,7 +252,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
         />
       ) : null}
       {reasonAction ? <ReasonModal title={reasonAction.title} onClose={() => setReasonAction(null)} onSubmit={async (reason) => { await reasonAction.submit(reason); setReasonAction(null); }} /> : null}
-    </div>
+    </PageShell>
   );
 }
 
