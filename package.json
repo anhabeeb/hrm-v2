@@ -36,6 +36,7 @@
     "verify:prompt23": "node scripts/verify-prompt23.mjs",
     "verify:onboarding-contract-null-fix": "node scripts/verify-onboarding-contract-null-fix.mjs",
     "verify:onboarding-document-compliance-fix": "node scripts/verify-onboarding-document-compliance-fix.mjs",
+    "verify:onboarding-workspace": "node scripts/verify-onboarding-workspace.mjs",
     "verify:ui-standardization": "node scripts/verify-ui-standardization.mjs",
     "verify:module-toggle-settings": "node scripts/verify-module-toggle-settings.mjs",
     "verify:global-validation": "node scripts/verify-global-form-validation.mjs",

@@ -890,6 +890,48 @@ export const api = {
   getOnboardingCase(token: string, caseId: string) {
     return request<{ case: OnboardingCase; employee: Employee; checklist: { tasks: LifecycleTask[] }; approval: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}`, {}, token);
   },
+  getOnboardingWorkspace(token: string, caseId: string) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/workspace`, {}, token);
+  },
+  updateOnboardingWorkspaceEmployeeInfo(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/employee-info`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  updateOnboardingWorkspaceContactInfo(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/contact-info`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  updateOnboardingWorkspaceJobAssignment(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/job-assignment`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  uploadOnboardingWorkspaceDocument(token: string, caseId: string, form: FormData) {
+    return multipartRequest<{ document: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/documents`, form, token);
+  },
+  createOnboardingWorkspaceContract(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/contracts`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateOnboardingWorkspacePayrollProfile(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/payroll-profile`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  createOnboardingWorkspacePaymentMethod(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/payment-methods`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateOnboardingWorkspacePensionProfile(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/pension-profile`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  createOnboardingWorkspaceBiometricMapping(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/biometric-mapping`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  saveOnboardingWorkspaceAssetsUniforms(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/assets-uniforms`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  saveOnboardingWorkspaceUserAccount(token: string, caseId: string, input: Record<string, unknown>) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/user-account`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  refreshOnboardingWorkspaceChecklist(token: string, caseId: string) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/refresh-checklist`, { method: "POST" }, token);
+  },
+  completeOnboardingWorkspace(token: string, caseId: string) {
+    return request<{ workspace?: Record<string, unknown>; submitted?: boolean; approval?: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/complete`, { method: "POST" }, token);
+  },
   updateOnboardingCase(token: string, caseId: string, input: Record<string, unknown>) {
     return request<{ case: OnboardingCase }>(`/api/v1/onboarding/cases/${caseId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },

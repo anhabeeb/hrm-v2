@@ -1,8 +1,9 @@
 import { CheckCircle2, FileDown, RefreshCw, ShieldAlert } from "lucide-react";
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
+import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -21,6 +22,7 @@ import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
 import type { LifecycleSettings, LifecycleTask, OffboardingCase, OnboardingCase } from "../types/lifecycle";
+import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import { CheckboxField, SelectField } from "../components/ui/page-shell";
 
 type Mode =
@@ -143,6 +145,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
   const [reportRows, setReportRows] = useState<Row[]>([]);
   const [reasonAction, setReasonAction] = useState<{ title: string; submit: (reason: string) => Promise<void> } | null>(null);
   const organizationRefs = useOrganizationReferences(token);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const activeKind: CaseKind = mode.startsWith("offboarding") ? "offboarding" : "onboarding";
   const activeCases = activeKind === "onboarding" ? onboardingCases : offboardingCases;
@@ -183,6 +186,11 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
   useEffect(() => {
     void load();
   }, [token, mode, reportKey]);
+
+  useEffect(() => {
+    const caseId = searchParams.get("case_id");
+    if (caseId && mode === "onboarding-cases") setSelected({ kind: "onboarding", id: caseId });
+  }, [mode, searchParams]);
 
   async function saveSettings(input: LifecycleSettings) {
     if (!token) return;
@@ -234,7 +242,10 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
           loading={loading}
           error={error}
           onCreate={() => setCreateKind(activeKind)}
-          onSelect={(id) => setSelected({ kind: activeKind, id })}
+          onSelect={(id) => {
+            setSelected({ kind: activeKind, id });
+            if (activeKind === "onboarding") setSearchParams({ case_id: id });
+          }}
         />
       ) : null}
       {mode.includes("settings") ? <SettingsSection settings={settings} kind={activeKind} canManage={canManageLifecycleSettings} loading={loading} error={error} onSave={saveSettings} /> : null}
@@ -246,7 +257,10 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
         <CaseDetailModal
           kind={selected.kind}
           caseId={selected.id}
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            setSelected(null);
+            if (searchParams.get("case_id")) setSearchParams({});
+          }}
           onChanged={() => void load()}
           askReason={(titleText, submit) => setReasonAction({ title: titleText, submit })}
         />
@@ -445,13 +459,22 @@ function CreateCaseModal({ kind, employees, organizationRefs, onClose, onCreated
 function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind: CaseKind; caseId: string; onClose: () => void; onChanged: () => void; askReason: (title: string, submit: (reason: string) => Promise<void>) => void }) {
   const { token } = useAuth();
   const [detail, setDetail] = useState<{ case: OnboardingCase | OffboardingCase; checklist: { tasks: LifecycleTask[] }; readiness?: Row } | null>(null);
+  const [workspace, setWorkspace] = useState<Row | null>(null);
   const [error, setError] = useState<string | null>(null);
   async function load() {
     if (!token) return;
     try {
-      const data = kind === "onboarding" ? await api.getOnboardingCase(token, caseId) : await api.getOffboardingCase(token, caseId);
-      const readiness = kind === "onboarding" ? (await api.getOnboardingReadiness(token, caseId)).readiness : (await api.getOffboardingReadiness(token, caseId)).readiness;
-      setDetail({ case: data.case, checklist: data.checklist, readiness });
+      setError(null);
+      if (kind === "onboarding") {
+        const data = (await api.getOnboardingWorkspace(token, caseId)).workspace;
+        setWorkspace(data);
+        setDetail({ case: data.case as OnboardingCase, checklist: data.checklist as { tasks: LifecycleTask[] }, readiness: data.readiness as Row });
+      } else {
+        const data = await api.getOffboardingCase(token, caseId);
+        const readiness = (await api.getOffboardingReadiness(token, caseId)).readiness;
+        setWorkspace(null);
+        setDetail({ case: data.case, checklist: data.checklist, readiness });
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load lifecycle case.");
     }
@@ -469,6 +492,18 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
     <Modal title={`${title(kind)} case`} onClose={onClose} wide>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {!detail ? <p className="text-sm text-muted-foreground">Loading case detail...</p> : (
+        kind === "onboarding" && workspace ? (
+          <OnboardingWorkspace
+            workspace={workspace}
+            caseId={caseId}
+            reload={async () => {
+              await load();
+              onChanged();
+            }}
+            run={run}
+            askReason={askReason}
+          />
+        ) : (
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
             <Info label="Case" value={detail.case.case_number} />
@@ -527,8 +562,468 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
             </Table>
           </DataTableFrame>
         </div>
+        )
       )}
     </Modal>
+  );
+}
+
+const onboardingWorkspaceTabs = ["Overview", "Employee Info", "Contacts", "Job Assignment", "Documents", "Contract", "Payroll", "Payment & Pension", "Attendance & Roster", "Assets & Uniforms", "User Access", "Checklist", "Approval Timeline"] as const;
+type OnboardingWorkspaceTab = (typeof onboardingWorkspaceTabs)[number];
+
+function asRow(value: unknown): Row {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Row : {};
+}
+
+function asRows(value: unknown): Row[] {
+  return Array.isArray(value) ? value as Row[] : [];
+}
+
+function isDisabledModule(workspace: Row, key: string) {
+  const statuses = asRow(workspace.module_statuses);
+  return statuses[key] === false;
+}
+
+function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { workspace: Row; caseId: string; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void }) {
+  const { token } = useAuth();
+  const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function save(action: () => Promise<unknown>, success: string) {
+    if (!token) return;
+    setError(null);
+    setMessage(null);
+    try {
+      await action();
+      setMessage(success);
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to save onboarding workspace section.");
+    }
+  }
+  const rowCase = asRow(workspace.case);
+  const employee = asRow(workspace.employee);
+  const checklist = asRow(workspace.checklist);
+  const readiness = asRow(workspace.readiness);
+  const tasks = asRows(checklist.tasks);
+  const blockers = asRows(readiness.blocking_items);
+  const warnings = asRows(readiness.warning_items);
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border bg-slate-50/70 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-semibold">{text(employee.full_name)}</h3>
+              <StatusBadge value={rowCase.onboarding_status} />
+              <StatusBadge value={rowCase.activation_status} />
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">{text(employee.employee_no)} · {text(employee.department_name)} · {text(employee.location_name)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Complete setup here before Employee 360 is unlocked after activation.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Checklist refreshed.")}>Refresh checklist</Button>
+            <Button size="sm" variant="outline" onClick={() => void run(() => api.completeOnboardingWorkspace(token!, caseId))}>Submit activation</Button>
+            <Button size="sm" variant="outline" onClick={() => void run(() => api.approveOnboardingActivation(token!, caseId))}>Approve activation</Button>
+            <Button size="sm" onClick={() => void run(() => api.activateOnboardingCase(token!, caseId))}><CheckCircle2 className="h-4 w-4" /> Activate</Button>
+            <Button size="sm" variant="danger" onClick={() => askReason("Activate with override", (reason) => run(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason)))}>Override activation</Button>
+          </div>
+        </div>
+      </div>
+      {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
+      {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      <SubNavigationBar label="Onboarding setup workspace tabs">
+        {onboardingWorkspaceTabs.map((tab) => <SubNavigationItem key={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)}>{tab}</SubNavigationItem>)}
+      </SubNavigationBar>
+      {activeTab === "Overview" ? <OnboardingWorkspaceOverview readiness={readiness} blockers={blockers} warnings={warnings} tasks={tasks} workspace={workspace} /> : null}
+      {activeTab === "Employee Info" ? <EmployeeInfoWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceEmployeeInfo(token!, caseId, input), "Employee information saved.")} /> : null}
+      {activeTab === "Contacts" ? <ContactWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceContactInfo(token!, caseId, input), "Contact information saved.")} /> : null}
+      {activeTab === "Job Assignment" ? <JobAssignmentWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceJobAssignment(token!, caseId, input), "Job assignment saved.")} /> : null}
+      {activeTab === "Documents" ? <DocumentsWorkspaceForm workspace={workspace} onSave={(form) => save(() => api.uploadOnboardingWorkspaceDocument(token!, caseId, form), "Document uploaded.")} /> : null}
+      {activeTab === "Contract" ? <ContractWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceContract(token!, caseId, input), "Contract draft created.")} /> : null}
+      {activeTab === "Payroll" ? <PayrollWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspacePayrollProfile(token!, caseId, input), "Payroll profile saved.")} /> : null}
+      {activeTab === "Payment & Pension" ? <PaymentPensionWorkspaceForm workspace={workspace} onPaymentSave={(input) => save(() => api.createOnboardingWorkspacePaymentMethod(token!, caseId, input), "Payment method saved.")} onPensionSave={(input) => save(() => api.updateOnboardingWorkspacePensionProfile(token!, caseId, input), "Pension profile saved.")} /> : null}
+      {activeTab === "Attendance & Roster" ? <AttendanceRosterWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceBiometricMapping(token!, caseId, input), "Attendance/biometric setup saved.")} /> : null}
+      {activeTab === "Assets & Uniforms" ? <AssetsWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceAssetsUniforms(token!, caseId, input), "Asset/uniform setup saved.")} /> : null}
+      {activeTab === "User Access" ? <UserAccessWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceUserAccount(token!, caseId, input), "User access setup saved.")} /> : null}
+      {activeTab === "Checklist" ? <ChecklistWorkspaceTable tasks={tasks} /> : null}
+      {activeTab === "Approval Timeline" ? <Timeline items={asRows(workspace.events).map((event) => ({ title: text(event.action), description: text(event.new_status ?? event.note ?? event.reason), meta: text(event.created_at) }))} /> : null}
+    </div>
+  );
+}
+
+function OnboardingWorkspaceOverview({ readiness, blockers, warnings, tasks, workspace }: { readiness: Row; blockers: Row[]; warnings: Row[]; tasks: Row[]; workspace: Row }) {
+  return (
+    <div className="grid gap-3 lg:grid-cols-3">
+      <Panel className="p-3 lg:col-span-2">
+        <h3 className="text-sm font-semibold">Activation readiness</h3>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <Info label="Can activate" value={readiness.can_activate ? "Yes" : "No"} />
+          <Info label="Required tasks complete" value={asRow(readiness.checklist).required_completed ?? "-"} />
+          <Info label="Required tasks" value={asRow(readiness.checklist).required_total ?? tasks.filter((task) => task.is_required || task.required).length} />
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div><p className="text-xs font-medium text-muted-foreground">Blockers</p><List values={blockers} /></div>
+          <div><p className="text-xs font-medium text-muted-foreground">Warnings</p><List values={warnings} /></div>
+        </div>
+      </Panel>
+      <Panel className="p-3">
+        <h3 className="text-sm font-semibold">Module readiness</h3>
+        <div className="mt-3 space-y-2 text-sm">
+          {Object.entries(asRow(workspace.module_statuses)).map(([key, value]) => (
+            <div key={key} className="flex items-center justify-between gap-3">
+              <span>{title(key)}</span>
+              <Badge tone={value === false ? "neutral" : "success"}>{value === false ? "Not required" : "Enabled"}</Badge>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function EmployeeInfoWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  const employee = asRow(workspace.employee);
+  const [form, setForm] = useState({
+    full_name: text(employee.full_name),
+    display_name: text(employee.display_name) === "-" ? "" : text(employee.display_name),
+    gender: text(employee.gender) === "-" ? "" : text(employee.gender),
+    date_of_birth: text(employee.date_of_birth) === "-" ? "" : text(employee.date_of_birth),
+    nationality: text(employee.nationality) === "-" ? "" : text(employee.nationality),
+    employee_type: text(employee.employee_type) === "-" ? "LOCAL" : text(employee.employee_type),
+    employment_type: text(employee.employment_type) === "-" ? "FULL_TIME" : text(employee.employment_type),
+    joining_date: text(employee.joining_date) === "-" ? "" : text(employee.joining_date),
+    confirmation_date: text(employee.confirmation_date) === "-" ? "" : text(employee.confirmation_date),
+    payroll_included: Boolean(employee.payroll_included),
+    roster_eligible: Boolean(employee.roster_eligible),
+    notes_summary: text(employee.notes_summary) === "-" ? "" : text(employee.notes_summary)
+  });
+  return (
+    <Panel className="p-4">
+      <h3 className="text-sm font-semibold">Basic employee information</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <Field label="Full name"><Input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} /></Field>
+        <Field label="Display name"><Input value={form.display_name} onChange={(event) => setForm({ ...form, display_name: event.target.value })} /></Field>
+        <Field label="Employee number"><Input value={text(employee.employee_no)} disabled /></Field>
+        <Field label="Gender"><Input value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value })} /></Field>
+        <Field label="Date of birth"><Input type="date" value={form.date_of_birth} onChange={(event) => setForm({ ...form, date_of_birth: event.target.value })} /></Field>
+        <Field label="Nationality"><Input value={form.nationality} onChange={(event) => setForm({ ...form, nationality: event.target.value })} /></Field>
+        <SelectField label="Employee type" value={form.employee_type} onValueChange={(employee_type) => setForm({ ...form, employee_type })}>{["LOCAL", "FOREIGN", "OTHER"].map((value) => <option key={value} value={value}>{value}</option>)}</SelectField>
+        <SelectField label="Employment type" value={form.employment_type} onValueChange={(employment_type) => setForm({ ...form, employment_type })}>{["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"].map((value) => <option key={value} value={value}>{value}</option>)}</SelectField>
+        <Field label="Joined date"><Input type="date" value={form.joining_date} onChange={(event) => setForm({ ...form, joining_date: event.target.value })} /></Field>
+        <Field label="Confirmation date"><Input type="date" value={form.confirmation_date} onChange={(event) => setForm({ ...form, confirmation_date: event.target.value })} /></Field>
+        <CheckboxField label="Payroll included" checked={form.payroll_included} onChange={(payroll_included) => setForm({ ...form, payroll_included })} />
+        <CheckboxField label="Roster eligible" checked={form.roster_eligible} onChange={(roster_eligible) => setForm({ ...form, roster_eligible })} />
+        <div className="md:col-span-3"><Field label="Notes"><Input value={form.notes_summary} onChange={(event) => setForm({ ...form, notes_summary: event.target.value })} /></Field></div>
+      </div>
+      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save employee info</Button></div>
+    </Panel>
+  );
+}
+
+function ContactWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  const contacts = asRows(asRow(workspace.sections).contacts);
+  const addresses = asRows(asRow(workspace.sections).addresses);
+  const findContact = (type: string) => contacts.find((contact) => contact.contact_type === type);
+  const currentAddress = addresses.find((address) => address.address_type === "CURRENT");
+  const [form, setForm] = useState({
+    phone: text(findContact("PERSONAL_PHONE")?.value) === "-" ? "" : text(findContact("PERSONAL_PHONE")?.value),
+    personal_email: text(findContact("PERSONAL_EMAIL")?.value) === "-" ? "" : text(findContact("PERSONAL_EMAIL")?.value),
+    emergency_contact_value: text(findContact("EMERGENCY")?.value) === "-" ? "" : text(findContact("EMERGENCY")?.value),
+    emergency_relationship: text(findContact("EMERGENCY")?.relationship) === "-" ? "" : text(findContact("EMERGENCY")?.relationship),
+    address_line: text(currentAddress?.address_line) === "-" ? "" : text(currentAddress?.address_line),
+    island_city: text(currentAddress?.island_city) === "-" ? "" : text(currentAddress?.island_city),
+    country: text(currentAddress?.country) === "-" ? "" : text(currentAddress?.country)
+  });
+  return (
+    <Panel className="p-4">
+      <h3 className="text-sm font-semibold">Contact information</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <Field label="Phone"><Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
+        <Field label="Personal email"><Input type="email" value={form.personal_email} onChange={(event) => setForm({ ...form, personal_email: event.target.value })} /></Field>
+        <Field label="Emergency contact"><Input value={form.emergency_contact_value} onChange={(event) => setForm({ ...form, emergency_contact_value: event.target.value })} /></Field>
+        <Field label="Emergency relationship"><Input value={form.emergency_relationship} onChange={(event) => setForm({ ...form, emergency_relationship: event.target.value })} /></Field>
+        <Field label="Address"><Input value={form.address_line} onChange={(event) => setForm({ ...form, address_line: event.target.value })} /></Field>
+        <Field label="Island / city"><Input value={form.island_city} onChange={(event) => setForm({ ...form, island_city: event.target.value })} /></Field>
+        <Field label="Country"><Input value={form.country} onChange={(event) => setForm({ ...form, country: event.target.value })} /></Field>
+      </div>
+      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save contacts</Button></div>
+    </Panel>
+  );
+}
+
+function JobAssignmentWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  const employee = asRow(workspace.employee);
+  const refs = asRow(workspace.refs);
+  const [form, setForm] = useState({
+    primary_location_id: text(employee.primary_location_id) === "-" ? "" : text(employee.primary_location_id),
+    primary_department_id: text(employee.primary_department_id) === "-" ? "" : text(employee.primary_department_id),
+    job_level_id: text(employee.job_level_id) === "-" ? "" : text(employee.job_level_id),
+    primary_position_id: text(employee.primary_position_id) === "-" ? "" : text(employee.primary_position_id),
+    reporting_manager_employee_id: text(employee.reporting_manager_employee_id) === "-" ? "" : text(employee.reporting_manager_employee_id),
+    employment_type: text(employee.employment_type) === "-" ? "FULL_TIME" : text(employee.employment_type),
+    employee_type: text(employee.employee_type) === "-" ? "LOCAL" : text(employee.employee_type)
+  });
+  return (
+    <Panel className="p-4">
+      <h3 className="text-sm font-semibold">Job assignment</h3>
+      <p className="mt-1 text-xs text-muted-foreground">Uses the existing Department &rarr; Job Level &rarr; Position cascading validation.</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <div className="md:col-span-3">
+          <OrganizationCascadeSelector
+            includeLocation
+            departments={asRows(refs.departments) as unknown as OrganizationDepartment[]}
+            locations={asRows(refs.locations) as unknown as OrganizationLocation[]}
+            jobLevels={asRows(refs.job_levels) as unknown as OrganizationJobLevel[]}
+            positions={asRows(refs.positions) as unknown as OrganizationPosition[]}
+            value={{ locationId: form.primary_location_id, departmentId: form.primary_department_id, jobLevelId: form.job_level_id, positionId: form.primary_position_id }}
+            labels={{ locationId: "Worksite/location", departmentId: "Department", jobLevelId: "Job level", positionId: "Position/designation" }}
+            onChange={(next) => setForm({ ...form, primary_location_id: next.locationId ?? "", primary_department_id: next.departmentId ?? "", job_level_id: next.jobLevelId ?? "", primary_position_id: next.positionId ?? "" })}
+          />
+        </div>
+        <SelectField label="Reporting manager" value={form.reporting_manager_employee_id} onValueChange={(reporting_manager_employee_id) => setForm({ ...form, reporting_manager_employee_id })}><option value="">None</option>{asRows(refs.reporting_managers).map((manager) => <option key={String(manager.id)} value={String(manager.id)}>{text(manager.full_name)} ({text(manager.employee_no)})</option>)}</SelectField>
+        <SelectField label="Employee type" value={form.employee_type} onValueChange={(employee_type) => setForm({ ...form, employee_type })}>{["LOCAL", "FOREIGN", "OTHER"].map((value) => <option key={value} value={value}>{value}</option>)}</SelectField>
+        <SelectField label="Employment type" value={form.employment_type} onValueChange={(employment_type) => setForm({ ...form, employment_type })}>{["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"].map((value) => <option key={value} value={value}>{value}</option>)}</SelectField>
+      </div>
+      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save job assignment</Button></div>
+    </Panel>
+  );
+}
+
+function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (form: FormData) => void }) {
+  const refs = asRow(workspace.refs);
+  const documentTypes = asRows(refs.document_types);
+  const documents = asRow(asRow(workspace.sections).documents);
+  const [documentTypeId, setDocumentTypeId] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [metadata, setMetadata] = useState({ document_number: "", issue_date: "", expiry_date: "", notes: "" });
+  const selectedType = documentTypes.find((type) => String(type.id) === documentTypeId);
+  const requiredNumber = Boolean(selectedType?.requires_document_number || selectedType?.document_number_required);
+  const requiredIssue = Boolean(selectedType?.requires_issue_date || selectedType?.issue_date_required);
+  const requiredExpiry = Boolean(selectedType?.requires_expiry_date || selectedType?.expiry_required);
+  function submit() {
+    const form = new FormData();
+    form.set("document_type_id", documentTypeId);
+    if (file) form.set("file", file);
+    form.set("document_number", metadata.document_number);
+    form.set("issue_date", metadata.issue_date);
+    form.set("expiry_date", metadata.expiry_date);
+    form.set("notes", metadata.notes);
+    onSave(form);
+  }
+  return (
+    <div className="grid gap-3 lg:grid-cols-[1fr_1.2fr]">
+      <Panel className="p-4">
+        <h3 className="text-sm font-semibold">Upload official document</h3>
+        <div className="mt-3 grid gap-3">
+          <SelectField label="Document type" required value={documentTypeId} onValueChange={setDocumentTypeId}><option value="">Select document type</option>{documentTypes.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}{type.is_sensitive ? " (Sensitive)" : ""}</option>)}</SelectField>
+          {selectedType ? <p className="text-xs text-muted-foreground">Allowed files: {text(selectedType.allowed_mime_types)} · Max size: {text(selectedType.max_file_size_mb)} MB · Multiple: {selectedType.allow_multiple_files ? "Yes" : "No"}</p> : null}
+          <Field label={`Document number${requiredNumber ? " *" : ""}`}><Input required={requiredNumber} value={metadata.document_number} onChange={(event) => setMetadata({ ...metadata, document_number: event.target.value })} /></Field>
+          <Field label={`Issue date${requiredIssue ? " *" : ""}`}><Input type="date" required={requiredIssue} value={metadata.issue_date} onChange={(event) => setMetadata({ ...metadata, issue_date: event.target.value })} /></Field>
+          <Field label={`Expiry date${requiredExpiry ? " *" : ""}`}><Input type="date" required={requiredExpiry} value={metadata.expiry_date} onChange={(event) => setMetadata({ ...metadata, expiry_date: event.target.value })} /></Field>
+          <Field label="Notes"><Input value={metadata.notes} onChange={(event) => setMetadata({ ...metadata, notes: event.target.value })} /></Field>
+          <Field label="File"><Input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></Field>
+        </div>
+        <div className="mt-4 flex justify-end"><Button size="sm" disabled={!documentTypeId || !file} onClick={submit}>Upload document</Button></div>
+      </Panel>
+      <Panel className="p-4">
+        <h3 className="text-sm font-semibold">Required document checklist</h3>
+        <DataTableFrame empty={asRows(documents.rows).length === 0}>
+          <Table>
+            <TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Status</TableHead><TableHead>Uploaded</TableHead><TableHead>Expiry</TableHead></TableRow></TableHeader>
+            <TableBody>{asRows(documents.rows).map((row) => <TableRow key={String(row.document_type_id ?? row.id)}><TableCell>{text(row.document_type_name)}</TableCell><TableCell><StatusBadge value={row.requirement_status ?? row.compliance_status} /></TableCell><TableCell>{row.missing ? "Missing" : "Uploaded"}</TableCell><TableCell>{text(row.expiry_date)}</TableCell></TableRow>)}</TableBody>
+          </Table>
+        </DataTableFrame>
+      </Panel>
+    </div>
+  );
+}
+
+function ContractWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  if (isDisabledModule(workspace, "contracts")) return <Panel className="p-4"><EmptyState title="Contract not required" description="The Contracts module is disabled, so onboarding will not block on contract setup." /></Panel>;
+  const refs = asRow(workspace.refs);
+  const types = asRows(refs.contract_types);
+  const [form, setForm] = useState({ contract_type_id: "", contract_number: "", contract_title: "", contract_start_date: "", contract_end_date: "", probation_start_date: "", probation_end_date: "", confirmation_due_date: "", notes: "" });
+  const selectedType = types.find((type) => String(type.id) === form.contract_type_id);
+  const requiresEnd = Boolean(selectedType?.requires_end_date);
+  const requiresProbation = Boolean(selectedType?.requires_probation);
+  return (
+    <Panel className="p-4">
+      <h3 className="text-sm font-semibold">Contract setup</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <SelectField required label="Contract type" value={form.contract_type_id} onValueChange={(contract_type_id) => setForm({ ...form, contract_type_id })}><option value="">Select type</option>{types.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}</option>)}</SelectField>
+        <Field label="Contract number"><Input value={form.contract_number} onChange={(event) => setForm({ ...form, contract_number: event.target.value })} placeholder="Auto if blank" /></Field>
+        <Field label="Title"><Input value={form.contract_title} onChange={(event) => setForm({ ...form, contract_title: event.target.value })} /></Field>
+        <Field label="Start date *"><Input type="date" required value={form.contract_start_date} onChange={(event) => setForm({ ...form, contract_start_date: event.target.value })} /></Field>
+        <Field label={`End date${requiresEnd ? " *" : ""}`}><Input type="date" required={requiresEnd} value={form.contract_end_date} onChange={(event) => setForm({ ...form, contract_end_date: event.target.value })} />{!requiresEnd ? <p className="text-xs text-muted-foreground">End date is optional for this contract type.</p> : null}</Field>
+        <Field label={`Probation start${requiresProbation ? " *" : ""}`}><Input type="date" required={requiresProbation} value={form.probation_start_date} onChange={(event) => setForm({ ...form, probation_start_date: event.target.value })} /></Field>
+        <Field label={`Probation end${requiresProbation ? " *" : ""}`}><Input type="date" required={requiresProbation} value={form.probation_end_date} onChange={(event) => setForm({ ...form, probation_end_date: event.target.value })} /></Field>
+        <Field label="Confirmation due"><Input type="date" value={form.confirmation_due_date} onChange={(event) => setForm({ ...form, confirmation_due_date: event.target.value })} /></Field>
+        <Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field>
+      </div>
+      <div className="mt-4 flex justify-end"><Button size="sm" disabled={!form.contract_type_id || !form.contract_start_date} onClick={() => onSave(form)}>Create contract draft</Button></div>
+    </Panel>
+  );
+}
+
+function PayrollWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  if (isDisabledModule(workspace, "payroll")) return <Panel className="p-4"><EmptyState title="Payroll not required" description="Payroll module is disabled, so onboarding will not block on payroll setup." /></Panel>;
+  const profile = asRow(asRow(workspace.sections).payroll_profile);
+  const [form, setForm] = useState({
+    basic_salary: text(profile.basic_salary) === "-" ? "0" : text(profile.basic_salary),
+    currency: text(profile.currency) === "-" ? "MVR" : text(profile.currency),
+    payment_method: text(profile.payment_method) === "-" ? "CASH" : text(profile.payment_method),
+    payroll_included: profile.payroll_included !== 0,
+    overtime_eligible: Boolean(profile.overtime_eligible),
+    benefits_eligible: Boolean(profile.benefits_eligible),
+    advance_eligible: Boolean(profile.advance_eligible),
+    missed_day_deduction_enabled: profile.missed_day_deduction_enabled !== 0,
+    leave_deduction_enabled: profile.leave_deduction_enabled !== 0,
+    daily_rate_mode: text(profile.daily_rate_mode) === "-" ? "FIXED_30_DAYS" : text(profile.daily_rate_mode)
+  });
+  return (
+    <Panel className="p-4">
+      <h3 className="text-sm font-semibold">Payroll profile</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <Field label="Basic salary"><Input type="number" min="0" value={form.basic_salary} onChange={(event) => setForm({ ...form, basic_salary: event.target.value })} /></Field>
+        <Field label="Currency"><Input value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })} /></Field>
+        <SelectField label="Payroll payment mode" value={form.payment_method} onValueChange={(payment_method) => setForm({ ...form, payment_method })}>{["CASH", "BANK_TRANSFER", "CHEQUE", "OTHER"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField>
+        <SelectField label="Daily rate mode" value={form.daily_rate_mode} onValueChange={(daily_rate_mode) => setForm({ ...form, daily_rate_mode })}>{["FIXED_30_DAYS", "CALENDAR_DAYS", "WORKING_DAYS"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField>
+        <CheckboxField label="Payroll included" checked={form.payroll_included} onChange={(payroll_included) => setForm({ ...form, payroll_included })} />
+        <CheckboxField label="Overtime eligible" checked={form.overtime_eligible} onChange={(overtime_eligible) => setForm({ ...form, overtime_eligible })} />
+        <CheckboxField label="Benefits eligible" checked={form.benefits_eligible} onChange={(benefits_eligible) => setForm({ ...form, benefits_eligible })} />
+        <CheckboxField label="Advance eligible" checked={form.advance_eligible} onChange={(advance_eligible) => setForm({ ...form, advance_eligible })} />
+        <CheckboxField label="Missed-day deduction" checked={form.missed_day_deduction_enabled} onChange={(missed_day_deduction_enabled) => setForm({ ...form, missed_day_deduction_enabled })} />
+        <CheckboxField label="Leave deduction" checked={form.leave_deduction_enabled} onChange={(leave_deduction_enabled) => setForm({ ...form, leave_deduction_enabled })} />
+      </div>
+      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave({ ...form, basic_salary: Number(form.basic_salary) })}>Save payroll profile</Button></div>
+    </Panel>
+  );
+}
+
+function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }: { workspace: Row; onPaymentSave: (input: Row) => void; onPensionSave: (input: Row) => void }) {
+  const refs = asRow(workspace.refs);
+  const sections = asRow(workspace.sections);
+  const [payment, setPayment] = useState({ payment_method_type: "CASH", payment_institution_id: "", bank_account_name: "", bank_account_number: "", currency: "MVR", is_primary: true, notes: "" });
+  const pensionProfile = asRow(sections.pension_profile);
+  const [pension, setPension] = useState({ pension_scheme_id: text(pensionProfile.pension_scheme_id) === "-" ? "" : text(pensionProfile.pension_scheme_id), enrollment_status: text(pensionProfile.enrollment_status) === "-" ? "ENROLLED" : text(pensionProfile.enrollment_status), pension_member_id: "", registration_number: "", effective_date: new Date().toISOString().slice(0, 10), notes: "" });
+  return (
+    <div className="grid gap-3 lg:grid-cols-2">
+      <Panel className="p-4">
+        <h3 className="text-sm font-semibold">Payment method</h3>
+        {isDisabledModule(workspace, "payment_methods") ? <EmptyState title="Payment method not required" description="Payment methods are disabled." /> : (
+          <>
+            <div className="mt-3 grid gap-3">
+              <SelectField label="Method" value={payment.payment_method_type} onValueChange={(payment_method_type) => setPayment({ ...payment, payment_method_type })}>{["CASH", "BANK_TRANSFER", "CHEQUE_PLACEHOLDER", "MOBILE_WALLET_PLACEHOLDER", "OTHER"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField>
+              <SelectField label="Payment institution" value={payment.payment_institution_id} onValueChange={(payment_institution_id) => setPayment({ ...payment, payment_institution_id })}><option value="">None</option>{asRows(refs.payment_institutions).map((institution) => <option key={String(institution.id)} value={String(institution.id)}>{text(institution.name)}</option>)}</SelectField>
+              <Field label="Account name"><Input value={payment.bank_account_name} onChange={(event) => setPayment({ ...payment, bank_account_name: event.target.value })} /></Field>
+              <Field label="Account number"><Input value={payment.bank_account_number} onChange={(event) => setPayment({ ...payment, bank_account_number: event.target.value })} /></Field>
+              <Field label="Currency"><Input value={payment.currency} onChange={(event) => setPayment({ ...payment, currency: event.target.value })} /></Field>
+            </div>
+            <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onPaymentSave(payment)}>Save payment method</Button></div>
+          </>
+        )}
+      </Panel>
+      <Panel className="p-4">
+        <h3 className="text-sm font-semibold">Pension profile</h3>
+        {isDisabledModule(workspace, "pension") ? <EmptyState title="Pension not required" description="Pension module is disabled." /> : (
+          <>
+            <div className="mt-3 grid gap-3">
+              <SelectField label="Pension scheme" value={pension.pension_scheme_id} onValueChange={(pension_scheme_id) => setPension({ ...pension, pension_scheme_id })}><option value="">None / exempted</option>{asRows(refs.pension_schemes).map((scheme) => <option key={String(scheme.id)} value={String(scheme.id)}>{text(scheme.scheme_name)}</option>)}</SelectField>
+              <SelectField label="Enrollment status" value={pension.enrollment_status} onValueChange={(enrollment_status) => setPension({ ...pension, enrollment_status })}>{["ENROLLED", "EXEMPTED", "VOLUNTARY", "NOT_ENROLLED", "SUSPENDED"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField>
+              <Field label="Member ID"><Input value={pension.pension_member_id} onChange={(event) => setPension({ ...pension, pension_member_id: event.target.value })} /></Field>
+              <Field label="Registration number"><Input value={pension.registration_number} onChange={(event) => setPension({ ...pension, registration_number: event.target.value })} /></Field>
+              <Field label="Effective date"><Input type="date" value={pension.effective_date} onChange={(event) => setPension({ ...pension, effective_date: event.target.value })} /></Field>
+            </div>
+            <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onPensionSave(pension)}>Save pension profile</Button></div>
+          </>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function AttendanceRosterWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  const employee = asRow(workspace.employee);
+  const [form, setForm] = useState({ biometric_user_id: "", biometric_user_name: "", external_employee_code: text(employee.employee_no), not_required: false, reason: "" });
+  return (
+    <div className="grid gap-3 lg:grid-cols-2">
+      <Panel className="p-4">
+        <h3 className="text-sm font-semibold">Attendance / biometric</h3>
+        {isDisabledModule(workspace, "attendance") ? <EmptyState title="Attendance not required" description="Attendance module is disabled." /> : (
+          <div className="mt-3 grid gap-3">
+            <Field label="Biometric user ID"><Input value={form.biometric_user_id} onChange={(event) => setForm({ ...form, biometric_user_id: event.target.value })} /></Field>
+            <Field label="Biometric user name"><Input value={form.biometric_user_name} onChange={(event) => setForm({ ...form, biometric_user_name: event.target.value })} /></Field>
+            <Field label="External employee code"><Input value={form.external_employee_code} onChange={(event) => setForm({ ...form, external_employee_code: event.target.value })} /></Field>
+            <CheckboxField label="Biometric mapping not required" checked={form.not_required} onChange={(not_required) => setForm({ ...form, not_required })} />
+            {form.not_required ? <Field label="Reason"><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></Field> : null}
+            <div className="flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save attendance setup</Button></div>
+          </div>
+        )}
+      </Panel>
+      <Panel className="p-4">
+        <h3 className="text-sm font-semibold">Roster readiness</h3>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Info label="Roster eligible" value={employee.roster_eligible ? "Yes" : "No"} />
+          <Info label="Worksite/location" value={employee.location_name ?? "Not set"} />
+        </div>
+        <p className="mt-3 text-sm text-muted-foreground">Roster assignment remains managed by the roster module after worksite and roster eligibility are ready.</p>
+      </Panel>
+    </div>
+  );
+}
+
+function AssetsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  const refs = asRow(workspace.refs);
+  const [form, setForm] = useState({ asset_item_id: "", issued_date: new Date().toISOString().slice(0, 10), expected_return_date: "", notes: "", not_required: false, waived: false, reason: "" });
+  if (isDisabledModule(workspace, "assets_uniforms")) return <Panel className="p-4"><EmptyState title="Assets/uniforms not required" description="Assets and uniforms module is disabled." /></Panel>;
+  return (
+    <Panel className="p-4">
+      <h3 className="text-sm font-semibold">Assets and uniforms</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <SelectField label="Available asset/uniform" value={form.asset_item_id} onValueChange={(asset_item_id) => setForm({ ...form, asset_item_id })}><option value="">Select asset or mark not required</option>{asRows(refs.available_assets).map((asset) => <option key={String(asset.id)} value={String(asset.id)}>{text(asset.name)} ({text(asset.code)})</option>)}</SelectField>
+        <Field label="Issued date"><Input type="date" value={form.issued_date} onChange={(event) => setForm({ ...form, issued_date: event.target.value })} /></Field>
+        <Field label="Expected return"><Input type="date" value={form.expected_return_date} onChange={(event) => setForm({ ...form, expected_return_date: event.target.value })} /></Field>
+        <CheckboxField label="Not required" checked={form.not_required} onChange={(not_required) => setForm({ ...form, not_required })} />
+        <CheckboxField label="Waived" checked={form.waived} onChange={(waived) => setForm({ ...form, waived })} />
+        {(form.not_required || form.waived) ? <Field label="Reason"><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></Field> : null}
+        <div className="md:col-span-3"><Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field></div>
+      </div>
+      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save assets/uniforms</Button></div>
+    </Panel>
+  );
+}
+
+function UserAccessWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  const linked = asRow(asRow(workspace.sections).linked_user);
+  const [form, setForm] = useState({ deferred: true, not_required: false, reason: "User access will be handled after activation or by Employee 360 user access." });
+  return (
+    <Panel className="p-4">
+      <h3 className="text-sm font-semibold">User account / self-service access</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <Info label="Linked account" value={linked.id ? `${text(linked.name)} (${text(linked.email)})` : "Not linked"} />
+        <Info label="User status" value={linked.status ?? "Pending"} />
+        <Info label="Last login" value={linked.last_login_at ?? "Not set"} />
+        <CheckboxField label="Defer login setup" checked={form.deferred} onChange={(deferred) => setForm({ ...form, deferred })} />
+        <CheckboxField label="Login not required" checked={form.not_required} onChange={(not_required) => setForm({ ...form, not_required })} />
+        <Field label="Reason / note"><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></Field>
+      </div>
+      <p className="mt-3 text-sm text-muted-foreground">Role mapping and access scopes remain the source of truth. Linked account creation can still be completed from the existing Employee User Access tools.</p>
+      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save user access status</Button></div>
+    </Panel>
+  );
+}
+
+function ChecklistWorkspaceTable({ tasks }: { tasks: Row[] }) {
+  return (
+    <DataTableFrame empty={tasks.length === 0}>
+      <Table>
+        <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Group</TableHead><TableHead>Status</TableHead><TableHead>Required</TableHead><TableHead>Notes</TableHead></TableRow></TableHeader>
+        <TableBody>
+          {tasks.map((task) => <TableRow key={String(task.id)}><TableCell>{text(task.task_name ?? task.title ?? task.task_key)}</TableCell><TableCell>{text(task.task_group)}</TableCell><TableCell><StatusBadge value={task.task_status ?? task.status} /></TableCell><TableCell>{task.is_required || task.required ? "Yes" : "No"}</TableCell><TableCell>{text(task.notes ?? task.waiver_reason ?? task.blocked_reason)}</TableCell></TableRow>)}
+        </TableBody>
+      </Table>
+    </DataTableFrame>
   );
 }
 
@@ -570,6 +1065,10 @@ function Modal({ title: modalTitle, children, onClose, wide }: { title: string; 
 
 function Info({ label, value }: { label: string; value: unknown }) {
   return <div className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium">{text(value)}</p></div>;
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
 }
 
 function ContractReadinessPanel({ contract }: { contract?: Row }) {

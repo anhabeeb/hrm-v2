@@ -54,6 +54,14 @@ function statusTone(key?: string) {
   return "danger";
 }
 
+function employeePrimaryRoute(employee: Employee) {
+  const hasActiveOnboarding = Boolean(employee.active_onboarding_case_id && employee.active_activation_status !== "ACTIVATED" && employee.active_onboarding_status !== "CANCELLED");
+  const isPreActivation = ["DRAFT", "DRAFT_ONBOARDING", "ONBOARDING", "NOT_ACTIVE"].includes(employee.status_key ?? "");
+  if (hasActiveOnboarding) return `/onboarding/cases?case_id=${employee.active_onboarding_case_id}`;
+  if (isPreActivation) return "/onboarding/cases";
+  return `/employees/${employee.id}`;
+}
+
 export function EmployeesPage() {
   const { token, user } = useAuth();
   const navigate = useNavigate();
@@ -246,7 +254,7 @@ export function EmployeesPage() {
                         departmentName={employee.department_name}
                         locationName={employee.location_name}
                         status={employee.status_name ?? employee.status_key}
-                        to={`/employees/${employee.id}`}
+                        to={employeePrimaryRoute(employee)}
                       />
                     </TableCell>
                     <TableCell>{employee.department_name ?? "-"}</TableCell>
@@ -260,7 +268,7 @@ export function EmployeesPage() {
                     <TableCell><Badge tone={employee.user_linked ? "success" : "neutral"}>{employee.user_linked ? "Linked" : "Not linked"}</Badge></TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" title="View" onClick={() => navigate(`/employees/${employee.id}`)}><Eye className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" title={employee.active_onboarding_case_id ? "Open onboarding case" : "View"} onClick={() => navigate(employeePrimaryRoute(employee))}><Eye className="h-4 w-4" /></Button>
                         {canUpdate ? <Button variant="ghost" size="icon" title="Edit" onClick={() => setModal({ mode: "edit", employee })}><Pencil className="h-4 w-4" /></Button> : null}
                         {canStatus ? <Button variant="ghost" size="icon" title="Change status" onClick={() => { setStatusModalError(null); setStatusModalEmployee(employee); }}><Settings2 className="h-4 w-4" /></Button> : null}
                         {canArchive ? <Button variant="ghost" size="icon" title="Archive" onClick={() => setArchiveTarget(employee)}><Archive className="h-4 w-4" /></Button> : null}

@@ -79,6 +79,10 @@ export interface Employee {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  active_onboarding_case_id?: string | null;
+  active_onboarding_case_number?: string | null;
+  active_onboarding_status?: string | null;
+  active_activation_status?: string | null;
 }
 
 export interface EmployeeInput {

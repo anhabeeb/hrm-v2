@@ -82,6 +82,7 @@ export function EmployeeProfilePage() {
   const canViewLifecycle = permissions.has("employees.lifecycle.view") || permissions.has("onboarding.cases.view") || permissions.has("offboarding.cases.view");
   const canUploadPhoto = permissions.has("documents.upload");
   const canClearPhoto = permissions.has("documents.archive");
+  const canViewDuringOnboarding = permissions.has("employees.360.view_during_onboarding");
 
   async function load() {
     if (!token || !id || !canView) return;
@@ -205,6 +206,33 @@ export function EmployeeProfilePage() {
   }
   if (!employee) {
     return <Panel><EmptyState title="Loading Employee 360" description={error ?? "Fetching employee profile."} /></Panel>;
+  }
+
+  const activeOnboardingCase = lifecycle?.onboarding && lifecycle.onboarding.activation_status !== "ACTIVATED" && lifecycle.onboarding.onboarding_status !== "CANCELLED" ? lifecycle.onboarding : null;
+  const preActivationStatus = ["DRAFT", "DRAFT_ONBOARDING", "ONBOARDING", "NOT_ACTIVE"].includes(employee.status_key ?? "");
+  if ((activeOnboardingCase || preActivationStatus) && !canViewDuringOnboarding) {
+    return (
+      <PageShell>
+        <Panel className="p-6">
+          <EmptyState
+            title="Employee 360 is locked during onboarding"
+            description="Complete employee setup from the onboarding case first. Employee 360 unlocks after onboarding is verified, approved, and the employee is activated."
+          />
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {activeOnboardingCase ? (
+              <Link to={`/onboarding/cases?case_id=${activeOnboardingCase.id}`}>
+                <Button>Open Onboarding Case</Button>
+              </Link>
+            ) : (
+              <Link to="/onboarding/cases">
+                <Button>Open Onboarding Cases</Button>
+              </Link>
+            )}
+            <Link to="/employees"><Button variant="outline">Back to Employees</Button></Link>
+          </div>
+        </Panel>
+      </PageShell>
+    );
   }
 
   const completed = onboarding.filter((task) => task.status === "COMPLETED").length;

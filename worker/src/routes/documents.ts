@@ -780,8 +780,8 @@ async function createDocumentVersion(c: Context<AppBindings>, input: { employeeI
   return id;
 }
 
-async function uploadEmployeeDocument(c: Context<AppBindings>, replaceDocumentId?: string, forcedTypeId?: string, defaultReplacementReason?: string) {
-  const employeeId = routeParam(c, "employeeId");
+export async function uploadEmployeeDocument(c: Context<AppBindings>, replaceDocumentId?: string, forcedTypeId?: string, defaultReplacementReason?: string, forcedEmployeeId?: string) {
+  const employeeId = forcedEmployeeId ?? routeParam(c, "employeeId");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "manage"))) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   }

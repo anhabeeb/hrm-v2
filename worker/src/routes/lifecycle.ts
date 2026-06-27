@@ -10,6 +10,7 @@ import type { AppBindings, AuthUser } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { readString } from "../utils/validation";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
+import { uploadEmployeeDocument } from "./documents";
 
 type BindValue = string | number | null;
 type LifecycleCaseType = "ONBOARDING" | "OFFBOARDING";
@@ -91,6 +92,7 @@ const onboardingTemplates = [
   ["contract", "Contract ready", "CONTRACT", "contracts", "Employment contract is active or marked not required.", 0],
   ["payroll_profile", "Payroll profile ready", "PAYROLL_PROFILE", "payroll", "Payroll profile and salary foundation are ready.", 1],
   ["payment_method", "Payment method reviewed", "PAYMENT_METHOD", "payroll", "Payment method is available if required.", 0],
+  ["pension_profile", "Pension profile reviewed", "PENSION_PROFILE", "payroll", "Pension enrollment, exemption, or voluntary setup is reviewed.", 0],
   ["user_access", "User access setup reviewed", "USER_ACCESS", "users", "Login/access setup is created, linked, or deferred.", 0],
   ["attendance_biometric", "Attendance and biometric readiness", "ATTENDANCE_BIOMETRIC", "attendance", "Roster eligibility, attendance start, and biometric mapping are ready if required.", 0],
   ["assets_uniforms", "Assets and uniforms reviewed", "ASSETS_UNIFORMS", "assets", "Required assets/uniform issue is complete or waived.", 0],
@@ -155,8 +157,76 @@ function oldTaskStatus(status: TaskStatus) {
   return "PENDING";
 }
 
+const onboardingWorkspaceViewPermissions = ["onboarding.workspace.view", "onboarding.cases.view", "onboarding.cases.manage", "employees.lifecycle.view", "employees.view"];
+const onboardingWorkspaceUpdatePermissions = ["onboarding.workspace.update", "onboarding.cases.update", "onboarding.cases.manage", "employees.lifecycle.manage"];
+
+const onboardingTaskModuleKeys: Record<string, string | null> = {
+  personal_info: "employees",
+  contact_info: "employees",
+  job_assignment: "employees",
+  documents: "document_compliance",
+  contract: "contracts",
+  payroll_profile: "payroll",
+  payment_method: "payment_methods",
+  pension_profile: "pension",
+  user_access: "self_service",
+  attendance_biometric: "attendance",
+  assets_uniforms: "assets_uniforms",
+  activation_approval: "approvals"
+};
+
+async function isModuleEnabled(db: D1Database, moduleKey: string | null | undefined) {
+  if (!moduleKey) return true;
+  const row = await db.prepare("SELECT is_enabled FROM module_control_settings WHERE module_key = ?").bind(moduleKey).first<{ is_enabled: number }>();
+  return !row || row.is_enabled === 1;
+}
+
+async function ensureOnboardingModuleEnabled(c: Context<AppBindings>, taskKey: string, moduleKey: string | null | undefined) {
+  const enabled = await isModuleEnabled(c.env.DB, moduleKey);
+  if (enabled) return true;
+  await setOnboardingTaskState(c, String(c.req.param("caseId")), taskKey, "NOT_REQUIRED", `${moduleKey ?? "Module"} is disabled.`);
+  return false;
+}
+
+async function setOnboardingTaskState(c: Context<AppBindings>, caseId: string, taskKey: string, taskStatus: TaskStatus, reason?: string | null) {
+  const now = nowIso();
+  await c.env.DB
+    .prepare(
+      `UPDATE employee_onboarding_tasks
+       SET task_status = ?, status = ?, completed_by_user_id = CASE WHEN ? = 'COMPLETED' THEN ? ELSE completed_by_user_id END,
+           completed_at = CASE WHEN ? = 'COMPLETED' THEN ? ELSE completed_at END,
+           waived_by_user_id = CASE WHEN ? = 'WAIVED' THEN ? ELSE waived_by_user_id END,
+           waived_at = CASE WHEN ? = 'WAIVED' THEN ? ELSE waived_at END,
+           waiver_reason = COALESCE(?, waiver_reason),
+           notes = COALESCE(?, notes),
+           updated_at = ?
+       WHERE onboarding_case_id = ? AND task_key = ?`
+    )
+    .bind(taskStatus, oldTaskStatus(taskStatus), taskStatus, c.get("currentUser").id, taskStatus, now, taskStatus, c.get("currentUser").id, taskStatus, now, reason ?? null, reason ?? null, now, caseId, taskKey)
+    .run();
+}
+
+async function refreshWorkspaceReadiness(c: Context<AppBindings>, caseId: string, taskKey?: string, action?: string) {
+  if (taskKey && action) {
+    const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
+    if (gate) await createLifecycleEvent(c, { employeeId: String(gate.row.employee_id), caseType: "ONBOARDING", caseId, action, previousStatus: String(gate.row.onboarding_status), newStatus: String(gate.row.onboarding_status), metadata: { source_of_truth: "source_module", task_key: taskKey } });
+  }
+  return getEmployeeOnboardingReadiness(c, caseId);
+}
+
 function where(conditions: string[]) {
   return conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+}
+
+function numberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function maskAccount(value: string | null) {
+  if (!value) return null;
+  return value.length <= 4 ? "****" : `${"*".repeat(Math.max(0, value.length - 4))}${value.slice(-4)}`;
 }
 
 async function auditLifecycle(c: Context<AppBindings>, action: string, entityType: string, entityId: string | null, oldValue?: unknown, newValue?: unknown, reason?: string | null) {
@@ -204,6 +274,146 @@ async function getScopedEmployee(c: Context<AppBindings>, employeeId: string, ac
     )
     .bind(employeeId)
     .first<Record<string, unknown>>();
+}
+
+async function activeEntityExists(db: D1Database, table: "departments" | "positions" | "locations" | "job_levels", id: string | null) {
+  if (!id) return true;
+  const row = await db.prepare(`SELECT id FROM ${table} WHERE id = ? AND is_active = 1`).bind(id).first<{ id: string }>();
+  return Boolean(row);
+}
+
+async function activeEmployeeExists(db: D1Database, id: string | null) {
+  if (!id) return true;
+  const row = await db.prepare("SELECT id FROM employees WHERE id = ? AND archived_at IS NULL").bind(id).first<{ id: string }>();
+  return Boolean(row);
+}
+
+async function createsReportingCycle(db: D1Database, employeeId: string, managerId: string | null) {
+  let current = managerId;
+  const visited = new Set<string>();
+  while (current) {
+    if (current === employeeId || visited.has(current)) return true;
+    visited.add(current);
+    const row = await db.prepare("SELECT reporting_manager_employee_id FROM employees WHERE id = ? AND archived_at IS NULL").bind(current).first<{ reporting_manager_employee_id: string | null }>();
+    current = row?.reporting_manager_employee_id ?? null;
+  }
+  return false;
+}
+
+async function validateWorkspaceJobAssignment(c: Context<AppBindings>, employeeId: string, body: Record<string, unknown>) {
+  const departmentId = optionalText(body.primary_department_id);
+  const locationId = optionalText(body.primary_location_id);
+  const jobLevelId = optionalText(body.job_level_id);
+  const positionId = optionalText(body.primary_position_id);
+  const managerId = optionalText(body.reporting_manager_employee_id);
+  if (!(await activeEntityExists(c.env.DB, "departments", departmentId))) return fail(c, 400, "ONBOARDING_DEPARTMENT_INVALID", "Selected department is inactive or was not found.");
+  if (!(await activeEntityExists(c.env.DB, "locations", locationId))) return fail(c, 400, "ONBOARDING_LOCATION_INVALID", "Selected outlet/location is inactive or was not found.");
+  if (!(await activeEntityExists(c.env.DB, "job_levels", jobLevelId))) return fail(c, 400, "ONBOARDING_JOB_LEVEL_INVALID", "Selected job level is inactive or was not found.");
+  if (!(await activeEntityExists(c.env.DB, "positions", positionId))) return fail(c, 400, "ONBOARDING_POSITION_INVALID", "Selected position is inactive or was not found.");
+  if (positionId) {
+    const position = await c.env.DB.prepare("SELECT department_id, level_id FROM positions WHERE id = ?").bind(positionId).first<{ department_id: string | null; level_id: string | null }>();
+    if (departmentId && position?.department_id && position.department_id !== departmentId) return fail(c, 400, "ONBOARDING_POSITION_DEPARTMENT_MISMATCH", "Selected position does not belong to the selected department.");
+    if (jobLevelId && position?.level_id && position.level_id !== jobLevelId) return fail(c, 400, "ONBOARDING_POSITION_LEVEL_MISMATCH", "Selected position does not match the selected job level.");
+  }
+  if (managerId) {
+    if (managerId === employeeId) return fail(c, 400, "REPORTING_MANAGER_SELF", "Employee cannot be their own reporting manager.");
+    if (!(await activeEmployeeExists(c.env.DB, managerId))) return fail(c, 400, "REPORTING_MANAGER_INVALID", "Reporting manager must be an active employee.");
+    if (await createsReportingCycle(c.env.DB, employeeId, managerId)) return fail(c, 400, "REPORTING_MANAGER_CYCLE", "Reporting manager creates a circular reporting chain.");
+  }
+  return null;
+}
+
+async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) {
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
+  if (!gate) return null;
+  const employeeId = String(gate.row.employee_id);
+  const [
+    checklist,
+    readiness,
+    contacts,
+    addresses,
+    documents,
+    documentTypes,
+    contracts,
+    contractTypes,
+    contractSettings,
+    payrollProfile,
+    paymentMethods,
+    paymentInstitutions,
+    pensionProfile,
+    pensionSchemes,
+    biometricMappings,
+    assetAssignments,
+    availableAssets,
+    linkedUser,
+    events,
+    departments,
+    locations,
+    positions,
+    jobLevels,
+    reportingManagers
+  ] = await Promise.all([
+    getOnboardingChecklistStatus(c, caseId),
+    getEmployeeOnboardingReadiness(c, caseId),
+    c.env.DB.prepare("SELECT * FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY is_primary DESC, contact_type").bind(employeeId).all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT * FROM employee_addresses WHERE employee_id = ? ORDER BY is_primary DESC, address_type").bind(employeeId).all<Record<string, unknown>>(),
+    getOnboardingDocumentChecklist(c, caseId),
+    c.env.DB.prepare("SELECT id, code, name, is_sensitive, allowed_mime_types, max_file_size_mb, allow_multiple_files, requires_expiry_date, requires_issue_date, requires_document_number, expiry_required, issue_date_required, document_number_required FROM document_types WHERE is_active = 1 ORDER BY sort_order, name").all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT ec.*, ct.name AS contract_type_name, ct.requires_end_date, ct.requires_probation FROM employee_contracts ec LEFT JOIN contract_types ct ON ct.id = ec.contract_type_id WHERE ec.employee_id = ? ORDER BY ec.created_at DESC").bind(employeeId).all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT * FROM contract_types WHERE is_active = 1 AND status = 'ACTIVE' ORDER BY display_order, name").all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT * FROM contract_settings ORDER BY created_at LIMIT 1").first<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT * FROM employee_payroll_profiles WHERE employee_id = ?").bind(employeeId).first<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT * FROM employee_payment_methods WHERE employee_id = ? AND status != 'ARCHIVED' ORDER BY is_primary DESC, created_at DESC").bind(employeeId).all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT id, code, name, type, is_active, status FROM payment_institutions WHERE is_active = 1 AND status = 'ACTIVE' ORDER BY display_order, name").all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT epp.*, ps.scheme_name, ps.scheme_code FROM employee_pension_profiles epp LEFT JOIN pension_schemes ps ON ps.id = epp.pension_scheme_id WHERE epp.employee_id = ? AND epp.status != 'ARCHIVED' ORDER BY epp.effective_date DESC LIMIT 1").bind(employeeId).first<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT * FROM pension_schemes WHERE status = 'ACTIVE' ORDER BY scheme_name").all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT * FROM employee_biometric_mappings WHERE employee_id = ? AND status != 'ARCHIVED' ORDER BY is_primary DESC, created_at DESC").bind(employeeId).all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT ea.*, ai.code AS asset_code, ai.name AS asset_name FROM employee_asset_assignments ea LEFT JOIN asset_items ai ON ai.id = ea.asset_item_id WHERE ea.employee_id = ? ORDER BY ea.created_at DESC").bind(employeeId).all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT id, code, name, status, lifecycle_status FROM asset_items WHERE status = 'AVAILABLE' ORDER BY name LIMIT 200").all<Record<string, unknown>>(),
+    gate.employee.user_id ? c.env.DB.prepare("SELECT id, email, name, status, last_login_at FROM users WHERE id = ?").bind(String(gate.employee.user_id)).first<Record<string, unknown>>() : Promise.resolve(null),
+    c.env.DB.prepare("SELECT * FROM employee_lifecycle_events WHERE case_type = 'ONBOARDING' AND case_id = ? ORDER BY created_at DESC LIMIT 50").bind(caseId).all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT id, code, name, parent_department_id, is_active FROM departments WHERE is_active = 1 ORDER BY name").all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT id, code, name, type, island_city, is_active FROM locations WHERE is_active = 1 ORDER BY name").all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT id, code, title, department_id, level_id, is_active FROM positions WHERE is_active = 1 ORDER BY title").all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT id, code, name, rank_order, is_active FROM job_levels WHERE is_active = 1 ORDER BY rank_order, name").all<Record<string, unknown>>(),
+    c.env.DB.prepare("SELECT id, employee_no, full_name, primary_department_id, primary_location_id, primary_position_id FROM employees WHERE archived_at IS NULL AND id != ? ORDER BY full_name").bind(employeeId).all<Record<string, unknown>>()
+  ]);
+  const moduleKeys = ["contracts", "document_compliance", "payroll", "payment_methods", "pension", "attendance", "zkteco_attendance", "roster", "assets_uniforms", "self_service", "approvals"];
+  const moduleStatuses: Record<string, boolean> = {};
+  for (const key of moduleKeys) moduleStatuses[key] = await isModuleEnabled(c.env.DB, key);
+  return {
+    case: gate.row,
+    employee: gate.employee,
+    checklist,
+    readiness,
+    module_statuses: moduleStatuses,
+    refs: {
+      departments: departments.results,
+      locations: locations.results,
+      positions: positions.results,
+      job_levels: jobLevels.results,
+      reporting_managers: reportingManagers.results,
+      document_types: documentTypes.results,
+      contract_types: contractTypes.results,
+      payment_institutions: paymentInstitutions.results,
+      pension_schemes: pensionSchemes.results,
+      available_assets: availableAssets.results
+    },
+    sections: {
+      contacts: contacts.results,
+      addresses: addresses.results,
+      documents,
+      contracts: contracts.results,
+      contract_settings: contractSettings,
+      payroll_profile: payrollProfile,
+      payment_methods: paymentMethods.results,
+      pension_profile: pensionProfile,
+      biometric_mappings: biometricMappings.results,
+      asset_assignments: assetAssignments.results,
+      linked_user: linkedUser
+    },
+    events: events.results
+  };
 }
 
 async function getCaseEmployee(c: Context<AppBindings>, caseType: LifecycleCaseType, caseId: string, action: "view" | "manage" = "view") {
@@ -268,6 +478,7 @@ function isOnboardingTemplateRequired(template: (typeof onboardingTemplates)[num
     : template[0] === "contract" ? Number(settings?.require_contract_before_activation ?? 0) === 1
     : template[0] === "payroll_profile" ? Number(settings?.require_payroll_profile_before_activation ?? 1) === 1
     : template[0] === "payment_method" ? Number(settings?.require_payment_method_before_activation ?? 0) === 1
+    : template[0] === "pension_profile" ? Number(settings?.require_pension_profile_if_eligible_before_activation ?? 0) === 1
     : template[0] === "user_access" ? Number(settings?.require_user_account_before_activation ?? 0) === 1
     : template[0] === "attendance_biometric" ? Number(settings?.require_biometric_mapping_before_activation ?? 0) === 1
     : template[0] === "assets_uniforms" ? Number(settings?.require_asset_uniform_issue_before_activation ?? 0) === 1
@@ -276,7 +487,30 @@ function isOnboardingTemplateRequired(template: (typeof onboardingTemplates)[num
 
 async function seedOnboardingChecklistForEmployee(c: Context<AppBindings>, caseId: string, employeeId: string, settings: Record<string, unknown> | null | undefined) {
   for (const template of onboardingTemplates) {
-    await createOnboardingTaskIfMissing(c, caseId, employeeId, template, isOnboardingTemplateRequired(template, settings));
+    const taskKey = template[0];
+    const moduleEnabled = await isModuleEnabled(c.env.DB, onboardingTaskModuleKeys[taskKey]);
+    const required = moduleEnabled && isOnboardingTemplateRequired(template, settings);
+    await createOnboardingTaskIfMissing(c, caseId, employeeId, template, required);
+    await c.env.DB
+      .prepare(
+        `UPDATE employee_onboarding_tasks
+         SET is_required = ?, required = ?,
+             task_status = CASE
+               WHEN ? = 0 THEN 'NOT_REQUIRED'
+               WHEN task_status = 'NOT_REQUIRED' THEN 'NOT_STARTED'
+               ELSE task_status
+             END,
+             status = CASE
+               WHEN ? = 0 THEN 'SKIPPED'
+               WHEN status = 'SKIPPED' AND task_status = 'NOT_REQUIRED' THEN 'PENDING'
+               ELSE status
+             END,
+             notes = CASE WHEN ? = 0 THEN 'Disabled module: not required for onboarding.' ELSE notes END,
+             updated_at = ?
+         WHERE onboarding_case_id = ? AND task_key = ?`
+      )
+      .bind(required ? 1 : 0, required ? 1 : 0, moduleEnabled ? 1 : 0, moduleEnabled ? 1 : 0, moduleEnabled ? 1 : 0, nowIso(), caseId, taskKey)
+      .run();
   }
 }
 
@@ -441,6 +675,27 @@ export async function getOnboardingDocumentBlockers(c: Context<AppBindings>, cas
 
 export async function getOnboardingContractStatus(c: Context<AppBindings>, caseId: string) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
+  const contractsEnabled = await isModuleEnabled(c.env.DB, "contracts");
+  if (!contractsEnabled) {
+    return {
+      ready: true,
+      required: false,
+      status: "NOT_REQUIRED",
+      status_label: "Contract not required",
+      active_contracts: 0,
+      contract: null,
+      display: {
+        contract: "Not required",
+        contract_type: "Not selected",
+        contract_start_date: "Not set",
+        contract_end_date: "Not required",
+        probation: "Not applicable",
+        confirmation_due: "Not set"
+      },
+      blockers: [],
+      warnings: [{ type: "CONTRACT", message: "Contracts module is disabled, so contract setup is not required for onboarding." }]
+    };
+  }
   const onboardingSettings = await ensureOnboardingSettings(c.env.DB);
   const contractSettings = await c.env.DB.prepare("SELECT * FROM contract_settings ORDER BY created_at LIMIT 1").first<Record<string, unknown>>();
   const requiredByOnboarding = Number(onboardingSettings?.require_contract_before_activation ?? 0) === 1;
@@ -1091,6 +1346,311 @@ onboardingRoutes.post("/alerts/refresh", requireAnyPermission(["onboarding.alert
   }
   return ok(c, { refreshed: true });
 });
+
+onboardingRoutes.get("/cases/:caseId/workspace", requireAnyPermission(onboardingWorkspaceViewPermissions), async (c) => {
+  const workspace = await loadOnboardingWorkspace(c, c.req.param("caseId"));
+  if (!workspace) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  return ok(c, { workspace });
+});
+
+onboardingRoutes.patch("/cases/:caseId/employee-info", requireAnyPermission([...onboardingWorkspaceUpdatePermissions, "employees.update"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  const body = await readBody(c);
+  const fullName = optionalText(body.full_name) ?? String(gate.employee.full_name ?? "");
+  if (!fullName) return fail(c, 400, "ONBOARDING_EMPLOYEE_NAME_REQUIRED", "Employee name is required.");
+  const employeeType = (optionalText(body.employee_type) ?? String(gate.employee.employee_type)).toUpperCase();
+  const employmentType = (optionalText(body.employment_type) ?? String(gate.employee.employment_type)).toUpperCase();
+  if (!["LOCAL", "FOREIGN", "OTHER"].includes(employeeType)) return fail(c, 400, "ONBOARDING_EMPLOYEE_TYPE_INVALID", "Employee type is invalid.");
+  if (!["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"].includes(employmentType)) return fail(c, 400, "ONBOARDING_EMPLOYMENT_TYPE_INVALID", "Employment type is invalid.");
+  await c.env.DB.prepare(
+    `UPDATE employees SET full_name = ?, display_name = ?, gender = ?, date_of_birth = ?, nationality = ?,
+       employee_type = ?, employment_type = ?, joining_date = ?, confirmation_date = ?, notes_summary = ?,
+       payroll_included = ?, roster_eligible = ?, updated_at = ? WHERE id = ?`
+  ).bind(
+    fullName,
+    optionalText(body.display_name),
+    optionalText(body.gender),
+    optionalText(body.date_of_birth),
+    optionalText(body.nationality),
+    employeeType,
+    employmentType,
+    optionalText(body.joining_date),
+    optionalText(body.confirmation_date),
+    optionalText(body.notes_summary),
+    asSqlBool(body.payroll_included ?? gate.employee.payroll_included),
+    asSqlBool(body.roster_eligible ?? gate.employee.roster_eligible),
+    nowIso(),
+    gate.row.employee_id
+  ).run();
+  await setOnboardingTaskState(c, c.req.param("caseId"), "personal_info", "COMPLETED", "Employee information saved from onboarding workspace.");
+  await auditLifecycle(c, "onboarding.workspace.employee_info_saved", "employee", String(gate.row.employee_id), gate.employee, body);
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+});
+
+onboardingRoutes.patch("/cases/:caseId/contact-info", requireAnyPermission([...onboardingWorkspaceUpdatePermissions, "employees.contacts.manage"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  const body = await readBody(c);
+  const employeeId = String(gate.row.employee_id);
+  async function upsertContact(type: string, value: string | null, extra: Record<string, unknown> = {}) {
+    if (!value) return;
+    const existing = await c.env.DB.prepare("SELECT id FROM employee_contacts WHERE employee_id = ? AND contact_type = ? AND is_primary = 1 AND archived_at IS NULL").bind(employeeId, type).first<{ id: string }>();
+    if (existing) {
+      await c.env.DB.prepare("UPDATE employee_contacts SET value = ?, country_code = ?, relationship = ?, emergency_priority = ?, notes = ?, updated_at = ? WHERE id = ?")
+        .bind(value, optionalText(extra.country_code), optionalText(extra.relationship), numberOrNull(extra.emergency_priority), optionalText(extra.notes), nowIso(), existing.id).run();
+    } else {
+      await c.env.DB.prepare("INSERT INTO employee_contacts (id, employee_id, contact_type, value, country_code, relationship, is_primary, emergency_priority, is_sensitive, notes) VALUES (?, ?, ?, ?, ?, ?, 1, ?, 0, ?)")
+        .bind(id("employee_contact"), employeeId, type, value, optionalText(extra.country_code), optionalText(extra.relationship), numberOrNull(extra.emergency_priority), optionalText(extra.notes)).run();
+    }
+  }
+  await upsertContact("PERSONAL_PHONE", optionalText(body.phone ?? body.personal_phone), { country_code: body.country_code });
+  await upsertContact("PERSONAL_EMAIL", optionalText(body.personal_email));
+  await upsertContact("EMERGENCY", optionalText(body.emergency_contact_value), { relationship: body.emergency_relationship, emergency_priority: 1, notes: body.emergency_notes });
+  const address = optionalText(body.address_line);
+  if (address) {
+    const existingAddress = await c.env.DB.prepare("SELECT id FROM employee_addresses WHERE employee_id = ? AND address_type = 'CURRENT' AND is_primary = 1").bind(employeeId).first<{ id: string }>();
+    if (existingAddress) {
+      await c.env.DB.prepare("UPDATE employee_addresses SET address_line = ?, island_city = ?, country = ?, updated_at = ? WHERE id = ?").bind(address, optionalText(body.island_city), optionalText(body.country), nowIso(), existingAddress.id).run();
+    } else {
+      await c.env.DB.prepare("INSERT INTO employee_addresses (id, employee_id, address_type, address_line, island_city, country, is_primary) VALUES (?, ?, 'CURRENT', ?, ?, ?, 1)")
+        .bind(id("employee_address"), employeeId, address, optionalText(body.island_city), optionalText(body.country)).run();
+    }
+  }
+  await setOnboardingTaskState(c, c.req.param("caseId"), "contact_info", "COMPLETED", "Contact information saved from onboarding workspace.");
+  await auditLifecycle(c, "onboarding.workspace.contact_info_saved", "employee", employeeId, null, body);
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+});
+
+onboardingRoutes.patch("/cases/:caseId/job-assignment", requireAnyPermission([...onboardingWorkspaceUpdatePermissions, "employees.update", "employees.job_history.manage"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  const body = await readBody(c);
+  const validation = await validateWorkspaceJobAssignment(c, String(gate.row.employee_id), body);
+  if (validation) return validation;
+  const employeeId = String(gate.row.employee_id);
+  const previous = gate.employee;
+  const next = {
+    primary_department_id: optionalText(body.primary_department_id),
+    primary_position_id: optionalText(body.primary_position_id),
+    primary_location_id: optionalText(body.primary_location_id),
+    job_level_id: optionalText(body.job_level_id),
+    reporting_manager_employee_id: optionalText(body.reporting_manager_employee_id),
+    employment_type: optionalText(body.employment_type) ?? String(previous.employment_type),
+    employee_type: optionalText(body.employee_type) ?? String(previous.employee_type)
+  };
+  await c.env.DB.prepare("UPDATE employees SET primary_department_id = ?, primary_position_id = ?, primary_location_id = ?, job_level_id = ?, reporting_manager_employee_id = ?, employment_type = ?, employee_type = ?, updated_at = ? WHERE id = ?")
+    .bind(next.primary_department_id, next.primary_position_id, next.primary_location_id, next.job_level_id, next.reporting_manager_employee_id, next.employment_type, next.employee_type, nowIso(), employeeId).run();
+  await c.env.DB.prepare(
+    `INSERT INTO employee_job_history
+     (id, employee_id, previous_department_id, new_department_id, previous_position_id, new_position_id,
+      previous_location_id, new_location_id, previous_job_level_id, new_job_level_id,
+      previous_reporting_manager_employee_id, new_reporting_manager_employee_id, effective_date, reason, created_by_user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(id("employee_job_history"), employeeId, previous.primary_department_id ?? null, next.primary_department_id, previous.primary_position_id ?? null, next.primary_position_id, previous.primary_location_id ?? null, next.primary_location_id, previous.job_level_id ?? null, next.job_level_id, previous.reporting_manager_employee_id ?? null, next.reporting_manager_employee_id, optionalText(body.effective_date) ?? new Date().toISOString().slice(0, 10), optionalText(body.reason) ?? "Saved from onboarding workspace", c.get("currentUser").id).run();
+  await setOnboardingTaskState(c, c.req.param("caseId"), "job_assignment", "COMPLETED", "Job assignment saved from onboarding workspace.");
+  await auditLifecycle(c, "onboarding.workspace.job_assignment_saved", "employee", employeeId, previous, next, optionalText(body.reason));
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+});
+
+onboardingRoutes.post("/cases/:caseId/documents", requireAnyPermission(["onboarding.workspace.documents.upload", "documents.upload", "onboarding.cases.manage"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  if (!(await ensureOnboardingModuleEnabled(c, "documents", "document_compliance"))) return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const response = await uploadEmployeeDocument(c, undefined, undefined, "Uploaded from onboarding workspace", String(gate.row.employee_id));
+  if (response.status < 400) {
+    const blockers = await getOnboardingDocumentBlockers(c, c.req.param("caseId"));
+    await setOnboardingTaskState(c, c.req.param("caseId"), "documents", blockers.length ? "IN_PROGRESS" : "COMPLETED", "Document uploaded from onboarding workspace.");
+    await auditLifecycle(c, "onboarding.workspace.document_uploaded", "employee", String(gate.row.employee_id), null, { case_id: c.req.param("caseId") });
+    await refreshWorkspaceReadiness(c, c.req.param("caseId"), "documents", "onboarding.workspace.document_uploaded");
+  }
+  return response;
+});
+
+onboardingRoutes.post("/cases/:caseId/contracts", requireAnyPermission(["onboarding.workspace.contracts.create", "contracts.create", "contracts.manage", "onboarding.cases.manage"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  if (!(await ensureOnboardingModuleEnabled(c, "contract", "contracts"))) return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const body = await readBody(c);
+  const contractTypeId = optionalText(body.contract_type_id);
+  if (!contractTypeId) return fail(c, 400, "CONTRACT_TYPE_REQUIRED", "Please select a contract type.");
+  const type = await c.env.DB.prepare("SELECT * FROM contract_types WHERE id = ?").bind(contractTypeId).first<Record<string, unknown>>();
+  if (!type) return fail(c, 400, "CONTRACT_TYPE_NOT_FOUND", "Selected contract type was not found.");
+  if (Number(type.is_active ?? 0) !== 1 || type.status !== "ACTIVE" || type.archived_at) return fail(c, 400, "CONTRACT_TYPE_INACTIVE", "Selected contract type is inactive or archived and cannot be used for a new contract.");
+  const startDate = optionalText(body.contract_start_date);
+  if (!startDate) return fail(c, 400, "CONTRACT_START_DATE_REQUIRED", "Contract start date is required.");
+  const endDate = optionalText(body.contract_end_date);
+  if (Number(type.requires_end_date ?? 0) === 1 && !endDate) return fail(c, 400, "CONTRACT_END_DATE_REQUIRED", "Contract end date is required for this contract type.");
+  if (endDate && endDate < startDate) return fail(c, 400, "CONTRACT_DATE_INVALID", "Contract end date cannot be before contract start date.");
+  const probationStart = optionalText(body.probation_start_date);
+  const probationEnd = optionalText(body.probation_end_date);
+  if (Number(type.requires_probation ?? 0) === 1 && (!probationStart || !probationEnd)) return fail(c, 400, "CONTRACT_PROBATION_DATES_REQUIRED", "Probation dates are required for this contract type.");
+  const contractId = id("employee_contract");
+  const contractNumber = optionalText(body.contract_number) ?? `CTR-${gate.employee.employee_no}-${Date.now().toString(36).toUpperCase()}`;
+  await c.env.DB.prepare(
+    `INSERT INTO employee_contracts
+     (id, employee_id, contract_number, contract_type_id, contract_type_code_snapshot, contract_type_name_snapshot, contract_title,
+      contract_start_date, contract_end_date, probation_start_date, probation_end_date, confirmation_due_date, effective_date,
+      status, approval_status, probation_status, renewal_status, employee_number_snapshot, employee_name_snapshot, department_snapshot,
+      worksite_snapshot, location_snapshot, position_snapshot, employment_type_snapshot, job_level_snapshot, notes, created_by_user_id,
+      updated_by_user_id, metadata_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', 'NOT_REQUIRED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(contractId, gate.row.employee_id, contractNumber, contractTypeId, type.code ?? null, type.name ?? null, optionalText(body.contract_title) ?? `${type.name ?? "Employment"} Contract`, startDate, endDate, probationStart, probationEnd, optionalText(body.confirmation_due_date), optionalText(body.effective_date) ?? startDate, probationStart || probationEnd || Number(type.requires_probation ?? 0) === 1 ? "IN_PROBATION" : "NOT_APPLICABLE", Number(type.allows_renewal ?? 0) === 1 ? "NOT_DUE" : "NOT_APPLICABLE", gate.employee.employee_no ?? null, gate.employee.full_name ?? null, gate.employee.department_name ?? null, gate.employee.location_name ?? null, gate.employee.location_name ?? null, gate.employee.position_name ?? gate.employee.position_title ?? null, gate.employee.employment_type ?? null, gate.employee.job_level_name ?? null, optionalText(body.notes), c.get("currentUser").id, c.get("currentUser").id, JSON.stringify({ created_from: "onboarding_workspace" })).run();
+  const status = await getOnboardingContractStatus(c, c.req.param("caseId"));
+  await setOnboardingTaskState(c, c.req.param("caseId"), "contract", status.ready ? "COMPLETED" : "IN_PROGRESS", "Contract draft created from onboarding workspace.");
+  await auditLifecycle(c, "onboarding.workspace.contract_created", "employee_contract", contractId, null, body);
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) }, 201);
+});
+
+onboardingRoutes.patch("/cases/:caseId/payroll-profile", requireAnyPermission(["onboarding.workspace.payroll.update", "employees.payroll.update", "payroll.manage", "onboarding.cases.manage"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  if (!(await ensureOnboardingModuleEnabled(c, "payroll_profile", "payroll"))) return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const body = await readBody(c);
+  const employeeId = String(gate.row.employee_id);
+  const salary = numberOrNull(body.basic_salary) ?? 0;
+  if (salary < 0) return fail(c, 400, "PAYROLL_PROFILE_INVALID", "Basic salary cannot be negative.");
+  const existing = await c.env.DB.prepare("SELECT id FROM employee_payroll_profiles WHERE employee_id = ?").bind(employeeId).first<{ id: string }>();
+  const profileId = existing?.id ?? id("employee_payroll_profile");
+  await c.env.DB.prepare(
+    `INSERT INTO employee_payroll_profiles
+     (id, employee_id, basic_salary, currency, payment_method, bank_name, bank_account_no, bank_account_name, payroll_included,
+      overtime_eligible, benefits_eligible, advance_eligible, missed_day_deduction_enabled, leave_deduction_enabled, daily_rate_mode, effective_from)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(employee_id) DO UPDATE SET basic_salary = excluded.basic_salary, currency = excluded.currency,
+       payment_method = excluded.payment_method, bank_name = excluded.bank_name, bank_account_no = excluded.bank_account_no,
+       bank_account_name = excluded.bank_account_name, payroll_included = excluded.payroll_included, overtime_eligible = excluded.overtime_eligible,
+       benefits_eligible = excluded.benefits_eligible, advance_eligible = excluded.advance_eligible,
+       missed_day_deduction_enabled = excluded.missed_day_deduction_enabled, leave_deduction_enabled = excluded.leave_deduction_enabled,
+       daily_rate_mode = excluded.daily_rate_mode, effective_from = excluded.effective_from, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
+  ).bind(profileId, employeeId, salary, optionalText(body.currency) ?? "MVR", optionalText(body.payment_method) ?? "CASH", optionalText(body.bank_name), optionalText(body.bank_account_no), optionalText(body.bank_account_name), asSqlBool(body.payroll_included ?? true), asSqlBool(body.overtime_eligible), asSqlBool(body.benefits_eligible), asSqlBool(body.advance_eligible), asSqlBool(body.missed_day_deduction_enabled ?? true), asSqlBool(body.leave_deduction_enabled ?? true), optionalText(body.daily_rate_mode) ?? "FIXED_30_DAYS", optionalText(body.effective_from) ?? new Date().toISOString().slice(0, 10)).run();
+  await setOnboardingTaskState(c, c.req.param("caseId"), "payroll_profile", "COMPLETED", "Payroll profile saved from onboarding workspace.");
+  await auditLifecycle(c, "onboarding.workspace.payroll_profile_saved", "employee_payroll_profile", profileId, null, body);
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+});
+
+onboardingRoutes.post("/cases/:caseId/payment-methods", requireAnyPermission(["onboarding.workspace.payment_methods.update", "employees.payment_methods.create", "employees.payment_methods.manage", "payroll.payment_methods.manage", "onboarding.cases.manage"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  if (!(await ensureOnboardingModuleEnabled(c, "payment_method", "payment_methods"))) return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const body = await readBody(c);
+  const employeeId = String(gate.row.employee_id);
+  const methodType = (optionalText(body.payment_method_type) ?? "CASH").toUpperCase();
+  if (!["BANK_TRANSFER", "CASH", "CHEQUE_PLACEHOLDER", "MOBILE_WALLET_PLACEHOLDER", "OTHER"].includes(methodType)) return fail(c, 400, "PAYMENT_METHOD_INVALID", "A valid payment method type is required.");
+  const institutionId = optionalText(body.payment_institution_id);
+  const institution = institutionId ? await c.env.DB.prepare("SELECT * FROM payment_institutions WHERE id = ? AND is_active = 1 AND status = 'ACTIVE'").bind(institutionId).first<Record<string, unknown>>() : null;
+  if (institutionId && !institution) return fail(c, 400, "PAYMENT_INSTITUTION_INVALID", "Selected payment institution is not active.");
+  const accountNumber = optionalText(body.bank_account_number);
+  if (methodType === "BANK_TRANSFER" && (!institutionId || !optionalText(body.bank_account_name) || !accountNumber)) return fail(c, 400, "PAYMENT_METHOD_INVALID", "Bank transfer requires institution, account name, and account number.");
+  await c.env.DB.prepare("UPDATE employee_payment_methods SET is_primary = 0 WHERE employee_id = ? AND status = 'ACTIVE'").bind(employeeId).run();
+  const methodId = id("employee_payment_method");
+  await c.env.DB.prepare(
+    `INSERT INTO employee_payment_methods
+     (id, employee_id, payment_method_type, payment_institution_id, bank_name_snapshot, bank_account_name,
+      bank_account_number_encrypted_or_plain_placeholder, bank_account_number_masked, is_primary, allocation_type,
+      allocation_percentage, allocation_amount, currency, effective_date, notes, created_by_user_id, updated_by_user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(methodId, employeeId, methodType, institutionId, institution?.name ?? optionalText(body.bank_name_snapshot), optionalText(body.bank_account_name), accountNumber, maskAccount(accountNumber), optionalText(body.allocation_type) ?? "FULL", numberOrNull(body.allocation_percentage), numberOrNull(body.allocation_amount), optionalText(body.currency) ?? "MVR", optionalText(body.effective_date) ?? new Date().toISOString().slice(0, 10), optionalText(body.notes), c.get("currentUser").id, c.get("currentUser").id).run();
+  await setOnboardingTaskState(c, c.req.param("caseId"), "payment_method", "COMPLETED", "Payment method saved from onboarding workspace.");
+  await auditLifecycle(c, "onboarding.workspace.payment_method_saved", "employee_payment_method", methodId, null, body);
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) }, 201);
+});
+
+onboardingRoutes.post("/cases/:caseId/pension-profile", requireAnyPermission(["onboarding.workspace.pension.update", "employees.pension_profiles.update", "employees.pension_profiles.manage", "onboarding.cases.manage"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  if (!(await ensureOnboardingModuleEnabled(c, "pension_profile", "pension"))) return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const body = await readBody(c);
+  const employeeId = String(gate.row.employee_id);
+  const existing = await c.env.DB.prepare("SELECT id FROM employee_pension_profiles WHERE employee_id = ? AND status = 'ACTIVE' ORDER BY effective_date DESC LIMIT 1").bind(employeeId).first<{ id: string }>();
+  const profileId = existing?.id ?? id("employee_pension_profile");
+  await c.env.DB.prepare(
+    `INSERT INTO employee_pension_profiles
+     (id, employee_id, pension_scheme_id, pension_member_id, registration_number, enrollment_status,
+      employee_contribution_percent_override, employer_contribution_percent_override, employer_pays_employee_share,
+      employee_extra_voluntary_contribution_amount, contribution_basis_override, effective_date, exemption_reason, notes,
+      created_by_user_id, updated_by_user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET pension_scheme_id = excluded.pension_scheme_id, pension_member_id = excluded.pension_member_id,
+      registration_number = excluded.registration_number, enrollment_status = excluded.enrollment_status,
+      employee_contribution_percent_override = excluded.employee_contribution_percent_override,
+      employer_contribution_percent_override = excluded.employer_contribution_percent_override,
+      employer_pays_employee_share = excluded.employer_pays_employee_share,
+      employee_extra_voluntary_contribution_amount = excluded.employee_extra_voluntary_contribution_amount,
+      contribution_basis_override = excluded.contribution_basis_override, effective_date = excluded.effective_date,
+      exemption_reason = excluded.exemption_reason, notes = excluded.notes, updated_by_user_id = excluded.updated_by_user_id,
+      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
+  ).bind(profileId, employeeId, optionalText(body.pension_scheme_id), optionalText(body.pension_member_id), optionalText(body.registration_number), optionalText(body.enrollment_status) ?? "ENROLLED", numberOrNull(body.employee_contribution_percent_override), numberOrNull(body.employer_contribution_percent_override), asSqlBool(body.employer_pays_employee_share), numberOrNull(body.employee_extra_voluntary_contribution_amount) ?? 0, optionalText(body.contribution_basis_override), optionalText(body.effective_date) ?? new Date().toISOString().slice(0, 10), optionalText(body.exemption_reason), optionalText(body.notes), c.get("currentUser").id, c.get("currentUser").id).run();
+  await setOnboardingTaskState(c, c.req.param("caseId"), "pension_profile", "COMPLETED", "Pension profile saved from onboarding workspace.");
+  await auditLifecycle(c, "onboarding.workspace.pension_profile_saved", "employee_pension_profile", profileId, null, body);
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+});
+
+onboardingRoutes.post("/cases/:caseId/biometric-mapping", requireAnyPermission(["onboarding.workspace.attendance.update", "attendance.devices.manage", "attendance.manage", "onboarding.cases.manage"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  if (!(await ensureOnboardingModuleEnabled(c, "attendance_biometric", "attendance"))) return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const body = await readBody(c);
+  if (asBool(body.not_required)) {
+    await setOnboardingTaskState(c, c.req.param("caseId"), "attendance_biometric", "NOT_REQUIRED", optionalText(body.reason) ?? "Attendance/biometric setup marked not required.");
+    return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  }
+  const biometricUserId = optionalText(body.biometric_user_id);
+  if (!biometricUserId) return fail(c, 400, "BIOMETRIC_USER_ID_REQUIRED", "Biometric user ID is required.");
+  const mappingId = id("employee_biometric_mapping");
+  await c.env.DB.prepare("INSERT INTO employee_biometric_mappings (id, employee_id, attendance_device_id, biometric_user_id, biometric_user_name, external_employee_code, mapping_source, status, is_primary, notes, created_by_user_id, updated_by_user_id) VALUES (?, ?, ?, ?, ?, ?, 'MANUAL', 'ACTIVE', 1, ?, ?, ?)")
+    .bind(mappingId, gate.row.employee_id, optionalText(body.attendance_device_id), biometricUserId, optionalText(body.biometric_user_name), optionalText(body.external_employee_code), optionalText(body.notes), c.get("currentUser").id, c.get("currentUser").id).run();
+  await setOnboardingTaskState(c, c.req.param("caseId"), "attendance_biometric", "COMPLETED", "Biometric mapping saved from onboarding workspace.");
+  await auditLifecycle(c, "onboarding.workspace.biometric_mapping_saved", "employee_biometric_mapping", mappingId, null, body);
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) }, 201);
+});
+
+onboardingRoutes.post("/cases/:caseId/assets-uniforms", requireAnyPermission(["onboarding.workspace.assets.update", "assets.issue", "assets.manage", "onboarding.cases.manage"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  if (!(await ensureOnboardingModuleEnabled(c, "assets_uniforms", "assets_uniforms"))) return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const body = await readBody(c);
+  if (asBool(body.not_required) || asBool(body.waived)) {
+    await setOnboardingTaskState(c, c.req.param("caseId"), "assets_uniforms", asBool(body.waived) ? "WAIVED" : "NOT_REQUIRED", optionalText(body.reason) ?? "Asset/uniform issue marked not required.");
+    return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  }
+  const assetItemId = optionalText(body.asset_item_id);
+  if (!assetItemId) return fail(c, 400, "ASSET_ITEM_REQUIRED", "Select an available asset or mark assets/uniforms not required.");
+  const asset = await c.env.DB.prepare("SELECT id FROM asset_items WHERE id = ? AND status = 'AVAILABLE'").bind(assetItemId).first<{ id: string }>();
+  if (!asset) return fail(c, 400, "ASSET_ITEM_INVALID", "Selected asset is not available.");
+  const assignmentId = id("employee_asset_assignment");
+  await c.env.DB.prepare("INSERT INTO employee_asset_assignments (id, employee_id, asset_item_id, assignment_number, assigned_date, issued_date, issued_by_user_id, expected_return_date, status, assignment_status, clearance_status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ISSUED', 'ASSIGNED', 'PENDING', ?)")
+    .bind(assignmentId, gate.row.employee_id, assetItemId, `ASG-${Date.now().toString(36).toUpperCase()}`, optionalText(body.issued_date) ?? new Date().toISOString().slice(0, 10), optionalText(body.issued_date) ?? new Date().toISOString().slice(0, 10), c.get("currentUser").id, optionalText(body.expected_return_date), optionalText(body.notes)).run();
+  await c.env.DB.prepare("UPDATE asset_items SET status = 'ISSUED', lifecycle_status = 'ASSIGNED', assigned_employee_id = ?, updated_at = ? WHERE id = ?").bind(gate.row.employee_id, nowIso(), assetItemId).run();
+  await setOnboardingTaskState(c, c.req.param("caseId"), "assets_uniforms", "COMPLETED", "Asset/uniform issued from onboarding workspace.");
+  await auditLifecycle(c, "onboarding.workspace.asset_uniform_saved", "employee_asset_assignment", assignmentId, null, body);
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) }, 201);
+});
+
+onboardingRoutes.post("/cases/:caseId/user-account", requireAnyPermission(["onboarding.workspace.user_access.update", "users.create", "users.update", "role_mappings.apply", "onboarding.cases.manage"]), async (c) => {
+  const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  const body = await readBody(c);
+  if (gate.employee.user_id) {
+    await setOnboardingTaskState(c, c.req.param("caseId"), "user_access", "COMPLETED", "Employee already has a linked user account.");
+  } else {
+    await setOnboardingTaskState(c, c.req.param("caseId"), "user_access", asBool(body.deferred) || asBool(body.not_required) ? "NOT_REQUIRED" : "IN_PROGRESS", optionalText(body.reason) ?? "User account setup deferred from onboarding workspace.");
+  }
+  await auditLifecycle(c, "onboarding.workspace.user_access_saved", "employee", String(gate.row.employee_id), null, { deferred: asBool(body.deferred), not_required: asBool(body.not_required) });
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+});
+
+onboardingRoutes.post("/cases/:caseId/refresh-checklist", requireAnyPermission(["onboarding.workspace.update", "onboarding.tasks.manage", "onboarding.cases.manage"]), async (c) => {
+  await refreshOnboardingChecklist(c, c.req.param("caseId"));
+  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+});
+
+onboardingRoutes.post("/cases/:caseId/complete", requireAnyPermission(["onboarding.workspace.complete", "onboarding.activation.submit", "onboarding.activation.manage"]), async (c) => {
+  const readiness = await getEmployeeOnboardingReadiness(c, c.req.param("caseId"));
+  if (!readiness?.can_activate) return fail(c, 409, "ONBOARDING_WORKSPACE_NOT_READY", "Onboarding setup is not ready for activation.");
+  return ok(c, { submitted: await submitEmployeeActivationForApproval(c, c.req.param("caseId")), approval: await createOnboardingApprovalInstance(c, c.req.param("caseId")), workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+});
+
 onboardingRoutes.get("/cases/:caseId", requireAnyPermission(["onboarding.cases.view", "onboarding.cases.manage", "employees.lifecycle.view", "employees.view"]), async (c) => {
   const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "view");
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
@@ -1123,7 +1683,7 @@ onboardingRoutes.post("/cases/:caseId/tasks/refresh", requireAnyPermission(["onb
 onboardingRoutes.get("/cases/:caseId/readiness", requireAnyPermission(["onboarding.activation.view", "onboarding.cases.view", "employees.lifecycle.view", "employees.view"]), async (c) => ok(c, { readiness: await getEmployeeOnboardingReadiness(c, c.req.param("caseId")) }));
 onboardingRoutes.post("/cases/:caseId/submit-activation", requireAnyPermission(["onboarding.activation.submit", "onboarding.activation.manage"]), async (c) => ok(c, { submitted: await submitEmployeeActivationForApproval(c, c.req.param("caseId")), approval: await createOnboardingApprovalInstance(c, c.req.param("caseId")) }));
 onboardingRoutes.post("/cases/:caseId/approve-activation", requireAnyPermission(["onboarding.activation.approve", "onboarding.activation.manage"]), async (c) => ok(c, { approved: await approveEmployeeActivation(c, c.req.param("caseId")), approval: await syncOnboardingApprovalStatus(c, c.req.param("caseId")) }));
-onboardingRoutes.post("/cases/:caseId/activate", requireAnyPermission(["onboarding.activation.activate", "onboarding.activation.manage"]), async (c) => {
+onboardingRoutes.post("/cases/:caseId/activate", requireAnyPermission(["onboarding.activation.activate", "onboarding.activation.manage", "onboarding.workspace.activate"]), async (c) => {
   const result = await activateEmployeeFromOnboarding(c, c.req.param("caseId"));
   if (!result) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
   if ("blocked" in result) return fail(c, 409, "EMPLOYEE_ACTIVATION_NOT_READY", "Employee activation is blocked by onboarding requirements.");

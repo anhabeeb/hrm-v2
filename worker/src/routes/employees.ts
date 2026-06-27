@@ -626,7 +626,9 @@ employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
     .prepare(
       `SELECT e.*, s.key AS status_key, s.name AS status_name,
         d.name AS department_name, p.title AS position_title, l.name AS location_name, l.code AS location_code,
-        jl.name AS job_level_name, m.full_name AS reporting_manager_name, u.email AS linked_user_email
+        jl.name AS job_level_name, m.full_name AS reporting_manager_name, u.email AS linked_user_email,
+        oc.id AS active_onboarding_case_id, oc.case_number AS active_onboarding_case_number,
+        oc.onboarding_status AS active_onboarding_status, oc.activation_status AS active_activation_status
        FROM employees e
        INNER JOIN employee_statuses s ON s.id = e.status_id
        LEFT JOIN departments d ON d.id = e.primary_department_id
@@ -635,6 +637,7 @@ employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
        LEFT JOIN job_levels jl ON jl.id = e.job_level_id
        LEFT JOIN employees m ON m.id = e.reporting_manager_employee_id
        LEFT JOIN users u ON u.id = e.user_id
+       LEFT JOIN employee_onboarding_cases oc ON oc.employee_id = e.id AND oc.onboarding_status != 'CANCELLED' AND oc.activation_status != 'ACTIVATED'
        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
        ORDER BY e.created_at DESC
        LIMIT ? OFFSET ?`
