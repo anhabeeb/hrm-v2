@@ -51,6 +51,9 @@ hasAll("worker/src/routes/search.ts", [
   "documents.sensitive.view",
   "module_control_settings"
 ], "global search backend helper/scope/sensitive markers missing");
+has("worker/src/routes/search.ts", "es.name AS status_label", "employee search must use employee_statuses.name for status display");
+hasNo("worker/src/routes/search.ts", /\bes\.label\b/, "employee search must not query nonexistent employee_statuses.label");
+has("database/schema.sql", "name TEXT NOT NULL", "employee_statuses schema must expose name for status display");
 
 hasAll("worker/src/routes/notifications.ts", [
   "getNotificationsForUser",

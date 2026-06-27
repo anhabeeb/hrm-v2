@@ -123,7 +123,7 @@ export async function searchEmployeesForUser(db: Env["DB"], user: AuthUser, q: s
   const like = likeQuery(q);
   const rows = await db
     .prepare(
-      `SELECT e.id, e.employee_no, e.full_name, e.display_name, es.label AS status_label,
+      `SELECT e.id, e.employee_no, e.full_name, e.display_name, es.name AS status_label,
         d.name AS department_name, l.name AS location_name
        FROM employees e
        LEFT JOIN employee_statuses es ON es.id = e.status_id
