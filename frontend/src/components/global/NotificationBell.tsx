@@ -1,5 +1,5 @@
 import { Bell, CheckCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -12,6 +12,8 @@ import { cn } from "../../lib/utils";
 
 const NOTIFICATIONS_UNAVAILABLE_MESSAGE = "Notifications unavailable. Try again shortly.";
 const NOTIFICATIONS_UPDATE_ERROR_MESSAGE = "Could not update notifications. Please try again.";
+const NOTIFICATION_UNREAD_POLL_INTERVAL_MS = Number(import.meta.env.VITE_NOTIFICATION_POLL_INTERVAL_MS ?? 90000);
+const NOTIFICATION_FAILURE_BACKOFF_MS = 30000;
 
 function isInternalRoute(route: string | null | undefined) {
   return Boolean(route && route.startsWith("/") && !route.startsWith("//") && !/^\/?https?:/i.test(route));
@@ -37,18 +39,37 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastNotificationFailureAtRef = useRef(0);
+
+  function failureBackoffActive() {
+    return Date.now() - lastNotificationFailureAtRef.current < NOTIFICATION_FAILURE_BACKOFF_MS;
+  }
+
+  async function loadUnreadCount() {
+    if (!token || document.visibilityState === "hidden" || failureBackoffActive()) return;
+    try {
+      const result = await api.getUnreadNotificationCount(token);
+      setUnreadCount(result.unread_count);
+      lastNotificationFailureAtRef.current = 0;
+    } catch {
+      lastNotificationFailureAtRef.current = Date.now();
+    }
+  }
 
   async function loadNotifications(showLoading = false) {
     if (!token) return;
+    if (!showLoading && failureBackoffActive()) return;
     if (showLoading) setLoading(true);
     setError(null);
     try {
       const result = await api.listNotifications(token, { limit: 8 });
       setNotifications(result.notifications);
       setUnreadCount(result.unread_count);
+      lastNotificationFailureAtRef.current = 0;
     } catch {
       setNotifications([]);
       setUnreadCount(0);
+      lastNotificationFailureAtRef.current = Date.now();
       setError(NOTIFICATIONS_UNAVAILABLE_MESSAGE);
     } finally {
       if (showLoading) setLoading(false);
@@ -56,9 +77,16 @@ export function NotificationBell() {
   }
 
   useEffect(() => {
-    void loadNotifications(false);
-    const handle = window.setInterval(() => void loadNotifications(false), 60000);
-    return () => window.clearInterval(handle);
+    void loadUnreadCount();
+    const handle = window.setInterval(() => void loadUnreadCount(), NOTIFICATION_UNREAD_POLL_INTERVAL_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void loadUnreadCount();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(handle);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [token]);
 
   useEffect(() => {
@@ -68,9 +96,10 @@ export function NotificationBell() {
   async function openNotification(notification: HrmNotification) {
     if (token && !notification.is_read) {
       try {
-        await api.markNotificationRead(token, notification.id);
-        setNotifications((rows) => rows.map((row) => row.id === notification.id ? { ...row, is_read: true, read_at: new Date().toISOString() } : row));
-        setUnreadCount((count) => Math.max(0, count - 1));
+      await api.markNotificationRead(token, notification.id);
+      setNotifications((rows) => rows.map((row) => row.id === notification.id ? { ...row, is_read: true, read_at: new Date().toISOString() } : row));
+      setUnreadCount((count) => Math.max(0, count - 1));
+      void loadUnreadCount();
       } catch {
         // Navigation should still work even if the read marker cannot be saved.
       }
@@ -85,6 +114,7 @@ export function NotificationBell() {
       await api.markAllNotificationsRead(token);
       setNotifications((rows) => rows.map((row) => ({ ...row, is_read: true, read_at: row.read_at ?? new Date().toISOString() })));
       setUnreadCount(0);
+      void loadUnreadCount();
     } catch {
       setError(NOTIFICATIONS_UPDATE_ERROR_MESSAGE);
     }

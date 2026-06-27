@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { buildEmployeeScopeWhereClause } from "../auth/access-scopes";
+import { measureD1Query } from "../middleware/performance";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, ok } from "../utils/http";
@@ -560,7 +561,7 @@ export async function performGlobalSearch(c: Context<AppBindings>) {
       module: task.module,
       queryLength,
       userId: user.id,
-      run: task.run
+      run: () => measureD1Query(c, task.run)
     })));
     const groups: GlobalSearchGroup[] = [];
     const warnings: GlobalSearchWarning[] = [];

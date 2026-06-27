@@ -12,6 +12,7 @@ import { cn } from "../../lib/utils";
 
 const SEARCH_UNAVAILABLE_MESSAGE = "Search is temporarily unavailable. Please try again.";
 const SEARCH_RETRY_DELAY_MS = 10000;
+const GLOBAL_SEARCH_DEBOUNCE_MS = 350;
 
 function flattenGroups(groups: GlobalSearchGroup[]) {
   return groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.module })));
@@ -101,7 +102,7 @@ export function GlobalSearch() {
       } finally {
         if (!cancelled) setLoading(false);
       }
-    }, trimmedQuery ? 220 : 0);
+    }, trimmedQuery ? GLOBAL_SEARCH_DEBOUNCE_MS : 0);
     return () => {
       cancelled = true;
       window.clearTimeout(handle);

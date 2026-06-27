@@ -10,7 +10,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import { autoCreateOnboardingCaseAfterEmployeeCreate } from "./lifecycle";
 import { applyRoleMappingToEmployee, roleMappingPreviewForEmployee } from "./role-mappings";
 import type { AppBindings } from "../types";
-import { fail, getClientIp, ok } from "../utils/http";
+import { fail, getClientIp, ok, okCached } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
 
 type EmployeeType = "LOCAL" | "FOREIGN" | "OTHER";
@@ -23,6 +23,20 @@ const EMPLOYEE_TYPES = new Set<EmployeeType>(["LOCAL", "FOREIGN", "OTHER"]);
 const EMPLOYMENT_TYPES = new Set<EmploymentType>(["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]);
 const CONTACT_TYPES = new Set<ContactType>(["PERSONAL_PHONE", "WORK_PHONE", "PERSONAL_EMAIL", "WORK_EMAIL", "EMERGENCY", "GUARDIAN", "SPOUSE", "PARENT", "OTHER"]);
 const ONBOARDING_STATUSES = new Set<OnboardingStatus>(["PENDING", "COMPLETED", "SKIPPED", "BLOCKED"]);
+const EMPLOYEE_LIST_DEFAULT_LIMIT = 250;
+const EMPLOYEE_LIST_MAX_LIMIT = 500;
+
+function boundedEmployeeListLimit(value: unknown) {
+  const parsed = Number(value ?? EMPLOYEE_LIST_DEFAULT_LIMIT);
+  if (!Number.isFinite(parsed)) return EMPLOYEE_LIST_DEFAULT_LIMIT;
+  return Math.max(1, Math.min(EMPLOYEE_LIST_MAX_LIMIT, Math.trunc(parsed)));
+}
+
+function boundedOffset(value: unknown) {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.trunc(parsed));
+}
 
 interface EmployeeStatusRow {
   id: string;
@@ -483,7 +497,7 @@ async function createOnboardingTasks(db: AppBindings["Bindings"]["DB"], employee
 
 employeeRoutes.get("/settings/statuses", requirePermission("employees.view"), async (c) => {
   const rows = await c.env.DB.prepare("SELECT * FROM employee_statuses ORDER BY sort_order, name").all<EmployeeStatusRow>();
-  return ok(c, { statuses: rows.results.map(toStatus) });
+  return okCached(c, { statuses: rows.results.map(toStatus) }, 60, `employee-statuses-${rows.results.length}`);
 });
 
 employeeRoutes.post("/settings/statuses", requirePermission("employees.status.manage"), async (c) => {
@@ -579,6 +593,8 @@ employeeRoutes.get("/settings/numbering/preview", requirePermission("employees.v
 employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
   const conditions: string[] = [];
   const params: BindValue[] = [];
+  const limit = boundedEmployeeListLimit(c.req.query("limit"));
+  const offset = boundedOffset(c.req.query("offset"));
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "employees", "view", "e");
   conditions.push(scope.sql);
   params.push(...scope.params);
@@ -620,11 +636,15 @@ employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
        LEFT JOIN employees m ON m.id = e.reporting_manager_employee_id
        LEFT JOIN users u ON u.id = e.user_id
        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
-       ORDER BY e.created_at DESC`
+       ORDER BY e.created_at DESC
+       LIMIT ? OFFSET ?`
     )
-    .bind(...params)
+    .bind(...params, limit, offset)
     .all<EmployeeRow>();
-  return ok(c, { employees: rows.results.map((row) => toEmployee(row, hasPermission(c, "employees.sensitive.view"))) });
+  return ok(c, {
+    employees: rows.results.map((row) => toEmployee(row, hasPermission(c, "employees.sensitive.view"))),
+    pagination: { limit, offset, has_more: rows.results.length === limit }
+  });
 });
 
 employeeRoutes.get("/assignment-options", requirePermission("employees.view"), async (c) => {
@@ -635,13 +655,13 @@ employeeRoutes.get("/assignment-options", requirePermission("employees.view"), a
     c.env.DB.prepare("SELECT id, code, name, rank_order, is_active FROM job_levels WHERE is_active = 1 ORDER BY rank_order, name").all(),
     c.env.DB.prepare("SELECT e.id, e.employee_no, e.full_name, e.primary_department_id, e.primary_location_id, e.primary_position_id FROM employees e WHERE e.archived_at IS NULL ORDER BY e.full_name").all()
   ]);
-  return ok(c, {
+  return okCached(c, {
     departments: departments.results,
     locations: locations.results,
     positions: positions.results,
     job_levels: jobLevels.results,
     reporting_managers: managers.results
-  });
+  }, 60, `assignment-options-${departments.results.length}-${locations.results.length}-${positions.results.length}-${jobLevels.results.length}`);
 });
 
 employeeRoutes.post("/", requirePermission("employees.create"), async (c) => {

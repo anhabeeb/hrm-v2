@@ -542,6 +542,12 @@ If `/api/v1/search/global` or `/api/v1/notifications` returns an unavailable res
 
 Do not rerun remote schema repair blindly. Use the audit/generate/review/apply/verify flow in `database/REMOTE_D1_REPAIR_README.md`, and only apply generated SQL after confirming it matches the current remote D1 schema.
 
+## Performance Optimization Notes
+
+HRM v2 performance improvements use only the existing Pages frontend, Worker API, D1 database, and R2 bucket. The app includes slow-route timing logs, private browser cache headers for safe reference endpoints, a frontend reference-data cache with TTL/inflight dedupe, notification unread-count polling that pauses while the tab is hidden, and additive D1 indexes for common list/search filters. No KV, Durable Objects, Queues, external search, or extra Workers are required.
+
+Run `npm run verify:performance-optimization` after performance-sensitive changes to confirm these safeguards remain in place.
+
 ## Known Limitations
 
 Automatic migration/import from the old HRM app is not enabled. Employee self-upload for documents, OCR/AI extraction, e-signature workflows, email/SMS/WhatsApp automation, statutory payroll submission, bank payment generation, biometric/device live sync, and a dedicated mobile app are prepared as future phases.

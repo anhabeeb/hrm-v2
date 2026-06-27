@@ -4922,3 +4922,15 @@ CREATE TABLE IF NOT EXISTS approval_notification_templates (
 
 CREATE INDEX IF NOT EXISTS idx_approval_notification_templates_module_action ON approval_notification_templates(module_key, action_key, event_type);
 CREATE INDEX IF NOT EXISTS idx_approval_notification_templates_enabled ON approval_notification_templates(is_enabled, channel);
+
+-- Post-production performance indexes: additive only, tuned for common scoped list/search filters.
+CREATE INDEX IF NOT EXISTS idx_performance_notifications_user_created ON notifications(recipient_user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_performance_employees_active_lookup ON employees(archived_at, primary_department_id, primary_location_id, status_id);
+CREATE INDEX IF NOT EXISTS idx_performance_employee_documents_employee_type_status ON employee_documents(employee_id, document_type_id, status, expiry_date);
+CREATE INDEX IF NOT EXISTS idx_performance_leave_requests_status_dates ON leave_requests(status, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_performance_attendance_daily_date_status ON attendance_daily_records(attendance_date, status, employee_id);
+CREATE INDEX IF NOT EXISTS idx_performance_payroll_results_status_run_employee ON payroll_employee_results(status, payroll_run_id, employee_id);
+CREATE INDEX IF NOT EXISTS idx_performance_approval_instances_status_employee ON approval_instances(status, employee_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_performance_onboarding_status_created ON employee_onboarding_cases(onboarding_status, created_at);
+CREATE INDEX IF NOT EXISTS idx_performance_offboarding_status_created ON employee_offboarding_cases(offboarding_status, created_at);
+CREATE INDEX IF NOT EXISTS idx_performance_audit_logs_module_created ON audit_logs(module, created_at);

@@ -34,6 +34,7 @@ import { employeeRosterRoutes, rosterRoutes } from "./routes/roster";
 import { kycRoutes, selfServiceRoutes } from "./routes/self-service";
 import { searchRoutes } from "./routes/search";
 import { syncRoutes } from "./routes/sync";
+import { withRouteTiming } from "./middleware/performance";
 import { userRoutes } from "./routes/users";
 import type { AppBindings } from "./types";
 import { fail } from "./utils/http";
@@ -60,6 +61,8 @@ app.use("*", async (c, next) => {
 
   return middleware(c, next);
 });
+
+app.use("*", withRouteTiming());
 
 app.route("/api/v1/health", healthRoutes);
 app.route("/api/v1/bootstrap", bootstrapRoutes);

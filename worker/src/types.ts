@@ -50,6 +50,9 @@ export interface JwtPayload {
 
 export interface AppVariables {
   currentUser: AuthUser;
+  routeTiming: {
+    queryCount: number;
+  };
 }
 
 export type AppBindings = {

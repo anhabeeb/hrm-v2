@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { clearCacheOnPermissionChange, clearSensitiveIndexedDbCaches, permissionScopeHash } from "../lib/cache/hrmCache";
+import { invalidateReferenceDataCache } from "../lib/referenceDataCache";
 import type { AuthUser, BootstrapStatus } from "../types/auth";
 
 const TOKEN_KEY = "hrm_v2_token";
@@ -30,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const previousSignature = localStorage.getItem(USER_SECURITY_SIGNATURE_KEY);
     if (previousSignature && previousSignature !== nextSignature) {
       void clearCacheOnPermissionChange(nextUser.id);
+      invalidateReferenceDataCache();
     }
     localStorage.setItem(TOKEN_KEY, nextToken);
     localStorage.setItem(USER_SECURITY_SIGNATURE_KEY, nextSignature);
@@ -41,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_SECURITY_SIGNATURE_KEY);
     void clearSensitiveIndexedDbCaches();
+    invalidateReferenceDataCache();
     setToken(null);
     setUser(null);
   }, []);

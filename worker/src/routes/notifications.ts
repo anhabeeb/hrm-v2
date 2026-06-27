@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { canAccessEmployee } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { measureD1Query } from "../middleware/performance";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
@@ -301,14 +302,17 @@ notificationRoutes.get("/", (c) => withNotificationRuntimeError(c, "list", async
   if (!hasAny(c.get("currentUser"), ["notifications.view", "notifications.admin.view", "notifications.manage", "self_service.notifications.view", "self_service.view"])) {
     return fail(c, 403, "NOTIFICATION_PERMISSION_DENIED", "You do not have permission to view notifications.");
   }
-  return ok(c, { notifications: await getNotificationsForUser(c), unread_count: await getUnreadNotificationCount(c) });
+  return ok(c, {
+    notifications: await measureD1Query(c, () => getNotificationsForUser(c)),
+    unread_count: await measureD1Query(c, () => getUnreadNotificationCount(c))
+  });
 }));
 
 notificationRoutes.get("/unread-count", (c) => withNotificationRuntimeError(c, "unread-count", async () => {
   if (!hasAny(c.get("currentUser"), ["notifications.view", "notifications.admin.view", "notifications.manage", "self_service.notifications.view", "self_service.view"])) {
     return fail(c, 403, "NOTIFICATION_PERMISSION_DENIED", "You do not have permission to view notifications.");
   }
-  return ok(c, { unread_count: await getUnreadNotificationCount(c) });
+  return ok(c, { unread_count: await measureD1Query(c, () => getUnreadNotificationCount(c)) });
 }));
 
 notificationRoutes.post("/:notificationId/mark-read", (c) => withNotificationRuntimeError(c, "mark-read", () => markNotificationRead(c, c.req.param("notificationId"))));

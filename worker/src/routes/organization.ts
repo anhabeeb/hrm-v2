@@ -5,7 +5,7 @@ import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
-import { fail, getClientIp, ok } from "../utils/http";
+import { fail, getClientIp, ok, okCached } from "../utils/http";
 import { isEmail, readJsonBody, readString } from "../utils/validation";
 
 type CompanyStatus = "ACTIVE" | "INACTIVE";
@@ -220,7 +220,7 @@ function validateCompany(c: Context<AppBindings>, input: ReturnType<typeof compa
 }
 
 organizationRoutes.get("/company", requirePermission("organization.view"), async (c) => {
-  return ok(c, { company: toCompany(await getCompany(c.env.DB)) });
+  return okCached(c, { company: toCompany(await getCompany(c.env.DB)) }, 60, "organization-company");
 });
 
 organizationRoutes.post("/company", requirePermission("organization.manage"), async (c) => {
@@ -326,7 +326,7 @@ organizationRoutes.get("/locations", requirePermission("organization.view"), asy
   }
   const sql = `SELECT l.*, m.full_name AS manager_employee_name FROM locations l LEFT JOIN employees m ON m.id = l.manager_employee_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY l.is_active DESC, l.name`;
   const rows = await c.env.DB.prepare(sql).bind(...params).all<LocationRow>();
-  return ok(c, { locations: rows.results.map(toLocation) });
+  return okCached(c, { locations: rows.results.map(toLocation) }, 60, `locations-${rows.results.length}`);
 });
 
 organizationRoutes.get("/locations/:id", requirePermission("organization.view"), async (c) => {
@@ -334,7 +334,7 @@ organizationRoutes.get("/locations/:id", requirePermission("organization.view"),
   if (!row) {
     return fail(c, 404, "NOT_FOUND", "Location was not found.");
   }
-  return ok(c, { location: toLocation(row) });
+  return okCached(c, { location: toLocation(row) }, 60, row.updated_at);
 });
 
 organizationRoutes.post("/locations", requirePermission("organization.manage"), async (c) => {
@@ -458,7 +458,7 @@ organizationRoutes.get("/departments", requirePermission("organization.view"), a
     )
     .bind(...params)
     .all<DepartmentRow>();
-  return ok(c, { departments: rows.results.map(toDepartment) });
+  return okCached(c, { departments: rows.results.map(toDepartment) }, 60, `departments-${rows.results.length}`);
 });
 
 organizationRoutes.get("/departments/:id", requirePermission("organization.view"), async (c) => {
@@ -469,7 +469,7 @@ organizationRoutes.get("/departments/:id", requirePermission("organization.view"
   if (!row) {
     return fail(c, 404, "NOT_FOUND", "Department was not found.");
   }
-  return ok(c, { department: toDepartment(row) });
+  return okCached(c, { department: toDepartment(row) }, 60, row.updated_at);
 });
 
 organizationRoutes.post("/departments", requirePermission("organization.manage"), async (c) => {
@@ -549,7 +549,7 @@ organizationRoutes.get("/job-levels", requirePermission("organization.view"), as
     params.push(isActive);
   }
   const rows = await c.env.DB.prepare(`SELECT * FROM job_levels ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY rank_order, name`).bind(...params).all<JobLevelRow>();
-  return ok(c, { job_levels: rows.results.map(toJobLevel) });
+  return okCached(c, { job_levels: rows.results.map(toJobLevel) }, 60, `job-levels-${rows.results.length}`);
 });
 
 organizationRoutes.get("/job-levels/:id", requirePermission("organization.view"), async (c) => {
@@ -557,7 +557,7 @@ organizationRoutes.get("/job-levels/:id", requirePermission("organization.view")
   if (!row) {
     return fail(c, 404, "NOT_FOUND", "Job level was not found.");
   }
-  return ok(c, { job_level: toJobLevel(row) });
+  return okCached(c, { job_level: toJobLevel(row) }, 60, row.updated_at);
 });
 
 async function activeRankExists(db: AppBindings["Bindings"]["DB"], rankOrder: number, excludeId?: string) {
@@ -656,7 +656,7 @@ organizationRoutes.get("/positions", requirePermission("organization.view"), asy
     )
     .bind(...params)
     .all<PositionRow>();
-  return ok(c, { positions: rows.results.map(toPosition) });
+  return okCached(c, { positions: rows.results.map(toPosition) }, 60, `positions-${rows.results.length}`);
 });
 
 organizationRoutes.get("/positions/:id", requirePermission("organization.view"), async (c) => {
@@ -673,7 +673,7 @@ organizationRoutes.get("/positions/:id", requirePermission("organization.view"),
   if (!row) {
     return fail(c, 404, "NOT_FOUND", "Position was not found.");
   }
-  return ok(c, { position: toPosition(row) });
+  return okCached(c, { position: toPosition(row) }, 60, row.updated_at);
 });
 
 organizationRoutes.post("/positions", requirePermission("organization.manage"), async (c) => {

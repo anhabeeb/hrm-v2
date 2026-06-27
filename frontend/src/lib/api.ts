@@ -133,6 +133,7 @@ import type {
   OffboardingCase,
   OnboardingCase
 } from "../types/lifecycle";
+import { invalidateReferenceDataCache } from "./referenceDataCache";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -270,6 +271,13 @@ function query(params?: Record<string, string | number | boolean | null | undefi
   });
   const text = search.toString();
   return text ? `?${text}` : "";
+}
+
+function invalidateReferences<T>(promise: Promise<T>, prefix: string) {
+  return promise.then((result) => {
+    invalidateReferenceDataCache(prefix);
+    return result;
+  });
 }
 
 export const api = {
@@ -738,62 +746,62 @@ export const api = {
     return request<{ company: OrganizationCompany | null }>("/api/v1/organization/company", {}, token);
   },
   saveCompany(token: string, input: CompanyInput, exists: boolean) {
-    return request<{ company: OrganizationCompany }>(
+    return invalidateReferences(request<{ company: OrganizationCompany }>(
       "/api/v1/organization/company",
       {
         method: exists ? "PATCH" : "POST",
         body: JSON.stringify(input)
       },
       token
-    );
+    ), "organization");
   },
   listLocations(token: string) {
     return request<{ locations: OrganizationLocation[] }>("/api/v1/organization/locations", {}, token);
   },
   createLocation(token: string, input: LocationInput) {
-    return request<{ location: OrganizationLocation }>("/api/v1/organization/locations", { method: "POST", body: JSON.stringify(input) }, token);
+    return invalidateReferences(request<{ location: OrganizationLocation }>("/api/v1/organization/locations", { method: "POST", body: JSON.stringify(input) }, token), "organization");
   },
   updateLocation(token: string, id: string, input: LocationInput) {
-    return request<{ location: OrganizationLocation }>(`/api/v1/organization/locations/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return invalidateReferences(request<{ location: OrganizationLocation }>(`/api/v1/organization/locations/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token), "organization");
   },
   locationAction(token: string, id: string, action: "enable" | "disable") {
-    return request<Record<string, unknown>>(`/api/v1/organization/locations/${id}/${action}`, { method: "POST" }, token);
+    return invalidateReferences(request<Record<string, unknown>>(`/api/v1/organization/locations/${id}/${action}`, { method: "POST" }, token), "organization");
   },
   listDepartments(token: string) {
     return request<{ departments: OrganizationDepartment[] }>("/api/v1/organization/departments", {}, token);
   },
   createDepartment(token: string, input: DepartmentInput) {
-    return request<{ department: OrganizationDepartment }>("/api/v1/organization/departments", { method: "POST", body: JSON.stringify(input) }, token);
+    return invalidateReferences(request<{ department: OrganizationDepartment }>("/api/v1/organization/departments", { method: "POST", body: JSON.stringify(input) }, token), "organization");
   },
   updateDepartment(token: string, id: string, input: DepartmentInput) {
-    return request<{ department: OrganizationDepartment }>(`/api/v1/organization/departments/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return invalidateReferences(request<{ department: OrganizationDepartment }>(`/api/v1/organization/departments/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token), "organization");
   },
   departmentAction(token: string, id: string, action: "enable" | "disable") {
-    return request<Record<string, unknown>>(`/api/v1/organization/departments/${id}/${action}`, { method: "POST" }, token);
+    return invalidateReferences(request<Record<string, unknown>>(`/api/v1/organization/departments/${id}/${action}`, { method: "POST" }, token), "organization");
   },
   listJobLevels(token: string) {
     return request<{ job_levels: OrganizationJobLevel[] }>("/api/v1/organization/job-levels", {}, token);
   },
   createJobLevel(token: string, input: JobLevelInput) {
-    return request<{ job_level: OrganizationJobLevel }>("/api/v1/organization/job-levels", { method: "POST", body: JSON.stringify(input) }, token);
+    return invalidateReferences(request<{ job_level: OrganizationJobLevel }>("/api/v1/organization/job-levels", { method: "POST", body: JSON.stringify(input) }, token), "organization");
   },
   updateJobLevel(token: string, id: string, input: JobLevelInput) {
-    return request<{ job_level: OrganizationJobLevel }>(`/api/v1/organization/job-levels/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return invalidateReferences(request<{ job_level: OrganizationJobLevel }>(`/api/v1/organization/job-levels/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token), "organization");
   },
   jobLevelAction(token: string, id: string, action: "enable" | "disable") {
-    return request<Record<string, unknown>>(`/api/v1/organization/job-levels/${id}/${action}`, { method: "POST" }, token);
+    return invalidateReferences(request<Record<string, unknown>>(`/api/v1/organization/job-levels/${id}/${action}`, { method: "POST" }, token), "organization");
   },
   listPositions(token: string) {
     return request<{ positions: OrganizationPosition[] }>("/api/v1/organization/positions", {}, token);
   },
   createPosition(token: string, input: PositionInput) {
-    return request<{ position: OrganizationPosition }>("/api/v1/organization/positions", { method: "POST", body: JSON.stringify(input) }, token);
+    return invalidateReferences(request<{ position: OrganizationPosition }>("/api/v1/organization/positions", { method: "POST", body: JSON.stringify(input) }, token), "organization");
   },
   updatePosition(token: string, id: string, input: PositionInput) {
-    return request<{ position: OrganizationPosition }>(`/api/v1/organization/positions/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return invalidateReferences(request<{ position: OrganizationPosition }>(`/api/v1/organization/positions/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token), "organization");
   },
   positionAction(token: string, id: string, action: "enable" | "disable") {
-    return request<Record<string, unknown>>(`/api/v1/organization/positions/${id}/${action}`, { method: "POST" }, token);
+    return invalidateReferences(request<Record<string, unknown>>(`/api/v1/organization/positions/${id}/${action}`, { method: "POST" }, token), "organization");
   },
   listEmployees(token: string) {
     return request<{ employees: Employee[] }>("/api/v1/employees", {}, token);
