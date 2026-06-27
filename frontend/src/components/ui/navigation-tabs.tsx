@@ -24,14 +24,16 @@ type NavigationItemProps = {
 export type NavigationTabsVariant = "equal" | "scrollable" | "compact";
 
 export const NAVIGATION_TAB_SIZE_TOKENS = {
-  shell: "box-border w-full max-w-none min-w-0 overflow-hidden rounded-lg border bg-white p-1 shadow-panel",
-  listBase: "min-w-0 gap-1 overflow-x-auto [scrollbar-width:thin]",
-  listEqual: "grid w-full",
-  listScrollable: "flex min-w-full",
-  listCompact: "flex min-w-full",
-  triggerBase: "inline-flex h-10 min-w-[8rem] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent px-4 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-  triggerEqual: "w-full min-w-0",
-  triggerCompact: "min-w-[7rem] px-3",
+  tabWidth: "w-[168px] min-w-[168px] max-w-[168px]",
+  tabHeight: "h-10 min-h-10 max-h-10",
+  shell: "box-border w-full max-w-none min-w-0 overflow-x-auto rounded-lg border bg-white p-1 shadow-panel [scrollbar-width:thin]",
+  listBase: "flex w-max min-w-full items-center gap-2",
+  listEqual: "flex w-max min-w-full",
+  listScrollable: "flex w-max min-w-full",
+  listCompact: "flex w-max min-w-full",
+  triggerBase: "box-border inline-flex h-10 min-h-10 max-h-10 w-[168px] min-w-[168px] max-w-[168px] shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-md border border-transparent px-3 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  triggerEqual: "",
+  triggerCompact: "",
   triggerActive: "border-primary/20 bg-primary text-primary-foreground shadow-sm",
   triggerInactive: "text-muted-foreground hover:border-slate-200 hover:bg-slate-100 hover:text-slate-950",
   triggerDisabled: "cursor-not-allowed opacity-55",
@@ -87,6 +89,18 @@ function itemTitle(children: ReactNode, title?: string) {
   return title ?? (typeof children === "string" ? children : undefined);
 }
 
+function NavigationTabContent({ children }: { children: ReactNode }) {
+  if (typeof children === "string" || typeof children === "number") {
+    return <span className="min-w-0 truncate">{children}</span>;
+  }
+
+  return (
+    <span className="flex min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden">
+      {children}
+    </span>
+  );
+}
+
 export function ModuleNavigationBar({ children, label, className, variant = "scrollable" }: NavigationBarProps) {
   return (
     <nav
@@ -109,7 +123,7 @@ export function ModuleNavigationItem({ children, active = false, className, disa
   if (to && !disabled) {
     return (
       <Link to={to} aria-current={active ? "page" : undefined} title={itemTitle(children, title)} className={classes}>
-        {children}
+        <NavigationTabContent>{children}</NavigationTabContent>
       </Link>
     );
   }
@@ -117,7 +131,7 @@ export function ModuleNavigationItem({ children, active = false, className, disa
   if (to && disabled) {
     return (
       <span aria-disabled="true" title={itemTitle(children, title)} className={classes}>
-        {children}
+        <NavigationTabContent>{children}</NavigationTabContent>
       </span>
     );
   }
@@ -133,7 +147,7 @@ export function ModuleNavigationItem({ children, active = false, className, disa
       onClick={onClick}
       className={classes}
     >
-      {children}
+      <NavigationTabContent>{children}</NavigationTabContent>
     </Button>
   );
 }

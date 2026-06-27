@@ -44,6 +44,13 @@ function pageHeaderBlocks(content) {
   return blocks;
 }
 
+function between(content, startMarker, endMarker) {
+  const start = content.indexOf(startMarker);
+  if (start < 0) return "";
+  const end = content.indexOf(endMarker, start);
+  return content.slice(start, end < 0 ? undefined : end);
+}
+
 function collectFiles(dir) {
   const fullDir = path.join(root, dir);
   if (!fs.existsSync(fullDir)) return [];
@@ -69,6 +76,10 @@ const pkg = JSON.parse(read("package.json"));
 
 const navigationTabs = "frontend/src/components/ui/navigation-tabs.tsx";
 const pageShell = "frontend/src/components/ui/page-shell.tsx";
+const navigationTabsContent = exists(navigationTabs) ? read(navigationTabs) : "";
+const pageShellContent = exists(pageShell) ? read(pageShell) : "";
+const triggerTokenBlock = between(navigationTabsContent, "triggerBase:", "triggerActive:");
+const standardTabsBlock = between(pageShellContent, "export function StandardTabs", "export const AppTabs");
 
 [
   navigationTabs,
@@ -82,23 +93,43 @@ const pageShell = "frontend/src/components/ui/page-shell.tsx";
 [
   "NAVIGATION_TAB_SIZE_TOKENS",
   "h-10",
-  "min-w-[8rem]",
-  "min-w-[7rem]",
-  "px-4",
+  "min-h-10",
+  "max-h-10",
+  "w-[168px]",
+  "min-w-[168px]",
+  "max-w-[168px]",
+  "shrink-0",
+  "overflow-hidden",
+  "truncate",
+  "whitespace-nowrap",
+  "px-3",
   "text-sm",
   "rounded-md",
   "border-primary/20 bg-primary text-primary-foreground shadow-sm",
   "text-muted-foreground hover:border-slate-200 hover:bg-slate-100 hover:text-slate-950",
   "overflow-x-auto",
+  "w-max min-w-full",
   "getNavigationTabShellClass",
   "getNavigationTabListClass",
   "getNavigationTabItemClass",
   "getNavigationTabBadgeClass",
+  "NavigationTabContent",
   "ModuleNavigationBar",
   "ModuleNavigationItem",
   "SubNavigationBar",
   "SubNavigationItem"
 ].forEach((marker) => has(navigationTabs, marker, `shared navigation token/component marker missing: ${marker}`));
+
+[
+  /triggerBase:\s*"[^"]*h-10[^"]*w-\[168px\][^"]*min-w-\[168px\][^"]*max-w-\[168px\][^"]*shrink-0[^"]*overflow-hidden[^"]*whitespace-nowrap/,
+  /tabWidth:\s*"w-\[168px\] min-w-\[168px\] max-w-\[168px\]"/,
+  /tabHeight:\s*"h-10 min-h-10 max-h-10"/,
+  /listBase:\s*"flex w-max min-w-full items-center gap-2"/,
+  /shell:\s*"[^"]*w-full max-w-none min-w-0 overflow-x-auto/
+].forEach((marker) => has(navigationTabs, marker, "shared navigation tabs must use fixed-size scroll-safe tokens"));
+
+hasNo(navigationTabs, /triggerBase:\s*"[^"]*(?:w-auto|min-w-\[8rem\]|min-w-\[7rem\]|w-full min-w-0|flex-none)/, "shared tab trigger must not use content/available-space sizing");
+hasNo(navigationTabs, /trigger(?:Equal|Compact):\s*"[^"]*(?:w-\[|min-w-\[|max-w-\[|w-full|min-w-0|px-[0-9])/, "tab variants must not override the global fixed width/height");
 
 [
   "getNavigationTabShellClass",
@@ -109,15 +140,23 @@ const pageShell = "frontend/src/components/ui/page-shell.tsx";
   "ResponsiveTabs",
   "variant = \"auto\"",
   "equalThreshold",
-  "gridTemplateColumns",
   "count",
   "badge",
   "disabled",
-  "hidden"
+  "hidden",
+  "getNavigationTabItemClass",
+  "getNavigationTabListClass",
+  "min-w-0 truncate",
+  "title = item.title"
 ].forEach((marker) => has(pageShell, marker, `StandardTabs must use shared navigation token system: ${marker}`));
 
 hasNo(pageShell, /className="h-[89]\s+whitespace-nowrap|className="[^"]*rounded-full[^"]*tab/i, "StandardTabs must not keep old one-off tab sizing");
-hasNo(navigationTabs, /className=\{cn\("h-8|className=\{cn\("h-9/, "Module/Sub navigation must not keep old one-off tab sizing");
+if (/gridTemplateColumns|repeat\(\$\{visibleItems\.length\}|grid-cols-|w-full min-w-0/.test(standardTabsBlock)) {
+  failures.push(`${pageShell}: StandardTabs must not size tabs from grid columns or available width`);
+}
+if (/className=\{cn\("h-8|className=\{cn\("h-9|w-auto|flex-none/.test(navigationTabsContent) || /rounded-full/.test(triggerTokenBlock)) {
+  failures.push(`${navigationTabs}: Module/Sub navigation must not keep old one-off tab sizing`);
+}
 
 const moduleNavFiles = [
   ["frontend/src/components/attendance/AttendanceNav.tsx", "Attendance navigation"],
@@ -164,6 +203,17 @@ subNavigationPages.forEach((file) => {
   has(file, "SubNavigationBar", "sub-navigation page must use shared SubNavigationBar");
   has(file, "SubNavigationItem", "sub-navigation page must use shared SubNavigationItem");
 });
+
+has("frontend/src/pages/ContractsPage.tsx", "StandardTabs", "Contracts page must use shared fixed-size tabs");
+has("frontend/src/pages/ContractsPage.tsx", "Contract section tabs", "Contracts page tab aria label missing");
+has("frontend/src/pages/ContractsPage.tsx", "Probation due", "Contracts page expected tab marker missing");
+hasNo("frontend/src/pages/ContractsPage.tsx", /role="tab"|TabsList|TabsTrigger|w-auto|flex-none|border-b-2|rounded-full/, "Contracts page must not define content-sized custom tabs");
+
+has("frontend/src/pages/LifecyclePage.tsx", "SubNavigationBar", "Onboarding/Offboarding page must use shared fixed-size sub navigation");
+has("frontend/src/pages/LifecyclePage.tsx", "SubNavigationItem", "Onboarding/Offboarding tab items must use shared fixed-size sub navigation");
+has("frontend/src/pages/LifecyclePage.tsx", "Onboarding Dashboard", "Onboarding dashboard tab marker missing");
+has("frontend/src/pages/LifecyclePage.tsx", "Lifecycle Reports", "Lifecycle reports tab marker missing");
+hasNo("frontend/src/pages/LifecyclePage.tsx", /role="tab"|TabsList|TabsTrigger|w-auto|flex-none|border-b-2|rounded-full/, "Onboarding/Offboarding page must not define content-sized custom tabs");
 
 const tabIntentPattern = /\b(?:activeTab|setActiveTab|setTab\(|activeSection|setActiveSection|role="tablist"|TabsList|TabsTrigger|data-state)\b|tab\s*===/;
 const tabbedPages = collectFiles("frontend/src/pages").filter((file) => tabIntentPattern.test(read(file)));

@@ -560,15 +560,13 @@ export function StandardTabs({
   const resolvedVariant: NavigationTabsVariant = variant === "auto"
     ? (visibleItems.length > equalThreshold ? "scrollable" : "equal")
     : variant;
-  const gridStyle = resolvedVariant === "equal" && visibleItems.length
-    ? { gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))` }
-    : undefined;
 
   return (
     <TabsShell variant={resolvedVariant} className={className}>
-      <div role="tablist" aria-label={label} className={getNavigationTabListClass(resolvedVariant)} style={gridStyle}>
+      <div role="tablist" aria-label={label} className={getNavigationTabListClass(resolvedVariant)}>
         {visibleItems.map((item) => {
           const isActive = active === item.key;
+          const title = item.title ?? (typeof item.label === "string" ? item.label : undefined);
           return (
           <Button
             key={item.key}
@@ -578,16 +576,18 @@ export function StandardTabs({
             disabled={item.disabled}
             size="md"
             variant="ghost"
-            title={item.title}
+            title={title}
             onClick={() => {
               if (!item.disabled) onChange(item.key);
             }}
             className={getNavigationTabItemClass({ active: isActive, disabled: item.disabled, variant: resolvedVariant })}
           >
-            {item.icon}
-            {item.label}
-            {item.count !== undefined ? <span className={getNavigationTabBadgeClass(isActive)}>{item.count}</span> : null}
-            {item.badge ? <span className={getNavigationTabBadgeClass(isActive)}>{item.badge}</span> : null}
+            <span className="flex min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden">
+              {item.icon ? <span className="shrink-0">{item.icon}</span> : null}
+              <span className="min-w-0 truncate">{item.label}</span>
+              {item.count !== undefined ? <span className={getNavigationTabBadgeClass(isActive)}>{item.count}</span> : null}
+              {item.badge ? <span className={getNavigationTabBadgeClass(isActive)}>{item.badge}</span> : null}
+            </span>
           </Button>
           );
         })}
