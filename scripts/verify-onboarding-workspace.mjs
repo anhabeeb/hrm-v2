@@ -33,6 +33,11 @@ const employeesPage = read("frontend/src/pages/EmployeesPage.tsx");
 const api = read("frontend/src/lib/api.ts");
 const permissions = read("worker/src/db/permissions.ts");
 const seed = read("database/seed.sql");
+const schema = read("database/schema.sql");
+const remoteUtils = read("scripts/remote-d1-schema-utils.mjs");
+const remoteAudit = read("scripts/audit-remote-d1-schema.mjs");
+const remoteGenerator = read("scripts/generate-remote-d1-repair.mjs");
+const remoteReady = read("scripts/verify-remote-d1-schema-ready.mjs");
 const wrangler = read("worker/wrangler.toml");
 
 [
@@ -67,8 +72,18 @@ const wrangler = read("worker/wrangler.toml");
   "setOnboardingTaskState",
   "NOT_REQUIRED",
   "isModuleEnabled",
-  "activateEmployeeFromOnboarding"
+  "activateEmployeeFromOnboarding",
+  "getOnboardingWorkspaceDocumentTypes",
+  "document_type_warning"
 ].forEach((marker) => assert(lifecycle.includes(marker), `lifecycle source-of-truth marker exists: ${marker}`));
+
+assert(schema.includes("allowed_mime_types TEXT"), "document_types.allowed_mime_types exists in schema");
+assert(schema.includes("max_file_size_mb") && schema.includes("allow_multiple_files"), "document type upload rule columns exist in schema");
+assert(remoteUtils.includes("codeRequiredColumns") && remoteUtils.includes("allowed_mime_types"), "remote schema expected code-required columns include allowed_mime_types");
+assert(remoteAudit.includes("codeRequiredColumns") && remoteAudit.includes("Referenced by Worker/runtime code."), "remote schema audit checks code-required columns");
+assert(remoteGenerator.includes("ALTER TABLE") && remoteGenerator.includes("ADD COLUMN"), "remote schema generator can emit missing-column repairs");
+assert(remoteReady.includes("codeRequiredColumns") && remoteReady.includes("${tableName}.${column} is missing"), "remote schema readiness checks code-required columns");
+assert(lifecycle.includes("COALESCE(allowed_mime_types") && lifecycle.includes("Document upload configuration is incomplete"), "workspace document section has defensive metadata fallback");
 
 assert(lifecycle.includes("uploadEmployeeDocument(c") && documents.includes("DOCUMENTS_BUCKET") && documents.includes("r2_key"), "onboarding document upload delegates to existing document/R2 flow");
 assert(documents.includes("employee_documents") && documents.includes("employee_document_versions"), "existing document module writes employee document source tables");

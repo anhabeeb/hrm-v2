@@ -1535,6 +1535,7 @@ CREATE TABLE IF NOT EXISTS document_types (
   is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
   expiring_soon_days INTEGER NOT NULL DEFAULT 30 CHECK (expiring_soon_days >= 0),
   allowed_file_types_json TEXT NOT NULL DEFAULT '["application/pdf","image/jpeg","image/png"]',
+  allowed_mime_types TEXT,
   max_file_size_mb REAL NOT NULL DEFAULT 10 CHECK (max_file_size_mb > 0),
   allow_multiple_files INTEGER NOT NULL DEFAULT 0 CHECK (allow_multiple_files IN (0, 1)),
   requires_expiry_date INTEGER NOT NULL DEFAULT 0 CHECK (requires_expiry_date IN (0, 1)),

@@ -323,6 +323,62 @@ async function validateWorkspaceJobAssignment(c: Context<AppBindings>, employeeI
   return null;
 }
 
+async function getOnboardingWorkspaceDocumentTypes(c: Context<AppBindings>) {
+  const richQuery = `
+    SELECT id,
+           code,
+           name,
+           COALESCE(is_sensitive, 0) AS is_sensitive,
+           COALESCE(allowed_mime_types, allowed_file_types_json, '["application/pdf","image/jpeg","image/png"]') AS allowed_mime_types,
+           COALESCE(max_file_size_mb, 10) AS max_file_size_mb,
+           COALESCE(allow_multiple_files, 0) AS allow_multiple_files,
+           COALESCE(requires_expiry_date, 0) AS requires_expiry_date,
+           COALESCE(requires_issue_date, 0) AS requires_issue_date,
+           COALESCE(requires_document_number, 0) AS requires_document_number,
+           COALESCE(expiry_required, 0) AS expiry_required,
+           COALESCE(issue_date_required, 0) AS issue_date_required,
+           COALESCE(document_number_required, 0) AS document_number_required
+      FROM document_types
+     WHERE is_active = 1
+     ORDER BY sort_order, name`;
+  try {
+    const rows = await c.env.DB.prepare(richQuery).all<Record<string, unknown>>();
+    return { results: rows.results, warning: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/no such column/i.test(message)) throw error;
+    try {
+      const rows = await c.env.DB.prepare(
+        `SELECT id,
+                code,
+                name,
+                COALESCE(is_sensitive, 0) AS is_sensitive,
+                COALESCE(allowed_file_types_json, '["application/pdf","image/jpeg","image/png"]') AS allowed_mime_types,
+                10 AS max_file_size_mb,
+                0 AS allow_multiple_files,
+                0 AS requires_expiry_date,
+                0 AS requires_issue_date,
+                0 AS requires_document_number,
+                0 AS expiry_required,
+                0 AS issue_date_required,
+                0 AS document_number_required
+           FROM document_types
+          WHERE is_active = 1
+          ORDER BY sort_order, name`
+      ).all<Record<string, unknown>>();
+      return {
+        results: rows.results,
+        warning: "Document upload configuration is incomplete. Default file rules are shown until the schema repair is applied."
+      };
+    } catch {
+      return {
+        results: [],
+        warning: "Document type upload configuration could not be loaded. Other onboarding workspace sections remain available."
+      };
+    }
+  }
+}
+
 async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return null;
@@ -358,7 +414,7 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     c.env.DB.prepare("SELECT * FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY is_primary DESC, contact_type").bind(employeeId).all<Record<string, unknown>>(),
     c.env.DB.prepare("SELECT * FROM employee_addresses WHERE employee_id = ? ORDER BY is_primary DESC, address_type").bind(employeeId).all<Record<string, unknown>>(),
     getOnboardingDocumentChecklist(c, caseId),
-    c.env.DB.prepare("SELECT id, code, name, is_sensitive, allowed_mime_types, max_file_size_mb, allow_multiple_files, requires_expiry_date, requires_issue_date, requires_document_number, expiry_required, issue_date_required, document_number_required FROM document_types WHERE is_active = 1 ORDER BY sort_order, name").all<Record<string, unknown>>(),
+    getOnboardingWorkspaceDocumentTypes(c),
     c.env.DB.prepare("SELECT ec.*, ct.name AS contract_type_name, ct.requires_end_date, ct.requires_probation FROM employee_contracts ec LEFT JOIN contract_types ct ON ct.id = ec.contract_type_id WHERE ec.employee_id = ? ORDER BY ec.created_at DESC").bind(employeeId).all<Record<string, unknown>>(),
     c.env.DB.prepare("SELECT * FROM contract_types WHERE is_active = 1 AND status = 'ACTIVE' ORDER BY display_order, name").all<Record<string, unknown>>(),
     c.env.DB.prepare("SELECT * FROM contract_settings ORDER BY created_at LIMIT 1").first<Record<string, unknown>>(),
@@ -403,6 +459,7 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
       contacts: contacts.results,
       addresses: addresses.results,
       documents,
+      document_type_warning: documentTypes.warning,
       contracts: contracts.results,
       contract_settings: contractSettings,
       payroll_profile: payrollProfile,

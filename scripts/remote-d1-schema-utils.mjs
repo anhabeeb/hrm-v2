@@ -104,6 +104,20 @@ export const rebuildRules = {
   }
 };
 
+export const codeRequiredColumns = {
+  document_types: {
+    allowed_mime_types: "allowed_mime_types TEXT",
+    max_file_size_mb: "max_file_size_mb REAL NOT NULL DEFAULT 10 CHECK (max_file_size_mb > 0)",
+    allow_multiple_files: "allow_multiple_files INTEGER NOT NULL DEFAULT 0 CHECK (allow_multiple_files IN (0, 1))",
+    requires_expiry_date: "requires_expiry_date INTEGER NOT NULL DEFAULT 0 CHECK (requires_expiry_date IN (0, 1))",
+    requires_issue_date: "requires_issue_date INTEGER NOT NULL DEFAULT 0 CHECK (requires_issue_date IN (0, 1))",
+    requires_document_number: "requires_document_number INTEGER NOT NULL DEFAULT 0 CHECK (requires_document_number IN (0, 1))",
+    expiry_required: "expiry_required INTEGER NOT NULL DEFAULT 0 CHECK (expiry_required IN (0, 1))",
+    issue_date_required: "issue_date_required INTEGER NOT NULL DEFAULT 0 CHECK (issue_date_required IN (0, 1))",
+    document_number_required: "document_number_required INTEGER NOT NULL DEFAULT 0 CHECK (document_number_required IN (0, 1))"
+  }
+};
+
 const constraintStarts = new Set(["PRIMARY", "UNIQUE", "FOREIGN", "CHECK", "CONSTRAINT"]);
 
 export function readText(filePath) {

@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   advancedDeductionModes,
   auditReportPath,
+  codeRequiredColumns,
   findLegacyManualRepairFiles,
   parseSchema,
   readyReportPath,
@@ -65,6 +66,12 @@ function main() {
 
   for (const column of ["module_enabled", "lock_roster_after_attendance_payroll_placeholder"]) {
     assertNoFailures(Boolean(report.remote_tables?.roster_settings?.columns?.[column]), failures, `roster_settings.${column} is missing`);
+  }
+
+  for (const [tableName, columns] of Object.entries(codeRequiredColumns)) {
+    for (const column of Object.keys(columns)) {
+      assertNoFailures(Boolean(report.remote_tables?.[tableName]?.columns?.[column]), failures, `${tableName}.${column} is missing`);
+    }
   }
 
   if (schema.tables.final_settlements) {

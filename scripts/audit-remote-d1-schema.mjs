@@ -1,6 +1,7 @@
 import {
   analyzeCheckCompatibility,
   auditReportPath,
+  codeRequiredColumns,
   extractRowsFromWrangler,
   findLegacyManualRepairFiles,
   parseSchema,
@@ -72,6 +73,7 @@ async function main() {
 
   const missingTables = [];
   const missingColumns = [];
+  const missingColumnKeys = new Set();
   const missingIndexes = [];
   const checkIssues = [];
   const tablesRequiringRebuild = [];
@@ -83,7 +85,26 @@ async function main() {
       continue;
     }
     for (const column of tableDef.columnOrder) {
-      if (!remote.columns[column]) missingColumns.push({ table: tableName, column, definition: tableDef.columns[column] });
+      if (!remote.columns[column]) {
+        missingColumnKeys.add(`${tableName}.${column}`);
+        missingColumns.push({ table: tableName, column, definition: tableDef.columns[column] });
+      }
+    }
+  }
+
+  for (const [tableName, columns] of Object.entries(codeRequiredColumns)) {
+    const tableDef = schema.tables[tableName];
+    if (!tableDef) throw new Error(`Code-required table ${tableName} is missing from database/schema.sql.`);
+    const remote = remoteTables[tableName];
+    if (!remote) continue;
+    for (const [column, fallbackDefinition] of Object.entries(columns)) {
+      const definition = tableDef.columns[column] ?? fallbackDefinition;
+      if (!tableDef.columns[column]) throw new Error(`Code-required column ${tableName}.${column} is missing from database/schema.sql.`);
+      const key = `${tableName}.${column}`;
+      if (!remote.columns[column] && !missingColumnKeys.has(key)) {
+        missingColumnKeys.add(key);
+        missingColumns.push({ table: tableName, column, definition, reason: "Referenced by Worker/runtime code." });
+      }
     }
   }
 

@@ -792,8 +792,10 @@ function JobAssignmentWorkspaceForm({ workspace, onSave }: { workspace: Row; onS
 
 function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (form: FormData) => void }) {
   const refs = asRow(workspace.refs);
+  const sections = asRow(workspace.sections);
   const documentTypes = asRows(refs.document_types);
-  const documents = asRow(asRow(workspace.sections).documents);
+  const documents = asRow(sections.documents);
+  const documentWarning = typeof sections.document_type_warning === "string" ? sections.document_type_warning : "";
   const [documentTypeId, setDocumentTypeId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [metadata, setMetadata] = useState({ document_number: "", issue_date: "", expiry_date: "", notes: "" });
@@ -815,9 +817,10 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     <div className="grid gap-3 lg:grid-cols-[1fr_1.2fr]">
       <Panel className="p-4">
         <h3 className="text-sm font-semibold">Upload official document</h3>
+        {documentWarning ? <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{documentWarning}</p> : null}
         <div className="mt-3 grid gap-3">
           <SelectField label="Document type" required value={documentTypeId} onValueChange={setDocumentTypeId}><option value="">Select document type</option>{documentTypes.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}{type.is_sensitive ? " (Sensitive)" : ""}</option>)}</SelectField>
-          {selectedType ? <p className="text-xs text-muted-foreground">Allowed files: {text(selectedType.allowed_mime_types)} · Max size: {text(selectedType.max_file_size_mb)} MB · Multiple: {selectedType.allow_multiple_files ? "Yes" : "No"}</p> : null}
+          {selectedType ? <p className="text-xs text-muted-foreground">Allowed files: {displayText(selectedType.allowed_mime_types, "Default PDF/JPEG/PNG")} · Max size: {displayText(selectedType.max_file_size_mb, "10")} MB · Multiple: {selectedType.allow_multiple_files ? "Yes" : "No"}</p> : null}
           <Field label={`Document number${requiredNumber ? " *" : ""}`}><Input required={requiredNumber} value={metadata.document_number} onChange={(event) => setMetadata({ ...metadata, document_number: event.target.value })} /></Field>
           <Field label={`Issue date${requiredIssue ? " *" : ""}`}><Input type="date" required={requiredIssue} value={metadata.issue_date} onChange={(event) => setMetadata({ ...metadata, issue_date: event.target.value })} /></Field>
           <Field label={`Expiry date${requiredExpiry ? " *" : ""}`}><Input type="date" required={requiredExpiry} value={metadata.expiry_date} onChange={(event) => setMetadata({ ...metadata, expiry_date: event.target.value })} /></Field>
