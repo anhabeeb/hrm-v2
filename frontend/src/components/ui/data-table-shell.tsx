@@ -28,14 +28,14 @@ export function DataTableShell({
   if (error) return <ErrorState title="Unable to load records" description={error} />;
   if (empty) {
     return (
-      <div className={cn("rounded-lg border bg-white shadow-panel", className)}>
+      <div className={cn("box-border w-full max-w-none min-w-0 rounded-lg border bg-white shadow-panel", className)}>
         <EmptyState title={emptyTitle} description={emptyDescription} />
       </div>
     );
   }
-  return <div className={cn("overflow-hidden rounded-lg border bg-white shadow-panel", className)}><ResponsiveTableWrapper>{children}</ResponsiveTableWrapper></div>;
+  return <div className={cn("box-border w-full max-w-none min-w-0 overflow-hidden rounded-lg border bg-white shadow-panel", className)}><ResponsiveTableWrapper>{children}</ResponsiveTableWrapper></div>;
 }
 
 export function ResponsiveTableWrapper({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("w-full overflow-x-auto", className)}>{children}</div>;
+  return <div className={cn("box-border w-full max-w-none min-w-0 overflow-x-auto", className)}>{children}</div>;
 }

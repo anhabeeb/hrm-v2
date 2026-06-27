@@ -64,7 +64,7 @@ export function PageHeader({
   );
 
   return (
-    <div className={cn("flex min-w-0 flex-col gap-3 rounded-lg border bg-white px-4 py-4 shadow-panel lg:flex-row lg:items-center lg:justify-between", className)}>
+    <div className={cn("box-border flex w-full max-w-none min-w-0 flex-col gap-3 rounded-lg border bg-white px-4 py-4 shadow-panel lg:flex-row lg:items-center lg:justify-between", className)}>
       <div className="flex min-w-0 items-start gap-3">
         {icon ? <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-slate-50 text-slate-600">{icon}</div> : null}
         <div className="min-w-0">
@@ -108,7 +108,7 @@ export function PageActions({ children, className }: { children: ReactNode; clas
 
 export function SectionCard({ title, description, actions, children, className, bodyClassName }: { title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; bodyClassName?: string }) {
   return (
-    <section className={cn("overflow-hidden rounded-lg border bg-white shadow-panel", className)}>
+    <section className={cn("box-border w-full max-w-none min-w-0 overflow-hidden rounded-lg border bg-white shadow-panel", className)}>
       {title || description || actions ? (
         <div className="flex flex-col gap-3 border-b bg-slate-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -249,15 +249,15 @@ export function ProfileCard({ avatar, title, subtitle, meta, actions }: { avatar
 }
 
 export function MetricGrid({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-4", className)}>{children}</div>;
+  return <div className={cn("grid w-full max-w-none min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4", className)}>{children}</div>;
 }
 
 export function ActionBar({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex flex-col gap-2 rounded-lg border bg-white p-3 shadow-panel sm:flex-row sm:items-center sm:justify-between", className)}>{children}</div>;
+  return <div className={cn("box-border flex w-full max-w-none min-w-0 flex-col gap-2 rounded-lg border bg-white p-3 shadow-panel sm:flex-row sm:items-center sm:justify-between", className)}>{children}</div>;
 }
 
 export function FilterBar({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("grid gap-2 rounded-lg border bg-white p-3 shadow-panel sm:grid-cols-2 lg:grid-cols-4", className)}>{children}</div>;
+  return <div className={cn("box-border grid w-full max-w-none min-w-0 gap-2 rounded-lg border bg-white p-3 shadow-panel sm:grid-cols-2 lg:grid-cols-4", className)}>{children}</div>;
 }
 
 export function FilterDrawer({ open, title = "Filters", children, onClose, actions }: { open: boolean; title?: ReactNode; children: ReactNode; onClose: () => void; actions?: ReactNode }) {

@@ -324,7 +324,7 @@ export function AppShell() {
           </header>
 
           <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-            <div className="mx-auto w-full max-w-[1680px] px-3 py-4 sm:px-4 lg:px-6">
+            <div className="box-border w-full max-w-none min-w-0 px-3 py-4 sm:px-4 lg:px-6">
               <Outlet />
             </div>
           </main>

@@ -33,11 +33,11 @@ export function DataTableFrame({
 
   if (empty) {
     return (
-      <div className={cn("rounded-md border bg-white", className)}>
+      <div className={cn("box-border w-full max-w-none min-w-0 rounded-md border bg-white", className)}>
         <EmptyState title={emptyTitle} description={emptyDescription} />
       </div>
     );
   }
 
-  return <div className={cn("overflow-hidden rounded-md border bg-white shadow-panel", className)}><ResponsiveTableWrapper>{children}</ResponsiveTableWrapper></div>;
+  return <div className={cn("box-border w-full max-w-none min-w-0 overflow-hidden rounded-md border bg-white shadow-panel", className)}><ResponsiveTableWrapper>{children}</ResponsiveTableWrapper></div>;
 }

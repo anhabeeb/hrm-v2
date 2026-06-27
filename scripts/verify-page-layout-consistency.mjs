@@ -72,6 +72,7 @@ const scripts = pkg.scripts ?? {};
   "frontend/src/components/ui/navigation-tabs.tsx",
   "frontend/src/components/ui/data-table-shell.tsx",
   "frontend/src/components/ui/data-table.tsx",
+  "frontend/src/layouts/AppShell.tsx",
   "frontend/src/pages/DashboardPage.tsx",
   "frontend/src/pages/EmployeeProfilePage.tsx",
   "worker/wrangler.toml",
@@ -111,7 +112,15 @@ const pageShell = "frontend/src/components/ui/page-shell.tsx";
 
 has(pageShell, /PageShell[\s\S]*box-border w-full max-w-none min-w-0/, "PageShell default must be full available width");
 has(pageShell, /PageContent[\s\S]*box-border w-full max-w-none min-w-0/, "PageContent default must be full available width");
+has(pageShell, /PageHeader[\s\S]*box-border flex w-full max-w-none min-w-0/, "PageHeader default must fill the shared page width");
+has(pageShell, /SectionCard[\s\S]*box-border w-full max-w-none min-w-0/, "SectionCard default must fill the shared page width");
+has(pageShell, /MetricGrid[\s\S]*grid w-full max-w-none min-w-0/, "MetricGrid default must fill the shared page width");
+has(pageShell, /FilterBar[\s\S]*box-border grid w-full max-w-none min-w-0/, "FilterBar default must fill the shared page width");
 hasNo(pageShell, /max-w-\[1480px\]|mx-auto w-full max-w|max-w-3xl/, "shared PageShell/PageHeader must not independently narrow page width");
+
+const appShell = "frontend/src/layouts/AppShell.tsx";
+has(appShell, "box-border w-full max-w-none min-w-0", "app shell routed content must use full available width");
+hasNo(appShell, /mx-auto\s+w-full\s+max-w|max-w-\[(?:1480|1680)px\]|max-w-screen-xl|container\s+mx-auto/, "app shell routed content must not center or cap normal pages");
 
 [
   "ModuleNavigationBar",
@@ -124,14 +133,22 @@ hasNo(pageShell, /max-w-\[1480px\]|mx-auto w-full max-w|max-w-3xl/, "shared Page
 ].forEach((marker) => has("frontend/src/components/ui/navigation-tabs.tsx", marker, `shared navigation tab marker missing: ${marker}`));
 
 [
+  "box-border w-full max-w-none min-w-0",
   "DataTableShell",
   "ResponsiveTableWrapper",
   "overflow-x-auto"
 ].forEach((marker) => has("frontend/src/components/ui/data-table-shell.tsx", marker, `responsive table marker missing: ${marker}`));
 
+[
+  "box-border w-full max-w-none min-w-0",
+  "DataTableFrame",
+  "ResponsiveTableWrapper"
+].forEach((marker) => has("frontend/src/components/ui/data-table.tsx", marker, `data table frame marker missing: ${marker}`));
+
 has("frontend/src/pages/DashboardPage.tsx", "HRM command center", "HRM Command Center header reference marker missing");
 has("frontend/src/pages/DashboardPage.tsx", "PageHeader", "Dashboard must use shared PageHeader");
 has("frontend/src/pages/DashboardPage.tsx", "PageShell", "Dashboard must use shared PageShell");
+hasNo("frontend/src/pages/DashboardPage.tsx", /max-w-(?:3xl|4xl|5xl|6xl|7xl|screen-xl)|\bmx-auto\b|\bcontainer\b|\bw-fit\b|\binline-block\b|justify-center|centered|commandCenterContainer|dashboardContentClassName|PageShell\b[^>]*(?:variant|size)=["'](?:centered|narrow)/i, "Dashboard/HRM Command Center must not use a centered or narrow page wrapper");
 has("frontend/src/pages/EmployeeProfilePage.tsx", "ResponsiveTabs", "Employee 360 tabs must use shared Employee-style ResponsiveTabs");
 has("frontend/src/pages/EmployeeProfilePage.tsx", "Contacts", "Employee Contact tab reference marker missing");
 
