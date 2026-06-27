@@ -3,8 +3,10 @@ import { useEffect, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button } from "../components/ui/button";
+import { ResponsiveTableWrapper } from "../components/ui/data-table-shell";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -17,7 +19,7 @@ function money(value: unknown) {
 }
 
 function Header({ title, description }: { title: string; description: string }) {
-  return <><div><h1 className="text-lg font-semibold">{title}</h1><p className="text-sm text-muted-foreground">{description}</p></div><PayrollNav /></>;
+  return <><PageHeader title={title} description={description} /><PayrollNav /></>;
 }
 
 function ErrorMessage({ error }: { error: string | null }) {
@@ -69,7 +71,7 @@ export function PayrollPayslipsPage() {
   }
   const rows = data?.payslips ?? [];
   if (!canView) return <Panel><EmptyState title="Payslips unavailable" description="Your account needs payroll payslip permission." /></Panel>;
-  return <div className="space-y-4"><Header title="Payslips" description="Generated payslips from finalized payroll snapshots." /><ErrorMessage error={error ?? actionError} /><Panel className="overflow-hidden"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Period</TableHead><TableHead>Payslip</TableHead><TableHead>Employee</TableHead><TableHead>Status</TableHead><TableHead>Version</TableHead><TableHead>Generated</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row: PayrollPayslip) => <TableRow key={row.id}><TableCell>{row.period_month}/{row.period_year}</TableCell><TableCell className="font-mono text-xs">{row.payslip_number}</TableCell><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot ?? "-"} employeeNumber={row.employee_no_snapshot ?? ""} size="sm" /></TableCell><TableCell><StatusBadge value={row.status} /></TableCell><TableCell>{row.version_number}</TableCell><TableCell>{row.generated_at ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="Preview" onClick={() => void openPreview(row.id)}><Eye className="h-4 w-4" /></Button>{canDownload ? <Button variant="ghost" size="icon" title="Download" onClick={() => void download(row.id)}><Download className="h-4 w-4" /></Button> : null}{canRegenerate ? <Button variant="ghost" size="icon" title="Regenerate" onClick={() => void regenerate(row.id)}><RefreshCw className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>)}</TableBody></Table></div>{loading ? <EmptyState title="Loading payslips" description="Fetching generated payslip records." /> : rows.length === 0 ? <EmptyState title="No payslips available" description="Generate payslips from a finalized payroll run." /> : null}</Panel></div>;
+  return <PageShell><Header title="Payslips" description="Generated payslips from finalized payroll snapshots." /><ErrorMessage error={error ?? actionError} /><Panel className="overflow-hidden"><ResponsiveTableWrapper><Table><TableHeader><TableRow><TableHead>Period</TableHead><TableHead>Payslip</TableHead><TableHead>Employee</TableHead><TableHead>Status</TableHead><TableHead>Version</TableHead><TableHead>Generated</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row: PayrollPayslip) => <TableRow key={row.id}><TableCell>{row.period_month}/{row.period_year}</TableCell><TableCell className="font-mono text-xs">{row.payslip_number}</TableCell><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot ?? "-"} employeeNumber={row.employee_no_snapshot ?? ""} size="sm" /></TableCell><TableCell><StatusBadge value={row.status} /></TableCell><TableCell>{row.version_number}</TableCell><TableCell>{row.generated_at ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="Preview" onClick={() => void openPreview(row.id)}><Eye className="h-4 w-4" /></Button>{canDownload ? <Button variant="ghost" size="icon" title="Download" onClick={() => void download(row.id)}><Download className="h-4 w-4" /></Button> : null}{canRegenerate ? <Button variant="ghost" size="icon" title="Regenerate" onClick={() => void regenerate(row.id)}><RefreshCw className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>)}</TableBody></Table></ResponsiveTableWrapper>{loading ? <EmptyState title="Loading payslips" description="Fetching generated payslip records." /> : rows.length === 0 ? <EmptyState title="No payslips available" description="Generate payslips from a finalized payroll run." /> : null}</Panel></PageShell>;
 }
 
 export function PayrollPaymentRegisterPage() {
@@ -123,11 +125,11 @@ export function PayrollPaymentRegisterPage() {
   const rows = data?.payments ?? [];
   if (!canView) return <Panel><EmptyState title="Payment register unavailable" description="Your account needs payment register permission." /></Panel>;
   return (
-    <div className="space-y-4">
+    <PageShell>
       <Header title="Payment Register" description="Manual payment confirmation only. No bank transfer is performed." />
       <ErrorMessage error={error ?? actionError} />
       <Panel className="overflow-hidden">
-        <div className="overflow-x-auto">
+        <ResponsiveTableWrapper>
           <Table>
             <TableHeader>
               <TableRow>
@@ -166,7 +168,7 @@ export function PayrollPaymentRegisterPage() {
               })}
             </TableBody>
           </Table>
-        </div>
+        </ResponsiveTableWrapper>
         {loading ? <EmptyState title="Loading payment register" description="Fetching prepared payment rows." /> : rows.length === 0 ? <EmptyState title="No payment register rows" description="Prepare the register from a finalized payroll run." /> : null}
       </Panel>
       {action ? (
@@ -203,7 +205,7 @@ export function PayrollPaymentRegisterPage() {
           </Panel>
         </div>
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 
@@ -214,5 +216,5 @@ export function PayrollHistoryPage() {
   const { data, error, loading } = usePageLoad((token) => api.getPayrollHistory(token), canView);
   const rows = data?.history ?? [];
   if (!canView) return <Panel><EmptyState title="Payroll history unavailable" description="Your account needs payroll history permission." /></Panel>;
-  return <div className="space-y-4"><Header title="Payroll History" description="Finalized payroll history based on frozen payroll result snapshots." /><ErrorMessage error={error} /><Panel className="overflow-hidden"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Period</TableHead><TableHead>Run</TableHead><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Earnings</TableHead><TableHead>Deductions</TableHead><TableHead>Net</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{rows.map((row: PayrollHistoryRow, index) => <TableRow key={`${row.payroll_run_id}-${row.employee_id}-${index}`}><TableCell>{row.period_month}/{row.period_year}</TableCell><TableCell>#{row.run_no}</TableCell><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot} employeeNumber={row.employee_no_snapshot} departmentName={row.department_name} locationName={row.location_name} size="sm" /></TableCell><TableCell>{row.department_name ?? "-"}</TableCell><TableCell>{row.location_name ?? "-"}</TableCell><TableCell>{money(row.total_earnings)}</TableCell><TableCell>{money(row.total_deductions)}</TableCell><TableCell className="font-semibold">{money(row.net_salary)}</TableCell><TableCell><StatusBadge value={row.status} /></TableCell></TableRow>)}</TableBody></Table></div>{loading ? <EmptyState title="Loading payroll history" description="Fetching finalized payroll rows." /> : rows.length === 0 ? <EmptyState title="No finalized payroll history" description="Finalized payroll snapshots will appear here." /> : null}</Panel></div>;
+  return <PageShell><Header title="Payroll History" description="Finalized payroll history based on frozen payroll result snapshots." /><ErrorMessage error={error} /><Panel className="overflow-hidden"><ResponsiveTableWrapper><Table><TableHeader><TableRow><TableHead>Period</TableHead><TableHead>Run</TableHead><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Earnings</TableHead><TableHead>Deductions</TableHead><TableHead>Net</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{rows.map((row: PayrollHistoryRow, index) => <TableRow key={`${row.payroll_run_id}-${row.employee_id}-${index}`}><TableCell>{row.period_month}/{row.period_year}</TableCell><TableCell>#{row.run_no}</TableCell><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot} employeeNumber={row.employee_no_snapshot} departmentName={row.department_name} locationName={row.location_name} size="sm" /></TableCell><TableCell>{row.department_name ?? "-"}</TableCell><TableCell>{row.location_name ?? "-"}</TableCell><TableCell>{money(row.total_earnings)}</TableCell><TableCell>{money(row.total_deductions)}</TableCell><TableCell className="font-semibold">{money(row.net_salary)}</TableCell><TableCell><StatusBadge value={row.status} /></TableCell></TableRow>)}</TableBody></Table></ResponsiveTableWrapper>{loading ? <EmptyState title="Loading payroll history" description="Fetching finalized payroll rows." /> : rows.length === 0 ? <EmptyState title="No finalized payroll history" description="Finalized payroll snapshots will appear here." /> : null}</Panel></PageShell>;
 }

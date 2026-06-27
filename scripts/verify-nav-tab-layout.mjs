@@ -79,7 +79,7 @@ const navPages = [
   "frontend/src/pages/FinalSettlementPage.tsx"
 ];
 
-const navInActionsPattern = /actions=\{<\s*(AttendanceNav|RosterNav|PayrollNav)\b|actions=\{[\s\S]{0,240}<\s*(AttendanceNav|RosterNav|PayrollNav)\b/;
+const navInActionsPattern = /actions=\{<\s*(AttendanceNav|RosterNav|PayrollNav)\b|actions=\{(?:(?!\/>).){0,240}<\s*(AttendanceNav|RosterNav|PayrollNav)\b/s;
 const navInActionRowPattern = /className=["'][^"']*flex[^"']*flex-wrap[^"']*gap-2[^"']*["'][^>]*>\s*<\s*(AttendanceNav|RosterNav|PayrollNav)\b/;
 const rawVisibleControlPattern = /<(select|input|button|textarea|table)\b/;
 const browserPromptPattern = /\b(?:window\.)?(?:alert|confirm|prompt)\s*\(/;

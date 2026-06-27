@@ -8,6 +8,7 @@ import { AssetsNav } from "../components/assets/AssetsNav";
 import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { ResponsiveTableWrapper } from "../components/ui/data-table-shell";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -19,7 +20,7 @@ import { ApiError, api } from "../lib/api";
 import type { AssetUniformSettings, UniformAssignment, UniformStockItem, UniformType } from "../types/assets";
 import type { Employee } from "../types/employees";
 import type { OrganizationLocation } from "../types/organization";
-import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, FilterBar, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 
 type ModalState =
   | { type: "type"; row?: UniformType }
@@ -109,9 +110,9 @@ export function AssetUniformSettingsPage() {
   ];
 
   return (
-    <div className="space-y-4">
+    <PageShell>
       <Header title="Asset & Uniform Settings" description="Configure lifecycle, clearance, deduction, final settlement, self-service, and approval foundations." action={<Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>} />
-      <Panel className="p-0"><AssetsNav /></Panel>
+      <AssetsNav />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {notice ? <Alert tone="success">{notice}</Alert> : null}
       <Panel className="p-4">
@@ -156,7 +157,7 @@ export function AssetUniformSettingsPage() {
           </div>
         )}
       </Panel>
-    </div>
+    </PageShell>
   );
 }
 
@@ -182,13 +183,14 @@ export function UniformTypesPage() {
   const filtered = rows.filter((row) => !query || `${row.code} ${row.name} ${row.category}`.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div className="space-y-4">
+    <PageShell>
       <Header title="Uniform Types" description="Manage uniform templates, clearance defaults, replacement cycle, and deduction defaults." action={canManage ? <Button size="sm" onClick={() => setModal({ type: "type" })}>Create type</Button> : null} />
-      <Panel className="p-0"><AssetsNav /><div className="flex gap-2 p-4"><Input className="max-w-xs" placeholder="Search code/name/category" value={query} onChange={(event) => setQuery(event.target.value)} /><Button variant="outline" size="sm" onClick={() => void load()}>Refresh</Button></div></Panel>
+      <AssetsNav />
+      <FilterBar className="sm:grid-cols-2 lg:grid-cols-4"><Input className="max-w-xs" placeholder="Search code/name/category" value={query} onChange={(event) => setQuery(event.target.value)} /><Button variant="outline" size="sm" onClick={() => void load()}>Refresh</Button></FilterBar>
       {error ? <Alert tone="danger">{error}</Alert> : null}
       <Panel className="overflow-hidden p-0"><TableWrap><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Category</TableHead><TableHead>Cycle</TableHead><TableHead>Clearance</TableHead><TableHead>Deduction</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filtered.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.code}</TableCell><TableCell>{row.name}</TableCell><TableCell>{row.category}</TableCell><TableCell>{row.default_replacement_cycle_months ?? "-"}</TableCell><TableCell>{isOn(row.default_clearance_required) ? "Required" : "Not required"}</TableCell><TableCell>{row.default_deduction_amount ?? "-"}</TableCell><TableCell><Badge tone={tone(row.status)}>{row.status}</Badge></TableCell><TableCell className="text-right"><Button variant="ghost" size="sm" disabled={!canManage} onClick={() => setModal({ type: "type", row })}>Edit</Button><Button variant="ghost" size="sm" disabled={!canManage} onClick={() => { if (token) void api.archiveUniformType(token, row.id).then(load); }}>Archive</Button></TableCell></TableRow>)}</TableBody></Table>{!filtered.length ? <EmptyState title="No uniform types" description="Create uniform types such as shirts, shoes, aprons, and name badges." /> : null}</TableWrap></Panel>
       {modal?.type === "type" ? <UniformTypeModal row={modal.row} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
-    </div>
+    </PageShell>
   );
 }
 
@@ -222,13 +224,14 @@ export function UniformInventoryPage() {
   useEffect(() => { void load(); }, [token]);
 
   return (
-    <div className="space-y-4">
+    <PageShell>
       <Header title="Uniform Inventory" description="Track uniform quantities by type, size, and location." action={canManage ? <Button size="sm" onClick={() => setModal({ type: "stock" })}>Create stock</Button> : null} />
-      <Panel className="p-0"><AssetsNav /><div className="grid gap-2 p-4 md:grid-cols-5"><Input placeholder="Search type/size" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /><Select value={filters.uniform_type_id} onChange={(value) => setFilters({ ...filters, uniform_type_id: value })}><option value="">All types</option>{types.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</Select><Select value={filters.location_id} onChange={(value) => setFilters({ ...filters, location_id: value })}><option value="">All locations</option>{locations.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</Select><Select value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })}><option value="">All status</option>{["ACTIVE", "INACTIVE", "ARCHIVED"].map((value) => <option key={value} value={value}>{value}</option>)}</Select><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button></div></Panel>
+      <AssetsNav />
+      <FilterBar className="md:grid-cols-5 xl:grid-cols-5"><Input placeholder="Search type/size" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /><Select value={filters.uniform_type_id} onChange={(value) => setFilters({ ...filters, uniform_type_id: value })}><option value="">All types</option>{types.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</Select><Select value={filters.location_id} onChange={(value) => setFilters({ ...filters, location_id: value })}><option value="">All locations</option>{locations.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</Select><Select value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })}><option value="">All status</option>{["ACTIVE", "INACTIVE", "ARCHIVED"].map((value) => <option key={value} value={value}>{value}</option>)}</Select><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button></FilterBar>
       {error ? <Alert tone="danger">{error}</Alert> : null}
       <Panel className="overflow-hidden p-0"><TableWrap><Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Size</TableHead><TableHead>Location</TableHead><TableHead>Total</TableHead><TableHead>Available</TableHead><TableHead>Issued</TableHead><TableHead>Damaged/Lost</TableHead><TableHead>Reorder</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{stock.map((row) => <TableRow key={row.id}><TableCell><div className="font-medium">{row.uniform_type_name}</div><div className="text-xs text-muted-foreground">{row.uniform_type_code}</div></TableCell><TableCell>{row.size_label ?? "-"}</TableCell><TableCell>{row.location_name ?? "-"}</TableCell><TableCell>{row.total_quantity}</TableCell><TableCell>{row.available_quantity}</TableCell><TableCell>{row.issued_quantity}</TableCell><TableCell>{row.damaged_quantity} / {row.lost_quantity}</TableCell><TableCell>{row.reorder_level ?? "-"}</TableCell><TableCell><Badge tone={tone(row.status)}>{row.status}</Badge></TableCell><TableCell className="text-right"><Button variant="ghost" size="sm" disabled={!canManage} onClick={() => setModal({ type: "stock", row })}>Edit</Button></TableCell></TableRow>)}</TableBody></Table>{!stock.length ? <EmptyState title="No uniform stock" description="Add stock quantities by type, size, and location." /> : null}</TableWrap></Panel>
       {modal?.type === "stock" ? <UniformStockModal row={modal.row} types={types} locations={locations} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
-    </div>
+    </PageShell>
   );
 }
 
@@ -271,14 +274,15 @@ export function UniformAssignmentsPage() {
   const availableStock = stock.filter((row) => row.available_quantity > 0);
 
   return (
-    <div className="space-y-4">
+    <PageShell>
       <Header title="Uniform Assignments" description="Issue, return, damage/lost, waive, and payroll recovery foundation for uniforms." action={canIssue ? <Button size="sm" onClick={() => setModal({ type: "issue" })}><Shirt className="h-4 w-4" /> Issue uniform</Button> : null} />
-      <Panel className="p-0"><AssetsNav /><div className="grid gap-2 p-4 md:grid-cols-4"><Input placeholder="Employee or uniform" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /><Select value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })}><option value="">All status</option>{assignmentStatuses.map((value) => <option key={value} value={value}>{value}</option>)}</Select><Select value={filters.location_id} onChange={(value) => setFilters({ ...filters, location_id: value })}><option value="">All locations</option>{locations.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</Select><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button></div></Panel>
+      <AssetsNav />
+      <FilterBar className="md:grid-cols-4 xl:grid-cols-4"><Input placeholder="Employee or uniform" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /><Select value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })}><option value="">All status</option>{assignmentStatuses.map((value) => <option key={value} value={value}>{value}</option>)}</Select><Select value={filters.location_id} onChange={(value) => setFilters({ ...filters, location_id: value })}><option value="">All locations</option>{locations.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</Select><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button></FilterBar>
       {error ? <Alert tone="danger">{error}</Alert> : null}
       <Panel className="overflow-hidden p-0"><TableWrap><Table><TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Uniform</TableHead><TableHead>Qty</TableHead><TableHead>Status</TableHead><TableHead>Clearance</TableHead><TableHead>Issued</TableHead><TableHead>Expected return</TableHead><TableHead>Deduction</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} departmentName={row.department_name} locationName={row.location_name} size="sm" to={`/employees/${row.employee_id}`} /></TableCell><TableCell><div>{row.uniform_type_name}</div><div className="text-xs text-muted-foreground">{row.uniform_type_code} / {row.size_label ?? "-"}</div></TableCell><TableCell>{row.quantity_issued} issued<br /><span className="text-xs text-muted-foreground">{row.quantity_returned} returned, {row.quantity_damaged} damaged, {row.quantity_lost} lost</span></TableCell><TableCell><Badge tone={tone(row.assignment_status)}>{row.assignment_status}</Badge></TableCell><TableCell><Badge tone={tone(row.clearance_status)}>{row.clearance_status}</Badge></TableCell><TableCell>{row.issued_date}</TableCell><TableCell>{row.expected_return_date ?? "-"}</TableCell><TableCell>{row.deduction_amount ?? "-"}</TableCell><TableCell><div className="flex min-w-[390px] justify-end gap-1">{row.assignment_status === "ISSUED" && canReturn ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "action", row, action: "return" })}>Return</Button> : null}{row.assignment_status === "ISSUED" && canDamage ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "action", row, action: "mark-damaged" })}>Damage</Button> : null}{row.assignment_status === "ISSUED" && canLost ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "action", row, action: "mark-lost" })}>Lost</Button> : null}{canDeduct ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "action", row, action: "apply-deduction" })}>Deduct</Button> : null}{canDeduct ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "action", row, action: "waive" })}>Waive</Button> : null}<Link to={`/employees/${row.employee_id}`}><Button variant="ghost" size="sm">Employee 360</Button></Link></div></TableCell></TableRow>)}</TableBody></Table>{!rows.length ? <EmptyState title="No uniform assignments" description="Uniform assignments appear after stock is issued to employees." /> : null}</TableWrap></Panel>
       {modal?.type === "issue" ? <IssueUniformModal employees={employees} organizationRefs={organizationRefs} stock={availableStock} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
       {modal?.type === "action" ? <UniformActionModal row={modal.row} action={modal.action} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
-    </div>
+    </PageShell>
   );
 }
 
@@ -375,11 +379,11 @@ function UniformActionModal({ row, action, onClose, onSaved }: { row: UniformAss
 }
 
 function Header({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
-  return <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h1 className="text-lg font-semibold">{title}</h1><p className="text-sm text-muted-foreground">{description}</p></div><div className="flex gap-2">{action}</div></div>;
+  return <PageHeader title={title} description={description} actions={action} />;
 }
 
 function TableWrap({ children }: { children: ReactNode }) {
-  return <div className="overflow-x-auto">{children}</div>;
+  return <ResponsiveTableWrapper>{children}</ResponsiveTableWrapper>;
 }
 
 function Alert({ tone: alertTone, children }: { tone: "danger" | "success"; children: ReactNode }) {

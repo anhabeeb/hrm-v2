@@ -4,6 +4,7 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button } from "../components/ui/button";
+import { ResponsiveTableWrapper } from "../components/ui/data-table-shell";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -16,7 +17,7 @@ import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
 import type { BankLoanEligibilityRule, BankLoanRemittanceBatch, CustomDeductionTemplate, EmployeeBankLoan, EmployeeBankLoanPayment, EmployeeCustomDeduction, EmployeeCustomDeductionApplication, PaymentInstitution, PayrollPensionContribution, PensionRemittanceBatch, PensionScheme } from "../types/payroll";
-import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 
 export function PayrollPaymentInstitutionsPage() {
   const { token, user } = useAuth();
@@ -390,7 +391,13 @@ export function PayrollPensionPage() {
 
 function PayrollPageShell({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   const helpTarget = title.includes("Bank") ? "bankLoans" : title.includes("Pension") ? "pension" : "payroll";
-  return <div className="space-y-4"><div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"><div className="min-w-0"><h1 className="text-xl font-semibold">{title}</h1><p className="text-sm text-muted-foreground">{description}</p></div><div className="flex flex-wrap gap-2"><AdminHelpLink target={helpTarget} label="View Payroll Guide" /></div></div><PayrollNav />{children}</div>;
+  return (
+    <PageShell>
+      <PageHeader title={title} description={description} actions={<AdminHelpLink target={helpTarget} label="View Payroll Guide" />} />
+      <PayrollNav />
+      {children}
+    </PageShell>
+  );
 }
 
 function Header({ icon, title, action }: { icon: React.ReactNode; title: string; action?: React.ReactNode }) {
@@ -400,10 +407,10 @@ function Header({ icon, title, action }: { icon: React.ReactNode; title: string;
 function DataTable({ rows, columns, actions, empty }: { rows: unknown[]; columns: string[]; actions?: (row: Record<string, unknown>) => React.ReactNode; empty: string }) {
   const hasEmployeeIdentity = columns.includes("employee_name") || columns.includes("employee_name_snapshot");
   const visibleColumns = hasEmployeeIdentity ? ["__employee", ...columns.filter((column) => !["employee_no", "employee_name", "employee_name_snapshot", "employee_number_snapshot"].includes(column))] : columns;
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow>{visibleColumns.map((column) => <TableHead key={column}>{column === "__employee" ? "Employee" : column.split("_").join(" ")}</TableHead>)}{actions ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader><TableBody>{rows.map((item, index) => {
+  return <ResponsiveTableWrapper><Table><TableHeader><TableRow>{visibleColumns.map((column) => <TableHead key={column}>{column === "__employee" ? "Employee" : column.split("_").join(" ")}</TableHead>)}{actions ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader><TableBody>{rows.map((item, index) => {
     const row = item as Record<string, unknown>;
     return <TableRow key={String(row.id ?? index)}>{visibleColumns.map((column) => <TableCell key={column}>{column === "__employee" ? <EmployeeIdentityCell employeeId={String(row.employee_id ?? "")} employeeName={String(row.employee_name ?? row.employee_name_snapshot ?? "-")} employeeNumber={String(row.employee_no ?? row.employee_number_snapshot ?? "")} departmentName={String(row.department_name ?? "")} locationName={String(row.location_name ?? "")} size="sm" /> : renderValue(column, row[column])}</TableCell>)}{actions ? <TableCell className="text-right">{actions(row)}</TableCell> : null}</TableRow>;
-  })}</TableBody></Table>{rows.length === 0 ? <EmptyState title="No records" description={empty} /> : null}</div>;
+  })}</TableBody></Table>{rows.length === 0 ? <EmptyState title="No records" description={empty} /> : null}</ResponsiveTableWrapper>;
 }
 
 function renderValue(column: string, value: unknown) {

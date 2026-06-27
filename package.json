@@ -40,6 +40,7 @@
     "verify:module-toggle-settings": "node scripts/verify-module-toggle-settings.mjs",
     "verify:global-validation": "node scripts/verify-global-form-validation.mjs",
     "verify:nav-tabs": "node scripts/verify-nav-tab-layout.mjs",
+    "verify:page-layout-consistency": "node scripts/verify-page-layout-consistency.mjs",
     "verify:admin-help": "node scripts/verify-admin-help-guide.mjs",
     "verify:cache-timeout": "node scripts/verify-post-production-cache-timeout.mjs",
     "smoke:production-readiness": "node scripts/run-production-smoke-checks.mjs",

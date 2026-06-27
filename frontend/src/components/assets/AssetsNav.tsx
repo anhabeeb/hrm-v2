@@ -1,5 +1,5 @@
-import { Link, useLocation } from "react-router-dom";
-import { cn } from "../../lib/utils";
+import { useLocation } from "react-router-dom";
+import { ModuleNavigationBar, ModuleNavigationItem } from "../ui/navigation-tabs";
 
 const links = [
   ["Dashboard", "/assets"],
@@ -17,12 +17,12 @@ const links = [
 export function AssetsNav() {
   const location = useLocation();
   return (
-    <div className="flex overflow-x-auto border-b">
+    <ModuleNavigationBar label="Assets and uniforms navigation">
       {links.map(([label, to]) => (
-        <Link key={to} to={to} className={cn("h-10 whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium", location.pathname === to ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:bg-muted/50")}>
+        <ModuleNavigationItem key={to} to={to} active={location.pathname === to}>
           {label}
-        </Link>
+        </ModuleNavigationItem>
       ))}
-    </div>
+    </ModuleNavigationBar>
   );
 }

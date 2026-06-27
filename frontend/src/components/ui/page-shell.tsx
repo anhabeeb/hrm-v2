@@ -16,28 +16,78 @@ export function PageShell({ children, className, constrained = true }: PageShell
   );
 }
 
+export const PageLayout = PageShell;
+export const ModulePageLayout = PageShell;
+
+export function PageContent({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("min-w-0 space-y-5", className)}>{children}</div>;
+}
+
+export const AppContentContainer = PageContent;
+
 interface PageHeaderProps {
   title: string;
   description?: ReactNode;
   eyebrow?: ReactNode;
   actions?: ReactNode;
   breadcrumbs?: Array<{ label: string; href?: string }>;
+  icon?: ReactNode;
+  badge?: ReactNode;
+  statusBadge?: ReactNode;
+  primaryAction?: ReactNode;
+  secondaryActions?: ReactNode;
+  moduleStatus?: ReactNode;
   className?: string;
 }
 
-export function PageHeader({ title, description, eyebrow, actions, breadcrumbs, className }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  description,
+  eyebrow,
+  actions,
+  breadcrumbs,
+  icon,
+  badge,
+  statusBadge,
+  primaryAction,
+  secondaryActions,
+  moduleStatus,
+  className
+}: PageHeaderProps) {
+  const resolvedActions = actions ?? (
+    primaryAction || secondaryActions ? (
+      <>
+        {secondaryActions}
+        {primaryAction}
+      </>
+    ) : null
+  );
+
   return (
-    <div className={cn("flex flex-col gap-3 rounded-lg border bg-white px-4 py-4 shadow-panel lg:flex-row lg:items-center lg:justify-between", className)}>
-      <div className="min-w-0">
+    <div className={cn("flex min-w-0 flex-col gap-3 rounded-lg border bg-white px-4 py-4 shadow-panel lg:flex-row lg:items-center lg:justify-between", className)}>
+      <div className="flex min-w-0 items-start gap-3">
+        {icon ? <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-slate-50 text-slate-600">{icon}</div> : null}
+        <div className="min-w-0">
         {breadcrumbs?.length ? <PageBreadcrumbs items={breadcrumbs} /> : null}
-        {eyebrow ? <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">{eyebrow}</div> : null}
+        {eyebrow || badge || statusBadge ? (
+          <div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary">
+            {eyebrow ? <span>{eyebrow}</span> : null}
+            {badge}
+            {statusBadge}
+          </div>
+        ) : null}
         <h1 className="truncate text-xl font-semibold tracking-tight text-slate-950">{title}</h1>
         {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
+        {moduleStatus ? <div className="mt-2 text-sm text-muted-foreground">{moduleStatus}</div> : null}
+        </div>
       </div>
-      {actions ? <PageActions>{actions}</PageActions> : null}
+      {resolvedActions ? <PageActions>{resolvedActions}</PageActions> : null}
     </div>
   );
 }
+
+export const ModulePageHeader = PageHeader;
+export const AppPageHeader = PageHeader;
 
 export function PageBreadcrumbs({ items }: { items: Array<{ label: string; href?: string }> }) {
   return (
@@ -370,7 +420,7 @@ export function CommandPalette({ placeholder = "Search commands...", children }:
 export const CommandSearch = CommandPalette;
 
 export function TabsShell({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("overflow-x-auto rounded-lg border bg-white p-1 shadow-panel", className)}>{children}</div>;
+  return <div className={cn("min-w-0 overflow-x-auto rounded-lg border bg-white p-1 shadow-panel [scrollbar-width:thin]", className)}>{children}</div>;
 }
 
 export function AccordionSection({ title, children, defaultOpen = true }: { title: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
@@ -469,18 +519,34 @@ export function NoSearchResultsState({ action }: { action?: ReactNode }) {
   return <ErrorState title="No matching records" description="No results match the current search and filters." action={action} />;
 }
 
-export function ResponsiveTabs({ items, active, onChange }: { items: Array<{ key: string; label: ReactNode }>; active: string; onChange: (key: string) => void }) {
+export function StandardTabs({ items, active, onChange, label = "Section tabs" }: { items: Array<{ key: string; label: ReactNode }>; active: string; onChange: (key: string) => void; label?: string }) {
   return (
-    <div className="overflow-x-auto rounded-lg border bg-white p-1 shadow-panel">
-      <div className="flex min-w-max gap-1">
+    <TabsShell>
+      <div role="tablist" aria-label={label} className="flex min-w-max gap-1">
         {items.map((item) => (
-          <Button key={item.key} size="sm" variant={active === item.key ? "primary" : "ghost"} onClick={() => onChange(item.key)} className="whitespace-nowrap">
+          <Button
+            key={item.key}
+            role="tab"
+            aria-selected={active === item.key}
+            size="sm"
+            variant={active === item.key ? "primary" : "ghost"}
+            onClick={() => onChange(item.key)}
+            className="h-9 whitespace-nowrap rounded-md px-3 text-sm"
+          >
             {item.label}
           </Button>
         ))}
       </div>
-    </div>
+    </TabsShell>
   );
+}
+
+export const AppTabs = StandardTabs;
+export const ModuleTabs = StandardTabs;
+export const EmployeeStyleTabs = StandardTabs;
+
+export function ResponsiveTabs(props: Parameters<typeof StandardTabs>[0]) {
+  return <StandardTabs {...props} />;
 }
 
 export function MobileListCard({ title, meta, children, actions }: { title: ReactNode; meta?: ReactNode; children?: ReactNode; actions?: ReactNode }) {

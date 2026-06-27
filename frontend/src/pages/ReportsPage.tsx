@@ -6,7 +6,7 @@ import { Button } from "../components/ui/button";
 import { ValidatedDateRangeField } from "../components/forms/ValidatedDateRangeField";
 import { DataTableFrame } from "../components/ui/data-table";
 import { Input } from "../components/ui/input";
-import { AlertBanner, ExportActionBar, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
+import { AlertBanner, ExportActionBar, FilterBar, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -250,8 +250,8 @@ export function ReportsPage() {
         }
       />
 
-      <Panel className="p-3">
-        <div className="grid gap-2 lg:grid-cols-4 xl:grid-cols-6">
+      <Panel className="overflow-hidden">
+        <FilterBar className="rounded-none border-0 shadow-none lg:grid-cols-4 xl:grid-cols-6">
           <SelectField className="h-9 rounded-md border bg-white px-3 text-sm xl:col-span-2" value={selected} onChange={(event) => setSelected(event.target.value)}>
             {groupedReports.map(([group, reports]) => (
               <optgroup key={group} label={group}>
@@ -322,13 +322,13 @@ export function ReportsPage() {
           <Input placeholder="Entity type" value={filters.entity_type} onChange={(event) => setFilter(setFilters, "entity_type", event.target.value)} />
           <Button variant="outline" size="sm" onClick={() => setFilters(initialFilters)}>Reset</Button>
           <Button variant="outline" size="sm" onClick={() => void (tab === "exports" ? loadExportLogs() : load())}>Apply</Button>
-        </div>
+        </FilterBar>
         {filterChips.length ? (
-          <div className="mt-3 flex flex-wrap gap-1">
+          <div className="border-t px-3 py-3 flex flex-wrap gap-1">
             {filterChips.map(([key, value]) => <span key={key} className="rounded border bg-muted px-2 py-1 text-xs text-muted-foreground">{key}: {value}</span>)}
           </div>
         ) : null}
-        {message ? <div className="mt-3"><AlertBanner tone="warning">{message}</AlertBanner></div> : null}
+        {message ? <div className="border-t p-3"><AlertBanner tone="warning">{message}</AlertBanner></div> : null}
       </Panel>
 
       <ExportActionBar>
