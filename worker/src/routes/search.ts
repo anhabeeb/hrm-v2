@@ -23,6 +23,11 @@ export interface GlobalSearchGroup {
   items: GlobalSearchItem[];
 }
 
+export interface GlobalSearchWarning {
+  module: string;
+  message: string;
+}
+
 type SearchRegistryEntry = {
   module: string;
   moduleKey: string;
@@ -63,10 +68,32 @@ function safeInternalRoute(route: unknown, fallback = "/") {
   return text;
 }
 
+function runtimeErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message.slice(0, 220);
+  return String(error ?? "Unknown runtime error").slice(0, 220);
+}
+
+function logSearchRuntimeError(input: { module?: string; error: unknown; queryLength?: number; userId?: string | null }) {
+  console.warn(JSON.stringify({
+    level: "warn",
+    endpoint: "/api/v1/search/global",
+    module: input.module ?? "route",
+    error_message: runtimeErrorMessage(input.error),
+    query_length: input.queryLength ?? null,
+    user_id: input.userId ?? null,
+    timestamp: new Date().toISOString()
+  }));
+}
+
 async function isModuleEnabled(db: Env["DB"], moduleKey: string) {
-  const row = await db.prepare("SELECT is_enabled, status FROM module_control_settings WHERE module_key = ?").bind(moduleKey).first<{ is_enabled: number; status: string }>();
-  if (!row) return true;
-  return Number(row.is_enabled ?? 1) === 1 && String(row.status ?? "ACTIVE") !== "DISABLED";
+  try {
+    const row = await db.prepare("SELECT is_enabled, status FROM module_control_settings WHERE module_key = ?").bind(moduleKey).first<{ is_enabled: number; status: string }>();
+    if (!row) return true;
+    return Number(row.is_enabled ?? 1) === 1 && String(row.status ?? "ACTIVE") !== "DISABLED";
+  } catch (error) {
+    logSearchRuntimeError({ module: `module:${moduleKey}`, error });
+    return true;
+  }
 }
 
 async function isSearchableModuleEnabled(db: Env["DB"], moduleKey: string, user: AuthUser) {
@@ -97,9 +124,9 @@ export function getSearchableModuleRegistry(): SearchRegistryEntry[] {
 
 export function filterSearchResultsByPermission(user: AuthUser, groups: GlobalSearchGroup[]) {
   const registry = getSearchableModuleRegistry();
+  const allowedTypes = new Set(registry.filter((entry) => hasAny(user, entry.permissions)).map((entry) => entry.type));
   return groups
     .map((group) => {
-      const allowedTypes = new Set(registry.filter((entry) => entry.module === group.module && hasAny(user, entry.permissions)).map((entry) => entry.type));
       return { ...group, items: group.items.filter((item) => allowedTypes.has(item.type) || user.is_owner) };
     })
     .filter((group) => group.items.length > 0);
@@ -111,6 +138,27 @@ export function filterSearchResultsByScope(groups: GlobalSearchGroup[]) {
 
 function pushGroup(groups: GlobalSearchGroup[], module: string, items: GlobalSearchItem[]) {
   if (items.length) groups.push({ module, items: items.map((item) => ({ ...item, route: safeInternalRoute(item.route) })) });
+}
+
+async function safeSearchGroup(input: {
+  module: string;
+  queryLength: number;
+  userId: string;
+  run: () => Promise<GlobalSearchItem[]>;
+}): Promise<{ module: string; items: GlobalSearchItem[]; warning?: GlobalSearchWarning }> {
+  try {
+    return { module: input.module, items: await input.run() };
+  } catch (error) {
+    logSearchRuntimeError({ module: input.module, error, queryLength: input.queryLength, userId: input.userId });
+    return {
+      module: input.module,
+      items: [],
+      warning: {
+        module: input.module,
+        message: `${input.module} search could not be loaded.`
+      }
+    };
+  }
 }
 
 async function moduleAllowed(db: Env["DB"], user: AuthUser, entry: SearchRegistryEntry) {
@@ -130,7 +178,7 @@ export async function searchEmployeesForUser(db: Env["DB"], user: AuthUser, q: s
        LEFT JOIN departments d ON d.id = e.primary_department_id
        LEFT JOIN locations l ON l.id = e.primary_location_id
        WHERE e.archived_at IS NULL AND ${scope.sql}
-         AND (lower(e.employee_no) LIKE ? OR lower(e.full_name) LIKE ? OR lower(COALESCE(e.display_name, '')) LIKE ?)
+         AND (lower(COALESCE(e.employee_no, '')) LIKE ? OR lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.display_name, '')) LIKE ?)
        ORDER BY e.full_name ASC LIMIT ?`
     )
     .bind(...scope.params, like, like, like, limit)
@@ -152,7 +200,7 @@ async function searchUsersForUser(db: Env["DB"], user: AuthUser, q: string, limi
   if (!(await moduleAllowed(db, user, entry))) return [];
   const like = likeQuery(q);
   const rows = await db
-    .prepare("SELECT id, name, email, username, status FROM users WHERE lower(name) LIKE ? OR lower(email) LIKE ? OR lower(COALESCE(username, '')) LIKE ? ORDER BY name LIMIT ?")
+    .prepare("SELECT id, name, email, username, status FROM users WHERE lower(COALESCE(name, '')) LIKE ? OR lower(COALESCE(email, '')) LIKE ? OR lower(COALESCE(username, '')) LIKE ? ORDER BY name LIMIT ?")
     .bind(like, like, like, limit)
     .all<Row>();
   return rows.results.map((row) => ({
@@ -172,9 +220,9 @@ async function searchOrganizationForUser(db: Env["DB"], user: AuthUser, q: strin
   if (!(await moduleAllowed(db, user, entry))) return [];
   const like = likeQuery(q);
   const [departments, locations, positions] = await Promise.all([
-    db.prepare("SELECT id, code, name, is_active FROM departments WHERE lower(code) LIKE ? OR lower(name) LIKE ? ORDER BY name LIMIT ?").bind(like, like, limit).all<Row>(),
-    db.prepare("SELECT id, code, name, island_city, is_active FROM locations WHERE lower(code) LIKE ? OR lower(name) LIKE ? OR lower(COALESCE(island_city, '')) LIKE ? ORDER BY name LIMIT ?").bind(like, like, like, limit).all<Row>(),
-    db.prepare("SELECT id, code, title, is_active FROM positions WHERE lower(code) LIKE ? OR lower(title) LIKE ? ORDER BY title LIMIT ?").bind(like, like, limit).all<Row>()
+    db.prepare("SELECT id, code, name, is_active FROM departments WHERE lower(COALESCE(code, '')) LIKE ? OR lower(COALESCE(name, '')) LIKE ? ORDER BY name LIMIT ?").bind(like, like, limit).all<Row>(),
+    db.prepare("SELECT id, code, name, island_city, is_active FROM locations WHERE lower(COALESCE(code, '')) LIKE ? OR lower(COALESCE(name, '')) LIKE ? OR lower(COALESCE(island_city, '')) LIKE ? ORDER BY name LIMIT ?").bind(like, like, like, limit).all<Row>(),
+    db.prepare("SELECT id, code, title, is_active FROM positions WHERE lower(COALESCE(code, '')) LIKE ? OR lower(COALESCE(title, '')) LIKE ? ORDER BY title LIMIT ?").bind(like, like, limit).all<Row>()
   ]);
   return [
     ...departments.results.map((row) => ({ id: String(row.id), type: "organization", module: "Organization", title: String(row.name), subtitle: `Department - ${row.code ?? ""}`, status: Number(row.is_active ?? 1) === 1 ? "Active" : "Inactive", route: "/settings/organization", icon_key: "building" })),
@@ -209,7 +257,7 @@ async function searchLeaveForUser(db: Env["DB"], user: AuthUser, q: string, limi
      FROM leave_requests lr
      JOIN employees e ON e.id = lr.employee_id
      LEFT JOIN leave_types lt ON lt.id = lr.leave_type_id
-     WHERE /*SCOPE*/ AND (lower(e.full_name) LIKE ? OR lower(e.employee_no) LIKE ? OR lower(COALESCE(lt.name, '')) LIKE ? OR lower(lr.status) LIKE ?)
+     WHERE /*SCOPE*/ AND (lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.employee_no, '')) LIKE ? OR lower(COALESCE(lt.name, '')) LIKE ? OR lower(COALESCE(lr.status, '')) LIKE ?)
      ORDER BY lr.created_at DESC LIMIT ?`,
     "e",
     [like, like, like, like, limit]
@@ -229,7 +277,7 @@ async function searchAttendanceForUser(db: Env["DB"], user: AuthUser, q: string,
     `SELECT adr.id, adr.attendance_date, adr.status, e.employee_no, e.full_name
      FROM attendance_daily_records adr
      JOIN employees e ON e.id = adr.employee_id
-     WHERE /*SCOPE*/ AND (lower(e.full_name) LIKE ? OR lower(e.employee_no) LIKE ? OR lower(adr.status) LIKE ?)
+     WHERE /*SCOPE*/ AND (lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.employee_no, '')) LIKE ? OR lower(COALESCE(adr.status, '')) LIKE ?)
      ORDER BY adr.attendance_date DESC LIMIT ?`,
     "e",
     [like, like, like, limit]
@@ -250,7 +298,7 @@ async function searchRosterForUser(db: Env["DB"], user: AuthUser, q: string, lim
      FROM roster_assignments ra
      JOIN employees e ON e.id = ra.employee_id
      LEFT JOIN shift_templates st ON st.id = ra.shift_template_id
-     WHERE /*SCOPE*/ AND (lower(e.full_name) LIKE ? OR lower(e.employee_no) LIKE ? OR lower(COALESCE(st.name, '')) LIKE ? OR lower(ra.status) LIKE ?)
+     WHERE /*SCOPE*/ AND (lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.employee_no, '')) LIKE ? OR lower(COALESCE(st.name, '')) LIKE ? OR lower(COALESCE(ra.status, '')) LIKE ?)
      ORDER BY ra.roster_date DESC LIMIT ?`,
     "e",
     [like, like, like, like, limit]
@@ -272,7 +320,7 @@ export async function searchPayrollForUser(db: Env["DB"], user: AuthUser, q: str
      JOIN payroll_periods pp ON pp.id = pr.payroll_period_id
      JOIN payroll_employee_results per ON per.payroll_run_id = pr.id
      JOIN employees e ON e.id = per.employee_id
-     WHERE /*SCOPE*/ AND (CAST(pr.run_no AS TEXT) LIKE ? OR lower(pr.status) LIKE ? OR CAST(pp.period_month AS TEXT) LIKE ? OR CAST(pp.period_year AS TEXT) LIKE ?)
+     WHERE /*SCOPE*/ AND (CAST(pr.run_no AS TEXT) LIKE ? OR lower(COALESCE(pr.status, '')) LIKE ? OR CAST(pp.period_month AS TEXT) LIKE ? OR CAST(pp.period_year AS TEXT) LIKE ?)
      ORDER BY pp.period_year DESC, pp.period_month DESC, pr.run_no DESC LIMIT ?`,
     "e",
     [like, like, like, like, limit]
@@ -289,7 +337,7 @@ export async function searchPayrollForUser(db: Env["DB"], user: AuthUser, q: str
        FROM payroll_payslips ps
        JOIN payroll_periods pp ON pp.id = ps.payroll_period_id
        JOIN employees e ON e.id = ps.employee_id
-       WHERE /*SCOPE*/ AND (lower(ps.payslip_number) LIKE ? OR lower(e.full_name) LIKE ? OR lower(e.employee_no) LIKE ?)
+       WHERE /*SCOPE*/ AND (lower(COALESCE(ps.payslip_number, '')) LIKE ? OR lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.employee_no, '')) LIKE ?)
        ORDER BY ps.generated_at DESC LIMIT ?`,
       "e",
       [like, like, like, limit]
@@ -315,7 +363,7 @@ export async function searchDocumentsForUser(db: Env["DB"], user: AuthUser, q: s
      FROM employee_documents ed
      JOIN employees e ON e.id = ed.employee_id
      LEFT JOIN document_types dt ON dt.id = ed.document_type_id
-     WHERE /*SCOPE*/ AND (lower(e.full_name) LIKE ? OR lower(e.employee_no) LIKE ? OR lower(COALESCE(dt.name, '')) LIKE ? OR lower(COALESCE(ed.document_number, '')) LIKE ?)
+     WHERE /*SCOPE*/ AND (lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.employee_no, '')) LIKE ? OR lower(COALESCE(dt.name, '')) LIKE ? OR lower(COALESCE(ed.document_number, '')) LIKE ?)
      ORDER BY ed.created_at DESC LIMIT ?`,
     "e",
     [like, like, like, like, limit]
@@ -348,7 +396,7 @@ async function searchContractsForUser(db: Env["DB"], user: AuthUser, q: string, 
      FROM employee_contracts ec
      JOIN employees e ON e.id = ec.employee_id
      LEFT JOIN contract_types ct ON ct.id = ec.contract_type_id
-     WHERE /*SCOPE*/ AND (lower(e.full_name) LIKE ? OR lower(e.employee_no) LIKE ? OR lower(COALESCE(ec.contract_number, '')) LIKE ? OR lower(COALESCE(ct.name, '')) LIKE ?)
+     WHERE /*SCOPE*/ AND (lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.employee_no, '')) LIKE ? OR lower(COALESCE(ec.contract_number, '')) LIKE ? OR lower(COALESCE(ct.name, '')) LIKE ?)
      ORDER BY ec.created_at DESC LIMIT ?`,
     "e",
     [like, like, like, like, limit]
@@ -369,7 +417,7 @@ async function searchAssetsForUser(db: Env["DB"], user: AuthUser, q: string, lim
      FROM employee_asset_assignments aa
      JOIN asset_items ai ON ai.id = aa.asset_item_id
      JOIN employees e ON e.id = aa.employee_id
-     WHERE /*SCOPE*/ AND (lower(e.full_name) LIKE ? OR lower(e.employee_no) LIKE ? OR lower(ai.code) LIKE ? OR lower(ai.name) LIKE ?)
+     WHERE /*SCOPE*/ AND (lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.employee_no, '')) LIKE ? OR lower(COALESCE(ai.code, '')) LIKE ? OR lower(COALESCE(ai.name, '')) LIKE ?)
      ORDER BY aa.issued_date DESC LIMIT ?`,
     "e",
     [like, like, like, like, limit]
@@ -389,7 +437,7 @@ export async function searchApprovalsForUser(db: Env["DB"], user: AuthUser, q: s
        FROM approval_instances ai
        LEFT JOIN employees e ON e.id = ai.employee_id
        WHERE ${scopedSql}
-         AND (lower(ai.request_title) LIKE ? OR lower(ai.module_key) LIKE ? OR lower(ai.action_key) LIKE ? OR lower(ai.status) LIKE ? OR lower(COALESCE(e.full_name, '')) LIKE ?)
+         AND (lower(COALESCE(ai.request_title, '')) LIKE ? OR lower(COALESCE(ai.module_key, '')) LIKE ? OR lower(COALESCE(ai.action_key, '')) LIKE ? OR lower(COALESCE(ai.status, '')) LIKE ? OR lower(COALESCE(e.full_name, '')) LIKE ?)
        ORDER BY ai.created_at DESC LIMIT ?`
     )
     .bind(...scope.params, like, like, like, like, like, limit)
@@ -411,7 +459,7 @@ async function searchLifecycleForUser(db: Env["DB"], user: AuthUser, q: string, 
       `SELECT oc.id, oc.case_number, oc.onboarding_status, e.employee_no, e.full_name
        FROM employee_onboarding_cases oc
        JOIN employees e ON e.id = oc.employee_id
-       WHERE /*SCOPE*/ AND (lower(e.full_name) LIKE ? OR lower(e.employee_no) LIKE ? OR lower(oc.case_number) LIKE ? OR lower(oc.onboarding_status) LIKE ?)
+       WHERE /*SCOPE*/ AND (lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.employee_no, '')) LIKE ? OR lower(COALESCE(oc.case_number, '')) LIKE ? OR lower(COALESCE(oc.onboarding_status, '')) LIKE ?)
        ORDER BY oc.created_at DESC LIMIT ?`,
       "e",
       [like, like, like, like, limit]
@@ -428,7 +476,7 @@ async function searchLifecycleForUser(db: Env["DB"], user: AuthUser, q: string, 
       `SELECT oc.id, oc.case_number, oc.offboarding_status, e.employee_no, e.full_name
        FROM employee_offboarding_cases oc
        JOIN employees e ON e.id = oc.employee_id
-       WHERE /*SCOPE*/ AND (lower(e.full_name) LIKE ? OR lower(e.employee_no) LIKE ? OR lower(oc.case_number) LIKE ? OR lower(oc.offboarding_status) LIKE ?)
+       WHERE /*SCOPE*/ AND (lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.employee_no, '')) LIKE ? OR lower(COALESCE(oc.case_number, '')) LIKE ? OR lower(COALESCE(oc.offboarding_status, '')) LIKE ?)
        ORDER BY oc.created_at DESC LIMIT ?`,
       "e",
       [like, like, like, like, limit]
@@ -479,63 +527,63 @@ function quickLinksForUser(user: AuthUser): GlobalSearchGroup[] {
 
 export async function performGlobalSearch(c: Context<AppBindings>) {
   const user = c.get("currentUser");
-  if (!hasAny(user, ["search.global.use", "search.global.admin"])) {
-    return fail(c, 403, "SEARCH_PERMISSION_DENIED", "You do not have permission to use global search.");
+  try {
+    if (!hasAny(user, ["search.global.use", "search.global.admin"])) {
+      return fail(c, 403, "SEARCH_PERMISSION_DENIED", "You do not have permission to use global search.");
+    }
+
+    const q = cleanQuery(c.req.query("q"));
+    const limit = boundedLimit(c.req.query("limit"));
+    const typeFilter = new Set(String(c.req.query("types") ?? "").split(",").map((item) => item.trim()).filter(Boolean));
+    if (!q) return ok(c, { query: "", groups: quickLinksForUser(user), warnings: [], min_query_length: QUERY_MIN_LENGTH });
+    if (q.length < QUERY_MIN_LENGTH) return ok(c, { query: q, groups: [], warnings: [], min_query_length: QUERY_MIN_LENGTH, message: "Type at least two characters to search." });
+
+    const include = (type: string) => !typeFilter.size || typeFilter.has(type);
+    const queryLength = q.length;
+    const groupTasks = [
+      { module: "Employees", include: include("employee"), run: () => searchEmployeesForUser(c.env.DB, user, q, limit) },
+      { module: "Users", include: include("user"), run: () => searchUsersForUser(c.env.DB, user, q, limit) },
+      { module: "Organization", include: include("organization"), run: () => searchOrganizationForUser(c.env.DB, user, q, limit) },
+      { module: "Leave", include: include("leave_request"), run: () => searchLeaveForUser(c.env.DB, user, q, limit) },
+      { module: "Attendance", include: include("attendance"), run: () => searchAttendanceForUser(c.env.DB, user, q, limit) },
+      { module: "Roster", include: include("roster"), run: () => searchRosterForUser(c.env.DB, user, q, limit) },
+      { module: "Payroll", include: include("payroll"), run: () => searchPayrollForUser(c.env.DB, user, q, limit) },
+      { module: "Documents", include: include("document"), run: () => searchDocumentsForUser(c.env.DB, user, q, limit) },
+      { module: "Contracts", include: include("contract"), run: () => searchContractsForUser(c.env.DB, user, q, limit) },
+      { module: "Assets", include: include("asset"), run: () => searchAssetsForUser(c.env.DB, user, q, limit) },
+      { module: "Approvals", include: include("approval"), run: () => searchApprovalsForUser(c.env.DB, user, q, limit) },
+      { module: "Lifecycle", include: include("onboarding") || include("offboarding"), run: () => searchLifecycleForUser(c.env.DB, user, q, limit) },
+      { module: "Reports and Settings", include: include("settings") || include("report") || include("admin_help"), run: () => searchSettingsForUser(c.env.DB, user, q, limit) }
+    ];
+
+    const settled = await Promise.allSettled(groupTasks.filter((task) => task.include).map((task) => safeSearchGroup({
+      module: task.module,
+      queryLength,
+      userId: user.id,
+      run: task.run
+    })));
+    const groups: GlobalSearchGroup[] = [];
+    const warnings: GlobalSearchWarning[] = [];
+    for (const result of settled) {
+      if (result.status === "fulfilled") {
+        pushGroup(groups, result.value.module, result.value.items);
+        if (result.value.warning) warnings.push(result.value.warning);
+      } else {
+        logSearchRuntimeError({ error: result.reason, queryLength, userId: user.id });
+        warnings.push({ module: "Search", message: "One search group could not be loaded." });
+      }
+    }
+
+    return ok(c, {
+      query: q,
+      groups: filterSearchResultsByScope(filterSearchResultsByPermission(user, groups)),
+      warnings,
+      min_query_length: QUERY_MIN_LENGTH
+    });
+  } catch (error) {
+    logSearchRuntimeError({ error, userId: user?.id ?? null, queryLength: cleanQuery(c.req.query("q")).length });
+    return fail(c, 503, "SEARCH_RUNTIME_ERROR", "Search is temporarily unavailable. Please try again.");
   }
-
-  const q = cleanQuery(c.req.query("q"));
-  const limit = boundedLimit(c.req.query("limit"));
-  const typeFilter = new Set(String(c.req.query("types") ?? "").split(",").map((item) => item.trim()).filter(Boolean));
-  if (!q) return ok(c, { query: "", groups: quickLinksForUser(user), min_query_length: QUERY_MIN_LENGTH });
-  if (q.length < QUERY_MIN_LENGTH) return ok(c, { query: q, groups: [], min_query_length: QUERY_MIN_LENGTH, message: "Type at least two characters to search." });
-
-  const include = (type: string) => !typeFilter.size || typeFilter.has(type);
-  const groups: GlobalSearchGroup[] = [];
-  const [
-    employees,
-    users,
-    organization,
-    leave,
-    attendance,
-    roster,
-    payroll,
-    documents,
-    contracts,
-    assets,
-    approvals,
-    lifecycle,
-    settings
-  ] = await Promise.all([
-    include("employee") ? searchEmployeesForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("user") ? searchUsersForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("organization") ? searchOrganizationForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("leave_request") ? searchLeaveForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("attendance") ? searchAttendanceForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("roster") ? searchRosterForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("payroll") ? searchPayrollForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("document") ? searchDocumentsForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("contract") ? searchContractsForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("asset") ? searchAssetsForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("approval") ? searchApprovalsForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("onboarding") || include("offboarding") ? searchLifecycleForUser(c.env.DB, user, q, limit) : Promise.resolve([]),
-    include("settings") || include("report") || include("admin_help") ? searchSettingsForUser(c.env.DB, user, q, limit) : Promise.resolve([])
-  ]);
-
-  pushGroup(groups, "Employees", employees);
-  pushGroup(groups, "Users", users);
-  pushGroup(groups, "Organization", organization);
-  pushGroup(groups, "Leave", leave);
-  pushGroup(groups, "Attendance", attendance);
-  pushGroup(groups, "Roster", roster);
-  pushGroup(groups, "Payroll", payroll);
-  pushGroup(groups, "Documents", documents);
-  pushGroup(groups, "Contracts", contracts);
-  pushGroup(groups, "Assets", assets);
-  pushGroup(groups, "Approvals", approvals);
-  pushGroup(groups, "Lifecycle", lifecycle);
-  pushGroup(groups, "Reports and Settings", settings);
-
-  return ok(c, { query: q, groups: filterSearchResultsByScope(filterSearchResultsByPermission(user, groups)), min_query_length: QUERY_MIN_LENGTH });
 }
 
 searchRoutes.get("/global", performGlobalSearch);

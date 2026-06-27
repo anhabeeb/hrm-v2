@@ -38,6 +38,12 @@ exists("frontend/src/pages/NotificationCenterPage.tsx", "notification center pag
 
 hasAll("worker/src/routes/search.ts", [
   "performGlobalSearch",
+  "safeSearchGroup",
+  "Promise.allSettled",
+  "SEARCH_RUNTIME_ERROR",
+  "logSearchRuntimeError",
+  "GlobalSearchWarning",
+  "warnings",
   "searchEmployeesForUser",
   "searchPayrollForUser",
   "searchDocumentsForUser",
@@ -56,6 +62,9 @@ hasNo("worker/src/routes/search.ts", /\bes\.label\b/, "employee search must not 
 has("database/schema.sql", "name TEXT NOT NULL", "employee_statuses schema must expose name for status display");
 
 hasAll("worker/src/routes/notifications.ts", [
+  "withNotificationRuntimeError",
+  "NOTIFICATIONS_RUNTIME_ERROR",
+  "logNotificationRuntimeError",
   "getNotificationsForUser",
   "getUnreadNotificationCount",
   "markNotificationRead",
@@ -101,6 +110,8 @@ hasAll("worker/src/db/permissions.ts", [
 
 hasAll("frontend/src/lib/api.ts", [
   "GlobalSearchResponse",
+  "GlobalSearchWarning",
+  "warnings?: GlobalSearchWarning[]",
   "HrmNotification",
   "globalSearch",
   "listNotifications",
@@ -112,6 +123,11 @@ hasAll("frontend/src/lib/api.ts", [
 
 hasAll("frontend/src/components/global/GlobalSearch.tsx", [
   "api.globalSearch",
+  "SEARCH_UNAVAILABLE_MESSAGE",
+  "SEARCH_RETRY_DELAY_MS",
+  "lastFailedQueryRef",
+  "retryBlockedUntilRef",
+  "Some search areas could not be loaded",
   "Ctrl K",
   "ArrowDown",
   "ArrowUp",
@@ -124,6 +140,8 @@ hasAll("frontend/src/components/global/GlobalSearch.tsx", [
 
 hasAll("frontend/src/components/global/NotificationBell.tsx", [
   "api.listNotifications",
+  "NOTIFICATIONS_UNAVAILABLE_MESSAGE",
+  "Notifications unavailable. Try again shortly.",
   "api.markNotificationRead",
   "api.markAllNotificationsRead",
   "unreadCount",
@@ -154,6 +172,11 @@ hasAll("frontend/src/pages/NotificationCenterPage.tsx", [
   "Apply filters",
   "Open"
 ], "notification center page missing filters or read actions");
+
+hasAll("README.md", [
+  "Global Search and Notification Runtime Troubleshooting",
+  "Do not rerun remote schema repair blindly"
+], "runtime troubleshooting guidance for search/notification 500s is missing");
 
 hasAll("frontend/src/routes/AppRoutes.tsx", [
   'path="search"',

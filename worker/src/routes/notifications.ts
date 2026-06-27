@@ -31,10 +31,40 @@ function safeNotificationRoute(route: unknown) {
   return text;
 }
 
+function runtimeErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message.slice(0, 220);
+  return String(error ?? "Unknown runtime error").slice(0, 220);
+}
+
+function logNotificationRuntimeError(input: { area: string; error: unknown; userId?: string | null }) {
+  console.warn(JSON.stringify({
+    level: "warn",
+    endpoint: "/api/v1/notifications",
+    area: input.area,
+    error_message: runtimeErrorMessage(input.error),
+    user_id: input.userId ?? null,
+    timestamp: new Date().toISOString()
+  }));
+}
+
+async function withNotificationRuntimeError(c: Context<AppBindings>, area: string, action: () => Promise<Response> | Response) {
+  try {
+    return await action();
+  } catch (error) {
+    logNotificationRuntimeError({ area, error, userId: c.get("currentUser")?.id ?? null });
+    return fail(c, 503, "NOTIFICATIONS_RUNTIME_ERROR", "Notifications are temporarily unavailable.");
+  }
+}
+
 async function isModuleEnabled(db: Env["DB"], moduleKey: string) {
-  const row = await db.prepare("SELECT is_enabled, status FROM module_control_settings WHERE module_key = ?").bind(moduleKey).first<{ is_enabled: number; status: string }>();
-  if (!row) return true;
-  return Number(row.is_enabled ?? 1) === 1 && String(row.status ?? "ACTIVE") !== "DISABLED";
+  try {
+    const row = await db.prepare("SELECT is_enabled, status FROM module_control_settings WHERE module_key = ?").bind(moduleKey).first<{ is_enabled: number; status: string }>();
+    if (!row) return true;
+    return Number(row.is_enabled ?? 1) === 1 && String(row.status ?? "ACTIVE") !== "DISABLED";
+  } catch (error) {
+    logNotificationRuntimeError({ area: `module:${moduleKey}`, error });
+    return true;
+  }
 }
 
 function notificationToApi(row: Row) {
@@ -96,8 +126,12 @@ export async function filterNotificationsByUserScope(db: Env["DB"], user: AuthUs
       continue;
     }
     if (!adminView) continue;
-    if (!employeeId || await canAccessEmployee(db, user, employeeId, String(row.module_key ?? "employees"), "view")) {
-      filtered.push(row);
+    try {
+      if (!employeeId || await canAccessEmployee(db, user, employeeId, String(row.module_key ?? "employees"), "view")) {
+        filtered.push(row);
+      }
+    } catch (error) {
+      logNotificationRuntimeError({ area: "scope-filter", error, userId: user.id });
     }
   }
   return filtered;
@@ -263,32 +297,32 @@ export async function createNotificationForEmployee(db: Env["DB"], input: {
   return id;
 }
 
-notificationRoutes.get("/", async (c) => {
+notificationRoutes.get("/", (c) => withNotificationRuntimeError(c, "list", async () => {
   if (!hasAny(c.get("currentUser"), ["notifications.view", "notifications.admin.view", "notifications.manage", "self_service.notifications.view", "self_service.view"])) {
     return fail(c, 403, "NOTIFICATION_PERMISSION_DENIED", "You do not have permission to view notifications.");
   }
   return ok(c, { notifications: await getNotificationsForUser(c), unread_count: await getUnreadNotificationCount(c) });
-});
+}));
 
-notificationRoutes.get("/unread-count", async (c) => {
+notificationRoutes.get("/unread-count", (c) => withNotificationRuntimeError(c, "unread-count", async () => {
   if (!hasAny(c.get("currentUser"), ["notifications.view", "notifications.admin.view", "notifications.manage", "self_service.notifications.view", "self_service.view"])) {
     return fail(c, 403, "NOTIFICATION_PERMISSION_DENIED", "You do not have permission to view notifications.");
   }
   return ok(c, { unread_count: await getUnreadNotificationCount(c) });
-});
+}));
 
-notificationRoutes.post("/:notificationId/mark-read", (c) => markNotificationRead(c, c.req.param("notificationId")));
-notificationRoutes.post("/mark-all-read", markAllNotificationsRead);
+notificationRoutes.post("/:notificationId/mark-read", (c) => withNotificationRuntimeError(c, "mark-read", () => markNotificationRead(c, c.req.param("notificationId"))));
+notificationRoutes.post("/mark-all-read", (c) => withNotificationRuntimeError(c, "mark-all-read", () => markAllNotificationsRead(c)));
 
-notificationRoutes.get("/preferences", async (c) => {
+notificationRoutes.get("/preferences", (c) => withNotificationRuntimeError(c, "preferences", async () => {
   if (!hasAny(c.get("currentUser"), ["notifications.preferences.view", "notifications.view", "self_service.notifications.view"])) {
     return fail(c, 403, "NOTIFICATION_PERMISSION_DENIED", "You do not have permission to view notification preferences.");
   }
   const rows = await c.env.DB.prepare("SELECT * FROM notification_preferences WHERE user_id = ? ORDER BY module_key").bind(c.get("currentUser").id).all<Row>();
   return ok(c, { preferences: rows.results });
-});
+}));
 
-notificationRoutes.patch("/preferences", async (c) => {
+notificationRoutes.patch("/preferences", (c) => withNotificationRuntimeError(c, "preferences-update", async () => {
   const user = c.get("currentUser");
   if (!hasAny(user, ["notifications.preferences.update", "notifications.manage", "self_service.notifications.update"])) {
     return fail(c, 403, "NOTIFICATION_PERMISSION_DENIED", "You do not have permission to update notification preferences.");
@@ -318,4 +352,4 @@ notificationRoutes.patch("/preferences", async (c) => {
     userAgent: c.req.header("User-Agent")
   });
   return ok(c, { updated: true });
-});
+}));

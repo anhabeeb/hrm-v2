@@ -7,8 +7,11 @@ import { Input } from "../ui/input";
 import { CommandPalette, LoadingSkeleton } from "../ui/page-shell";
 import { StatusBadge } from "../ui/status-badge";
 import { useAuth } from "../../hooks/useAuth";
-import { api, type GlobalSearchGroup, type GlobalSearchItem } from "../../lib/api";
+import { api, type GlobalSearchGroup, type GlobalSearchItem, type GlobalSearchWarning } from "../../lib/api";
 import { cn } from "../../lib/utils";
+
+const SEARCH_UNAVAILABLE_MESSAGE = "Search is temporarily unavailable. Please try again.";
+const SEARCH_RETRY_DELAY_MS = 10000;
 
 function flattenGroups(groups: GlobalSearchGroup[]) {
   return groups.flatMap((group) => group.items.map((item) => ({ ...item, group: group.module })));
@@ -22,12 +25,16 @@ export function GlobalSearch() {
   const { token } = useAuth();
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const lastFailedQueryRef = useRef<string | null>(null);
+  const retryBlockedUntilRef = useRef(0);
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<GlobalSearchGroup[]>([]);
+  const [warnings, setWarnings] = useState<GlobalSearchWarning[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [retryKey, setRetryKey] = useState(0);
   const items = useMemo(() => flattenGroups(groups), [groups]);
 
   useEffect(() => {
@@ -62,29 +69,44 @@ export function GlobalSearch() {
   useEffect(() => {
     if (!open || !token) return;
     let cancelled = false;
+    const trimmedQuery = query.trim();
     const handle = window.setTimeout(async () => {
+      if (lastFailedQueryRef.current === trimmedQuery && Date.now() < retryBlockedUntilRef.current) {
+        setLoading(false);
+        setGroups([]);
+        setWarnings([]);
+        setError(SEARCH_UNAVAILABLE_MESSAGE);
+        return;
+      }
       setLoading(true);
       setError(null);
+      setWarnings([]);
       try {
         const result = await api.globalSearch(token, { q: query, limit: 8 });
         if (!cancelled) {
-          setGroups(result.groups);
+          setGroups(result.groups ?? []);
+          setWarnings(result.warnings ?? []);
           setActiveIndex(0);
+          lastFailedQueryRef.current = null;
+          retryBlockedUntilRef.current = 0;
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setGroups([]);
-          setError(err instanceof Error ? err.message : "Search is unavailable.");
+          setWarnings([]);
+          setError(SEARCH_UNAVAILABLE_MESSAGE);
+          lastFailedQueryRef.current = trimmedQuery;
+          retryBlockedUntilRef.current = Date.now() + SEARCH_RETRY_DELAY_MS;
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
-    }, query.trim() ? 220 : 0);
+    }, trimmedQuery ? 220 : 0);
     return () => {
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [open, query, token]);
+  }, [open, query, retryKey, token]);
 
   function openResult(item: GlobalSearchItem) {
     if (!isInternalRoute(item.route)) return;
@@ -135,7 +157,31 @@ export function GlobalSearch() {
               />
             </div>
             {loading ? <LoadingSkeleton rows={3} /> : null}
-            {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+            {error ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <div className="flex items-center justify-between gap-3">
+                  <span>{error}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 shrink-0 text-amber-900 hover:bg-amber-100"
+                    onClick={() => {
+                      lastFailedQueryRef.current = null;
+                      retryBlockedUntilRef.current = 0;
+                      setRetryKey((value) => value + 1);
+                    }}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            {!loading && !error && warnings.length ? (
+              <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Some search areas could not be loaded. Available results are shown below.
+              </div>
+            ) : null}
             {!loading && !error ? (
               groups.length ? (
                 <div className="max-h-[28rem] overflow-y-auto pr-1">

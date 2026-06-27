@@ -536,6 +536,12 @@ npx wrangler d1 execute hrm-v2 --local --config worker/wrangler.toml --file data
 
 Confirm bootstrap, login, protected app shell, Users & Access, Organization Settings, Employee 360, Document Tracking, Leave, Attendance, Roster, Payroll, Assets & Uniforms, Employee Notes, Audit, Report Center, Self-Service, health, and realtime status routes remain available. Confirm sensitive document metadata is masked unless `documents.sensitive.view` is present and that permission checks are enforced by the Worker, not only by frontend visibility.
 
+## Global Search and Notification Runtime Troubleshooting
+
+If `/api/v1/search/global` or `/api/v1/notifications` returns an unavailable response in production, first run the remote schema readiness verifier and inspect Worker logs with Wrangler tail. Search logs include the endpoint, failed search group, query length, and safe error message. Notification logs include the endpoint area and safe error message. Check the failing table or column from the log, then patch code or generate a targeted remote repair from the current audit.
+
+Do not rerun remote schema repair blindly. Use the audit/generate/review/apply/verify flow in `database/REMOTE_D1_REPAIR_README.md`, and only apply generated SQL after confirming it matches the current remote D1 schema.
+
 ## Known Limitations
 
 Automatic migration/import from the old HRM app is not enabled. Employee self-upload for documents, OCR/AI extraction, e-signature workflows, email/SMS/WhatsApp automation, statutory payroll submission, bank payment generation, biometric/device live sync, and a dedicated mobile app are prepared as future phases.

@@ -10,6 +10,9 @@ import { useAuth } from "../../hooks/useAuth";
 import { api, type HrmNotification } from "../../lib/api";
 import { cn } from "../../lib/utils";
 
+const NOTIFICATIONS_UNAVAILABLE_MESSAGE = "Notifications unavailable. Try again shortly.";
+const NOTIFICATIONS_UPDATE_ERROR_MESSAGE = "Could not update notifications. Please try again.";
+
 function isInternalRoute(route: string | null | undefined) {
   return Boolean(route && route.startsWith("/") && !route.startsWith("//") && !/^\/?https?:/i.test(route));
 }
@@ -43,9 +46,10 @@ export function NotificationBell() {
       const result = await api.listNotifications(token, { limit: 8 });
       setNotifications(result.notifications);
       setUnreadCount(result.unread_count);
-    } catch (err) {
+    } catch {
       setNotifications([]);
-      setError(err instanceof Error ? err.message : "Notifications are unavailable.");
+      setUnreadCount(0);
+      setError(NOTIFICATIONS_UNAVAILABLE_MESSAGE);
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -81,8 +85,8 @@ export function NotificationBell() {
       await api.markAllNotificationsRead(token);
       setNotifications((rows) => rows.map((row) => ({ ...row, is_read: true, read_at: row.read_at ?? new Date().toISOString() })));
       setUnreadCount(0);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not mark notifications as read.");
+    } catch {
+      setError(NOTIFICATIONS_UPDATE_ERROR_MESSAGE);
     }
   }
 
@@ -112,7 +116,22 @@ export function NotificationBell() {
           </div>
           <div className="max-h-[28rem] overflow-y-auto p-2">
             {loading ? <LoadingSkeleton rows={3} /> : null}
-            {error ? <div className="m-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+            {error ? (
+              <div className="m-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <div className="flex items-center justify-between gap-3">
+                  <span>{error}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 shrink-0 text-amber-900 hover:bg-amber-100"
+                    onClick={() => void loadNotifications(true)}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             {!loading && !error && notifications.length === 0 ? (
               <EmptyState title="No notifications" description="New approval, document, payroll, and system updates will appear here." />
             ) : null}

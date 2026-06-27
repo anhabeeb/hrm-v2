@@ -230,9 +230,15 @@ export interface GlobalSearchGroup {
   items: GlobalSearchItem[];
 }
 
+export interface GlobalSearchWarning {
+  module: string;
+  message: string;
+}
+
 export interface GlobalSearchResponse {
   query: string;
   groups: GlobalSearchGroup[];
+  warnings?: GlobalSearchWarning[];
   min_query_length: number;
   message?: string;
 }
