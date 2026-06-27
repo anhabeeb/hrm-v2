@@ -50,6 +50,10 @@ function pageName(relativePath) {
   return path.basename(relativePath);
 }
 
+function isAllowedNarrowContext(line) {
+  return /fixed|inset-0|modal|Modal|Dialog|drawer|Drawer|popover|Popover|tooltip|Tooltip|shadow-xl|max-h-\[|auth|login|SetupPage|setup/i.test(line);
+}
+
 const pkg = JSON.parse(read("package.json"));
 const scripts = pkg.scripts ?? {};
 [
@@ -102,8 +106,12 @@ const pageShell = "frontend/src/components/ui/page-shell.tsx";
   "whitespace-nowrap",
   "rounded-lg border bg-white",
   "shadow-panel",
-  "max-w-[1480px]"
+  "box-border w-full max-w-none min-w-0"
 ].forEach((marker) => has(pageShell, marker, `shared page layout marker missing: ${marker}`));
+
+has(pageShell, /PageShell[\s\S]*box-border w-full max-w-none min-w-0/, "PageShell default must be full available width");
+has(pageShell, /PageContent[\s\S]*box-border w-full max-w-none min-w-0/, "PageContent default must be full available width");
+hasNo(pageShell, /max-w-\[1480px\]|mx-auto w-full max-w|max-w-3xl/, "shared PageShell/PageHeader must not independently narrow page width");
 
 [
   "ModuleNavigationBar",
@@ -180,6 +188,16 @@ for (const file of pageFiles) {
   if (/setTab\([^)]*\).*border-b-2|border-b-2[\s\S]{0,160}setTab\(/.test(content)) {
     failures.push(`${file}: one-off tab button classes detected; use shared tab components`);
   }
+
+  const lines = content.split(/\r?\n/);
+  lines.forEach((line, index) => {
+    if (/(max-w-(?:3xl|4xl|5xl|6xl|7xl|screen-xl)|container\s+mx-auto|\bmx-auto\b|\bw-fit\b|\binline-block\b)/.test(line) && !isAllowedNarrowContext(line)) {
+      failures.push(`${file}:${index + 1}: page-level narrow width wrapper detected; use the shared full-width PageShell defaults`);
+    }
+    if (/<PageShell\b[^>]*className=["'][^"']*(?:max-w-|mx-auto|container|w-fit|inline-block)/.test(line)) {
+      failures.push(`${file}:${index + 1}: PageShell must not be narrowed with page-specific width classes`);
+    }
+  });
 }
 
 const shellCoverage = shellUsers.length / pageFiles.length;

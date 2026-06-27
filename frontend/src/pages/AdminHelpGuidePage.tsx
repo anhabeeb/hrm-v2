@@ -148,7 +148,7 @@ export function AdminHelpGuidePage() {
   }
 
   return (
-    <PageShell constrained={false} className="max-w-none">
+    <PageShell constrained={false}>
       <PageHeader
         title="Advanced HRM Configuration & Operations Guide"
         description="Super Admin guide for configuring and operating HRM v2 across people, documents, leave, attendance, roster, payroll, approvals, reports, and production controls."

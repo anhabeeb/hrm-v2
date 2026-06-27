@@ -61,8 +61,8 @@ export function ModuleToggleHeader({
               <h2 className="text-sm font-semibold text-slate-950">{moduleName} module</h2>
               <Badge tone={enabled ? "success" : "neutral"}>{enabled ? "Enabled" : "Disabled"}</Badge>
             </div>
-            {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
-            {!enabled && disabledDescription ? <p className="mt-1 max-w-3xl text-sm leading-6 text-amber-700">{disabledDescription}</p> : null}
+            {description ? <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p> : null}
+            {!enabled && disabledDescription ? <p className="mt-1 text-sm leading-6 text-amber-700">{disabledDescription}</p> : null}
             {!permissionCanUpdate ? (
               <p className="mt-2 inline-flex items-center gap-2 text-xs font-medium text-slate-600">
                 <Lock className="h-3.5 w-3.5" />

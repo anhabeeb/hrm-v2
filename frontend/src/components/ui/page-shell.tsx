@@ -10,7 +10,7 @@ interface PageShellProps {
 
 export function PageShell({ children, className, constrained = true }: PageShellProps) {
   return (
-    <div className={cn("min-w-0 space-y-5", constrained && "mx-auto w-full max-w-[1480px]", className)}>
+    <div className={cn("box-border w-full max-w-none min-w-0 space-y-5", constrained && "w-full max-w-none", className)}>
       {children}
     </div>
   );
@@ -20,7 +20,7 @@ export const PageLayout = PageShell;
 export const ModulePageLayout = PageShell;
 
 export function PageContent({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("min-w-0 space-y-5", className)}>{children}</div>;
+  return <div className={cn("box-border w-full max-w-none min-w-0 space-y-5", className)}>{children}</div>;
 }
 
 export const AppContentContainer = PageContent;
@@ -77,7 +77,7 @@ export function PageHeader({
           </div>
         ) : null}
         <h1 className="truncate text-xl font-semibold tracking-tight text-slate-950">{title}</h1>
-        {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
+        {description ? <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p> : null}
         {moduleStatus ? <div className="mt-2 text-sm text-muted-foreground">{moduleStatus}</div> : null}
         </div>
       </div>
