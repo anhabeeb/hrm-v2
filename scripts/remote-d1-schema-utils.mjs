@@ -115,6 +115,15 @@ export const codeRequiredColumns = {
     expiry_required: "expiry_required INTEGER NOT NULL DEFAULT 0 CHECK (expiry_required IN (0, 1))",
     issue_date_required: "issue_date_required INTEGER NOT NULL DEFAULT 0 CHECK (issue_date_required IN (0, 1))",
     document_number_required: "document_number_required INTEGER NOT NULL DEFAULT 0 CHECK (document_number_required IN (0, 1))"
+  },
+  payroll_settings: {
+    payslips_enabled: "payslips_enabled INTEGER NOT NULL DEFAULT 1 CHECK (payslips_enabled IN (0, 1))",
+    payment_register_enabled: "payment_register_enabled INTEGER NOT NULL DEFAULT 1 CHECK (payment_register_enabled IN (0, 1))",
+    payment_methods_enabled: "payment_methods_enabled INTEGER NOT NULL DEFAULT 1 CHECK (payment_methods_enabled IN (0, 1))",
+    payment_institutions_enabled: "payment_institutions_enabled INTEGER NOT NULL DEFAULT 1 CHECK (payment_institutions_enabled IN (0, 1))",
+    employee_advances_enabled: "employee_advances_enabled INTEGER NOT NULL DEFAULT 1 CHECK (employee_advances_enabled IN (0, 1))",
+    payroll_adjustments_enabled: "payroll_adjustments_enabled INTEGER NOT NULL DEFAULT 1 CHECK (payroll_adjustments_enabled IN (0, 1))",
+    payroll_reports_enabled: "payroll_reports_enabled INTEGER NOT NULL DEFAULT 1 CHECK (payroll_reports_enabled IN (0, 1))"
   }
 };
 

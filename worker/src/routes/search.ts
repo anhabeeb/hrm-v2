@@ -102,6 +102,17 @@ async function isSearchableModuleEnabled(db: Env["DB"], moduleKey: string, user:
   return hasAny(user, ["settings.view", "settings.manage", "admin.modules.view", "admin.settings_hub.view"]);
 }
 
+async function isPayrollSubmoduleEnabled(db: Env["DB"], key: string) {
+  try {
+    const row = await db.prepare(`SELECT module_enabled, ${key} AS submodule_enabled FROM payroll_settings WHERE id = 'payroll_settings_default'`).first<{ module_enabled: number; submodule_enabled: number }>();
+    if (!row) return true;
+    return Number(row.module_enabled ?? 1) === 1 && Number(row.submodule_enabled ?? 1) === 1;
+  } catch (error) {
+    logSearchRuntimeError({ module: `payroll:${key}`, error });
+    return false;
+  }
+}
+
 export function getSearchableModuleRegistry(): SearchRegistryEntry[] {
   return [
     { module: "Employees", moduleKey: "employees", permissions: ["employees.view"], route: "/employees", type: "employee" },
@@ -328,7 +339,7 @@ export async function searchPayrollForUser(db: Env["DB"], user: AuthUser, q: str
   );
   const items: GlobalSearchItem[] = runRows.results.map((row) => ({ id: String(row.id), type: "payroll", module: "Payroll", title: `Payroll run #${row.run_no}`, subtitle: `${row.period_month}/${row.period_year}`, status: row.status ? String(row.status) : null, route: `/payroll/runs/${row.id}`, icon_key: "payroll" }));
 
-  if (hasAny(user, ["payroll.payslips.view", "payroll.results.view", "payroll.view"])) {
+  if ((await isPayrollSubmoduleEnabled(db, "payslips_enabled")) && hasAny(user, ["payroll.payslips.view", "payroll.results.view", "payroll.view"])) {
     const payslips = await employeeScopedSearch(
       db,
       user,

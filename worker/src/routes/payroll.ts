@@ -30,6 +30,17 @@ type Prompt10RunStatus = Prompt10PeriodStatus;
 type PayrollRunLifecycleStatus = Prompt11PayrollStatus;
 type Prompt10ResultStatus = "DRAFT" | "READY_FOR_REVIEW" | "APPROVED_PLACEHOLDER" | "FINALIZED_PLACEHOLDER" | "HELD" | "EXCLUDED" | "CANCELLED";
 type PayrollResultLifecycleStatus = Prompt10ResultStatus | "SUBMITTED_FOR_APPROVAL" | "APPROVED" | "FINALIZED";
+type PayrollSubmoduleKey =
+  | "payslips_enabled"
+  | "payment_register_enabled"
+  | "payment_methods_enabled"
+  | "payment_institutions_enabled"
+  | "pension_enabled"
+  | "bank_loan_deductions_enabled"
+  | "employee_advances_enabled"
+  | "custom_deductions_enabled"
+  | "payroll_adjustments_enabled"
+  | "payroll_reports_enabled";
 
 const PROMPT10_PERIOD_STATUSES = new Set(["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"]);
 const PROMPT10_RUN_STATUSES = new Set(["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"]);
@@ -59,12 +70,52 @@ const DEDUCTION_STATUSES = new Set(["ACTIVE", "INACTIVE", "APPLIED", "CANCELLED"
 const ADJUSTMENT_TYPES = new Set(["EARNING", "DEDUCTION"]);
 const ADJUSTMENT_STATUSES = new Set(["DRAFT", "APPROVED_PLACEHOLDER", "APPROVED", "APPLIED", "CANCELLED"]);
 const RUN_EMPLOYEE_STATUSES = new Set([...PROMPT11_RESULT_STATUSES, ...LEGACY_RESULT_STATUSES]);
+const PAYROLL_SUBMODULE_LABELS: Record<PayrollSubmoduleKey, string> = {
+  payslips_enabled: "Payslips",
+  payment_register_enabled: "Payment Register",
+  payment_methods_enabled: "Employee Payment Methods",
+  payment_institutions_enabled: "Bank/payment institution setup",
+  pension_enabled: "Pension",
+  bank_loan_deductions_enabled: "Bank Loans",
+  employee_advances_enabled: "Employee Advances",
+  custom_deductions_enabled: "Custom Deductions",
+  payroll_adjustments_enabled: "Payroll Adjustments",
+  payroll_reports_enabled: "Payroll Reports"
+};
 
 export const payrollRoutes = new Hono<AppBindings>();
 export const employeePayrollRoutes = new Hono<AppBindings>();
 
 payrollRoutes.use("*", requireAuth);
 employeePayrollRoutes.use("*", requireAuth);
+
+payrollRoutes.use("*", async (c, next) => {
+  if (c.req.path.endsWith("/payroll/settings")) {
+    await next();
+    return;
+  }
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return disabled;
+  await next();
+});
+
+employeePayrollRoutes.use("*", async (c, next) => {
+  const disabled = await requirePayrollModuleEnabled(c);
+  if (disabled) return disabled;
+  await next();
+});
+
+payrollRoutes.use("/advances", requirePayrollSubmoduleMiddleware("employee_advances_enabled"));
+payrollRoutes.use("/advances/*", requirePayrollSubmoduleMiddleware("employee_advances_enabled"));
+payrollRoutes.use("/adjustments", requirePayrollSubmoduleMiddleware("payroll_adjustments_enabled"));
+payrollRoutes.use("/adjustments/*", requirePayrollSubmoduleMiddleware("payroll_adjustments_enabled"));
+payrollRoutes.use("/payslips", requirePayrollSubmoduleMiddleware("payslips_enabled"));
+payrollRoutes.use("/payslips/*", requirePayrollSubmoduleMiddleware("payslips_enabled"));
+payrollRoutes.use("/payment-registers", requirePayrollSubmoduleMiddleware("payment_register_enabled"));
+payrollRoutes.use("/payment-register/*", requirePayrollSubmoduleMiddleware("payment_register_enabled"));
+payrollRoutes.use("/reports/*", requirePayrollSubmoduleMiddleware("payroll_reports_enabled"));
+employeePayrollRoutes.use("/:employeeId/payroll/advances", requirePayrollSubmoduleMiddleware("employee_advances_enabled"));
+employeePayrollRoutes.use("/:employeeId/payslips", requirePayrollSubmoduleMiddleware("payslips_enabled"));
 
 function routeParam(c: Context<AppBindings>, name: string) {
   return c.req.param(name) ?? "";
@@ -317,10 +368,32 @@ async function publishPayroll(c: Context<AppBindings>, event: Parameters<typeof 
 async function getSettings(c: Context<AppBindings>) {
   let settings = await c.env.DB.prepare("SELECT * FROM payroll_settings WHERE id = 'payroll_settings_default'").first<Record<string, unknown>>();
   if (!settings) {
-    await c.env.DB.prepare("INSERT INTO payroll_settings (id, default_currency, default_daily_rate_mode, allow_negative_net_salary, require_approval_before_paid, include_attendance_deductions, include_leave_deductions, include_advance_deductions, include_roster_scheduled_days, default_salary_payment_day) VALUES ('payroll_settings_default', 'MVR', 'FIXED_30_DAYS', 0, 1, 1, 1, 1, 1, 28)").run();
+    await c.env.DB.prepare("INSERT INTO payroll_settings (id, default_currency, default_daily_rate_mode, allow_negative_net_salary, require_approval_before_paid, include_attendance_deductions, include_leave_deductions, include_advance_deductions, include_roster_scheduled_days, default_salary_payment_day, payslips_enabled, payment_register_enabled, payment_methods_enabled, payment_institutions_enabled, employee_advances_enabled, payroll_adjustments_enabled, payroll_reports_enabled) VALUES ('payroll_settings_default', 'MVR', 'FIXED_30_DAYS', 0, 1, 1, 1, 1, 1, 28, 1, 1, 1, 1, 1, 1, 1)").run();
     settings = await c.env.DB.prepare("SELECT * FROM payroll_settings WHERE id = 'payroll_settings_default'").first<Record<string, unknown>>();
   }
   return settings!;
+}
+
+function payrollSubmoduleEnabled(settings: Record<string, unknown>, key: PayrollSubmoduleKey) {
+  return bool(settings.module_enabled, true) && bool(settings[key], true);
+}
+
+async function requirePayrollSubmoduleEnabled(c: Context<AppBindings>, key: PayrollSubmoduleKey) {
+  const settings = await getSettings(c);
+  if (Number(settings.module_enabled ?? 1) !== 1) return fail(c, 503, "PAYROLL_MODULE_DISABLED", "Payroll module is disabled.");
+  if (!payrollSubmoduleEnabled(settings, key)) {
+    const label = PAYROLL_SUBMODULE_LABELS[key];
+    return fail(c, 403, "PAYROLL_SUBMODULE_DISABLED", `${label} payroll submodule is disabled.`);
+  }
+  return null;
+}
+
+function requirePayrollSubmoduleMiddleware(key: PayrollSubmoduleKey) {
+  return createMiddleware<AppBindings>(async (c, next) => {
+    const disabled = await requirePayrollSubmoduleEnabled(c, key);
+    if (disabled) return disabled;
+    await next();
+  });
 }
 
 async function requirePayrollModuleEnabled(c: Context<AppBindings>) {
@@ -618,11 +691,18 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
        FROM roster_assignments
        WHERE employee_id = ? AND roster_date BETWEEN ? AND ?`
     ).bind(employee.id, startDate, endDate).first<Record<string, unknown>>();
-    const advances = bool(settings.include_advance_deductions, true)
+    const pensionEnabled = payrollSubmoduleEnabled(settings, "pension_enabled");
+    const bankLoansEnabled = payrollSubmoduleEnabled(settings, "bank_loan_deductions_enabled");
+    const customDeductionsEnabled = payrollSubmoduleEnabled(settings, "custom_deductions_enabled");
+    const employeeAdvancesEnabled = payrollSubmoduleEnabled(settings, "employee_advances_enabled");
+    const payrollAdjustmentsEnabled = payrollSubmoduleEnabled(settings, "payroll_adjustments_enabled");
+    const advances = bool(settings.include_advance_deductions, true) && employeeAdvancesEnabled
       ? (await c.env.DB.prepare("SELECT * FROM payroll_advance_payments WHERE employee_id = ? AND payment_date BETWEEN ? AND ? AND status IN ('APPROVED', 'PAID')").bind(employee.id, startDate, endDate).all<Record<string, unknown>>()).results
       : [];
     const deductions = (await c.env.DB.prepare("SELECT * FROM payroll_deductions WHERE employee_id = ? AND status = 'ACTIVE' AND (payroll_period_id IS NULL OR payroll_period_id = ?)").bind(employee.id, period.id).all<Record<string, unknown>>()).results;
-    const adjustments = (await c.env.DB.prepare("SELECT * FROM payroll_adjustments WHERE employee_id = ? AND status IN ('APPROVED_PLACEHOLDER', 'APPROVED') AND (payroll_period_id IS NULL OR payroll_period_id = ?)").bind(employee.id, period.id).all<Record<string, unknown>>()).results;
+    const adjustments = payrollAdjustmentsEnabled
+      ? (await c.env.DB.prepare("SELECT * FROM payroll_adjustments WHERE employee_id = ? AND status IN ('APPROVED_PLACEHOLDER', 'APPROVED') AND (payroll_period_id IS NULL OR payroll_period_id = ?)").bind(employee.id, period.id).all<Record<string, unknown>>()).results
+      : [];
 
     const absentDays = Number(attendance?.absent_days ?? 0);
     const lateDays = Number(attendance?.late_days ?? 0);
@@ -637,11 +717,11 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
     const adjustmentEarnings = adjustments.filter((row) => row.adjustment_type === "EARNING").reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
     const adjustmentDeductions = adjustments.filter((row) => row.adjustment_type === "DEDUCTION").reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
     const totalEarnings = excluded ? 0 : Number((basicSalary + adjustmentEarnings).toFixed(2));
-    const pensionImpact = excluded ? null : await calculatePayrollPensionContribution(c, employee, period, basicSalary, settings);
+    const pensionImpact = excluded || !pensionEnabled ? null : await calculatePayrollPensionContribution(c, employee, period, basicSalary, settings);
     const pensionEmployeeDeduction = Number(pensionImpact?.employee_contribution_amount ?? 0);
-    const bankLoanImpact = excluded ? { loans: [], total: 0, warnings: [] as string[], insufficient_salary_mode: readString(settings.bank_loan_insufficient_salary_mode) || "REQUIRE_OVERRIDE", requires_resolution: false } : await getActiveApprovedBankLoansForPayroll(c, String(employee.id), period, totalEarnings - pensionEmployeeDeduction, settings);
+    const bankLoanImpact = excluded || !bankLoansEnabled ? { loans: [], total: 0, warnings: [] as string[], insufficient_salary_mode: readString(settings.bank_loan_insufficient_salary_mode) || "REQUIRE_OVERRIDE", requires_resolution: false } : await getActiveApprovedBankLoansForPayroll(c, String(employee.id), period, totalEarnings - pensionEmployeeDeduction, settings);
     const bankLoanDeductions = Number(bankLoanImpact.total ?? 0);
-    const customDeductionImpact = excluded ? { deductions: [], applications: [], total: 0, warnings: [] as string[], requires_resolution: false } : await applyCustomDeductionsToPayroll(c, String(employee.id), period, basicSalary, totalEarnings, totalEarnings - pensionEmployeeDeduction - bankLoanDeductions, settings);
+    const customDeductionImpact = excluded || !customDeductionsEnabled ? { deductions: [], applications: [], total: 0, warnings: [] as string[], requires_resolution: false } : await applyCustomDeductionsToPayroll(c, String(employee.id), period, basicSalary, totalEarnings, totalEarnings - pensionEmployeeDeduction - bankLoanDeductions, settings);
     const customDeductions = Number(customDeductionImpact.total ?? 0);
     const totalDeductions = excluded ? 0 : Number((pensionEmployeeDeduction + bankLoanDeductions + customDeductions + advanceDeductions + attendanceDeductions + leaveDeductions + fixedDeductions + adjustmentDeductions).toFixed(2));
     let netSalary = totalEarnings - totalDeductions;
@@ -660,6 +740,13 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
       attendance,
       leave,
       roster,
+      payroll_submodules: {
+        pension_enabled: pensionEnabled,
+        bank_loan_deductions_enabled: bankLoansEnabled,
+        custom_deductions_enabled: customDeductionsEnabled,
+        employee_advances_enabled: employeeAdvancesEnabled,
+        payroll_adjustments_enabled: payrollAdjustmentsEnabled
+      },
       pension: pensionImpact,
       bank_loans: bankLoanImpact.loans,
       bank_loan_deduction: bankLoanDeductions,
@@ -736,9 +823,9 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
     if (leaveDeductions > 0) await insertLine(c, runEmployeeId, leaveComponent?.id ?? null, "DEDUCTION", "LEAVE", "Unpaid leave deduction", leaveDeductions, "LEAVE", null, null, leave);
     for (const deduction of deductions) await insertLine(c, runEmployeeId, deduction.payroll_component_id ? String(deduction.payroll_component_id) : otherComponent?.id ?? null, "DEDUCTION", "OTHER", String(deduction.reason), Number(deduction.amount), "MANUAL", "payroll_deduction", String(deduction.id), deduction);
     for (const adjustment of adjustments) await insertLine(c, runEmployeeId, null, adjustment.adjustment_type as ComponentType, "OTHER", String(adjustment.reason), Number(adjustment.amount), "MANUAL", "payroll_adjustment", String(adjustment.id), adjustment);
-    await recordPayrollPensionContribution(c, period, run, runEmployeeId, String(employee.id), pensionImpact);
-    await recordBankLoanPayrollPayments(c, period, run, runEmployeeId, String(employee.id), bankLoanImpact.loans);
-    await recordCustomDeductionPayrollApplications(c, period, run, runEmployeeId, String(employee.id), customDeductionApplications);
+    if (pensionEnabled) await recordPayrollPensionContribution(c, period, run, runEmployeeId, String(employee.id), pensionImpact);
+    if (bankLoansEnabled) await recordBankLoanPayrollPayments(c, period, run, runEmployeeId, String(employee.id), bankLoanImpact.loans);
+    if (customDeductionsEnabled) await recordCustomDeductionPayrollApplications(c, period, run, runEmployeeId, String(employee.id), customDeductionApplications);
   }
   await c.env.DB.prepare("UPDATE payroll_runs SET status = 'READY_FOR_REVIEW', updated_at = ? WHERE id = ?").bind(isoNow(), runId).run();
   await c.env.DB.prepare("UPDATE payroll_periods SET status = 'READY_FOR_REVIEW', updated_at = ? WHERE id = ?").bind(isoNow(), period.id).run();
@@ -956,6 +1043,8 @@ function payslipNumber(run: Record<string, unknown>, result: Record<string, unkn
 }
 
 async function getPayslipSnapshotData(c: Context<AppBindings>, resultId: string) {
+  const settings = await getSettings(c);
+  const paymentMethodsEnabled = payrollSubmoduleEnabled(settings, "payment_methods_enabled");
   const result = await c.env.DB
     .prepare(
       `SELECT pre.*, pr.run_no, pr.status AS run_status, pr.finalized_at, pp.period_month, pp.period_year, pp.start_date, pp.end_date, pp.salary_payment_date,
@@ -976,6 +1065,9 @@ async function getPayslipSnapshotData(c: Context<AppBindings>, resultId: string)
     .bind(resultId)
     .all<Record<string, unknown>>()).results;
   const calculation = parseJsonRecord(result.calculation_json);
+  const paymentMethodSnapshot = paymentMethodsEnabled
+    ? await getActivePaymentMethodSnapshot(c.env.DB, String(result.employee_id), Number(result.net_salary ?? 0))
+    : { primary: null, split: [], source: "payment_methods_disabled", warning: "Payment methods submodule is disabled." };
   return {
     company: { name: "Cafe Asiana", footer: "Confidential payroll document" },
     employee: {
@@ -1009,7 +1101,7 @@ async function getPayslipSnapshotData(c: Context<AppBindings>, resultId: string)
       missed_punch_days: result.missed_punch_days
     },
     lines,
-    payment_method_snapshot: await getActivePaymentMethodSnapshot(c.env.DB, String(result.employee_id), Number(result.net_salary ?? 0)),
+    payment_method_snapshot: paymentMethodSnapshot,
     bank_loan_lines: lines.filter((line) => line.source === "BANK_LOAN" || line.category === "BANK_LOAN" || line.source_entity_type === "employee_bank_loan"),
     bank_loan_warnings: calculation.bank_loan_warnings ?? [],
     bank_loan_requires_resolution: calculation.bank_loan_requires_resolution ?? false,
@@ -1061,7 +1153,7 @@ async function generatePayslipForEmployeeResult(c: Context<AppBindings>, result:
 }
 
 async function generatePayslipsForPayrollRun(c: Context<AppBindings>, runId: string) {
-  const disabled = await requirePayrollModuleEnabled(c);
+  const disabled = await requirePayrollSubmoduleEnabled(c, "payslips_enabled");
   if (disabled) return { response: disabled };
   const { run, response } = await ensureRunAccess(c, runId, "manage");
   if (!run) return { response };
@@ -1081,6 +1173,8 @@ async function generatePayslipsForPayrollRun(c: Context<AppBindings>, runId: str
 }
 
 async function canViewPayslipForEmployee(c: Context<AppBindings>, employeeId: string, selfService = false) {
+  const disabled = await requirePayrollSubmoduleEnabled(c, "payslips_enabled");
+  if (disabled) return false;
   if (selfService) {
     const user = c.get("currentUser");
     if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return false;
@@ -1134,7 +1228,7 @@ function safePaymentRegister(row: Record<string, unknown>, canSensitive: boolean
 }
 
 async function preparePaymentRegisterForPayrollRun(c: Context<AppBindings>, runId: string) {
-  const disabled = await requirePayrollModuleEnabled(c);
+  const disabled = await requirePayrollSubmoduleEnabled(c, "payment_register_enabled");
   if (disabled) return { response: disabled };
   const { run, response } = await ensureRunAccess(c, runId, "manage");
   if (!run) return { response };
@@ -1185,6 +1279,8 @@ async function preparePaymentRegisterForPayrollRun(c: Context<AppBindings>, runI
 }
 
 async function listPaymentRegisters(c: Context<AppBindings>, runId?: string | null) {
+  const disabled = await requirePayrollSubmoduleEnabled(c, "payment_register_enabled");
+  if (disabled) return [];
   const conditions = ["1 = 1"];
   const params: BindValue[] = [];
   if (runId) { conditions.push("ppr.payroll_run_id = ?"); params.push(runId); }
@@ -1194,7 +1290,7 @@ async function listPaymentRegisters(c: Context<AppBindings>, runId?: string | nu
 }
 
 async function confirmManualPayrollPayment(c: Context<AppBindings>, paymentId: string, reference: string, note: string) {
-  const disabled = await requirePayrollModuleEnabled(c);
+  const disabled = await requirePayrollSubmoduleEnabled(c, "payment_register_enabled");
   if (disabled) return { response: disabled };
   if (!reference || !note) return { response: fail(c, 400, "REASON_REQUIRED", "Payment confirmation reference and note are required.") };
   const payment = await c.env.DB.prepare("SELECT * FROM payroll_payment_register WHERE id = ?").bind(paymentId).first<Record<string, unknown>>();
@@ -1275,9 +1371,9 @@ async function componentAction(c: Context<AppBindings>, active: boolean) {
 payrollRoutes.post("/components/:id/enable", requireAnyPermission(["payroll.components.manage", "payroll.settings.manage"]), (c) => componentAction(c, true));
 payrollRoutes.post("/components/:id/disable", requireAnyPermission(["payroll.components.manage", "payroll.settings.manage"]), (c) => componentAction(c, false));
 
-payrollRoutes.get("/settings", requireAnyPermission(["payroll.settings.view", "payroll.custom_deduction_settings.view", "payroll.custom_deduction_settings.manage", "payroll.view"]), async (c) => ok(c, { settings: await getSettings(c) }));
+payrollRoutes.get("/settings", requireAnyPermission(["payroll.settings.view", "payroll.submodules.view", "payroll.submodules.manage", "payroll.custom_deduction_settings.view", "payroll.custom_deduction_settings.manage", "payroll.view"]), async (c) => ok(c, { settings: await getSettings(c) }));
 
-payrollRoutes.patch("/settings", requireAnyPermission(["payroll.settings.manage", "payroll.custom_deduction_settings.update", "payroll.custom_deduction_settings.manage"]), async (c) => {
+payrollRoutes.patch("/settings", requireAnyPermission(["payroll.settings.manage", "payroll.submodules.update", "payroll.submodules.manage", "payroll.custom_deduction_settings.update", "payroll.custom_deduction_settings.manage"]), async (c) => {
   const old = await getSettings(c);
   const body = await readJsonBody(c.req.raw);
   const mode = readString(body.default_daily_rate_mode ?? old.default_daily_rate_mode).toUpperCase();
@@ -1295,6 +1391,8 @@ payrollRoutes.patch("/settings", requireAnyPermission(["payroll.settings.manage"
         default_currency = ?, default_daily_rate_mode = ?, allow_negative_net_salary = ?, require_approval_before_paid = ?,
         include_attendance_deductions = ?, include_leave_deductions = ?, include_advance_deductions = ?, include_roster_scheduled_days = ?,
         default_salary_payment_day = ?,
+        payslips_enabled = ?, payment_register_enabled = ?, payment_methods_enabled = ?, payment_institutions_enabled = ?,
+        employee_advances_enabled = ?, payroll_adjustments_enabled = ?, payroll_reports_enabled = ?,
         bank_loan_deductions_enabled = ?, allow_multiple_bank_loans_per_employee = ?, require_loan_approval_before_payroll_deduction = ?,
         loan_deduction_priority = ?, allow_partial_loan_deduction = ?, block_payroll_if_loan_exceeds_net_salary = ?,
         show_loan_details_in_self_service = ?, show_loan_details_on_payslip = ?,
@@ -1331,6 +1429,13 @@ payrollRoutes.patch("/settings", requireAnyPermission(["payroll.settings.manage"
       bool(body.include_advance_deductions, Boolean(old.include_advance_deductions)) ? 1 : 0,
       bool(body.include_roster_scheduled_days, Boolean(old.include_roster_scheduled_days)) ? 1 : 0,
       num(body.default_salary_payment_day, old.default_salary_payment_day == null ? null : Number(old.default_salary_payment_day)),
+      bool(body.payslips_enabled, Boolean(old.payslips_enabled ?? true)) ? 1 : 0,
+      bool(body.payment_register_enabled, Boolean(old.payment_register_enabled ?? true)) ? 1 : 0,
+      bool(body.payment_methods_enabled, Boolean(old.payment_methods_enabled ?? true)) ? 1 : 0,
+      bool(body.payment_institutions_enabled, Boolean(old.payment_institutions_enabled ?? true)) ? 1 : 0,
+      bool(body.employee_advances_enabled, Boolean(old.employee_advances_enabled ?? true)) ? 1 : 0,
+      bool(body.payroll_adjustments_enabled, Boolean(old.payroll_adjustments_enabled ?? true)) ? 1 : 0,
+      bool(body.payroll_reports_enabled, Boolean(old.payroll_reports_enabled ?? true)) ? 1 : 0,
       bool(body.bank_loan_deductions_enabled, Boolean(old.bank_loan_deductions_enabled ?? true)) ? 1 : 0,
       bool(body.allow_multiple_bank_loans_per_employee, Boolean(old.allow_multiple_bank_loans_per_employee ?? true)) ? 1 : 0,
       bool(body.require_loan_approval_before_payroll_deduction, Boolean(old.require_loan_approval_before_payroll_deduction ?? true)) ? 1 : 0,
@@ -1481,22 +1586,34 @@ employeePayrollRoutes.get("/:employeeId/payroll/advances", requireAnyPermission(
 employeePayrollRoutes.get("/:employeeId/payroll/summary", requireAnyPermission(["employees.payroll.view", "payroll.view"]), async (c) => {
   const employeeId = routeParam(c, "employeeId");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
-  const canSensitivePayment = hasAny(c, ["employees.payment_methods.sensitive.view", "employees.payment_methods.manage", "payroll.payment_methods.manage", "payroll.manage"]);
-  const canViewBankLoans = hasAny(c, ["payroll.bank_loans.view", "payroll.bank_loans.sensitive.view", "payroll.bank_loans.manage"]);
+  const settings = await getSettings(c);
+  const payrollFeatureStatus = {
+    payroll_core_enabled: bool(settings.module_enabled, true),
+    payment_methods_enabled: payrollSubmoduleEnabled(settings, "payment_methods_enabled"),
+    payment_institutions_enabled: payrollSubmoduleEnabled(settings, "payment_institutions_enabled"),
+    bank_loan_deductions_enabled: payrollSubmoduleEnabled(settings, "bank_loan_deductions_enabled"),
+    pension_enabled: payrollSubmoduleEnabled(settings, "pension_enabled"),
+    custom_deductions_enabled: payrollSubmoduleEnabled(settings, "custom_deductions_enabled"),
+    employee_advances_enabled: payrollSubmoduleEnabled(settings, "employee_advances_enabled"),
+    payslips_enabled: payrollSubmoduleEnabled(settings, "payslips_enabled"),
+    payment_register_enabled: payrollSubmoduleEnabled(settings, "payment_register_enabled")
+  };
+  const canSensitivePayment = payrollFeatureStatus.payment_methods_enabled && hasAny(c, ["employees.payment_methods.sensitive.view", "employees.payment_methods.manage", "payroll.payment_methods.manage", "payroll.manage"]);
+  const canViewBankLoans = payrollFeatureStatus.bank_loan_deductions_enabled && hasAny(c, ["payroll.bank_loans.view", "payroll.bank_loans.sensitive.view", "payroll.bank_loans.manage"]);
   const canSensitiveBankLoans = hasAny(c, ["payroll.bank_loans.sensitive.view", "payroll.bank_loans.manage"]);
-  const canViewPension = hasAny(c, ["employees.pension_profiles.view", "employees.pension_profiles.manage", "payroll.pension_contributions.view"]);
+  const canViewPension = payrollFeatureStatus.pension_enabled && hasAny(c, ["employees.pension_profiles.view", "employees.pension_profiles.manage", "payroll.pension_contributions.view"]);
   const canSensitivePension = hasAny(c, ["employees.pension_profiles.sensitive.view", "employees.pension_profiles.manage"]);
-  const canViewCustomDeductions = hasAny(c, ["payroll.employee_custom_deductions.view", "payroll.employee_custom_deductions.manage", "employees.custom_deductions.view", "employees.custom_deductions.manage", "payroll.view", "employees.payroll.view"]);
+  const canViewCustomDeductions = payrollFeatureStatus.custom_deductions_enabled && hasAny(c, ["payroll.employee_custom_deductions.view", "payroll.employee_custom_deductions.manage", "employees.custom_deductions.view", "employees.custom_deductions.manage", "payroll.view", "employees.payroll.view"]);
   const [profile, salary, increments, advances, deductions, runs, payslips, settlements, paymentMethods, bankLoans, bankLoanPayments, pensionProfile, pensionContributions, customDeductions, customDeductionApplications, audit] = await Promise.all([
     ensureProfile(c, employeeId),
     c.env.DB.prepare("SELECT * FROM employee_salary_history WHERE employee_id = ? ORDER BY effective_date DESC LIMIT 20").bind(employeeId).all(),
     c.env.DB.prepare("SELECT * FROM employee_increments WHERE employee_id = ? ORDER BY effective_date DESC LIMIT 20").bind(employeeId).all(),
-    c.env.DB.prepare("SELECT * FROM payroll_advance_payments WHERE employee_id = ? ORDER BY payment_date DESC LIMIT 20").bind(employeeId).all(),
+    payrollFeatureStatus.employee_advances_enabled ? c.env.DB.prepare("SELECT * FROM payroll_advance_payments WHERE employee_id = ? ORDER BY payment_date DESC LIMIT 20").bind(employeeId).all() : Promise.resolve({ results: [] }),
     c.env.DB.prepare("SELECT * FROM payroll_deductions WHERE employee_id = ? ORDER BY created_at DESC LIMIT 20").bind(employeeId).all(),
     c.env.DB.prepare("SELECT pre.*, pr.run_no, pr.status AS run_status, pp.period_month, pp.period_year FROM payroll_employee_results pre INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE pre.employee_id = ? ORDER BY pp.period_year DESC, pp.period_month DESC, pr.run_no DESC LIMIT 20").bind(employeeId).all(),
-    c.env.DB.prepare("SELECT ps.*, pp.period_month, pp.period_year, pr.run_no FROM payroll_payslips ps INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id INNER JOIN payroll_runs pr ON pr.id = ps.payroll_run_id WHERE ps.employee_id = ? ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC LIMIT 20").bind(employeeId).all(),
+    payrollFeatureStatus.payslips_enabled ? c.env.DB.prepare("SELECT ps.*, pp.period_month, pp.period_year, pr.run_no FROM payroll_payslips ps INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id INNER JOIN payroll_runs pr ON pr.id = ps.payroll_run_id WHERE ps.employee_id = ? ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC LIMIT 20").bind(employeeId).all() : Promise.resolve({ results: [] }),
     c.env.DB.prepare("SELECT * FROM final_settlements WHERE employee_id = ? ORDER BY created_at DESC LIMIT 20").bind(employeeId).all(),
-    getEmployeePaymentMethods(c.env.DB, employeeId, canSensitivePayment),
+    payrollFeatureStatus.payment_methods_enabled ? getEmployeePaymentMethods(c.env.DB, employeeId, canSensitivePayment) : Promise.resolve([]),
     canViewBankLoans ? c.env.DB.prepare("SELECT ebl.*, pi.name AS payment_institution_name FROM employee_bank_loans ebl LEFT JOIN payment_institutions pi ON pi.id = ebl.payment_institution_id WHERE ebl.employee_id = ? ORDER BY ebl.created_at DESC LIMIT 20").bind(employeeId).all() : Promise.resolve({ results: [] }),
     canViewBankLoans ? c.env.DB.prepare("SELECT * FROM employee_bank_loan_payments WHERE employee_id = ? ORDER BY created_at DESC LIMIT 50").bind(employeeId).all() : Promise.resolve({ results: [] }),
     canViewPension ? c.env.DB.prepare("SELECT epp.*, ps.scheme_name, ps.scheme_code FROM employee_pension_profiles epp LEFT JOIN pension_schemes ps ON ps.id = epp.pension_scheme_id WHERE epp.employee_id = ? AND epp.status != 'ARCHIVED' ORDER BY epp.effective_date DESC LIMIT 1").bind(employeeId).first<Record<string, unknown>>() : Promise.resolve(null),
@@ -1526,6 +1643,7 @@ employeePayrollRoutes.get("/:employeeId/payroll/summary", requireAnyPermission([
     ).bind(employeeId, employeeId, employeeId, employeeId, employeeId, employeeId, employeeId, employeeId, employeeId, employeeId, employeeId, employeeId, employeeId, employeeId, employeeId).all()
   ]);
   return ok(c, {
+    payroll_feature_status: payrollFeatureStatus,
     profile: profile ? safeProfile(profile, true) : null,
     salary_history: salary.results,
     increments: increments.results,
@@ -2029,6 +2147,8 @@ payrollRoutes.post("/runs/:id/generate-payslips", requireAnyPermission(["payroll
 });
 
 payrollRoutes.get("/runs/:id/payment-register", requireAnyPermission(["payroll.payment_register.view", "payroll.payment_register.manage", "payroll.view"]), async (c) => {
+  const disabled = await requirePayrollSubmoduleEnabled(c, "payment_register_enabled");
+  if (disabled) return disabled;
   const { run, response } = await ensureRunAccess(c, routeParam(c, "id"), "view");
   if (!run) return response!;
   return ok(c, { payments: await listPaymentRegisters(c, String(run.id)) });
@@ -2118,7 +2238,7 @@ payrollRoutes.get("/runs/:id/employees/:runEmployeeId/lines", requireAnyPermissi
 });
 
 payrollRoutes.get("/payslips", requireAnyPermission(["payroll.payslips.view", "payroll.payslips.manage", "payroll.view"]), async (c) => {
-  const disabled = await requirePayrollModuleEnabled(c);
+  const disabled = await requirePayrollSubmoduleEnabled(c, "payslips_enabled");
   if (disabled) return disabled;
   return ok(c, { payslips: await listPayslips(c, readString(c.req.query("employee_id")) || null) });
 });
@@ -2156,7 +2276,7 @@ payrollRoutes.get("/payslips/:payslipId/download", requireAnyPermission(["payrol
 });
 
 payrollRoutes.get("/payment-registers", requireAnyPermission(["payroll.payment_register.view", "payroll.payment_register.manage", "payroll.view"]), async (c) => {
-  const disabled = await requirePayrollModuleEnabled(c);
+  const disabled = await requirePayrollSubmoduleEnabled(c, "payment_register_enabled");
   if (disabled) return disabled;
   return ok(c, { payments: await listPaymentRegisters(c) });
 });
@@ -2169,6 +2289,8 @@ payrollRoutes.post("/payment-register/:paymentId/confirm-manual-paid", requireAn
 });
 
 payrollRoutes.post("/payment-register/:paymentId/cancel", requireAnyPermission(["payroll.payment_register.cancel", "payroll.payment_register.manage", "payroll.manage"]), async (c) => {
+  const disabled = await requirePayrollSubmoduleEnabled(c, "payment_register_enabled");
+  if (disabled) return disabled;
   const body = await readJsonBody(c.req.raw);
   const reason = readString(body.reason);
   if (!reason) return fail(c, 400, "REASON_REQUIRED", "Reason is required.");

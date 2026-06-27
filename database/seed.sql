@@ -101,6 +101,9 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_payroll_view', 'payroll.view', 'payroll', 'View payroll records', 0),
   ('perm_payroll_manage', 'payroll.manage', 'payroll', 'Manage payroll records', 0),
   ('perm_payroll_settings_manage', 'payroll.settings.manage', 'payroll', 'Manage payroll settings', 0),
+  ('perm_payroll_submodules_view', 'payroll.submodules.view', 'payroll', 'View payroll submodule enablement settings', 0),
+  ('perm_payroll_submodules_update', 'payroll.submodules.update', 'payroll', 'Update payroll submodule enablement settings', 0),
+  ('perm_payroll_submodules_manage', 'payroll.submodules.manage', 'payroll', 'Manage payroll submodule enablement settings', 0),
   ('perm_payroll_approve', 'payroll.approve', 'payroll', 'Approve payroll runs and adjustments', 0),
   ('perm_payroll_pay', 'payroll.pay', 'payroll', 'Mark payroll runs and advances as paid', 0),
   ('perm_payroll_reports_view', 'payroll.reports.view', 'payroll', 'View payroll reports', 0),
@@ -983,9 +986,13 @@ INSERT OR IGNORE INTO payroll_settings (
   id, default_currency, default_daily_rate_mode, allow_negative_net_salary,
   require_approval_before_paid, include_attendance_deductions,
   include_leave_deductions, include_advance_deductions,
-  include_roster_scheduled_days, default_salary_payment_day
+  include_roster_scheduled_days, default_salary_payment_day,
+  payslips_enabled, payment_register_enabled, payment_methods_enabled,
+  payment_institutions_enabled, employee_advances_enabled,
+  payroll_adjustments_enabled, payroll_reports_enabled
 ) VALUES (
-  'payroll_settings_default', 'MVR', 'FIXED_30_DAYS', 0, 1, 1, 1, 1, 1, 28
+  'payroll_settings_default', 'MVR', 'FIXED_30_DAYS', 0, 1, 1, 1, 1, 1, 28,
+  1, 1, 1, 1, 1, 1, 1
 );
 
 INSERT OR IGNORE INTO custom_deduction_templates (

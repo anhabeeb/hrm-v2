@@ -75,13 +75,19 @@ type CustomDeductionForm = {
 export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload }: { employeeId: string; summary: EmployeePayrollSummary; onReload: () => Promise<void> }) {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
-  const canManagePayment = permissions.has("employees.payment_methods.manage") || permissions.has("payroll.payment_methods.manage");
+  const featureStatus = summary.payroll_feature_status ?? {};
+  const paymentMethodsEnabled = featureStatus.payment_methods_enabled ?? true;
+  const paymentInstitutionsEnabled = featureStatus.payment_institutions_enabled ?? true;
+  const bankLoansEnabled = featureStatus.bank_loan_deductions_enabled ?? true;
+  const pensionEnabled = featureStatus.pension_enabled ?? true;
+  const customDeductionsEnabled = featureStatus.custom_deductions_enabled ?? true;
+  const canManagePayment = paymentMethodsEnabled && (permissions.has("employees.payment_methods.manage") || permissions.has("payroll.payment_methods.manage"));
   const canVerifyPayment = permissions.has("employees.payment_methods.verify") || canManagePayment;
-  const canManageLoans = permissions.has("payroll.bank_loans.manage") || permissions.has("payroll.bank_loans.create") || permissions.has("payroll.bank_loans.update");
-  const canApproveLoans = permissions.has("payroll.bank_loans.approve") || permissions.has("payroll.bank_loans.manage");
-  const canManagePension = permissions.has("employees.pension_profiles.manage") || permissions.has("employees.pension_profiles.update");
-  const canManageCustomDeductions = permissions.has("employees.custom_deductions.manage") || permissions.has("payroll.employee_custom_deductions.manage") || permissions.has("payroll.employee_custom_deductions.create");
-  const canApproveCustomDeductions = permissions.has("payroll.employee_custom_deductions.approve") || permissions.has("payroll.employee_custom_deductions.manage");
+  const canManageLoans = bankLoansEnabled && (permissions.has("payroll.bank_loans.manage") || permissions.has("payroll.bank_loans.create") || permissions.has("payroll.bank_loans.update"));
+  const canApproveLoans = bankLoansEnabled && (permissions.has("payroll.bank_loans.approve") || permissions.has("payroll.bank_loans.manage"));
+  const canManagePension = pensionEnabled && (permissions.has("employees.pension_profiles.manage") || permissions.has("employees.pension_profiles.update"));
+  const canManageCustomDeductions = customDeductionsEnabled && (permissions.has("employees.custom_deductions.manage") || permissions.has("payroll.employee_custom_deductions.manage") || permissions.has("payroll.employee_custom_deductions.create"));
+  const canApproveCustomDeductions = customDeductionsEnabled && (permissions.has("payroll.employee_custom_deductions.approve") || permissions.has("payroll.employee_custom_deductions.manage"));
   const [institutions, setInstitutions] = useState<PaymentInstitution[]>([]);
   const [schemes, setSchemes] = useState<PensionScheme[]>([]);
   const [customTemplates, setCustomTemplates] = useState<CustomDeductionTemplate[]>([]);
@@ -96,11 +102,11 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
   useEffect(() => {
     if (!token) return;
     void Promise.all([
-      api.listPaymentInstitutions(token).then((res) => setInstitutions(res.institutions)).catch(() => setInstitutions([])),
-      api.listPensionSchemes(token).then((res) => setSchemes(res.schemes)).catch(() => setSchemes([])),
-      api.listCustomDeductionTemplates(token).then((res) => setCustomTemplates(res.templates)).catch(() => setCustomTemplates([]))
+      paymentInstitutionsEnabled ? api.listPaymentInstitutions(token).then((res) => setInstitutions(res.institutions)).catch(() => setInstitutions([])) : Promise.resolve(setInstitutions([])),
+      pensionEnabled ? api.listPensionSchemes(token).then((res) => setSchemes(res.schemes)).catch(() => setSchemes([])) : Promise.resolve(setSchemes([])),
+      customDeductionsEnabled ? api.listCustomDeductionTemplates(token).then((res) => setCustomTemplates(res.templates)).catch(() => setCustomTemplates([])) : Promise.resolve(setCustomTemplates([]))
     ]);
-  }, [token]);
+  }, [token, paymentInstitutionsEnabled, pensionEnabled, customDeductionsEnabled]);
 
   const activeInstitutions = useMemo(() => institutions.filter((institution) => institution.status !== "ARCHIVED"), [institutions]);
   const paymentMethods = summary.payment_methods ?? [];
@@ -193,7 +199,7 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
     <div className="space-y-4">
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
-      <Panel className="overflow-hidden">
+      {paymentMethodsEnabled ? <Panel className="overflow-hidden">
         <Header icon={<WalletCards className="h-4 w-4" />} title="Payment methods" action={canManagePayment ? <Button size="sm" onClick={() => setPaymentForm(defaultPaymentForm())}><Plus className="h-4 w-4" /> Add method</Button> : null} />
         <MiniTable
           rows={paymentMethods}
@@ -206,9 +212,9 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
           ) : null}
           empty="No payment methods have been configured."
         />
-      </Panel>
+      </Panel> : <DisabledPayrollPanel icon={<WalletCards className="h-4 w-4" />} title="Payment methods" />}
 
-      <Panel className="overflow-hidden">
+      {bankLoansEnabled ? <Panel className="overflow-hidden">
         <Header icon={<Landmark className="h-4 w-4" />} title="Bank loan salary deductions" action={canManageLoans ? <Button size="sm" onClick={() => setLoanForm(defaultLoanForm())}><Plus className="h-4 w-4" /> Add loan</Button> : null} />
         <MiniTable
           rows={bankLoans}
@@ -225,9 +231,9 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
         <div className="border-t">
           <MiniTable rows={bankLoanPayments} columns={["bank_name_snapshot", "loan_reference_number_snapshot", "deducted_amount", "shortfall_amount", "payment_status", "remittance_reference"]} empty="No bank loan payment history yet." />
         </div>
-      </Panel>
+      </Panel> : <DisabledPayrollPanel icon={<Landmark className="h-4 w-4" />} title="Bank loan salary deductions" />}
 
-      <Panel className="overflow-hidden">
+      {pensionEnabled ? <Panel className="overflow-hidden">
         <Header icon={<PiggyBank className="h-4 w-4" />} title="Pension profile" action={canManagePension ? <Button size="sm" onClick={() => setPensionForm(defaultPensionForm(pensionProfile))}><ShieldCheck className="h-4 w-4" /> Edit pension</Button> : null} />
         <div className="grid gap-3 border-b p-4 md:grid-cols-4">
           <Summary label="Scheme" value={pensionProfile?.scheme_name ?? "-"} />
@@ -236,9 +242,9 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
           <Summary label="Effective" value={pensionProfile?.effective_date ?? "-"} />
         </div>
         <MiniTable rows={pensionContributions} columns={["scheme_name", "pensionable_wage", "employee_contribution_amount", "employer_contribution_amount", "total_contribution_amount", "contribution_status"]} empty="No pension contribution history yet." />
-      </Panel>
+      </Panel> : <DisabledPayrollPanel icon={<PiggyBank className="h-4 w-4" />} title="Pension profile" />}
 
-      <Panel className="overflow-hidden">
+      {customDeductionsEnabled ? <Panel className="overflow-hidden">
         <Header icon={<ReceiptText className="h-4 w-4" />} title="Custom deductions" action={canManageCustomDeductions ? <Button size="sm" onClick={() => setCustomDeductionForm(defaultCustomDeductionForm(customTemplates))}><Plus className="h-4 w-4" /> Add deduction</Button> : null} />
         <MiniTable
           rows={customDeductions}
@@ -256,7 +262,7 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
         <div className="border-t">
           <MiniTable rows={customDeductionApplications} columns={["template_name_snapshot", "scheduled_amount", "deducted_amount", "shortfall_amount", "remaining_balance_after", "application_status", "created_at"]} empty="No custom deduction payroll applications yet." />
         </div>
-      </Panel>
+      </Panel> : <DisabledPayrollPanel icon={<ReceiptText className="h-4 w-4" />} title="Custom deductions" />}
 
       {paymentForm ? <PaymentMethodModal form={paymentForm} institutions={activeInstitutions} onChange={setPaymentForm} onClose={() => setPaymentForm(null)} onConfirm={() => void savePayment()} /> : null}
       {loanForm ? <LoanModal form={loanForm} institutions={activeInstitutions.filter((institution) => institution.type === "BANK")} onChange={setLoanForm} onClose={() => setLoanForm(null)} onConfirm={() => void saveLoan()} /> : null}
@@ -271,6 +277,17 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
 
 function Header({ icon, title, action }: { icon: React.ReactNode; title: string; action?: React.ReactNode }) {
   return <div className="flex items-center justify-between border-b px-4 py-3"><div className="flex items-center gap-2 text-sm font-semibold">{icon}{title}</div>{action}</div>;
+}
+
+function DisabledPayrollPanel({ icon, title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <Panel className="overflow-hidden bg-slate-50/75">
+      <Header icon={icon} title={title} />
+      <div className="px-4 py-5 text-sm text-muted-foreground">
+        This payroll submodule is disabled in Payroll Settings. Existing historical payroll records remain protected, but active controls are hidden until the submodule is enabled.
+      </div>
+    </Panel>
+  );
 }
 
 function Summary({ label, value }: { label: string; value: unknown }) {

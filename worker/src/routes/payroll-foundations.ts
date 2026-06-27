@@ -109,6 +109,42 @@ function customDeductionSettingsEnabled(settings: Row | null | undefined) {
   return bool(settings?.custom_deductions_enabled, true);
 }
 
+type PayrollSubmoduleKey =
+  | "payment_methods_enabled"
+  | "payment_institutions_enabled"
+  | "pension_enabled"
+  | "bank_loan_deductions_enabled"
+  | "custom_deductions_enabled";
+
+const PAYROLL_SUBMODULE_LABELS: Record<PayrollSubmoduleKey, string> = {
+  payment_methods_enabled: "Employee payment methods",
+  payment_institutions_enabled: "Payment institutions",
+  pension_enabled: "Pension",
+  bank_loan_deductions_enabled: "Bank loan deductions",
+  custom_deductions_enabled: "Custom deductions"
+};
+
+function payrollSubmoduleEnabled(settings: Row | null | undefined, key: PayrollSubmoduleKey) {
+  return bool(settings?.module_enabled, true) && bool(settings?.[key], true);
+}
+
+async function requirePayrollSubmoduleEnabled(c: Context<AppBindings>, key: PayrollSubmoduleKey) {
+  const settings = await getPayrollSettingsRow(c);
+  if (!bool(settings?.module_enabled, true)) return fail(c, 503, "PAYROLL_MODULE_DISABLED", "Payroll module is disabled.");
+  if (!payrollSubmoduleEnabled(settings, key)) {
+    return fail(c, 403, "PAYROLL_SUBMODULE_DISABLED", `${PAYROLL_SUBMODULE_LABELS[key]} payroll submodule is disabled.`);
+  }
+  return null;
+}
+
+function requirePayrollSubmoduleMiddleware(key: PayrollSubmoduleKey): MiddlewareHandler<AppBindings> {
+  return async (c, next) => {
+    const disabled = await requirePayrollSubmoduleEnabled(c, key);
+    if (disabled) return disabled;
+    await next();
+  };
+}
+
 function readCustomDeductionTemplateInput(body: Row, old?: Row) {
   const code = (hasInput(body, "code") ? text(body.code) : text(old?.code)).toUpperCase();
   const name = hasInput(body, "name") ? text(body.name) : text(old?.name);
@@ -174,6 +210,50 @@ async function requireCustomDeductionsEnabled(c: Context<AppBindings>) {
   if (!customDeductionSettingsEnabled(settings)) return fail(c, 403, "CUSTOM_DEDUCTIONS_DISABLED", "Custom deductions are disabled in payroll settings.");
   return null;
 }
+
+payrollFoundationRoutes.use("/payment-institutions", requirePayrollSubmoduleMiddleware("payment_institutions_enabled"));
+payrollFoundationRoutes.use("/payment-institutions/*", requirePayrollSubmoduleMiddleware("payment_institutions_enabled"));
+employeePayrollFoundationRoutes.use("/:employeeId/payment-methods", requirePayrollSubmoduleMiddleware("payment_methods_enabled"));
+employeePayrollFoundationRoutes.use("/:employeeId/payment-methods/*", requirePayrollSubmoduleMiddleware("payment_methods_enabled"));
+selfServicePayrollFoundationRoutes.use("/payment-methods", requirePayrollSubmoduleMiddleware("payment_methods_enabled"));
+
+payrollFoundationRoutes.use("/bank-loans", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/bank-loans/*", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/employees/:employeeId/bank-loans", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/employees/:employeeId/bank-loans/*", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/bank-loan-payments", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/bank-loan-payments/*", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/bank-loan-eligibility-rules", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/bank-loan-eligibility-rules/*", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/bank-loan-remittance-batches", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/bank-loan-remittance-batches/*", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/reports/bank-loan-summary", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+payrollFoundationRoutes.use("/reports/bank-loan-shortfalls", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+selfServicePayrollFoundationRoutes.use("/bank-loans", requirePayrollSubmoduleMiddleware("bank_loan_deductions_enabled"));
+
+payrollFoundationRoutes.use("/custom-deduction-templates", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+payrollFoundationRoutes.use("/custom-deduction-templates/*", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+payrollFoundationRoutes.use("/custom-deductions", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+payrollFoundationRoutes.use("/custom-deductions/*", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+payrollFoundationRoutes.use("/reports/custom-deductions-summary", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+payrollFoundationRoutes.use("/reports/custom-deductions-by-template", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+payrollFoundationRoutes.use("/reports/custom-deductions-by-category", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+payrollFoundationRoutes.use("/reports/custom-deduction-shortfalls", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+payrollFoundationRoutes.use("/reports/custom-deduction-applications", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+employeePayrollFoundationRoutes.use("/:employeeId/custom-deductions", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+employeePayrollFoundationRoutes.use("/:employeeId/custom-deductions/*", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+selfServicePayrollFoundationRoutes.use("/custom-deductions", requirePayrollSubmoduleMiddleware("custom_deductions_enabled"));
+
+payrollFoundationRoutes.use("/pension-schemes", requirePayrollSubmoduleMiddleware("pension_enabled"));
+payrollFoundationRoutes.use("/pension-schemes/*", requirePayrollSubmoduleMiddleware("pension_enabled"));
+payrollFoundationRoutes.use("/pension-contributions", requirePayrollSubmoduleMiddleware("pension_enabled"));
+payrollFoundationRoutes.use("/pension-contributions/*", requirePayrollSubmoduleMiddleware("pension_enabled"));
+payrollFoundationRoutes.use("/pension-remittance-batches", requirePayrollSubmoduleMiddleware("pension_enabled"));
+payrollFoundationRoutes.use("/pension-remittance-batches/*", requirePayrollSubmoduleMiddleware("pension_enabled"));
+payrollFoundationRoutes.use("/reports/pension-contributions", requirePayrollSubmoduleMiddleware("pension_enabled"));
+employeePayrollFoundationRoutes.use("/:employeeId/pension-profile", requirePayrollSubmoduleMiddleware("pension_enabled"));
+employeePayrollFoundationRoutes.use("/:employeeId/pension-profile/*", requirePayrollSubmoduleMiddleware("pension_enabled"));
+selfServicePayrollFoundationRoutes.use("/pension", requirePayrollSubmoduleMiddleware("pension_enabled"));
 
 async function canViewEmployeeCustomDeductions(c: Context<AppBindings>, employeeId: string) {
   if (!hasAny(c, ["payroll.employee_custom_deductions.view", "payroll.employee_custom_deductions.manage", "employees.custom_deductions.view", "employees.custom_deductions.manage", "payroll.view", "employees.payroll.view"])) return false;

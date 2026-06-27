@@ -273,6 +273,14 @@ export async function getFinalSettlementSettings(db: Env["DB"]) {
   return settings!;
 }
 
+async function getPayrollSettingsForSettlement(c: Context<AppBindings>) {
+  return c.env.DB.prepare("SELECT * FROM payroll_settings WHERE id = 'payroll_settings_default'").first<Record<string, unknown>>();
+}
+
+function settlementPayrollSubmoduleEnabled(settings: Record<string, unknown> | null | undefined, key: string) {
+  return bool(settings?.module_enabled, true) && bool(settings?.[key], true);
+}
+
 export async function requireFinalSettlementModuleEnabled(c: Context<AppBindings>) {
   const settings = await getFinalSettlementSettings(c.env.DB);
   if (Number(settings.final_settlement_enabled ?? settings.module_enabled ?? 1) !== 1) return fail(c, 503, "FINAL_SETTLEMENT_MODULE_DISABLED", "Final settlement module is disabled.");
@@ -539,21 +547,33 @@ export async function getPayrollPaymentRegisterStatusForSettlement(c: Context<Ap
 
 export async function getSettlementPayrollImpact(c: Context<AppBindings>, settlementCase: Record<string, unknown>, profile: Record<string, unknown> | null, settings: Record<string, unknown>) {
   const employeeId = String(settlementCase.employee_id);
+  const payrollSettings = await getPayrollSettingsForSettlement(c);
+  const payrollSubmodules = {
+    payslips_enabled: settlementPayrollSubmoduleEnabled(payrollSettings, "payslips_enabled"),
+    payment_register_enabled: settlementPayrollSubmoduleEnabled(payrollSettings, "payment_register_enabled"),
+    payment_methods_enabled: settlementPayrollSubmoduleEnabled(payrollSettings, "payment_methods_enabled"),
+    bank_loan_deductions_enabled: settlementPayrollSubmoduleEnabled(payrollSettings, "bank_loan_deductions_enabled"),
+    pension_enabled: settlementPayrollSubmoduleEnabled(payrollSettings, "pension_enabled"),
+    employee_advances_enabled: settlementPayrollSubmoduleEnabled(payrollSettings, "employee_advances_enabled"),
+    custom_deductions_enabled: settlementPayrollSubmoduleEnabled(payrollSettings, "custom_deductions_enabled")
+  };
   const [history, pending, advances, oneTimeDeductions, paymentWarnings, payslips, paymentMethods, bankLoans, bankLoanPayments, pensionProfile, pensionContributions, customDeductionImpact] = await Promise.all([
     getFinalSettlementPayrollHistory(c, employeeId),
     getPendingPayrollForSettlement(c, employeeId),
-    getAdvanceBalanceForSettlement(c, employeeId),
+    payrollSubmodules.employee_advances_enabled ? getAdvanceBalanceForSettlement(c, employeeId) : Promise.resolve({ rows: [], amount: 0, skipped_due_to_submodule_disabled: true }),
     getOneTimeDeductionsForSettlement(c, employeeId),
-    getPayrollPaymentRegisterStatusForSettlement(c, employeeId),
-    c.env.DB.prepare("SELECT id, payslip_number, status, generated_at, version_number FROM payroll_payslips WHERE employee_id = ? ORDER BY generated_at DESC LIMIT 12").bind(employeeId).all<Record<string, unknown>>(),
-    getEmployeePaymentMethods(c.env.DB, employeeId, false),
-    c.env.DB.prepare("SELECT ebl.*, pi.name AS payment_institution_name FROM employee_bank_loans ebl LEFT JOIN payment_institutions pi ON pi.id = ebl.payment_institution_id WHERE ebl.employee_id = ? AND ebl.status IN ('ACTIVE', 'PAUSED') ORDER BY COALESCE(ebl.priority_number, 999), ebl.created_at").bind(employeeId).all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT * FROM employee_bank_loan_payments WHERE employee_id = ? AND payment_status IN ('PENDING', 'DEDUCTED_IN_PAYROLL', 'PARTIAL', 'PREPARED_FOR_BANK') ORDER BY created_at DESC LIMIT 50").bind(employeeId).all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT epp.*, ps.scheme_name, ps.scheme_code FROM employee_pension_profiles epp LEFT JOIN pension_schemes ps ON ps.id = epp.pension_scheme_id WHERE epp.employee_id = ? AND epp.status != 'ARCHIVED' ORDER BY epp.effective_date DESC LIMIT 1").bind(employeeId).first<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT ppc.*, ps.scheme_name FROM payroll_pension_contributions ppc LEFT JOIN pension_schemes ps ON ps.id = ppc.pension_scheme_id WHERE ppc.employee_id = ? AND ppc.contribution_status IN ('CALCULATED', 'INCLUDED_IN_PAYROLL', 'PREPARED_FOR_REMITTANCE') ORDER BY ppc.created_at DESC LIMIT 50").bind(employeeId).all<Record<string, unknown>>(),
-    getFinalSettlementCustomDeductionImpact(c.env.DB, employeeId)
+    payrollSubmodules.payment_register_enabled ? getPayrollPaymentRegisterStatusForSettlement(c, employeeId) : Promise.resolve([]),
+    payrollSubmodules.payslips_enabled ? c.env.DB.prepare("SELECT id, payslip_number, status, generated_at, version_number FROM payroll_payslips WHERE employee_id = ? ORDER BY generated_at DESC LIMIT 12").bind(employeeId).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
+    payrollSubmodules.payment_methods_enabled ? getEmployeePaymentMethods(c.env.DB, employeeId, false) : Promise.resolve([]),
+    payrollSubmodules.bank_loan_deductions_enabled ? c.env.DB.prepare("SELECT ebl.*, pi.name AS payment_institution_name FROM employee_bank_loans ebl LEFT JOIN payment_institutions pi ON pi.id = ebl.payment_institution_id WHERE ebl.employee_id = ? AND ebl.status IN ('ACTIVE', 'PAUSED') ORDER BY COALESCE(ebl.priority_number, 999), ebl.created_at").bind(employeeId).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
+    payrollSubmodules.bank_loan_deductions_enabled ? c.env.DB.prepare("SELECT * FROM employee_bank_loan_payments WHERE employee_id = ? AND payment_status IN ('PENDING', 'DEDUCTED_IN_PAYROLL', 'PARTIAL', 'PREPARED_FOR_BANK') ORDER BY created_at DESC LIMIT 50").bind(employeeId).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
+    payrollSubmodules.pension_enabled ? c.env.DB.prepare("SELECT epp.*, ps.scheme_name, ps.scheme_code FROM employee_pension_profiles epp LEFT JOIN pension_schemes ps ON ps.id = epp.pension_scheme_id WHERE epp.employee_id = ? AND epp.status != 'ARCHIVED' ORDER BY epp.effective_date DESC LIMIT 1").bind(employeeId).first<Record<string, unknown>>() : Promise.resolve(null),
+    payrollSubmodules.pension_enabled ? c.env.DB.prepare("SELECT ppc.*, ps.scheme_name FROM payroll_pension_contributions ppc LEFT JOIN pension_schemes ps ON ps.id = ppc.pension_scheme_id WHERE ppc.employee_id = ? AND ppc.contribution_status IN ('CALCULATED', 'INCLUDED_IN_PAYROLL', 'PREPARED_FOR_REMITTANCE') ORDER BY ppc.created_at DESC LIMIT 50").bind(employeeId).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
+    payrollSubmodules.custom_deductions_enabled ? getFinalSettlementCustomDeductionImpact(c.env.DB, employeeId) : Promise.resolve({ deductions: [], applications: [], outstanding_balance: 0, warnings: [] })
   ]);
-  const paymentMethodSummary = await getFinalSettlementPaymentMethodSummary(c, settlementCase, settings);
+  const paymentMethodSummary = payrollSubmodules.payment_methods_enabled
+    ? await getFinalSettlementPaymentMethodSummary(c, settlementCase, settings)
+    : { method: null, warnings: [], source: "payment_methods_disabled" };
   const bankLoanSummary = getFinalSettlementBankLoanSummary(bankLoans.results, bankLoanPayments.results);
   const pensionSummary = getFinalSettlementPensionSummary(pensionProfile, pensionContributions.results);
   const customDeductionSummary = getFinalSettlementCustomDeductionSummary(customDeductionImpact);
@@ -561,6 +581,7 @@ export async function getSettlementPayrollImpact(c: Context<AppBindings>, settle
   const pensionWarnings = pensionContributions.results.some((row) => readString(row.contribution_status) !== "MANUALLY_CONFIRMED_REMITTED") ? ["Pension contribution/remittance status should be reviewed before final settlement."] : [];
   return {
     history,
+    payroll_submodules: payrollSubmodules,
     payslips: payslips.results,
     pending_payroll: pending,
     unpaid_salary: calculateUnpaidSalaryForSettlement(settlementCase, profile, settings),

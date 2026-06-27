@@ -33,6 +33,13 @@ export interface PayrollSettings {
   include_advance_deductions: number | boolean;
   include_roster_scheduled_days: number | boolean;
   default_salary_payment_day: number | null;
+  payslips_enabled?: number | boolean;
+  payment_register_enabled?: number | boolean;
+  payment_methods_enabled?: number | boolean;
+  payment_institutions_enabled?: number | boolean;
+  employee_advances_enabled?: number | boolean;
+  payroll_adjustments_enabled?: number | boolean;
+  payroll_reports_enabled?: number | boolean;
   created_at: string;
   updated_at: string;
   bank_loan_deductions_enabled?: number | boolean;
@@ -573,6 +580,17 @@ export interface FinalSettlement {
 }
 
 export interface EmployeePayrollSummary {
+  payroll_feature_status?: {
+    payroll_core_enabled?: boolean;
+    payment_methods_enabled?: boolean;
+    payment_institutions_enabled?: boolean;
+    bank_loan_deductions_enabled?: boolean;
+    pension_enabled?: boolean;
+    custom_deductions_enabled?: boolean;
+    employee_advances_enabled?: boolean;
+    payslips_enabled?: boolean;
+    payment_register_enabled?: boolean;
+  };
   profile: EmployeePayrollProfile;
   salary_history: Record<string, unknown>[];
   increments: Record<string, unknown>[];
