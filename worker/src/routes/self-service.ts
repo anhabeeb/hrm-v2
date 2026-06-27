@@ -8,6 +8,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
+import { calculateEmployeeDocumentCompliance } from "./document-compliance";
 import { applyLeaveBalanceChange, getLeaveApprovalChainPreview, getSelfServiceLeaveCycles } from "./leave";
 
 type Row = Record<string, unknown>;
@@ -403,7 +404,42 @@ export async function getSelfServicePensionContributionHistory(c: Context<AppBin
 }
 
 export async function getSelfServiceDocumentCompliance(c: Context<AppBindings>, employeeId: string) {
-  return (await c.env.DB.prepare("SELECT * FROM employee_document_checklist_items WHERE employee_id = ? AND is_active = 1").bind(employeeId).all<Row>()).results;
+  const compliance = await calculateEmployeeDocumentCompliance(c.env.DB, employeeId);
+  if (!compliance) {
+    return {
+      compliance_status: "NOT_APPLICABLE",
+      compliance_percent: 100,
+      warning_summary: { missing_required: 0, expired: 0, expiring_soon: 0, urgent_expiring: 0, waived_required: 0 },
+      required_documents: [],
+      missing_documents: [],
+      renewal_cases: [],
+      upload_request_enabled: false,
+      upload_note: "No linked employee document compliance checklist is available."
+    };
+  }
+  const visibleRequired = compliance.required_documents
+    .filter((item) => item.document?.document_type_code !== "PAYROLL_DOCUMENT")
+    .map((item) => ({
+      document_type_name: item.document_type_name,
+      document_type_code: item.document_type_code,
+      status: item.status,
+      missing: item.missing,
+      waived: item.waived,
+      expiry_date: item.document?.expiry_date ?? null,
+      days_until_expiry: item.days_until_expiry
+    }));
+  return {
+    compliance_status: compliance.compliance_status,
+    compliance_percent: compliance.compliance_percent,
+    warning_summary: compliance.warning_summary,
+    required_documents: visibleRequired,
+    missing_documents: visibleRequired.filter((item) => item.missing),
+    expiring_documents: compliance.expiring_documents_list,
+    expired_documents: compliance.expired_documents_list,
+    waivers: compliance.waivers,
+    upload_request_enabled: false,
+    upload_note: "Contact HR/Admin if a required document needs renewal or replacement."
+  };
 }
 
 export async function getSelfServiceDocumentWarnings(c: Context<AppBindings>, employeeId: string) {

@@ -9,6 +9,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { readString } from "../utils/validation";
+import { calculateEmployeeDocumentCompliance } from "./document-compliance";
 
 type BindValue = string | number | null;
 type LifecycleCaseType = "ONBOARDING" | "OFFBOARDING";
@@ -348,14 +349,94 @@ async function waiveOffboardingTask(c: Context<AppBindings>, taskId: string, rea
 
 export async function getOnboardingDocumentChecklist(c: Context<AppBindings>, caseId: string) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
-  if (!gate) return { rows: [] };
-  const rows = await c.env.DB.prepare("SELECT document_type_id, requirement_status, current_employee_document_id FROM employee_document_checklist_items WHERE employee_id = ? AND is_active = 1").bind(String(gate.row.employee_id)).all<Record<string, unknown>>();
-  return { rows: rows.results };
+  if (!gate) return { rows: [], status: "NOT_FOUND", message: "Onboarding case was not found.", warnings: [] };
+  try {
+    const compliance = await calculateEmployeeDocumentCompliance(c.env.DB, String(gate.row.employee_id));
+    if (!compliance) return { rows: [], status: "NOT_FOUND", message: "Employee document compliance could not be loaded.", warnings: [{ type: "DOCUMENT", message: "Document compliance could not be loaded." }] };
+    if (compliance.settings?.document_compliance_enabled === false) {
+      return {
+        rows: [],
+        required_documents: [],
+        missing_documents: [],
+        status: "DISABLED",
+        compliance_status: "DISABLED",
+        message: "Document compliance is disabled.",
+        warnings: []
+      };
+    }
+    const canSensitive = c.get("currentUser").is_owner || c.get("currentUser").permissions.includes("documents.sensitive.view");
+    const rows = compliance.required_documents.map((item) => {
+      const sensitive = Boolean(item.is_sensitive);
+      const restricted = sensitive && !canSensitive;
+      const document = item.document ? {
+        id: item.document.id,
+        expiry_date: restricted ? null : item.document.expiry_date,
+        issue_date: restricted ? null : item.document.issue_date,
+        document_number: restricted ? null : item.document.document_number,
+        original_filename: restricted ? null : item.document.original_filename,
+        status: item.document.status
+      } : null;
+      return {
+        document_type_id: item.document_type_id,
+        document_type_name: restricted ? "Restricted document" : item.document_type_name,
+        document_type_code: restricted ? null : item.document_type_code,
+        requirement_status: item.waived ? "WAIVED" : "REQUIRED",
+        current_employee_document_id: item.document?.id ?? null,
+        matched_required_rule_id: item.matched_rule_id,
+        status: item.status,
+        missing: item.missing,
+        waived: item.waived,
+        expired: item.status === "EXPIRED",
+        expiring: item.status === "EXPIRING_SOON" || item.status === "URGENT_EXPIRING",
+        days_until_expiry: item.days_until_expiry,
+        blocks_employee_activation: item.blocks_employee_activation,
+        is_sensitive: sensitive,
+        restricted,
+        waiver: item.waiver ? {
+          id: item.waiver.id,
+          status: item.waiver.status,
+          waiver_start_date: item.waiver.waiver_start_date,
+          waiver_end_date: item.waiver.waiver_end_date
+        } : null,
+        document
+      };
+    });
+    return {
+      rows,
+      required_documents: rows,
+      missing_documents: rows.filter((row) => row.missing),
+      expiring_documents: rows.filter((row) => row.expiring),
+      expired_documents: rows.filter((row) => row.expired),
+      waivers: compliance.waivers,
+      status: compliance.compliance_status,
+      compliance_status: compliance.compliance_status,
+      compliance_percent: compliance.compliance_percent,
+      warning_summary: compliance.warning_summary,
+      warnings: []
+    };
+  } catch (error) {
+    console.warn("Onboarding document compliance checklist could not be loaded", error);
+    return {
+      rows: [],
+      required_documents: [],
+      missing_documents: [],
+      status: "WARNING",
+      compliance_status: "WARNING",
+      message: "Document compliance checklist could not be loaded.",
+      warnings: [{ type: "DOCUMENT", message: "Document compliance checklist could not be loaded." }]
+    };
+  }
 }
 
 export async function getOnboardingDocumentBlockers(c: Context<AppBindings>, caseId: string) {
   const checklist = await getOnboardingDocumentChecklist(c, caseId);
-  return checklist.rows.filter((row) => row.requirement_status === "REQUIRED" && !row.current_employee_document_id).map((row) => ({ type: "DOCUMENT", message: "A required employee document is missing.", document_type_id: row.document_type_id }));
+  if (checklist.status === "DISABLED" || checklist.status === "NOT_FOUND" || checklist.status === "WARNING") return [];
+  return checklist.rows.filter((row) => row.requirement_status === "REQUIRED" && row.missing).map((row) => ({
+    type: "DOCUMENT",
+    message: "A required employee document is missing.",
+    document_type_id: row.document_type_id,
+    document_type_name: row.document_type_name
+  }));
 }
 
 export async function getOnboardingContractStatus(c: Context<AppBindings>, caseId: string) {
@@ -533,13 +614,15 @@ export async function getEmployeeOnboardingReadiness(c: Context<AppBindings>, ca
   await refreshOnboardingChecklist(c, caseId);
   const blockers = await getOnboardingBlockers(c, caseId);
   const checklist = await getOnboardingChecklistStatus(c, caseId);
+  const documents = await getOnboardingDocumentChecklist(c, caseId);
+  const warningItems = Array.isArray(documents.warnings) ? documents.warnings : [];
   const readiness = {
     can_activate: blockers.length === 0,
     blockers,
     blocking_items: blockers,
-    warning_items: [],
+    warning_items: warningItems,
     checklist,
-    documents: await getOnboardingDocumentChecklist(c, caseId),
+    documents,
     contract: await getOnboardingContractStatus(c, caseId),
     payroll: await getOnboardingPayrollReadiness(c, caseId),
     payment_method: await getOnboardingPaymentMethodStatus(c, caseId),
