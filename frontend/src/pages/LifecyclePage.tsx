@@ -1,4 +1,4 @@
-import { CheckCircle2, FileDown, RefreshCw, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Circle, FileDown, RefreshCw, ShieldAlert } from "lucide-react";
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
@@ -571,6 +571,26 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
 const onboardingWorkspaceTabs = ["Overview", "Employee Info", "Contacts", "Job Assignment", "Documents", "Contract", "Payroll", "Payment & Pension", "Attendance & Roster", "Assets & Uniforms", "User Access", "Checklist", "Approval Timeline"] as const;
 type OnboardingWorkspaceTab = (typeof onboardingWorkspaceTabs)[number];
 
+type WorkspaceNotice = { tone: "success" | "danger"; message: string };
+
+const onboardingWorkspaceSectionTasks: Record<OnboardingWorkspaceTab, string[]> = {
+  Overview: [],
+  "Employee Info": ["personal_info"],
+  Contacts: ["contact_info"],
+  "Job Assignment": ["job_assignment"],
+  Documents: ["documents"],
+  Contract: ["contract"],
+  Payroll: ["payroll_profile"],
+  "Payment & Pension": ["payment_method", "pension_profile"],
+  "Attendance & Roster": ["attendance_biometric"],
+  "Assets & Uniforms": ["assets_uniforms"],
+  "User Access": ["user_access"],
+  Checklist: [],
+  "Approval Timeline": []
+};
+
+const completedOnboardingTaskStatuses = new Set(["COMPLETED", "WAIVED", "NOT_REQUIRED"]);
+
 function asRow(value: unknown): Row {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Row : {};
 }
@@ -587,18 +607,31 @@ function isDisabledModule(workspace: Row, key: string) {
 function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { workspace: Row; caseId: string; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void }) {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<WorkspaceNotice | null>(null);
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timeout = window.setTimeout(() => setNotice(null), 3600);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
   async function save(action: () => Promise<unknown>, success: string) {
     if (!token) return;
-    setError(null);
-    setMessage(null);
+    setNotice(null);
     try {
       await action();
-      setMessage(success);
+      setNotice({ tone: "success", message: success });
       await reload();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save onboarding workspace section.");
+      setNotice({ tone: "danger", message: err instanceof ApiError ? err.message : "Unable to save onboarding workspace section." });
+    }
+  }
+  async function runWorkspaceAction(action: () => Promise<unknown>, success: string) {
+    if (!token) return;
+    setNotice(null);
+    try {
+      await run(action);
+      setNotice({ tone: "success", message: success });
+    } catch (err) {
+      setNotice({ tone: "danger", message: err instanceof ApiError ? err.message : "Unable to update onboarding case." });
     }
   }
   const rowCase = asRow(workspace.case);
@@ -608,8 +641,22 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
   const tasks = asRows(checklist.tasks);
   const blockers = asRows(readiness.blocking_items);
   const warnings = asRows(readiness.warning_items);
+  const canActivate = readiness.can_activate === true;
+  const requiredTasks = tasks.filter((task) => Boolean(task.is_required || task.required));
+  const requiredComplete = requiredTasks.length > 0 && requiredTasks.every((task) => completedOnboardingTaskStatuses.has(String(task.task_status ?? task.status)));
+  const taskByKey = new Map(tasks.map((task) => [String(task.task_key), task]));
+  const sectionStatus = (tab: OnboardingWorkspaceTab) => {
+    if (tab === "Overview") return canActivate;
+    if (tab === "Checklist") return requiredComplete || canActivate;
+    if (tab === "Approval Timeline") return ["SUBMITTED", "APPROVED", "ACTIVATED", "OVERRIDDEN"].includes(String(rowCase.activation_status ?? ""));
+    const keys = onboardingWorkspaceSectionTasks[tab];
+    if (!keys.length) return false;
+    const existingTasks = keys.map((key) => taskByKey.get(key)).filter(Boolean) as Row[];
+    return existingTasks.length > 0 && existingTasks.every((task) => completedOnboardingTaskStatuses.has(String(task.task_status ?? task.status)));
+  };
   return (
-    <div className="space-y-4">
+    <div className="relative space-y-4">
+      {notice ? <WorkspaceNoticePopup notice={notice} /> : null}
       <div className="rounded-lg border bg-slate-50/70 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
@@ -618,23 +665,55 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
               <StatusBadge value={rowCase.onboarding_status} />
               <StatusBadge value={rowCase.activation_status} />
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">{text(employee.employee_no)} · {text(employee.department_name)} · {text(employee.location_name)}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{text(employee.employee_no)} / {text(employee.department_name)} / {text(employee.location_name)}</p>
             <p className="mt-1 text-xs text-muted-foreground">Complete setup here before Employee 360 is unlocked after activation.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Checklist refreshed.")}>Refresh checklist</Button>
-            <Button size="sm" variant="outline" onClick={() => void run(() => api.completeOnboardingWorkspace(token!, caseId))}>Submit activation</Button>
-            <Button size="sm" variant="outline" onClick={() => void run(() => api.approveOnboardingActivation(token!, caseId))}>Approve activation</Button>
-            <Button size="sm" onClick={() => void run(() => api.activateOnboardingCase(token!, caseId))}><CheckCircle2 className="h-4 w-4" /> Activate</Button>
-            <Button size="sm" variant="danger" onClick={() => askReason("Activate with override", (reason) => run(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason)))}>Override activation</Button>
+            <Button size="sm" variant="outline" onClick={() => void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.")}>Submit activation</Button>
+            <Button size="sm" variant="outline" onClick={() => void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved.")}>Approve activation</Button>
+            <Button
+              size="sm"
+              disabled={!canActivate}
+              title={canActivate ? "Activate employee" : "Complete required onboarding items before activation."}
+              className={canActivate ? "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700" : "border-slate-200 bg-slate-100 text-slate-500"}
+              onClick={() => void runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.")}
+            >
+              <CheckCircle2 className="h-4 w-4" /> Activate
+            </Button>
+            <Button size="sm" variant="danger" onClick={() => askReason("Activate with override", (reason) => runWorkspaceAction(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason), "Employee activated with override."))}>Override activation</Button>
           </div>
         </div>
       </div>
-      {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
-      {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-      <SubNavigationBar label="Onboarding setup workspace tabs">
-        {onboardingWorkspaceTabs.map((tab) => <SubNavigationItem key={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)}>{tab}</SubNavigationItem>)}
-      </SubNavigationBar>
+      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="lg:sticky lg:top-0 lg:max-h-[calc(90vh-11rem)] lg:overflow-y-auto">
+          <nav aria-label="Onboarding setup sections" className="rounded-lg border bg-white p-2 shadow-panel">
+            <div className="px-2 pb-2 pt-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Setup sections</p>
+              <p className="mt-1 text-xs text-muted-foreground">{canActivate ? "Ready to activate" : "Complete required validator items"}</p>
+            </div>
+            <div className="space-y-1">
+              {onboardingWorkspaceTabs.map((tab) => {
+                const isActive = activeTab === tab;
+                const complete = sectionStatus(tab);
+                return (
+                  <Button
+                    key={tab}
+                    variant="ghost"
+                    size="sm"
+                    aria-current={isActive ? "page" : undefined}
+                    className={`w-full justify-start rounded-md px-2 text-left ${isActive ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-slate-700"} ${complete ? "font-semibold" : ""}`}
+                    onClick={() => setActiveTab(tab)}
+                  >
+                    {complete ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="h-4 w-4 shrink-0 text-slate-300" />}
+                    <span className="min-w-0 flex-1 truncate">{tab}</span>
+                  </Button>
+                );
+              })}
+            </div>
+          </nav>
+        </aside>
+        <div className="min-w-0 space-y-4">
       {activeTab === "Overview" ? <OnboardingWorkspaceOverview readiness={readiness} blockers={blockers} warnings={warnings} tasks={tasks} workspace={workspace} /> : null}
       {activeTab === "Employee Info" ? <EmployeeInfoWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceEmployeeInfo(token!, caseId, input), "Employee information saved.")} /> : null}
       {activeTab === "Contacts" ? <ContactWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceContactInfo(token!, caseId, input), "Contact information saved.")} /> : null}
@@ -647,7 +726,23 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
       {activeTab === "Assets & Uniforms" ? <AssetsWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceAssetsUniforms(token!, caseId, input), "Asset/uniform setup saved.")} /> : null}
       {activeTab === "User Access" ? <UserAccessWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceUserAccount(token!, caseId, input), "User access setup saved.")} /> : null}
       {activeTab === "Checklist" ? <ChecklistWorkspaceTable tasks={tasks} /> : null}
-      {activeTab === "Approval Timeline" ? <Timeline items={asRows(workspace.events).map((event) => ({ title: text(event.action), description: text(event.new_status ?? event.note ?? event.reason), meta: text(event.created_at) }))} /> : null}
+          {activeTab === "Approval Timeline" ? <Timeline items={asRows(workspace.events).map((event) => ({ title: text(event.action), description: text(event.new_status ?? event.note ?? event.reason), meta: text(event.created_at) }))} /> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceNoticePopup({ notice }: { notice: WorkspaceNotice }) {
+  const classes = notice.tone === "success"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    : "border-red-200 bg-red-50 text-red-800";
+  return (
+    <div className={`fixed right-6 top-6 z-[60] w-[min(24rem,calc(100vw-3rem))] rounded-lg border px-4 py-3 text-sm shadow-lg ${classes}`} role={notice.tone === "danger" ? "alert" : "status"} aria-live="polite">
+      <div className="flex items-start gap-2">
+        {notice.tone === "success" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />}
+        <p className="min-w-0">{notice.message}</p>
+      </div>
     </div>
   );
 }
@@ -820,7 +915,7 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
         {documentWarning ? <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{documentWarning}</p> : null}
         <div className="mt-3 grid gap-3">
           <SelectField label="Document type" required value={documentTypeId} onValueChange={setDocumentTypeId}><option value="">Select document type</option>{documentTypes.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}{type.is_sensitive ? " (Sensitive)" : ""}</option>)}</SelectField>
-          {selectedType ? <p className="text-xs text-muted-foreground">Allowed files: {displayText(selectedType.allowed_mime_types, "Default PDF/JPEG/PNG")} · Max size: {displayText(selectedType.max_file_size_mb, "10")} MB · Multiple: {selectedType.allow_multiple_files ? "Yes" : "No"}</p> : null}
+          {selectedType ? <p className="text-xs text-muted-foreground">Allowed files: {displayText(selectedType.allowed_mime_types, "Default PDF/JPEG/PNG")} / Max size: {displayText(selectedType.max_file_size_mb, "10")} MB / Multiple: {selectedType.allow_multiple_files ? "Yes" : "No"}</p> : null}
           <Field label={`Document number${requiredNumber ? " *" : ""}`}><Input required={requiredNumber} value={metadata.document_number} onChange={(event) => setMetadata({ ...metadata, document_number: event.target.value })} /></Field>
           <Field label={`Issue date${requiredIssue ? " *" : ""}`}><Input type="date" required={requiredIssue} value={metadata.issue_date} onChange={(event) => setMetadata({ ...metadata, issue_date: event.target.value })} /></Field>
           <Field label={`Expiry date${requiredExpiry ? " *" : ""}`}><Input type="date" required={requiredExpiry} value={metadata.expiry_date} onChange={(event) => setMetadata({ ...metadata, expiry_date: event.target.value })} /></Field>

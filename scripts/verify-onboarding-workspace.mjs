@@ -106,6 +106,14 @@ assert(documents.includes("employee_documents") && documents.includes("employee_
 
 [
   "OnboardingWorkspace",
+  "WorkspaceNoticePopup",
+  "Onboarding setup sections",
+  "completedOnboardingTaskStatuses",
+  "sectionStatus(tab)",
+  "readiness.can_activate === true",
+  "disabled={!canActivate}",
+  "border-emerald-600 bg-emerald-600",
+  "window.setTimeout(() => setNotice(null), 3600)",
   "EmployeeInfoWorkspaceForm",
   "ContactWorkspaceForm",
   "JobAssignmentWorkspaceForm",
@@ -120,6 +128,8 @@ assert(documents.includes("employee_documents") && documents.includes("employee_
   "SubNavigationBar",
   "uploadOnboardingWorkspaceDocument"
 ].forEach((marker) => assert(lifecyclePage.includes(marker), `onboarding case page includes workspace UI marker: ${marker}`));
+
+assert(!lifecyclePage.includes("setMessage(success)") && !lifecyclePage.includes("Unable to save onboarding workspace section.</div>"), "onboarding workspace uses popup notices instead of inline save alerts");
 
 assert(employeeProfilePage.includes("employees.360.view_during_onboarding"), "Employee 360 override permission is checked");
 assert(employeeProfilePage.includes("Employee 360 is locked during onboarding"), "Employee 360 locked message exists");
