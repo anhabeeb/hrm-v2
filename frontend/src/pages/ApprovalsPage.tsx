@@ -1,7 +1,7 @@
 import { Bell, CheckCircle2, Clock, Eye, FileText, GitBranch, RefreshCw, Send, Settings, ShieldCheck, UserCheck, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
+import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -38,7 +38,6 @@ const tabs: Array<{ mode: Mode; label: string; to: string }> = [
   { mode: "delegated", label: "Delegated", to: "/approvals/delegated" },
   { mode: "history", label: "History", to: "/approvals/history" },
   { mode: "workflows", label: "Workflows", to: "/approvals/workflows" },
-  { mode: "settings", label: "Settings", to: "/approvals/settings" },
   { mode: "delegations", label: "Delegations", to: "/approvals/delegations" },
   { mode: "templates", label: "Templates", to: "/approvals/templates" },
   { mode: "reports", label: "Reports", to: "/approvals/reports" }
@@ -244,22 +243,8 @@ function SettingsPanel({ settings, token, canManage, onSaved, onError }: { setti
     }
   }
   const enabled = Boolean(form.approval_workflows_enabled);
-  async function toggleModule(nextEnabled: boolean) {
-    const next = { ...form, approval_workflows_enabled: nextEnabled };
-    setForm(next);
-    await save(next);
-  }
   return (
     <div className="space-y-3 p-3">
-      <ModuleToggleHeader
-        moduleName="Central approvals"
-        enabled={enabled}
-        permissionCanUpdate={canManage}
-        description="Controls central approval workflows, delegation, escalation, reminders, and workflow fallback behavior."
-        disabledDescription="Approval settings are read-only while central approvals are disabled. Module-specific fallback approvals remain governed by their own settings."
-        dependencyWarnings={["Disabling central approvals can affect leave, payroll, contracts, asset recovery, onboarding activation, and other routed workflows."]}
-        onToggle={toggleModule}
-      />
       <ModuleSettingsBody disabled={!enabled}>
         <div className="grid gap-3 md:grid-cols-3">
           <Toggle disabled={!canManage || !enabled} label="Use central workflows" checked={form.use_central_workflow_for_supported_modules} onChange={(value) => update("use_central_workflow_for_supported_modules", value)} />

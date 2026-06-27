@@ -2,7 +2,7 @@ import { FileText, Plus, RefreshCw, Settings, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
-import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
+import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
@@ -24,7 +24,6 @@ type Tab = "contracts" | "types" | "settings" | "probation" | "renewals" | "aler
 const tabs: Array<{ key: Tab; label: string }> = [
   { key: "contracts", label: "Contracts" },
   { key: "types", label: "Types" },
-  { key: "settings", label: "Settings" },
   { key: "probation", label: "Probation due" },
   { key: "renewals", label: "Renewals" },
   { key: "alerts", label: "Alerts" }
@@ -352,22 +351,8 @@ function ContractSettingsPanel({ settings, canEdit, onSave }: { settings: Row | 
   const switches = ["require_contract_for_active_employee", "auto_create_contract_task_on_onboarding", "require_contract_approval_before_activation", "allow_employee_without_contract_warning", "contract_expiry_alerts_enabled", "auto_mark_expired_contracts", "auto_create_end_of_contract_settlement_case", "require_reason_for_contract_change", "allow_contract_salary_snapshot", "allow_contract_salary_update_to_payroll_profile", "require_approval_for_contract_salary_update", "contract_document_required", "contract_sensitive_salary_terms"];
   const numbers = ["default_expiry_warning_days", "default_probation_warning_days", "default_renewal_warning_days"];
   const enabled = bool(draft.contracts_enabled ?? true);
-  function toggleModule(nextEnabled: boolean) {
-    const next = { ...draft, contracts_enabled: nextEnabled };
-    setDraft(next);
-    onSave(next);
-  }
   return (
     <Panel className="space-y-4 p-4">
-      <ModuleToggleHeader
-        moduleName="Contracts"
-        enabled={enabled}
-        permissionCanUpdate={canEdit}
-        description="Controls employee contract records, probation tracking, renewal reminders, expiry alerts, and onboarding contract tasks."
-        disabledDescription="Contract settings are read-only while the contracts module is disabled."
-        dependencyWarnings={["Contracts feed onboarding readiness, expiry alerts, renewals, salary snapshots, and final settlement warnings."]}
-        onToggle={toggleModule}
-      />
       <ModuleSettingsBody disabled={!enabled}>
         <div>
           <h2 className="text-base font-semibold">Contract Settings</h2>

@@ -25,14 +25,14 @@ type NavigationItemProps = {
 export type NavigationTabsVariant = "equal" | "scrollable" | "compact";
 
 export const NAVIGATION_TAB_SIZE_TOKENS = {
-  tabWidth: "w-[168px] min-w-[168px] max-w-[168px]",
+  tabWidth: "min-w-fit",
   tabHeight: "h-10 min-h-10 max-h-10",
   shell: "box-border w-full max-w-none min-w-0 overflow-x-auto rounded-lg border bg-white p-1 shadow-panel [scrollbar-width:thin]",
   listBase: "flex w-max min-w-full items-center gap-2",
   listEqual: "flex w-max min-w-full",
   listScrollable: "flex w-max min-w-full",
   listCompact: "flex w-max min-w-full",
-  triggerBase: "box-border inline-flex h-10 min-h-10 max-h-10 w-[168px] min-w-[168px] max-w-[168px] shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-md border border-transparent px-3 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  triggerBase: "box-border inline-flex h-10 min-h-10 max-h-10 min-w-fit max-w-none shrink-0 items-center justify-center overflow-hidden whitespace-nowrap rounded-md border border-transparent px-4 text-center text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
   triggerEqual: "",
   triggerCompact: "",
   triggerActive: "border-primary/20 bg-primary text-primary-foreground shadow-sm",
@@ -107,11 +107,11 @@ function activeValueFromChildren(children: ReactNode) {
 
 function NavigationTabContent({ children }: { children: ReactNode }) {
   if (typeof children === "string" || typeof children === "number") {
-    return <span className="min-w-0 truncate">{children}</span>;
+    return <span className="whitespace-nowrap text-center">{children}</span>;
   }
 
   return (
-    <span className="flex min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden">
+    <span className="flex min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden text-center">
       {children}
     </span>
   );

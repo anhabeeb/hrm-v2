@@ -28,26 +28,41 @@ function hasNo(relativePath, marker, message) {
   if (!ok) failures.push(`${relativePath}: ${message}`);
 }
 
-function hasAll(relativePath, markers) {
-  markers.forEach((marker) => has(relativePath, marker, `missing marker ${String(marker)}`));
-}
-
 const pkg = JSON.parse(read("package.json"));
 if (!pkg.scripts?.["verify:module-toggle-settings"]) failures.push("package.json: missing verify:module-toggle-settings script");
 
+requireFile("frontend/src/pages/SettingsPage.tsx");
 requireFile("frontend/src/components/settings/ModuleToggleHeader.tsx");
 requireFile("frontend/src/components/ui/switch.tsx");
+requireFile("frontend/src/components/ui/tooltip.tsx");
 
-hasAll("frontend/src/components/settings/ModuleToggleHeader.tsx", [
-  "ModuleToggleHeader",
-  "ModuleSettingsBody",
-  "ConfirmDialog",
-  "dependencyWarnings",
-  "You do not have permission to enable or disable this module.",
-  "This module is currently disabled. Enable it to edit settings or use related features.",
-  "permissionCanUpdate"
-]);
-hasAll("frontend/src/components/ui/switch.tsx", ["Switch", "peer-checked", "sr-only", "onCheckedChange"]);
+[
+  "SettingsToggleGroup",
+  "ModuleTogglePill",
+  "Tooltip",
+  "Switch",
+  "Payroll Core",
+  "payslips_enabled",
+  "payment_register_enabled",
+  "payment_methods_enabled",
+  "payment_institutions_enabled",
+  "pension_enabled",
+  "bank_loan_deductions_enabled",
+  "employee_advances_enabled",
+  "custom_deductions_enabled",
+  "payroll_adjustments_enabled",
+  "payroll_reports_enabled",
+  "final_settlement_enabled",
+  "|",
+  "api.updatePayrollSettings",
+  "api.updateAttendanceSettings",
+  "api.updateRosterSettings",
+  "api.updateSelfServiceSettings"
+].forEach((marker) => has("frontend/src/pages/SettingsPage.tsx", marker, `main Settings page missing centralized toggle marker: ${marker}`));
+
+has("frontend/src/components/settings/ModuleToggleHeader.tsx", "This module is disabled. Enable it from Settings.", "disabled settings body must use current Settings-page wording");
+has("frontend/src/components/ui/switch.tsx", "onCheckedChange", "approved switch component must remain available");
+has("frontend/src/components/ui/tooltip.tsx", "role=\"tooltip\"", "toggle descriptions must have hover/focus tooltip support");
 
 [
   "frontend/src/pages/AttendanceSettingsPage.tsx",
@@ -63,28 +78,10 @@ hasAll("frontend/src/components/ui/switch.tsx", ["Switch", "peer-checked", "sr-o
   "frontend/src/pages/AttendanceDeviceOperationsPage.tsx"
 ].forEach((file) => {
   requireFile(file);
-  has(file, "ModuleToggleHeader", "settings page must use the shared module toggle header");
-  has(file, "ModuleSettingsBody", "settings page must grey out disabled settings through ModuleSettingsBody");
+  has(file, "ModuleSettingsBody", "module settings page must keep disabled/read-only body state");
+  hasNo(file, /<ModuleToggleHeader\b/, "module settings page must not render the old top module toggle header");
   hasNo(file, /\b(window\.)?(alert|confirm|prompt)\s*\(/, "browser alert/confirm/prompt must not be used");
 });
-
-[
-  ["frontend/src/pages/AttendanceSettingsPage.tsx", "label=\"Attendance module enabled\""],
-  ["frontend/src/pages/RosterSettingsPage.tsx", "label=\"Roster module enabled\""],
-  ["frontend/src/pages/SelfServiceSettingsPage.tsx", "[\"module_enabled\", \"Self-service enabled\"]"],
-  ["frontend/src/pages/DocumentCompliancePage.tsx", "label=\"Compliance enabled\""],
-  ["frontend/src/pages/ApprovalsPage.tsx", "label=\"Central approvals enabled\""],
-  ["frontend/src/pages/ContractsPage.tsx", "\"contracts_enabled\", \"require_contract_for_active_employee\""],
-  ["frontend/src/pages/FinalSettlementPage.tsx", "\"final_settlement_enabled\","],
-  ["frontend/src/pages/AssetUniformAdvancedPages.tsx", "[\"asset_module_enabled\", \"Asset module enabled\""],
-  ["frontend/src/pages/AssetUniformAdvancedPages.tsx", "[\"uniform_module_enabled\", \"Uniform module enabled\""]
-].forEach(([file, marker]) => hasNo(file, marker, `old embedded module toggle marker remains: ${marker}`));
-
-has("frontend/src/pages/AttendanceSettingsPage.tsx", "disabled={saving || !moduleEnabled}", "attendance save must be disabled while module is disabled");
-has("frontend/src/pages/RosterSettingsPage.tsx", "disabled={saving || !moduleEnabled}", "roster save must be disabled while module is disabled");
-has("frontend/src/pages/SelfServiceSettingsPage.tsx", "disabled={saving || !settings || !moduleEnabled}", "self-service save must be disabled while module is disabled");
-has("frontend/src/pages/PayrollAdminPages.tsx", "disabled={!moduleEnabled}", "payroll save/action must reflect disabled module state");
-has("frontend/src/pages/AttendanceDeviceOperationsPage.tsx", "zkteco_csv_import_enabled: false", "ZKTeco disable path must turn off import modes");
 
 has("frontend/src/routes/AppRoutes.tsx", "lazyPage", "Prompt 13 route-level lazy loading marker missing");
 has("frontend/vite.config.ts", "manualChunks", "Prompt 13 manual chunk split marker missing");

@@ -33,8 +33,7 @@ const links = [
   { label: "Pension", to: "/payroll/pension", permission: "payroll.pension_contributions.view", fallback: "payroll.pension_schemes.view", submodule: "pension_enabled" },
   { label: "History", to: "/payroll/history", permission: "payroll.history.view", fallback: "payroll.reports.view" },
   { label: "Exit Payroll", to: "/payroll/exit-payroll", permission: "final_settlement.view", fallback: "final_settlement.cases.view" },
-  { label: "Reports", to: "/payroll/reports", permission: "payroll.reports.view", fallback: "reports.payroll.view", submodule: "payroll_reports_enabled" },
-  { label: "Settings", to: "/payroll/settings", permission: "payroll.settings.view", fallback: "payroll.settings.manage" }
+  { label: "Reports", to: "/payroll/reports", permission: "payroll.reports.view", fallback: "reports.payroll.view", submodule: "payroll_reports_enabled" }
 ] satisfies Array<{ label: string; to: string; permission: string; fallback?: string; submodule?: PayrollSubmoduleSettingKey }>;
 
 export function PayrollNav() {

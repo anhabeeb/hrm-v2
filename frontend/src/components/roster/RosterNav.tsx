@@ -7,8 +7,7 @@ import { ModuleNavigationBar, ModuleNavigationItem } from "../ui/navigation-tabs
 const links: Array<{ label: string; to: string; permissions: string[] }> = [
   { label: "Weekly", to: "/roster", permissions: ["roster.view", "roster.team.view", "roster.assignments.view"] },
   { label: "Shift Templates", to: "/roster/shift-templates", permissions: ["roster.shift_templates.view", "roster.shift_templates.manage", "roster.settings.manage", "roster.view"] },
-  { label: "Reports", to: "/roster/reports", permissions: ["roster.reports.view"] },
-  { label: "Settings", to: "/roster/settings", permissions: ["roster.settings.view", "roster.settings.update", "roster.settings.manage", "roster.view"] }
+  { label: "Reports", to: "/roster/reports", permissions: ["roster.reports.view"] }
 ];
 
 export function RosterNav() {
@@ -28,7 +27,7 @@ export function RosterNav() {
 
   return (
     <ModuleNavigationBar label="Roster navigation">
-      {links.filter((link) => link.permissions.some((permission) => permissions.has(permission))).filter((link) => moduleEnabled || link.to === "/roster/settings").map((link) => {
+      {links.filter((link) => link.permissions.some((permission) => permissions.has(permission))).filter(() => moduleEnabled).map((link) => {
         const active = link.to === "/roster" ? location.pathname === "/roster" || location.pathname === "/roster/weekly" : location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
         return (
           <ModuleNavigationItem key={link.to} to={link.to} active={active}>{link.label}</ModuleNavigationItem>

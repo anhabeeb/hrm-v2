@@ -112,7 +112,7 @@ export function ModuleSettingsBody({ disabled, children, className }: { disabled
     <fieldset disabled={disabled} className={cn("rounded-lg transition", disabled && "bg-slate-50/75 opacity-65", className)}>
       {disabled ? (
         <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-muted-foreground">
-          This module is currently disabled. Enable it to edit settings or use related features.
+          This module is disabled. Enable it from Settings.
         </div>
       ) : null}
       {children}

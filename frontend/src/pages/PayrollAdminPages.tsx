@@ -4,7 +4,7 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PayrollNav } from "../components/payroll/PayrollNav";
-import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
+import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -356,26 +356,11 @@ export function PayrollSettingsPage() {
     <PayrollPageHeader title="Payroll Settings" description="General payroll, bank-loan, pension, payment, and deduction-priority controls.">{canManageSettings ? <Button size="sm" disabled={!moduleEnabled} onClick={() => void save()}>Save settings</Button> : null}</PayrollPageHeader>
     <ErrorMessage error={error} />
     {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
-    {settings ? <ModuleToggleHeader moduleName="Payroll" enabled={moduleEnabled} permissionCanUpdate={canManageSettings} description="Controls payroll periods, runs, review results, advances, deductions, pension, bank loans, reports, and payment-register foundations." disabledDescription="Payroll settings are read-only while the payroll module is disabled." dependencyWarnings={["Payroll consumes attendance, leave, roster, pension, bank loan, custom deduction, final settlement, and employee salary foundations."]} onToggle={togglePayrollModule} /> : null}
     {settings ? (
       <section className="space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-950">Payroll submodule controls</h2>
-          <p className="text-sm text-muted-foreground">Disable optional payroll areas safely without changing historical records or core payroll settings.</p>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {payrollSubmoduleCards.map((item) => (
-            <ModuleToggleHeader
-              key={item.key}
-              moduleName={item.name}
-              enabled={Boolean(settings[item.key] ?? true)}
-              permissionCanUpdate={canManageSubmodules}
-              description={item.description}
-              disabledDescription="This payroll submodule is disabled. Related settings, routes, navigation, search, and calculation inputs are blocked or skipped until it is enabled."
-              dependencyWarnings={item.warnings}
-              onToggle={(enabled) => togglePayrollSubmodule(item.key, enabled)}
-            />
-          ))}
+          <h2 className="text-sm font-semibold text-slate-950">Payroll module controls moved</h2>
+          <p className="text-sm text-muted-foreground">Main payroll and payroll submodule enablement is managed from the main Settings page.</p>
         </div>
         <Panel className="p-4">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">

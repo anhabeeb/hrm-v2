@@ -153,7 +153,13 @@ requireIncludes("frontend/src/components/roster/RosterAssignmentModal.tsx", [
 requireIncludes("frontend/src/components/roster/RosterNav.tsx", [
   "moduleEnabled",
   "getRosterSettings",
-  'link.to === "/roster/settings"'
+  "ModuleNavigationBar"
+]);
+
+requireIncludes("frontend/src/components/ui/page-shell.tsx", [
+  'prefix: "/roster"',
+  'settingsPath: "/roster/settings"',
+  "SettingsIcon"
 ]);
 
 requireIncludes("frontend/src/pages/RosterShiftTemplatesPage.tsx", [

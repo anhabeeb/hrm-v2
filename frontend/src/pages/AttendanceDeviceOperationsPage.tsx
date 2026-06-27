@@ -3,7 +3,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
-import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
+import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -116,36 +116,11 @@ function DeviceSettings({ token, canManage }: { token: string; canManage: boolea
     }
   }
 
-  async function toggleModule(enabled: boolean) {
-    if (!settings) return;
-    const next = enabled
-      ? { ...settings, zkteco_csv_import_enabled: true }
-      : { ...settings, zkteco_csv_import_enabled: false, zkteco_local_bridge_enabled: false, zkteco_push_adms_enabled: false };
-    setSettings(next);
-    setError(null);
-    setMessage(null);
-    try {
-      setSettings((await api.updateAttendanceDeviceSettings(token, next)).settings);
-      setMessage(enabled ? "ZKTeco device integration enabled." : "ZKTeco device integration disabled.");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to update device integration status.");
-    }
-  }
-
   if (!settings) return <Panel><EmptyState title="Loading settings" description="Fetching device integration settings." /></Panel>;
   const moduleEnabled = Boolean(settings.zkteco_csv_import_enabled || settings.zkteco_local_bridge_enabled || settings.zkteco_push_adms_enabled);
   return (
     <Panel className="p-4">
       <StatusLine error={error} message={message} />
-      <ModuleToggleHeader
-        moduleName="ZKTeco devices"
-        enabled={moduleEnabled}
-        permissionCanUpdate={canManage}
-        description="Controls ZKTeco CSV import, local bridge placeholder, ADMS push placeholder, biometric matching, and locked-day import protections."
-        disabledDescription="Device import settings are read-only while all ZKTeco integration modes are disabled."
-        dependencyWarnings={["Device imports feed attendance records, payroll locked-day warnings, unmatched-log review, and attendance reconciliation reports."]}
-        onToggle={toggleModule}
-      />
       <ModuleSettingsBody disabled={!moduleEnabled} className="mt-4">
       <div className="grid gap-3 md:grid-cols-3">
         <Toggle disabled={!canManage || !moduleEnabled} label="ZKTeco CSV import" checked={settings.zkteco_csv_import_enabled} onChange={(value) => setSettings({ ...settings, zkteco_csv_import_enabled: value })} />

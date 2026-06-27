@@ -100,16 +100,31 @@ hasAll("worker/src/routes/final-settlement.ts", [
   "pension_enabled"
 ]);
 
-hasAll("frontend/src/pages/PayrollAdminPages.tsx", [
-  "payrollSubmoduleCards",
-  "Payroll submodule controls",
-  "togglePayrollSubmodule",
-  "payroll.submodules.view",
-  "payroll.submodules.update",
-  "Final settlement status",
-  "SubmoduleSettingsSection",
-  "This payroll submodule is disabled"
+hasAll("frontend/src/pages/SettingsPage.tsx", [
+  "SettingsToggleGroup",
+  "ModuleTogglePill",
+  "Payroll Core",
+  "payslips_enabled",
+  "payment_register_enabled",
+  "payment_methods_enabled",
+  "payment_institutions_enabled",
+  "employee_advances_enabled",
+  "payroll_adjustments_enabled",
+  "payroll_reports_enabled",
+  "bank_loan_deductions_enabled",
+  "custom_deductions_enabled",
+  "pension_enabled",
+  "final_settlement_enabled",
+  "api.updatePayrollSettings",
+  "api.updateFinalSettlementSettings"
 ]);
+hasAll("frontend/src/pages/PayrollAdminPages.tsx", [
+  "Payroll module controls moved",
+  "Main payroll and payroll submodule enablement is managed from the main Settings page.",
+  "Final settlement status",
+  "SubmoduleSettingsSection"
+]);
+hasNo("frontend/src/pages/PayrollAdminPages.tsx", /<ModuleToggleHeader\b/, "Payroll settings page must not render submodule toggle cards");
 
 hasAll("frontend/src/components/payroll/PayrollNav.tsx", [
   "PayrollSubmoduleSettingKey",

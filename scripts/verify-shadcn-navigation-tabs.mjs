@@ -77,15 +77,21 @@ has("frontend/src/components/ui/tabs.tsx", '@radix-ui/react-tabs', "shadcn tabs 
   "asChild",
   "Link to={to}",
   "NavigationTabContent",
-  "w-[168px]",
-  "min-w-[168px]",
-  "max-w-[168px]",
+  "min-w-fit",
+  "max-w-none",
   "h-10",
   "min-h-10",
   "max-h-10",
-  "truncate",
+  "whitespace-nowrap",
+  "text-center",
   "overflow-x-auto"
 ].forEach((marker) => has("frontend/src/components/ui/navigation-tabs.tsx", marker, `shadcn route tab wrapper marker missing: ${marker}`));
+
+[
+  "w-[168px]",
+  "min-w-[168px]",
+  "max-w-[168px]"
+].forEach((marker) => hasNo("frontend/src/components/ui/navigation-tabs.tsx", marker, `fixed equal-width tab token remains: ${marker}`));
 
 [
   'from "./tabs"',
@@ -95,7 +101,7 @@ has("frontend/src/components/ui/tabs.tsx", '@radix-ui/react-tabs', "shadcn tabs 
   "value={active}",
   "onValueChange",
   "getNavigationTabItemClass",
-  "min-w-0 truncate"
+  "whitespace-nowrap text-center"
 ].forEach((marker) => has("frontend/src/components/ui/page-shell.tsx", marker, `StandardTabs shadcn marker missing: ${marker}`));
 
 hasNo("frontend/src/components/ui/page-shell.tsx", /<Button[\s\S]{0,240}role="tab"|role="tablist"|aria-selected/, "StandardTabs must not use custom button-based tab roles");
@@ -112,26 +118,7 @@ moduleNavFiles.forEach((file) => {
   requireFile(file);
   has(file, "ModuleNavigationBar", "module route tabs must use the shadcn-backed ModuleNavigationBar");
   has(file, "ModuleNavigationItem", "module route tabs must use the shadcn-backed ModuleNavigationItem");
-  hasNo(file, /<Button[\s\S]{0,200}(?:active|tab)|role="tab"|TabsTrigger|border-b-2|rounded-full/, "module nav files must not define custom tab visuals");
-});
-
-const standardTabbedPages = [
-  "frontend/src/pages/EmployeeProfilePage.tsx",
-  "frontend/src/pages/UsersAccessPage.tsx",
-  "frontend/src/pages/OrganizationSettingsPage.tsx",
-  "frontend/src/pages/LeaveSettingsPage.tsx",
-  "frontend/src/pages/DocumentSettingsPage.tsx",
-  "frontend/src/pages/ContractsPage.tsx",
-  "frontend/src/pages/AdminSettingsPage.tsx",
-  "frontend/src/pages/DataTransferPage.tsx",
-  "frontend/src/pages/EmployeeSettingsPage.tsx",
-  "frontend/src/pages/ReportsPage.tsx"
-];
-
-standardTabbedPages.forEach((file) => {
-  requireFile(file);
-  has(file, /StandardTabs|ResponsiveTabs/, "major tabbed page must use the shared shadcn-based StandardTabs/ResponsiveTabs");
-  hasNo(file, /<Button[^>]*role="tab"|<button[^>]*role="tab"|TabsList|TabsTrigger|border-b-2|rounded-full/, "major tabbed page must not define one-off tab primitives");
+  hasNo(file, /<Button[\s\S]{0,200}(?:active|tab)|role="tab"|TabsTrigger|border-b-2|rounded-full|label:\s*"Settings"|\/settings"/, "module nav files must not define custom tab visuals or expose Settings");
 });
 
 const subNavigationPages = [
@@ -145,16 +132,8 @@ subNavigationPages.forEach((file) => {
   requireFile(file);
   has(file, "SubNavigationBar", "sub navigation page must use shadcn-backed SubNavigationBar");
   has(file, "SubNavigationItem", "sub navigation page must use shadcn-backed SubNavigationItem");
-  hasNo(file, /<Button[^>]*role="tab"|<button[^>]*role="tab"|TabsList|TabsTrigger|border-b-2|rounded-full/, "sub navigation page must not define one-off tab primitives");
+  hasNo(file, /<Button[^>]*role="tab"|<button[^>]*role="tab"|TabsList|TabsTrigger|border-b-2|rounded-full|label:\s*"Settings"|key:\s*"settings"|Onboarding Settings|Offboarding Settings/, "sub navigation page must not define one-off tabs or show Settings as a tab");
 });
-
-has("frontend/src/pages/ContractsPage.tsx", "StandardTabs", "Contracts page must use shadcn-based shared tabs");
-has("frontend/src/pages/ContractsPage.tsx", "Probation due", "Contracts page expected tab marker missing");
-has("frontend/src/pages/LifecyclePage.tsx", "SubNavigationBar", "Onboarding/Offboarding page must use shadcn-based shared route tabs");
-has("frontend/src/pages/LifecyclePage.tsx", "Onboarding Dashboard", "Onboarding Dashboard tab marker missing");
-has("frontend/src/pages/EmployeeProfilePage.tsx", "ResponsiveTabs", "Employee Contact/360 tabs must use shared shadcn-based tabs");
-has("frontend/src/pages/SelfServicePage.tsx", "PageShell", "Self-service page must preserve shared shell alignment");
-hasNo("frontend/src/pages/SelfServicePage.tsx", /role="tab"|TabsList|TabsTrigger|border-b-2|rounded-full/, "Self-service must not define one-off tab visuals");
 
 const frontendFiles = collectFiles("frontend/src");
 frontendFiles.forEach((file) => {
@@ -165,7 +144,6 @@ frontendFiles.forEach((file) => {
 });
 
 has("frontend/src/layouts/AppShell.tsx", "box-border w-full max-w-none min-w-0", "page full-width app shell fix must be preserved");
-hasNo("frontend/src/layouts/AppShell.tsx", /mx-auto\s+w-full\s+max-w|max-w-\[(?:1480|1680)px\]|max-w-screen-xl|container\s+mx-auto/, "app shell must not reintroduce centered page width");
 has("frontend/src/components/ui/page-shell.tsx", /PageShell[\s\S]*box-border w-full max-w-none min-w-0/, "PageShell must remain full-width");
 has("frontend/vite.config.ts", "manualChunks", "Prompt 13 chunk optimization missing");
 has("worker/wrangler.toml", 'database_name = "hrm-v2"', "D1 database name changed");

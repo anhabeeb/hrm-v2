@@ -14,9 +14,7 @@ const links = [
   { label: "Raw Logs", to: "/attendance/raw-logs", requiresModule: false },
   { label: "Diagnostics", to: "/attendance/device-diagnostics", requiresModule: false },
   { label: "Device Reports", to: "/attendance/device-reports", requiresModule: false },
-  { label: "Reports", to: "/attendance/reports", requiresModule: true },
-  { label: "Device Settings", to: "/attendance/devices/settings", requiresModule: false },
-  { label: "Settings", to: "/attendance/settings", requiresModule: false }
+  { label: "Reports", to: "/attendance/reports", requiresModule: true }
 ];
 
 export function AttendanceNav() {

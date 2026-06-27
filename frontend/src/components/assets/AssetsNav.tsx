@@ -10,7 +10,6 @@ const links = [
   ["Uniform Types", "/assets/uniform-types"],
   ["Categories", "/assets/categories"],
   ["Deduction rules", "/assets/deduction-rules"],
-  ["Settings", "/assets/settings"],
   ["Reports", "/assets/reports"]
 ] as const;
 

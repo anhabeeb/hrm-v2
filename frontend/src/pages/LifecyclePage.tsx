@@ -4,7 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
-import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
+import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
@@ -42,10 +42,8 @@ const nav = [
   { label: "Onboarding Dashboard", mode: "onboarding-dashboard", to: "/onboarding" },
   { label: "Onboarding Cases", mode: "onboarding-cases", to: "/onboarding/cases" },
   { label: "Onboarding Alerts", mode: "onboarding-alerts", to: "/onboarding/alerts" },
-  { label: "Onboarding Settings", mode: "onboarding-settings", to: "/onboarding/settings" },
   { label: "Offboarding Dashboard", mode: "offboarding-dashboard", to: "/offboarding" },
   { label: "Offboarding Cases", mode: "offboarding-cases", to: "/offboarding/cases" },
-  { label: "Offboarding Settings", mode: "offboarding-settings", to: "/offboarding/settings" },
   { label: "Lifecycle Reports", mode: "lifecycle-reports", to: "/lifecycle/reports" }
 ] as const;
 
@@ -344,24 +342,8 @@ function SettingsSection({ settings, kind, canManage, loading, error, onSave }: 
   if (error) return <DataTableFrame error={error}><div /></DataTableFrame>;
   if (!draft) return <Panel><EmptyState title="Settings unavailable" /></Panel>;
   const enabled = isEnabled(draft[enabledField]);
-  async function toggleModule(nextEnabled: boolean) {
-    const next = { ...draft, [enabledField]: nextEnabled ? 1 : 0 } as LifecycleSettings;
-    setDraft(next);
-    await onSave(next);
-  }
   return (
     <Panel className="space-y-4 p-4">
-      <ModuleToggleHeader
-        moduleName={kind === "onboarding" ? "Onboarding" : "Offboarding"}
-        enabled={enabled}
-        permissionCanUpdate={canManage}
-        description={kind === "onboarding" ? "Controls onboarding cases, activation readiness, checklist automation, and onboarding task requirements." : "Controls offboarding cases, exit readiness, final checks, access revocation, and clearance requirements."}
-        disabledDescription={`${kind === "onboarding" ? "Onboarding" : "Offboarding"} settings are read-only while this lifecycle module is disabled.`}
-        dependencyWarnings={kind === "onboarding"
-          ? ["Onboarding affects employee activation, required documents, contract readiness, payroll setup, and user access setup."]
-          : ["Offboarding affects employee exit cases, final settlement readiness, clearance, payroll checks, and access deactivation."]}
-        onToggle={toggleModule}
-      />
       <ModuleSettingsBody disabled={!enabled}>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {fields.filter((field) => field !== enabledField).map((field) => (

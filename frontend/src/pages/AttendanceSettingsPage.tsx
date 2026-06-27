@@ -2,7 +2,7 @@ import { Save } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
-import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
+import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -69,22 +69,6 @@ export function AttendanceSettingsPage() {
     if (settings) setSettings({ ...settings, [key]: value });
   }
 
-  async function toggleAttendanceModule(enabled: boolean) {
-    if (!token || !settings) return;
-    setSaving(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const result = await api.updateAttendanceSettings(token, { ...settings, module_enabled: enabled });
-      setSettings(result.settings);
-      setMessage(enabled ? "Attendance module enabled." : "Attendance module disabled.");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to update attendance module status.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const moduleEnabled = Boolean(settings?.module_enabled ?? true);
   const controlsDisabled = !canManage || !moduleEnabled;
 
@@ -96,18 +80,6 @@ export function AttendanceSettingsPage() {
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
-      {settings ? (
-        <ModuleToggleHeader
-          moduleName="Attendance"
-          enabled={moduleEnabled}
-          permissionCanUpdate={canManage}
-          isSaving={saving}
-          description="Controls attendance records, corrections, device imports, roster integration, leave impact, and payroll impact settings."
-          disabledDescription="Attendance settings are read-only while the module is disabled. Enable it here before editing normal attendance options."
-          dependencyWarnings={["Attendance feeds payroll deductions, roster reconciliation, self-service correction requests, and leave day context."]}
-          onToggle={toggleAttendanceModule}
-        />
-      ) : null}
       <Panel className="p-4">
         {loading || !settings ? <EmptyState title="Loading settings" description="Fetching attendance settings." /> : (
           <ModuleSettingsBody disabled={!moduleEnabled}>

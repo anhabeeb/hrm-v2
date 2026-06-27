@@ -2,7 +2,7 @@ import { Bell, CheckCircle2, ClipboardList, FileWarning, RefreshCw, Settings, XC
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
-import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
+import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -26,7 +26,6 @@ const tabs: Array<{ mode: Mode; label: string; to: string }> = [
   { mode: "alerts", label: "Alerts", to: "/documents/compliance/alerts" },
   { mode: "renewal-cases", label: "Renewal Cases", to: "/documents/compliance/renewal-cases" },
   { mode: "waivers", label: "Waivers", to: "/documents/compliance/waivers" },
-  { mode: "settings", label: "Settings", to: "/settings/documents/compliance" },
   { mode: "type-settings", label: "Type Rules", to: "/settings/documents/compliance/types" }
 ];
 
@@ -219,22 +218,8 @@ function SettingsForm({ settings, token, canManage, onSaved, onError }: { settin
     }
   }
   const enabled = Boolean(form.document_compliance_enabled);
-  async function toggleModule(nextEnabled: boolean) {
-    const next = { ...form, document_compliance_enabled: nextEnabled };
-    setForm(next);
-    await save(next);
-  }
   return (
     <div className="space-y-3 p-3">
-      <ModuleToggleHeader
-        moduleName="Document compliance"
-        enabled={enabled}
-        permissionCanUpdate={canManage}
-        description="Controls missing document checks, expiry alerts, renewal cases, waivers, and compliance type rules."
-        disabledDescription="Document compliance settings are read-only while compliance automation is disabled."
-        dependencyWarnings={["Disabling compliance suppresses expiry alerts, missing document tracking, renewal cases, and onboarding compliance warnings."]}
-        onToggle={toggleModule}
-      />
       <ModuleSettingsBody disabled={!enabled}>
         <div className="grid gap-3 md:grid-cols-3">
           <Toggle disabled={!canManage || !enabled} label="Expiry alerts" checked={form.expiry_alerts_enabled} onChange={(value) => update("expiry_alerts_enabled", value)} />

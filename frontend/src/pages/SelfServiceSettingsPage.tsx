@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Save } from "lucide-react";
-import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
+import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
@@ -90,22 +90,6 @@ export function SelfServiceSettingsPage() {
     setSettings((current) => ({ ...(current ?? {}), [key]: value ? 1 : 0 }));
   }
 
-  async function toggleSelfServiceModule(enabled: boolean) {
-    if (!token || !settings) return;
-    setSaving(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const next = { ...settings, module_enabled: enabled ? 1 : 0 };
-      setSettings((await api.updateSelfServiceSettings(token, next)).settings);
-      setMessage(enabled ? "Self-service module enabled." : "Self-service module disabled.");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to update self-service module status.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function save(event: FormEvent) {
     event.preventDefault();
     if (!token || !settings) return;
@@ -147,18 +131,6 @@ export function SelfServiceSettingsPage() {
         actions={canManage ? <Button form="self-service-settings-form" type="submit" disabled={saving || !settings || !moduleEnabled}><Save className="h-4 w-4" />Save</Button> : null}
       />
       {message ? <div className="rounded-md border bg-muted px-3 py-2 text-sm">{message}</div> : null}
-      {settings ? (
-        <ModuleToggleHeader
-          moduleName="Self-service"
-          enabled={moduleEnabled}
-          permissionCanUpdate={canManage}
-          isSaving={saving}
-          description="Controls employee-facing portal visibility for profile, documents, leave, attendance, roster, payroll, contracts, assets, and approvals."
-          disabledDescription="Self-service settings are read-only while the employee portal is disabled. Authorized users can re-enable it from this top switch."
-          dependencyWarnings={["Self-service visibility affects employee document submissions, leave requests, attendance corrections, payslips, and employee profile update requests."]}
-          onToggle={toggleSelfServiceModule}
-        />
-      ) : null}
       <DataTableFrame loading={loading} error={error} empty={!loading && !settings}>
         <form id="self-service-settings-form" onSubmit={(event) => void save(event)} className="grid gap-4 xl:grid-cols-2">
           <ModuleSettingsBody disabled={!moduleEnabled} className="contents">

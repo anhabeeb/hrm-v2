@@ -256,8 +256,13 @@ hasAll("frontend/src/pages/AssetUniformAdvancedPages.tsx", [
 hasAll("frontend/src/components/assets/AssetsNav.tsx", [
   "/assets/uniforms",
   "/assets/uniform-assignments",
-  "/assets/uniform-types",
-  "/assets/settings"
+  "/assets/uniform-types"
+]);
+
+hasAll("frontend/src/components/ui/page-shell.tsx", [
+  'prefix: "/assets"',
+  'settingsPath: "/assets/settings"',
+  "SettingsIcon"
 ]);
 
 hasAll("frontend/src/routes/AppRoutes.tsx", [

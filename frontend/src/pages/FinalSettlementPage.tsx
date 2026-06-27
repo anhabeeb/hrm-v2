@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
-import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
+import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -27,7 +27,7 @@ import type {
   FinalSettlementSettings
 } from "../types/final-settlement";
 
-type Tab = "cases" | "payments" | "reports" | "settings";
+type Tab = "cases" | "payments" | "reports";
 type CaseAction = "submit" | "approve" | "reject" | "send-back" | "finalize" | "unlock" | "cancel" | "adjustment" | "payment";
 type PaymentAction = "confirm-paid" | "cancel-payment";
 
@@ -288,9 +288,9 @@ export function FinalSettlementPage() {
       <ErrorMessage error={error} />
 
       <SubNavigationBar label="Exit payroll section tabs">
-        {(["cases", "payments", "reports", "settings"] as Tab[]).map((item) => (
+        {(["cases", "payments", "reports"] as Tab[]).map((item) => (
           <SubNavigationItem key={item} active={tab === item} onClick={() => setTab(item)}>
-            {item === "cases" ? "Cases" : item === "payments" ? "Payment Register" : item === "reports" ? "Reports" : "Settings"}
+            {item === "cases" ? "Cases" : item === "payments" ? "Payment Register" : "Reports"}
           </SubNavigationItem>
         ))}
       </SubNavigationBar>
@@ -343,7 +343,7 @@ export function FinalSettlementPage() {
 
       {tab === "payments" ? <PaymentTable rows={payments} canManage={permissions.has("final_settlement.payment_register.manage")} onAction={(type, row) => { setPaymentAction({ type, row }); setReason(""); setNote(""); setReference(""); }} /> : null}
       {tab === "reports" ? <ReportsPanel reports={reports} /> : null}
-      {tab === "settings" ? <SettingsPanel settings={settingsData} canManage={permissions.has("final_settlement.settings.update") || permissions.has("final_settlement.settings.manage")} onChange={setSettingsData} onSave={(next) => void saveSettings(next)} /> : null}
+      {false ? <SettingsPanel settings={settingsData} canManage={permissions.has("final_settlement.settings.update") || permissions.has("final_settlement.settings.manage")} onChange={setSettingsData} onSave={(next) => void saveSettings(next)} /> : null}
 
       {createOpen ? <CreateCaseDialog form={form} employees={employees} organizationRefs={organizationRefs} onChange={setForm} onClose={() => setCreateOpen(false)} onSave={() => void createCase()} /> : null}
       {caseAction ? <CaseActionDialog action={caseAction.type} row={caseAction.row} note={note} reason={reason} amount={amount} adjustmentType={adjustmentType} onNote={setNote} onReason={setReason} onAmount={setAmount} onAdjustmentType={setAdjustmentType} onClose={() => setCaseAction(null)} onSave={() => void runCaseAction()} /> : null}
@@ -486,22 +486,8 @@ function SettingsPanel({ settings, canManage, onChange, onSave }: { settings: Fi
     "require_reason_for_unlock"
   ];
   const enabled = bool(activeSettings.final_settlement_enabled ?? true);
-  function toggleModule(nextEnabled: boolean) {
-    const next: FinalSettlementSettings = { ...activeSettings, final_settlement_enabled: nextEnabled };
-    onChange(next);
-    onSave(next);
-  }
   return (
     <Panel className="space-y-4 p-4">
-      <ModuleToggleHeader
-        moduleName="Final settlement"
-        enabled={enabled}
-        permissionCanUpdate={canManage}
-        description="Controls exit payroll cases, settlement calculation, clearance, approval, finalization, and manual payment register foundation."
-        disabledDescription="Final settlement settings are read-only while the module is disabled."
-        dependencyWarnings={["Final settlement depends on payroll, leave, attendance, contracts, asset/uniform clearance, documents, bank loans, pension, and custom deductions."]}
-        onToggle={toggleModule}
-      />
       <ModuleSettingsBody disabled={!enabled}>
         <div className="flex items-center justify-between"><div><h2 className="text-sm font-semibold">Exit payroll settings</h2><p className="text-sm text-muted-foreground">Configure settlement calculation, source inclusion, approval, finalization, and payment register controls.</p></div>{canManage ? <Button size="sm" disabled={!enabled} onClick={() => onSave()}><Settings className="h-4 w-4" /> Save settings</Button> : null}</div>
         <div className="grid gap-2 md:grid-cols-3">{toggleKeys.map((key) => <CheckboxField key={key} label={String(key).replace(/_/g, " ")} disabled={!canManage || !enabled} checked={bool(settings[key])} onChange={(checked) => onChange({ ...settings, [key]: checked })} />)}</div>

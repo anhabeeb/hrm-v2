@@ -1,4 +1,7 @@
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { Settings as SettingsIcon } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../../hooks/useAuth";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 import {
@@ -48,6 +51,32 @@ interface PageHeaderProps {
   className?: string;
 }
 
+const MODULE_SETTINGS_LINKS = [
+  { prefix: "/attendance", settingsPath: "/attendance/settings", permissions: ["attendance.settings.view", "attendance.settings.manage", "attendance.settings.update"] },
+  { prefix: "/roster", settingsPath: "/roster/settings", permissions: ["roster.settings.view", "roster.settings.manage", "roster.settings.update"] },
+  { prefix: "/payroll", settingsPath: "/payroll/settings", permissions: ["payroll.settings.view", "payroll.settings.manage", "payroll.submodules.view"] },
+  { prefix: "/contracts", settingsPath: "/settings/contracts", permissions: ["contracts.settings.view", "contracts.settings.manage", "contracts.settings.update"] },
+  { prefix: "/approvals", settingsPath: "/approvals/settings", permissions: ["approvals.settings.view", "approvals.settings.manage"] },
+  { prefix: "/documents/compliance", settingsPath: "/settings/documents/compliance", permissions: ["documents.compliance.settings.view", "documents.compliance.settings.manage", "documents.settings.manage"] },
+  { prefix: "/documents", settingsPath: "/settings/documents", permissions: ["documents.settings.view", "documents.settings.manage"] },
+  { prefix: "/assets", settingsPath: "/assets/settings", permissions: ["assets.settings.view", "assets.settings.manage"] },
+  { prefix: "/onboarding", settingsPath: "/onboarding/settings", permissions: ["onboarding.settings.view", "onboarding.settings.manage", "onboarding.settings.update"] },
+  { prefix: "/offboarding", settingsPath: "/offboarding/settings", permissions: ["offboarding.settings.view", "offboarding.settings.manage", "offboarding.settings.update"] },
+  { prefix: "/self-service", settingsPath: "/settings/self-service", permissions: ["self_service.settings.view", "self_service.settings.manage", "settings.manage"] },
+  { prefix: "/leave", settingsPath: "/leave/settings", permissions: ["leave.settings.view", "leave.settings.manage", "leave.policies.manage"] }
+] as const;
+
+function getModuleSettingsLink(pathname: string, permissions: Set<string>) {
+  if (pathname === "/settings" || pathname.startsWith("/settings/admin") || pathname.startsWith("/settings/organization")) return null;
+  const match = MODULE_SETTINGS_LINKS
+    .filter((item) => pathname === item.prefix || pathname.startsWith(`${item.prefix}/`))
+    .sort((a, b) => b.prefix.length - a.prefix.length)[0];
+  if (!match) return null;
+  if (pathname === match.settingsPath || pathname.startsWith(`${match.settingsPath}/`)) return null;
+  if (!match.permissions.some((permission) => permissions.has(permission))) return null;
+  return match;
+}
+
 export function PageHeader({
   title,
   description,
@@ -62,6 +91,10 @@ export function PageHeader({
   moduleStatus,
   className
 }: PageHeaderProps) {
+  const location = useLocation();
+  const { user } = useAuth();
+  const permissions = new Set(user?.permissions ?? []);
+  const moduleSettingsLink = getModuleSettingsLink(location.pathname, permissions);
   const resolvedActions = actions ?? (
     primaryAction || secondaryActions ? (
       <>
@@ -70,6 +103,20 @@ export function PageHeader({
       </>
     ) : null
   );
+  const settingsAction = moduleSettingsLink ? (
+    <Link to={moduleSettingsLink.settingsPath}>
+      <Button size="sm" variant="outline">
+        <SettingsIcon className="h-4 w-4" />
+        Settings
+      </Button>
+    </Link>
+  ) : null;
+  const actionsWithSettings = settingsAction || resolvedActions ? (
+    <>
+      {settingsAction}
+      {resolvedActions}
+    </>
+  ) : null;
 
   return (
     <div className={cn("box-border flex w-full max-w-none min-w-0 flex-col gap-3 rounded-lg border bg-white px-4 py-4 shadow-panel lg:flex-row lg:items-center lg:justify-between", className)}>
@@ -89,7 +136,7 @@ export function PageHeader({
         {moduleStatus ? <div className="mt-2 text-sm text-muted-foreground">{moduleStatus}</div> : null}
         </div>
       </div>
-      {resolvedActions ? <PageActions>{resolvedActions}</PageActions> : null}
+      {actionsWithSettings ? <PageActions>{actionsWithSettings}</PageActions> : null}
     </div>
   );
 }
@@ -558,9 +605,7 @@ export function StandardTabs({
   equalThreshold?: number;
 }) {
   const visibleItems = items.filter((item) => !item.hidden);
-  const resolvedVariant: NavigationTabsVariant = variant === "auto"
-    ? (visibleItems.length > equalThreshold ? "scrollable" : "equal")
-    : variant;
+  const resolvedVariant: NavigationTabsVariant = variant === "auto" ? "scrollable" : variant;
 
   return (
     <TabsShell variant={resolvedVariant} className={className} value={active} onValueChange={(key) => {
@@ -579,9 +624,9 @@ export function StandardTabs({
             title={title}
             className={getNavigationTabItemClass({ active: isActive, disabled: item.disabled, variant: resolvedVariant })}
           >
-            <span className="flex min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden">
+            <span className="flex min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden text-center">
               {item.icon ? <span className="shrink-0">{item.icon}</span> : null}
-              <span className="min-w-0 truncate">{item.label}</span>
+              <span className="whitespace-nowrap text-center">{item.label}</span>
               {item.count !== undefined ? <span className={getNavigationTabBadgeClass(isActive)}>{item.count}</span> : null}
               {item.badge ? <span className={getNavigationTabBadgeClass(isActive)}>{item.badge}</span> : null}
             </span>

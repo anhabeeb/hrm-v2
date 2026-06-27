@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterNav } from "../components/roster/RosterNav";
-import { ModuleSettingsBody, ModuleToggleHeader } from "../components/settings/ModuleToggleHeader";
+import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -75,22 +75,6 @@ export function RosterSettingsPage() {
     }
   }
 
-  async function toggleRosterModule(enabled: boolean) {
-    if (!token || !settings) return;
-    setSaving(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const result = await api.updateRosterSettings(token, { ...settings, module_enabled: enabled });
-      setSettings(result.settings);
-      setMessage(enabled ? "Roster module enabled." : "Roster module disabled.");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to update roster module status.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function saveRule(input: Partial<WeeklyOffRule>) {
     if (!token) return;
     setError(null);
@@ -127,18 +111,6 @@ export function RosterSettingsPage() {
       <RosterNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
-      {settings ? (
-        <ModuleToggleHeader
-          moduleName="Roster"
-          enabled={moduleEnabled}
-          permissionCanUpdate={canManage}
-          isSaving={saving}
-          description="Controls roster planning, weekly off rules, employee roster visibility, attendance context, leave counting, and payroll schedule foundations."
-          disabledDescription="Roster settings are read-only while the module is disabled. The module switch remains available here for authorized users."
-          dependencyWarnings={["Roster context is used by attendance schedules, leave day counting, self-service roster views, and payroll expected-work calculations."]}
-          onToggle={toggleRosterModule}
-        />
-      ) : null}
       <Panel className="p-4">
         {loading || !settings ? <EmptyState title="Loading roster settings" description="Fetching roster configuration." /> : (
           <ModuleSettingsBody disabled={!moduleEnabled}>
