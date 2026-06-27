@@ -1,6 +1,13 @@
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
+import {
+  getNavigationTabBadgeClass,
+  getNavigationTabItemClass,
+  getNavigationTabListClass,
+  getNavigationTabShellClass,
+  type NavigationTabsVariant
+} from "./navigation-tabs";
 
 interface PageShellProps {
   children: ReactNode;
@@ -419,8 +426,8 @@ export function CommandPalette({ placeholder = "Search commands...", children }:
 
 export const CommandSearch = CommandPalette;
 
-export function TabsShell({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("min-w-0 overflow-x-auto rounded-lg border bg-white p-1 shadow-panel [scrollbar-width:thin]", className)}>{children}</div>;
+export function TabsShell({ children, className, variant = "equal" }: { children: ReactNode; className?: string; variant?: NavigationTabsVariant }) {
+  return <div className={cn(getNavigationTabShellClass(variant), className)}>{children}</div>;
 }
 
 export function AccordionSection({ title, children, defaultOpen = true }: { title: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
@@ -519,23 +526,71 @@ export function NoSearchResultsState({ action }: { action?: ReactNode }) {
   return <ErrorState title="No matching records" description="No results match the current search and filters." action={action} />;
 }
 
-export function StandardTabs({ items, active, onChange, label = "Section tabs" }: { items: Array<{ key: string; label: ReactNode }>; active: string; onChange: (key: string) => void; label?: string }) {
+type StandardTabItem = {
+  key: string;
+  label: ReactNode;
+  icon?: ReactNode;
+  count?: ReactNode;
+  badge?: ReactNode;
+  disabled?: boolean;
+  hidden?: boolean;
+  title?: string;
+};
+
+type StandardTabsVariant = NavigationTabsVariant | "auto";
+
+export function StandardTabs({
+  items,
+  active,
+  onChange,
+  label = "Section tabs",
+  variant = "auto",
+  className,
+  equalThreshold = 6
+}: {
+  items: StandardTabItem[];
+  active: string;
+  onChange: (key: string) => void;
+  label?: string;
+  variant?: StandardTabsVariant;
+  className?: string;
+  equalThreshold?: number;
+}) {
+  const visibleItems = items.filter((item) => !item.hidden);
+  const resolvedVariant: NavigationTabsVariant = variant === "auto"
+    ? (visibleItems.length > equalThreshold ? "scrollable" : "equal")
+    : variant;
+  const gridStyle = resolvedVariant === "equal" && visibleItems.length
+    ? { gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))` }
+    : undefined;
+
   return (
-    <TabsShell>
-      <div role="tablist" aria-label={label} className="flex min-w-max gap-1">
-        {items.map((item) => (
+    <TabsShell variant={resolvedVariant} className={className}>
+      <div role="tablist" aria-label={label} className={getNavigationTabListClass(resolvedVariant)} style={gridStyle}>
+        {visibleItems.map((item) => {
+          const isActive = active === item.key;
+          return (
           <Button
             key={item.key}
             role="tab"
-            aria-selected={active === item.key}
-            size="sm"
-            variant={active === item.key ? "primary" : "ghost"}
-            onClick={() => onChange(item.key)}
-            className="h-9 whitespace-nowrap rounded-md px-3 text-sm"
+            aria-selected={isActive}
+            aria-disabled={item.disabled || undefined}
+            disabled={item.disabled}
+            size="md"
+            variant="ghost"
+            title={item.title}
+            onClick={() => {
+              if (!item.disabled) onChange(item.key);
+            }}
+            className={getNavigationTabItemClass({ active: isActive, disabled: item.disabled, variant: resolvedVariant })}
           >
+            {item.icon}
             {item.label}
+            {item.count !== undefined ? <span className={getNavigationTabBadgeClass(isActive)}>{item.count}</span> : null}
+            {item.badge ? <span className={getNavigationTabBadgeClass(isActive)}>{item.badge}</span> : null}
           </Button>
-        ))}
+          );
+        })}
       </div>
     </TabsShell>
   );
