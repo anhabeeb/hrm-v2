@@ -8,6 +8,7 @@ import {
   getNavigationTabShellClass,
   type NavigationTabsVariant
 } from "./navigation-tabs";
+import { Tabs, TabsList, TabsTrigger } from "./tabs";
 
 interface PageShellProps {
   children: ReactNode;
@@ -426,8 +427,8 @@ export function CommandPalette({ placeholder = "Search commands...", children }:
 
 export const CommandSearch = CommandPalette;
 
-export function TabsShell({ children, className, variant = "equal" }: { children: ReactNode; className?: string; variant?: NavigationTabsVariant }) {
-  return <div className={cn(getNavigationTabShellClass(variant), className)}>{children}</div>;
+export function TabsShell({ children, className, variant = "equal", value, onValueChange }: { children: ReactNode; className?: string; variant?: NavigationTabsVariant; value?: string; onValueChange?: (value: string) => void }) {
+  return <Tabs value={value} onValueChange={onValueChange} className={cn(getNavigationTabShellClass(variant), className)}>{children}</Tabs>;
 }
 
 export function AccordionSection({ title, children, defaultOpen = true }: { title: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
@@ -562,24 +563,20 @@ export function StandardTabs({
     : variant;
 
   return (
-    <TabsShell variant={resolvedVariant} className={className}>
-      <div role="tablist" aria-label={label} className={getNavigationTabListClass(resolvedVariant)}>
+    <TabsShell variant={resolvedVariant} className={className} value={active} onValueChange={(key) => {
+      const item = visibleItems.find((candidate) => candidate.key === key);
+      if (!item?.disabled) onChange(key);
+    }}>
+      <TabsList aria-label={label} className={getNavigationTabListClass(resolvedVariant)}>
         {visibleItems.map((item) => {
           const isActive = active === item.key;
           const title = item.title ?? (typeof item.label === "string" ? item.label : undefined);
           return (
-          <Button
+          <TabsTrigger
             key={item.key}
-            role="tab"
-            aria-selected={isActive}
-            aria-disabled={item.disabled || undefined}
+            value={item.key}
             disabled={item.disabled}
-            size="md"
-            variant="ghost"
             title={title}
-            onClick={() => {
-              if (!item.disabled) onChange(item.key);
-            }}
             className={getNavigationTabItemClass({ active: isActive, disabled: item.disabled, variant: resolvedVariant })}
           >
             <span className="flex min-w-0 max-w-full items-center justify-center gap-2 overflow-hidden">
@@ -588,10 +585,10 @@ export function StandardTabs({
               {item.count !== undefined ? <span className={getNavigationTabBadgeClass(isActive)}>{item.count}</span> : null}
               {item.badge ? <span className={getNavigationTabBadgeClass(isActive)}>{item.badge}</span> : null}
             </span>
-          </Button>
+          </TabsTrigger>
           );
         })}
-      </div>
+      </TabsList>
     </TabsShell>
   );
 }

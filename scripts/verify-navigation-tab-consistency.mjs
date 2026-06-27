@@ -66,6 +66,7 @@ function collectFiles(dir) {
 const pkg = JSON.parse(read("package.json"));
 [
   "verify:navigation-tabs",
+  "verify:shadcn-navigation-tabs",
   "verify:nav-tabs",
   "verify:page-layout-consistency",
   "verify:prompt13",
@@ -83,6 +84,7 @@ const standardTabsBlock = between(pageShellContent, "export function StandardTab
 
 [
   navigationTabs,
+  "frontend/src/components/ui/tabs.tsx",
   pageShell,
   "frontend/src/layouts/AppShell.tsx",
   "frontend/vite.config.ts",
@@ -92,6 +94,9 @@ const standardTabsBlock = between(pageShellContent, "export function StandardTab
 
 [
   "NAVIGATION_TAB_SIZE_TOKENS",
+  'from "./tabs"',
+  "TabsList",
+  "TabsTrigger",
   "h-10",
   "min-h-10",
   "max-h-10",
@@ -132,6 +137,9 @@ hasNo(navigationTabs, /triggerBase:\s*"[^"]*(?:w-auto|min-w-\[8rem\]|min-w-\[7re
 hasNo(navigationTabs, /trigger(?:Equal|Compact):\s*"[^"]*(?:w-\[|min-w-\[|max-w-\[|w-full|min-w-0|px-[0-9])/, "tab variants must not override the global fixed width/height");
 
 [
+  'from "./tabs"',
+  "TabsList",
+  "TabsTrigger",
   "getNavigationTabShellClass",
   "getNavigationTabListClass",
   "getNavigationTabItemClass",

@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils";
-import { Button } from "./button";
+import { Tabs, TabsList, TabsTrigger } from "./tabs";
 
 type NavigationBarProps = {
   children: ReactNode;
@@ -18,6 +18,7 @@ type NavigationItemProps = {
   title?: string;
   to?: string;
   onClick?: () => void;
+  value?: string;
   variant?: NavigationTabsVariant;
 };
 
@@ -89,6 +90,21 @@ function itemTitle(children: ReactNode, title?: string) {
   return title ?? (typeof children === "string" ? children : undefined);
 }
 
+function itemValue({ children, title, to, value }: Pick<NavigationItemProps, "children" | "title" | "to" | "value">) {
+  return value ?? to ?? itemTitle(children, title) ?? "navigation-tab";
+}
+
+function activeValueFromChildren(children: ReactNode) {
+  let activeValue = "__no_active_route_tab__";
+  Children.forEach(children, (child) => {
+    if (!isValidElement<NavigationItemProps>(child)) return;
+    if (child.props.active) {
+      activeValue = itemValue(child.props);
+    }
+  });
+  return activeValue;
+}
+
 function NavigationTabContent({ children }: { children: ReactNode }) {
   if (typeof children === "string" || typeof children === "number") {
     return <span className="min-w-0 truncate">{children}</span>;
@@ -103,18 +119,19 @@ function NavigationTabContent({ children }: { children: ReactNode }) {
 
 export function ModuleNavigationBar({ children, label, className, variant = "scrollable" }: NavigationBarProps) {
   return (
-    <nav
-      aria-label={label}
+    <Tabs
+      value={activeValueFromChildren(children)}
       className={cn(getNavigationTabShellClass(variant), className)}
     >
-      <div className={getNavigationTabListClass(variant)}>
+      <TabsList aria-label={label} className={getNavigationTabListClass(variant)}>
         {children}
-      </div>
-    </nav>
+      </TabsList>
+    </Tabs>
   );
 }
 
-export function ModuleNavigationItem({ children, active = false, className, disabled = false, title, to, onClick, variant = "scrollable" }: NavigationItemProps) {
+export function ModuleNavigationItem({ children, active = false, className, disabled = false, title, to, onClick, value, variant = "scrollable" }: NavigationItemProps) {
+  const resolvedValue = itemValue({ children, title, to, value });
   const classes = cn(
     getNavigationTabItemClass({ active, disabled, variant }),
     className
@@ -122,25 +139,25 @@ export function ModuleNavigationItem({ children, active = false, className, disa
 
   if (to && !disabled) {
     return (
-      <Link to={to} aria-current={active ? "page" : undefined} title={itemTitle(children, title)} className={classes}>
-        <NavigationTabContent>{children}</NavigationTabContent>
-      </Link>
+      <TabsTrigger value={resolvedValue} asChild className={classes}>
+        <Link to={to} aria-current={active ? "page" : undefined} title={itemTitle(children, title)}>
+          <NavigationTabContent>{children}</NavigationTabContent>
+        </Link>
+      </TabsTrigger>
     );
   }
 
   if (to && disabled) {
     return (
-      <span aria-disabled="true" title={itemTitle(children, title)} className={classes}>
+      <TabsTrigger value={resolvedValue} disabled title={itemTitle(children, title)} className={classes}>
         <NavigationTabContent>{children}</NavigationTabContent>
-      </span>
+      </TabsTrigger>
     );
   }
 
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="md"
+    <TabsTrigger
+      value={resolvedValue}
       aria-current={active ? "page" : undefined}
       disabled={disabled}
       title={itemTitle(children, title)}
@@ -148,7 +165,7 @@ export function ModuleNavigationItem({ children, active = false, className, disa
       className={classes}
     >
       <NavigationTabContent>{children}</NavigationTabContent>
-    </Button>
+    </TabsTrigger>
   );
 }
 

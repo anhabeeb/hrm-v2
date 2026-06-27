@@ -103,8 +103,9 @@ const pageShell = "frontend/src/components/ui/page-shell.tsx";
   "ModuleTabs",
   "EmployeeStyleTabs",
   "ResponsiveTabs",
-  "role=\"tablist\"",
-  "aria-selected",
+  "TabsList",
+  "TabsTrigger",
+  "onValueChange",
   "rounded-lg border bg-white",
   "shadow-panel",
   "box-border w-full max-w-none min-w-0"
