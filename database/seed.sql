@@ -1736,6 +1736,60 @@ INSERT OR IGNORE INTO module_control_settings (
 ) VALUES
   ('module_data_transfer', 'data_transfer', 'Data Import / Export', 1, 0, '["reports_exports","audit_security"]', '{"summary":"Controlled CSV import/export, backup readiness, QA, and deployment readiness guidance."}', 'ACTIVE', '{"seeded_prompt":"22"}');
 
+INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VALUES
+  ('perm_search_global_use', 'search.global.use', 'search', 'Use global HRM search across permitted records', 0),
+  ('perm_search_global_admin', 'search.global.admin', 'search', 'Use admin-level global search helpers', 1),
+  ('perm_notifications_view', 'notifications.view', 'notifications', 'View own HRM notification center', 0),
+  ('perm_notifications_manage', 'notifications.manage', 'notifications', 'Manage HRM notification records', 1),
+  ('perm_notifications_preferences_view', 'notifications.preferences.view', 'notifications', 'View notification preferences', 0),
+  ('perm_notifications_preferences_update', 'notifications.preferences.update', 'notifications', 'Update notification preferences', 0),
+  ('perm_notifications_admin_view', 'notifications.admin.view', 'notifications', 'View scoped administrative notifications', 1);
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+CROSS JOIN permissions p
+WHERE r.name = 'Owner/Super Admin'
+  AND r.is_protected = 1;
+
+WITH global_search_notification_role_permissions(role_name, permission_key) AS (
+  VALUES
+  ('Employee Self-Service', 'search.global.use'),
+  ('Employee Self-Service', 'notifications.view'),
+  ('Employee Self-Service', 'notifications.preferences.view'),
+  ('Employee Self-Service', 'notifications.preferences.update'),
+  ('HR Staff', 'search.global.use'),
+  ('HR Staff', 'notifications.view'),
+  ('Senior HR Staff', 'search.global.use'),
+  ('Senior HR Staff', 'notifications.view'),
+  ('HR Manager', 'search.global.use'),
+  ('HR Manager', 'notifications.view'),
+  ('HR Head / HR Admin', 'search.global.use'),
+  ('HR Head / HR Admin', 'search.global.admin'),
+  ('HR Head / HR Admin', 'notifications.view'),
+  ('HR Head / HR Admin', 'notifications.manage'),
+  ('HR Head / HR Admin', 'notifications.admin.view'),
+  ('Finance Payroll Officer', 'search.global.use'),
+  ('Finance Payroll Officer', 'notifications.view'),
+  ('Finance Payroll Manager', 'search.global.use'),
+  ('Finance Payroll Manager', 'notifications.view'),
+  ('Finance Head', 'search.global.use'),
+  ('Finance Head', 'notifications.view'),
+  ('Operations Roster Manager', 'search.global.use'),
+  ('Operations Roster Manager', 'notifications.view'),
+  ('Attendance Manager', 'search.global.use'),
+  ('Attendance Manager', 'notifications.view'),
+  ('Store / Outlet Manager', 'search.global.use'),
+  ('Store / Outlet Manager', 'notifications.view'),
+  ('Department Manager / Approver', 'search.global.use'),
+  ('Department Manager / Approver', 'notifications.view')
+)
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM global_search_notification_role_permissions rp
+INNER JOIN roles r ON r.name = rp.role_name
+INNER JOIN permissions p ON p.key = rp.permission_key;
+
 INSERT OR IGNORE INTO data_transfer_settings (
   id, data_import_enabled, data_export_enabled, max_import_rows, max_export_rows,
   allowed_import_file_types_json, csv_import_enabled, csv_export_enabled,

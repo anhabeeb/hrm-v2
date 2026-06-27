@@ -1,7 +1,6 @@
 import {
   Archive,
   BarChart3,
-  Bell,
   BookOpenCheck,
   Building2,
   BriefcaseBusiness,
@@ -18,7 +17,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  Search,
   Settings,
   ShieldCheck,
   Shirt,
@@ -27,6 +25,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { GlobalSearch } from "../components/global/GlobalSearch";
+import { NotificationBell } from "../components/global/NotificationBell";
 import { Button } from "../components/ui/button";
 import { useAuth } from "../hooks/useAuth";
 import { cn } from "../lib/utils";
@@ -303,13 +303,8 @@ export function AppShell() {
             </div>
 
             <div className="flex min-w-0 items-center gap-2">
-              <div className="hidden h-9 w-[280px] items-center gap-2 rounded-md border bg-slate-50 px-3 text-sm text-muted-foreground xl:flex">
-                <Search className="h-4 w-4" />
-                <span className="truncate">Search employees, payroll, documents...</span>
-              </div>
-              <Button variant="outline" size="icon" title="Notifications">
-                <Bell className="h-4 w-4" />
-              </Button>
+              <GlobalSearch />
+              <NotificationBell />
               <div className="hidden text-right sm:block">
                 <p className="max-w-[160px] truncate text-sm font-medium">{user?.name}</p>
                 <p className="max-w-[180px] truncate text-xs text-muted-foreground">{user?.email}</p>

@@ -440,6 +440,48 @@ CREATE INDEX IF NOT EXISTS idx_admin_system_alerts_severity ON admin_system_aler
 CREATE INDEX IF NOT EXISTS idx_admin_system_alerts_assigned ON admin_system_alerts(assigned_to_user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_system_alerts_open_source ON admin_system_alerts(alert_type, source_entity_type, source_entity_id) WHERE status = 'OPEN';
 
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  recipient_user_id TEXT,
+  recipient_employee_id TEXT,
+  module_key TEXT NOT NULL,
+  entity_type TEXT,
+  entity_id TEXT,
+  employee_id TEXT,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'INFO' CHECK (severity IN ('INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL')),
+  notification_type TEXT NOT NULL DEFAULT 'GENERAL',
+  route TEXT,
+  is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
+  read_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  metadata_json TEXT,
+  FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (recipient_employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(recipient_user_id, is_read, created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_employee_read ON notifications(recipient_employee_id, is_read, created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_module ON notifications(module_key, created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_entity ON notifications(entity_type, entity_id);
+
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  module_key TEXT NOT NULL,
+  in_app_enabled INTEGER NOT NULL DEFAULT 1 CHECK (in_app_enabled IN (0, 1)),
+  email_placeholder_enabled INTEGER NOT NULL DEFAULT 0 CHECK (email_placeholder_enabled IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  metadata_json TEXT,
+  UNIQUE (user_id, module_key),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_preferences_user ON notification_preferences(user_id, module_key);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id TEXT PRIMARY KEY,
   actor_user_id TEXT,

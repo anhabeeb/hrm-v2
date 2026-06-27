@@ -214,6 +214,48 @@ async function blobRequest(path: string, token: string) {
   };
 }
 
+export interface GlobalSearchItem {
+  id: string;
+  type: string;
+  title: string;
+  subtitle?: string | null;
+  module: string;
+  status?: string | null;
+  route: string;
+  icon_key?: string | null;
+}
+
+export interface GlobalSearchGroup {
+  module: string;
+  items: GlobalSearchItem[];
+}
+
+export interface GlobalSearchResponse {
+  query: string;
+  groups: GlobalSearchGroup[];
+  min_query_length: number;
+  message?: string;
+}
+
+export interface HrmNotification {
+  id: string;
+  recipient_user_id?: string | null;
+  recipient_employee_id?: string | null;
+  employee_id?: string | null;
+  module_key: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  title: string;
+  message: string;
+  severity: string;
+  notification_type: string;
+  route?: string | null;
+  is_read: boolean;
+  read_at?: string | null;
+  created_at: string;
+  metadata?: Record<string, unknown> | null;
+}
+
 function query(params?: Record<string, string | number | boolean | null | undefined>) {
   if (!params) return "";
   const search = new URLSearchParams();
@@ -269,6 +311,27 @@ export const api = {
   },
   getMainDashboard(token: string) {
     return request<Record<string, unknown>>("/api/v1/dashboard", {}, token);
+  },
+  globalSearch(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<GlobalSearchResponse>(`/api/v1/search/global${query(filters)}`, {}, token);
+  },
+  listNotifications(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ notifications: HrmNotification[]; unread_count: number }>(`/api/v1/notifications${query(filters)}`, {}, token);
+  },
+  getUnreadNotificationCount(token: string) {
+    return request<{ unread_count: number }>("/api/v1/notifications/unread-count", {}, token);
+  },
+  markNotificationRead(token: string, notificationId: string) {
+    return request<{ read: boolean }>(`/api/v1/notifications/${notificationId}/mark-read`, { method: "POST" }, token);
+  },
+  markAllNotificationsRead(token: string) {
+    return request<{ read: boolean; count: number }>("/api/v1/notifications/mark-all-read", { method: "POST" }, token);
+  },
+  getNotificationPreferences(token: string) {
+    return request<{ preferences: Record<string, unknown>[] }>("/api/v1/notifications/preferences", {}, token);
+  },
+  updateNotificationPreference(token: string, input: Record<string, unknown>) {
+    return request<{ updated: boolean }>("/api/v1/notifications/preferences", { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   getReportCenter(token: string) {
     return request<{ reports: Record<string, unknown>[] }>("/api/v1/reports/dashboard", {}, token);

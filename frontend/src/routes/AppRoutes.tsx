@@ -47,6 +47,7 @@ const LeaveSettingsPage = lazyPage(() => import("../pages/LeaveSettingsPage"), "
 const LifecyclePage = lazyPage(() => import("../pages/LifecyclePage"), "LifecyclePage");
 const LoginPage = lazyPage(() => import("../pages/LoginPage"), "LoginPage");
 const MissingDocumentsPage = lazyPage(() => import("../pages/MissingDocumentsPage"), "MissingDocumentsPage");
+const NotificationCenterPage = lazyPage(() => import("../pages/NotificationCenterPage"), "NotificationCenterPage");
 const OrganizationSettingsPage = lazyPage(() => import("../pages/OrganizationSettingsPage"), "OrganizationSettingsPage");
 const PayrollAdjustmentsPage = lazyPage(() => import("../pages/PayrollAdminPages"), "PayrollAdjustmentsPage");
 const PayrollAdvancesPage = lazyPage(() => import("../pages/PayrollAdminPages"), "PayrollAdvancesPage");
@@ -73,6 +74,7 @@ const RosterShiftTemplatesPage = lazyPage(() => import("../pages/RosterShiftTemp
 const RosterWeeklyPage = lazyPage(() => import("../pages/RosterWeeklyPage"), "RosterWeeklyPage");
 const SelfServicePage = lazyPage(() => import("../pages/SelfServicePage"), "SelfServicePage");
 const SelfServiceSettingsPage = lazyPage(() => import("../pages/SelfServiceSettingsPage"), "SelfServiceSettingsPage");
+const SearchResultsPage = lazyPage(() => import("../pages/SearchResultsPage"), "SearchResultsPage");
 const SettingsPage = lazyPage(() => import("../pages/SettingsPage"), "SettingsPage");
 const SetupPage = lazyPage(() => import("../pages/SetupPage"), "SetupPage");
 const UsersAccessPage = lazyPage(() => import("../pages/UsersAccessPage"), "UsersAccessPage");
@@ -125,6 +127,8 @@ export function AppRoutes() {
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
             <Route index element={<DashboardPage />} />
+            <Route path="search" element={<SearchResultsPage />} />
+            <Route path="notifications" element={<NotificationCenterPage />} />
             <Route path="employees" element={<EmployeesPage />} />
             <Route path="employees/kyc-requests" element={<KycRequestsPage />} />
             <Route path="employees/settings" element={<EmployeeSettingsPage />} />
