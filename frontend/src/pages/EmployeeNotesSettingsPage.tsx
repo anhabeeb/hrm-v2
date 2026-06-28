@@ -1,7 +1,7 @@
 import { Pencil, Power } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -47,7 +47,7 @@ export function EmployeeNotesSettingsPage() {
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <Table><TableHeader><TableRow><TableHead>Key</TableHead><TableHead>Name</TableHead><TableHead>Visibility</TableHead><TableHead>Description</TableHead><TableHead>Protected</TableHead><TableHead>Status</TableHead><TableHead>Sort</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{categories.map((row) => <TableRow key={row.id}><TableCell>{row.key ?? row.code}</TableCell><TableCell>{row.name}</TableCell><TableCell><Badge tone={row.default_visibility === "RESTRICTED" ? "danger" : row.default_visibility === "HR_ONLY" ? "warning" : "neutral"}>{row.default_visibility}</Badge></TableCell><TableCell>{row.description ?? "-"}</TableCell><TableCell>{row.is_protected ? <Badge tone="info">Protected</Badge> : "-"}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell>{row.sort_order}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><Button variant="ghost" size="icon" onClick={() => setModal(row)}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => void toggle(row)}><Power className="h-4 w-4" /></Button></> : "-"}</div></TableCell></TableRow>)}</TableBody></Table>
+          <Table><TableHeader><TableRow><TableHead>Key</TableHead><TableHead>Name</TableHead><TableHead>Visibility</TableHead><TableHead>Description</TableHead><TableHead>Protected</TableHead><TableHead>Status</TableHead><TableHead>Sort</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{categories.map((row) => <TableRow key={row.id}><TableCell>{row.key ?? row.code}</TableCell><TableCell>{row.name}</TableCell><TableCell><Badge tone={row.default_visibility === "RESTRICTED" ? "danger" : row.default_visibility === "HR_ONLY" ? "warning" : "neutral"}>{row.default_visibility}</Badge></TableCell><TableCell>{row.description ?? "-"}</TableCell><TableCell>{row.is_protected ? <Badge tone="info">Protected</Badge> : "-"}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell>{row.sort_order}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><RowActionButton intent="edit" title="Edit" onClick={() => setModal(row)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable" : "Enable"} onClick={() => void toggle(row)}><Power className="h-4 w-4" /></RowActionButton></> : "-"}</div></TableCell></TableRow>)}</TableBody></Table>
           {!categories.length ? <EmptyState title="No note categories" description="Seeded note categories appear after seed is applied." /> : null}
         </div>
       </Panel>

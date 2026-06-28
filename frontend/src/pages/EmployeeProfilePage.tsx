@@ -16,7 +16,7 @@ import { EmployeeNotesPanel } from "../components/notes/EmployeeNotesPanel";
 import { EmployeePayrollPanel } from "../components/payroll/EmployeePayrollPanel";
 import { EmployeeRosterPanel } from "../components/roster/EmployeeRosterPanel";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -580,8 +580,8 @@ function Contacts({
                 {canManage ? (
                   <TableCell>
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => onEdit(contact)}>Edit</Button>
-                      <Button variant="ghost" size="sm" onClick={() => onArchive(contact)}>Archive</Button>
+                      <RowActionButton intent="edit" size="sm" title="Edit" onClick={() => onEdit(contact)}>Edit</RowActionButton>
+                      <RowActionButton intent="archive" size="sm" title="Archive" onClick={() => onArchive(contact)}>Archive</RowActionButton>
                     </div>
                   </TableCell>
                 ) : null}
@@ -595,7 +595,7 @@ function Contacts({
 }
 
 function OnboardingTable({ tasks, completed, onTask }: { tasks: OnboardingTask[]; completed: number; onTask?: (task: OnboardingTask, status: OnboardingStatus) => Promise<void> }) {
-  return <div className="rounded-md border"><div className="flex items-center justify-between border-b px-3 py-2"><div><h3 className="text-sm font-semibold">Onboarding checklist</h3><p className="text-xs text-muted-foreground">{completed}/{tasks.length} completed</p></div><CheckCircle2 className="h-4 w-4 text-muted-foreground" /></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Module</TableHead><TableHead>Required</TableHead><TableHead>Status</TableHead><TableHead>Completed at</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader><TableBody>{tasks.map((task) => <TableRow key={task.id}><TableCell>{task.title}</TableCell><TableCell>{task.module}</TableCell><TableCell>{task.required ? "Yes" : "No"}</TableCell><TableCell><Badge tone={task.status === "COMPLETED" ? "success" : task.status === "BLOCKED" ? "danger" : "neutral"}>{task.status}</Badge></TableCell><TableCell>{task.completed_at ?? "-"}</TableCell><TableCell>{onTask ? <div className="flex gap-1"><Button variant="outline" size="sm" onClick={() => void onTask(task, "COMPLETED")}>Done</Button><Button variant="outline" size="sm" onClick={() => void onTask(task, "SKIPPED")}>Skip</Button><Button variant="outline" size="sm" onClick={() => void onTask(task, "BLOCKED")}>Block</Button>{task.status !== "PENDING" ? <Button variant="outline" size="sm" onClick={() => void onTask(task, "PENDING")}>Reopen</Button> : null}</div> : "-"}</TableCell></TableRow>)}</TableBody></Table></div></div>;
+  return <div className="rounded-md border"><div className="flex items-center justify-between border-b px-3 py-2"><div><h3 className="text-sm font-semibold">Onboarding checklist</h3><p className="text-xs text-muted-foreground">{completed}/{tasks.length} completed</p></div><CheckCircle2 className="h-4 w-4 text-muted-foreground" /></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Module</TableHead><TableHead>Required</TableHead><TableHead>Status</TableHead><TableHead>Completed at</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader><TableBody>{tasks.map((task) => <TableRow key={task.id}><TableCell>{task.title}</TableCell><TableCell>{task.module}</TableCell><TableCell>{task.required ? "Yes" : "No"}</TableCell><TableCell><Badge tone={task.status === "COMPLETED" ? "success" : task.status === "BLOCKED" ? "danger" : "neutral"}>{task.status}</Badge></TableCell><TableCell>{task.completed_at ?? "-"}</TableCell><TableCell>{onTask ? <div className="flex gap-1"><RowActionButton intent="complete" size="sm" title="Mark task done" onClick={() => void onTask(task, "COMPLETED")}>Done</RowActionButton><RowActionButton intent="neutral" size="sm" title="Skip task" onClick={() => void onTask(task, "SKIPPED")}>Skip</RowActionButton><RowActionButton intent="warning" size="sm" title="Block task" onClick={() => void onTask(task, "BLOCKED")}>Block</RowActionButton>{task.status !== "PENDING" ? <RowActionButton intent="restore" size="sm" title="Reopen task" onClick={() => void onTask(task, "PENDING")}>Reopen</RowActionButton> : null}</div> : "-"}</TableCell></TableRow>)}</TableBody></Table></div></div>;
 }
 
 function Placeholder({ title, items }: { title: string; items: string[] }) {

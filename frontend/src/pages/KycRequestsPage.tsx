@@ -1,7 +1,7 @@
 import { Check, RefreshCw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
@@ -141,12 +141,12 @@ export function KycRequestsPage() {
                     <TableCell className="max-w-[220px] truncate">{text(row.review_note)}</TableCell>
                     <TableCell className="sticky right-0 bg-white text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" title="Approve" disabled={!actionable} onClick={() => { setReviewAction({ type: "approve", row }); setReviewNote(""); }}>
+                        <RowActionButton intent="approve" title="Approve" disabled={!actionable} onClick={() => { setReviewAction({ type: "approve", row }); setReviewNote(""); }}>
                           <Check className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" title="Reject" disabled={!actionable} onClick={() => { setReviewAction({ type: "reject", row }); setReviewNote(""); }}>
+                        </RowActionButton>
+                        <RowActionButton intent="disable" title="Reject" disabled={!actionable} onClick={() => { setReviewAction({ type: "reject", row }); setReviewNote(""); }}>
                           <X className="h-4 w-4" />
-                        </Button>
+                        </RowActionButton>
                       </div>
                     </TableCell>
                   </TableRow>

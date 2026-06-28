@@ -3,7 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -777,8 +777,8 @@ function PayrollSection({ data, token }: { data: Record<string, unknown> | null;
                   <TableCell>{text(row.net_salary)}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" title="View payslip" onClick={() => void viewPayslip(row)}><Eye className="h-4 w-4" /></Button>
-                      {canDownload ? <Button variant="ghost" size="icon" title="Download payslip" onClick={() => void downloadPayslip(row)}><Download className="h-4 w-4" /></Button> : null}
+                      <RowActionButton intent="view" title="View payslip" onClick={() => void viewPayslip(row)}><Eye className="h-4 w-4" /></RowActionButton>
+                      {canDownload ? <RowActionButton intent="download" title="Download payslip" onClick={() => void downloadPayslip(row)}><Download className="h-4 w-4" /></RowActionButton> : null}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -892,7 +892,7 @@ function NotificationsSection({ data, token, reload }: { data: Record<string, un
                   <TableCell>{text(row.title)}</TableCell>
                   <TableCell><StatusBadge value={row.severity} /></TableCell>
                   <TableCell>{text(row.created_at)}</TableCell>
-                  <TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => void markRead(row)}>Mark read</Button></TableCell>
+                  <TableCell className="text-right"><RowActionButton intent="approve" size="sm" title="Mark read" onClick={() => void markRead(row)}>Mark read</RowActionButton></TableCell>
                 </TableRow>
               ))}
             </TableBody>

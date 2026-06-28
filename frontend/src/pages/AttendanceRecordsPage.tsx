@@ -6,7 +6,7 @@ import { AttendanceManualLogModal } from "../components/attendance/AttendanceMan
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { AttendanceRecordModal } from "../components/attendance/AttendanceRecordModal";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import {
@@ -255,7 +255,7 @@ export function AttendanceRecordsPage() {
                 <TableCell>{record.source}</TableCell>
                 <TableCell className="max-w-64 truncate">{record.payroll_impact_json ?? "None"}</TableCell>
                 <TableCell className="max-w-48 truncate">{record.notes ?? "-"}</TableCell>
-                <TableCell><div className="flex justify-end gap-1">{canManage ? <Button title="Edit" variant="ghost" size="icon" onClick={() => setEditing(record)}><Edit className="h-4 w-4" /></Button> : null}{canManage ? <Button title="Recalculate" variant="ghost" size="icon" onClick={() => void recalculate(record)}><RefreshCw className="h-4 w-4" /></Button> : null}</div></TableCell>
+                <TableCell><div className="flex justify-end gap-1">{canManage ? <RowActionButton intent="edit" title="Edit" onClick={() => setEditing(record)}><Edit className="h-4 w-4" /></RowActionButton> : null}{canManage ? <RowActionButton intent="calculate" title="Recalculate" onClick={() => void recalculate(record)}><RefreshCw className="h-4 w-4" /></RowActionButton> : null}</div></TableCell>
               </TableRow>)}
             </TableBody>
           </Table>
@@ -267,7 +267,7 @@ export function AttendanceRecordsPage() {
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Log time</TableHead><TableHead>Type</TableHead><TableHead>Source</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{logs.slice(0, 12).map((log) => <TableRow key={log.id}><TableCell>{log.employee_name ?? log.external_employee_code ?? "-"}</TableCell><TableCell>{new Date(log.log_time).toLocaleString()}</TableCell><TableCell>{log.log_type}</TableCell><TableCell>{log.source}</TableCell><TableCell className="max-w-64 truncate">{log.notes ?? "-"}</TableCell><TableCell><div className="flex justify-end">{canManageLogs ? <Button title="Edit log" variant="ghost" size="icon" onClick={() => setEditingLog(log)}><Edit className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
+            <TableBody>{logs.slice(0, 12).map((log) => <TableRow key={log.id}><TableCell>{log.employee_name ?? log.external_employee_code ?? "-"}</TableCell><TableCell>{new Date(log.log_time).toLocaleString()}</TableCell><TableCell>{log.log_type}</TableCell><TableCell>{log.source}</TableCell><TableCell className="max-w-64 truncate">{log.notes ?? "-"}</TableCell><TableCell><div className="flex justify-end">{canManageLogs ? <RowActionButton intent="edit" title="Edit log" onClick={() => setEditingLog(log)}><Edit className="h-4 w-4" /></RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
         {!loading && logs.length === 0 ? <EmptyState title="No attendance logs found" description="Manual and device-normalized logs will appear here." /> : null}

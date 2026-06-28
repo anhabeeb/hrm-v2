@@ -2,7 +2,7 @@ import { FileUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -109,7 +109,7 @@ export function MissingDocumentsPage() {
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Position</TableHead><TableHead>Location</TableHead><TableHead>Employee type</TableHead><TableHead>Employment type</TableHead><TableHead>Required document</TableHead><TableHead>Category</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{rows.map((row) => <TableRow key={`${row.employee_id}-${row.document_type_id}`}><TableCell><span className="font-medium">{row.employee_name}</span><div className="font-mono text-xs text-muted-foreground">{row.employee_no}</div></TableCell><TableCell>{row.department_name ?? "-"}</TableCell><TableCell>{row.position_title ?? "-"}</TableCell><TableCell>{row.location_name ?? "-"}</TableCell><TableCell>{row.employee_type}</TableCell><TableCell>{row.employment_type}</TableCell><TableCell>{row.document_type_name}</TableCell><TableCell>{row.category_name ?? "-"}</TableCell><TableCell>{row.reason ?? "Required rule"}</TableCell><TableCell><div className="flex justify-end gap-1"><Link to={`/employees/${row.employee_id}`}><Button variant="ghost" size="sm">Open 360</Button></Link>{canUpload ? <Button variant="outline" size="sm" onClick={() => setUploadRow(row)}><FileUp className="h-4 w-4" /> Upload</Button> : null}</div></TableCell></TableRow>)}</TableBody>
+            <TableBody>{rows.map((row) => <TableRow key={`${row.employee_id}-${row.document_type_id}`}><TableCell><span className="font-medium">{row.employee_name}</span><div className="font-mono text-xs text-muted-foreground">{row.employee_no}</div></TableCell><TableCell>{row.department_name ?? "-"}</TableCell><TableCell>{row.position_title ?? "-"}</TableCell><TableCell>{row.location_name ?? "-"}</TableCell><TableCell>{row.employee_type}</TableCell><TableCell>{row.employment_type}</TableCell><TableCell>{row.document_type_name}</TableCell><TableCell>{row.category_name ?? "-"}</TableCell><TableCell>{row.reason ?? "Required rule"}</TableCell><TableCell><div className="flex justify-end gap-1"><Link to={`/employees/${row.employee_id}`}><RowActionButton intent="view" size="sm" title="Open 360">Open 360</RowActionButton></Link>{canUpload ? <RowActionButton intent="upload" size="sm" title="Upload missing document" onClick={() => setUploadRow(row)}><FileUp className="h-4 w-4" /> Upload</RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
         {loading ? <EmptyState title="Loading missing documents" description="Checking required-rule gaps." /> : rows.length === 0 ? <EmptyState title="No missing documents" description="Required documents are currently satisfied for the loaded rules." /> : null}

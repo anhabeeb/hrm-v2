@@ -2,7 +2,7 @@ import { Archive, History, Paperclip, Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Button, RowActionButton } from "../ui/button";
 import { ConfirmDialog } from "../ui/dialogs";
 import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
@@ -100,7 +100,7 @@ export function EmployeeNotesPanel({ employee }: { employee: Employee }) {
             <TableHeader><TableRow><TableHead>Note</TableHead><TableHead>Category</TableHead><TableHead>Visibility</TableHead><TableHead>Linked module</TableHead><TableHead>By</TableHead><TableHead>Updated</TableHead><TableHead>Archived</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>{notes.map((note) => {
               const restricted = note.visibility === "HR_ONLY" || note.visibility === "RESTRICTED";
-              return <TableRow key={note.id}><TableCell><div className="font-medium">{note.title}</div><div className="max-w-[420px] truncate text-xs text-muted-foreground">{note.note_body}</div></TableCell><TableCell>{note.category_name ?? "-"}</TableCell><TableCell><Badge tone={note.visibility === "RESTRICTED" ? "danger" : note.visibility === "HR_ONLY" ? "warning" : "neutral"}>{note.visibility}</Badge></TableCell><TableCell>{note.linked_module ?? "-"}</TableCell><TableCell>{note.created_by_name ?? "-"}</TableCell><TableCell>{note.updated_at}</TableCell><TableCell>{note.is_archived ? <Badge tone="neutral">Archived</Badge> : "-"}</TableCell><TableCell><div className="flex min-w-[260px] justify-end gap-1">{canUpdate && (!restricted || canRestrictedManage) ? <Button variant="ghost" size="icon" onClick={() => setModal({ type: "edit", note })}><Pencil className="h-4 w-4" /></Button> : null}<Button variant="ghost" size="icon" onClick={() => setModal({ type: "versions", note })}><History className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => setModal({ type: "attachments", note })}><Paperclip className="h-4 w-4" /></Button>{canArchive && !note.is_archived && (!restricted || canRestrictedManage) ? <Button variant="ghost" size="icon" onClick={() => { setArchiveTarget(note); setArchiveReason(""); }}><Archive className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
+              return <TableRow key={note.id}><TableCell><div className="font-medium">{note.title}</div><div className="max-w-[420px] truncate text-xs text-muted-foreground">{note.note_body}</div></TableCell><TableCell>{note.category_name ?? "-"}</TableCell><TableCell><Badge tone={note.visibility === "RESTRICTED" ? "danger" : note.visibility === "HR_ONLY" ? "warning" : "neutral"}>{note.visibility}</Badge></TableCell><TableCell>{note.linked_module ?? "-"}</TableCell><TableCell>{note.created_by_name ?? "-"}</TableCell><TableCell>{note.updated_at}</TableCell><TableCell>{note.is_archived ? <Badge tone="neutral">Archived</Badge> : "-"}</TableCell><TableCell><div className="flex min-w-[260px] justify-end gap-1">{canUpdate && (!restricted || canRestrictedManage) ? <RowActionButton intent="edit" title="Edit" onClick={() => setModal({ type: "edit", note })}><Pencil className="h-4 w-4" /></RowActionButton> : null}<RowActionButton intent="view" title="History" onClick={() => setModal({ type: "versions", note })}><History className="h-4 w-4" /></RowActionButton><RowActionButton intent="create" title="Attachments" onClick={() => setModal({ type: "attachments", note })}><Paperclip className="h-4 w-4" /></RowActionButton>{canArchive && !note.is_archived && (!restricted || canRestrictedManage) ? <RowActionButton intent="archive" title="Archive" onClick={() => { setArchiveTarget(note); setArchiveReason(""); }}><Archive className="h-4 w-4" /></RowActionButton> : null}</div></TableCell></TableRow>;
             })}</TableBody>
           </Table>
           {!notes.length ? <EmptyState title="No notes yet" description="Create scoped HR notes for this employee." /> : null}
@@ -231,7 +231,7 @@ function AttachmentsModal({ employee, note, documents, canAttach, onClose }: { e
               <TableCell>{attachment.restricted ? "Restricted document" : attachment.document_type_name ?? "-"}</TableCell>
               <TableCell>{attachment.description ?? "-"}</TableCell>
               <TableCell>{attachment.attached_by_name ?? "-"} / {attachment.attached_at}</TableCell>
-              <TableCell className="text-right">{canAttach ? <Button variant="ghost" size="sm" onClick={() => void detach(attachment)}>Detach</Button> : "-"}</TableCell>
+              <TableCell className="text-right">{canAttach ? <RowActionButton intent="delete" size="sm" title="Detach" onClick={() => void detach(attachment)}>Detach</RowActionButton> : "-"}</TableCell>
             </TableRow>
           ))}
         </TableBody>

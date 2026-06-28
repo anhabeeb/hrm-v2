@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -254,12 +254,12 @@ export function DocumentRegistryPage() {
                   <TableCell>{doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : "-"}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
-                      <Link to={`/employees/${doc.employee_id}`}><Button title="Open Employee 360" variant="ghost" size="icon"><Eye className="h-4 w-4" /></Button></Link>
-                      <Button title="Version history" variant="ghost" size="icon" onClick={() => void showVersions(doc)}><History className="h-4 w-4" /></Button>
-                      {canDownload ? <Button title="Download" variant="ghost" size="icon" onClick={() => void download(doc)}><Download className="h-4 w-4" /></Button> : null}
-                      {canArchive && doc.status === "ACTIVE" ? <Button title="Archive" variant="ghost" size="icon" onClick={() => setDocumentAction({ document: doc, name: "archive", reason: "" })}><Archive className="h-4 w-4" /></Button> : null}
-                      {canArchive && doc.status === "ARCHIVED" ? <Button title="Restore" variant="ghost" size="icon" onClick={() => setDocumentAction({ document: doc, name: "restore", reason: "" })}><RotateCcw className="h-4 w-4" /></Button> : null}
-                      {canDelete && doc.status !== "SOFT_DELETED" ? <Button title="Soft delete" variant="ghost" size="icon" onClick={() => setDocumentAction({ document: doc, name: "soft-delete", reason: "" })}><Trash2 className="h-4 w-4" /></Button> : null}
+                      <Link to={`/employees/${doc.employee_id}`}><RowActionButton intent="view" title="Open Employee 360"><Eye className="h-4 w-4" /></RowActionButton></Link>
+                      <RowActionButton intent="download" title="Version history" onClick={() => void showVersions(doc)}><History className="h-4 w-4" /></RowActionButton>
+                      {canDownload ? <RowActionButton intent="download" title="Download" onClick={() => void download(doc)}><Download className="h-4 w-4" /></RowActionButton> : null}
+                      {canArchive && doc.status === "ACTIVE" ? <RowActionButton intent="archive" title="Archive" onClick={() => setDocumentAction({ document: doc, name: "archive", reason: "" })}><Archive className="h-4 w-4" /></RowActionButton> : null}
+                      {canArchive && doc.status === "ARCHIVED" ? <RowActionButton intent="restore" title="Restore" onClick={() => setDocumentAction({ document: doc, name: "restore", reason: "" })}><RotateCcw className="h-4 w-4" /></RowActionButton> : null}
+                      {canDelete && doc.status !== "SOFT_DELETED" ? <RowActionButton intent="delete" title="Soft delete" onClick={() => setDocumentAction({ document: doc, name: "soft-delete", reason: "" })}><Trash2 className="h-4 w-4" /></RowActionButton> : null}
                     </div>
                   </TableCell>
                 </TableRow>

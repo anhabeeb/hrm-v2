@@ -4,7 +4,7 @@ import { ApiError, api } from "../../lib/api";
 import type { EmployeeDocument } from "../../types/documents";
 import type { LeaveApproval, LeaveDocument, LeaveRequest } from "../../types/leave";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Label } from "../ui/label";
 import { SelectField } from "../ui/page-shell";
@@ -108,7 +108,7 @@ export function LeaveRequestDetailModal({
             <div className="overflow-x-auto rounded-md border">
               <Table>
                 <TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Number</TableHead><TableHead>Status</TableHead><TableHead>Expiry</TableHead><TableHead>Attached</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                <TableBody>{attached.map((doc) => <TableRow key={doc.id}><TableCell className="font-medium">{doc.document_type_name ?? doc.document_type_code ?? "Document"}{doc.is_sensitive ? <Badge className="ml-2" tone="warning">Sensitive</Badge> : null}</TableCell><TableCell>{doc.document_number ?? "-"}</TableCell><TableCell>{doc.employee_document_status}</TableCell><TableCell>{doc.expiry_date ?? "-"}</TableCell><TableCell>{new Date(doc.attached_at).toLocaleDateString()}</TableCell><TableCell><div className="flex justify-end">{canAttach ? <Button variant="ghost" size="icon" onClick={() => void detach(doc.employee_document_id)}><Trash2 className="h-4 w-4 text-red-600" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
+                <TableBody>{attached.map((doc) => <TableRow key={doc.id}><TableCell className="font-medium">{doc.document_type_name ?? doc.document_type_code ?? "Document"}{doc.is_sensitive ? <Badge className="ml-2" tone="warning">Sensitive</Badge> : null}</TableCell><TableCell>{doc.document_number ?? "-"}</TableCell><TableCell>{doc.employee_document_status}</TableCell><TableCell>{doc.expiry_date ?? "-"}</TableCell><TableCell>{new Date(doc.attached_at).toLocaleDateString()}</TableCell><TableCell><div className="flex justify-end">{canAttach ? <RowActionButton intent="delete" title="Delete" onClick={() => void detach(doc.employee_document_id)}><Trash2 className="h-4 w-4 text-red-600" /></RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
               </Table>
               {attached.length === 0 ? <EmptyState title="No supporting documents" description="Attach an active employee document from Document Tracking." /> : null}
             </div>

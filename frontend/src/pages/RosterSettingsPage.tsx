@@ -5,7 +5,7 @@ import { OrganizationCascadeSelector } from "../components/organization/Organiza
 import { RosterNav } from "../components/roster/RosterNav";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
@@ -184,7 +184,7 @@ export function RosterSettingsPage() {
                   <TableCell>{rule.department_name ?? "All departments"}</TableCell>
                   <TableCell>{rule.day_of_week}</TableCell>
                   <TableCell><Badge tone={rule.is_active ? "success" : "neutral"}>{rule.is_active ? "Active" : "Inactive"}</Badge></TableCell>
-                  {canManage ? <TableCell><div className="flex justify-end gap-1"><Button title="Edit rule" variant="ghost" size="icon" disabled={!moduleEnabled} onClick={() => setEditingRule(rule)}><Edit className="h-4 w-4" /></Button><Button variant="ghost" size="sm" disabled={!moduleEnabled} onClick={() => void ruleAction(rule, rule.is_active ? "disable" : "enable")}>{rule.is_active ? "Disable" : "Enable"}</Button></div></TableCell> : null}
+                  {canManage ? <TableCell><div className="flex justify-end gap-1"><RowActionButton intent="edit" title="Edit rule" disabled={!moduleEnabled} onClick={() => setEditingRule(rule)}><Edit className="h-4 w-4" /></RowActionButton><RowActionButton intent={rule.is_active ? "disable" : "enable"} size="sm" title={rule.is_active ? "Disable" : "Enable"} disabled={!moduleEnabled} onClick={() => void ruleAction(rule, rule.is_active ? "disable" : "enable")}>{rule.is_active ? "Disable" : "Enable"}</RowActionButton></div></TableCell> : null}
                 </TableRow>
               ))}
             </TableBody>

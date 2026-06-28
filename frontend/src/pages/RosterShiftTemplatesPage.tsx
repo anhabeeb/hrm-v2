@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput } from "../components/filters";
 import { RosterNav } from "../components/roster/RosterNav";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -121,7 +121,7 @@ export function RosterShiftTemplatesPage() {
                   <TableCell><span className="inline-flex h-5 w-12 rounded border" style={{ background: template.color_label ?? "#e2e8f0" }} /></TableCell>
                   <TableCell><Badge tone={template.is_active ? "success" : "neutral"}>{template.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                   <TableCell>{template.sort_order}</TableCell>
-                  {canManage || canArchive || canRestore ? <TableCell><div className="flex justify-end gap-1"><Button title="Edit" variant="ghost" size="icon" onClick={() => setEditing(template)} disabled={!canManage}><Edit className="h-4 w-4" /></Button>{template.is_active ? <Button variant="ghost" size="sm" disabled={!canArchive} onClick={() => void action(template, "archive")}>Archive</Button> : <Button variant="ghost" size="sm" disabled={!canRestore} onClick={() => void action(template, "restore")}>Restore</Button>}</div></TableCell> : null}
+                  {canManage || canArchive || canRestore ? <TableCell><div className="flex justify-end gap-1"><RowActionButton intent="edit" title="Edit" onClick={() => setEditing(template)} disabled={!canManage}><Edit className="h-4 w-4" /></RowActionButton>{template.is_active ? <RowActionButton intent="archive" size="sm" title="Archive" disabled={!canArchive} onClick={() => void action(template, "archive")}>Archive</RowActionButton> : <RowActionButton intent="restore" size="sm" title="Restore" disabled={!canRestore} onClick={() => void action(template, "restore")}>Restore</RowActionButton>}</div></TableCell> : null}
                 </TableRow>
               ))}
             </TableBody>

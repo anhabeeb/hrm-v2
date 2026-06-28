@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput, StandardSelectFilter, type ActiveFilterChip } from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -597,17 +597,17 @@ function RowActions({
 }) {
   return (
     <div className="flex justify-end gap-1">
-      <Button variant="ghost" size="icon" title="View" onClick={onView}>
+      <RowActionButton intent="view" title="View" onClick={onView}>
         <Eye className="h-4 w-4" />
-      </Button>
+      </RowActionButton>
       {canManage ? (
         <>
-          <Button variant="ghost" size="icon" title="Edit" onClick={onEdit}>
+          <RowActionButton intent="edit" title="Edit" onClick={onEdit}>
             <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" title={active ? "Disable" : "Enable"} onClick={onAction}>
+          </RowActionButton>
+          <RowActionButton intent={active ? "disable" : "enable"} title={active ? "Disable" : "Enable"} onClick={onAction}>
             {active ? <ToggleRight className="h-4 w-4 text-emerald-700" /> : <ToggleLeft className="h-4 w-4" />}
-          </Button>
+          </RowActionButton>
         </>
       ) : null}
     </div>

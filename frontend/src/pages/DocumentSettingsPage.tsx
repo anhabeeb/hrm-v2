@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -155,7 +155,7 @@ function Toolbar({ canManage, label, onNew }: { canManage: boolean; label: strin
 
 function Actions({ canManage, onEdit, onAction, active }: { canManage: boolean; onEdit: () => void; onAction: () => void; active: boolean }) {
   if (!canManage) return <div className="text-right text-xs text-muted-foreground">Read only</div>;
-  return <div className="flex justify-end gap-1"><Button variant="ghost" size="icon" onClick={onEdit}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={onAction} title={active ? "Disable" : "Enable"}><Power className="h-4 w-4" /></Button></div>;
+  return <div className="flex justify-end gap-1"><RowActionButton intent="edit" title="Edit" onClick={onEdit}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent={active ? "disable" : "enable"} onClick={onAction} title={active ? "Disable" : "Enable"}><Power className="h-4 w-4" /></RowActionButton></div>;
 }
 
 function CategoryModal({ token, category, onClose, onSaved }: { token: string; category?: DocumentCategory; onClose: () => void; onSaved: () => Promise<void> }) {

@@ -1,7 +1,7 @@
 import { Eye, Pencil, Plus, RefreshCw, Save, ToggleLeft, ToggleRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -140,7 +140,7 @@ export function EmployeeSettingsPage() {
                         <TableCell>{status.show_in_active_lists ? "Yes" : "No"}</TableCell>
                         <TableCell>{[status.requires_final_settlement && "Settlement", status.requires_document_clearance && "Documents", status.requires_asset_clearance && "Assets"].filter(Boolean).join(", ") || "-"}</TableCell>
                         <TableCell>{status.sort_order}</TableCell>
-                        <TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="View"><Eye className="h-4 w-4" /></Button>{canStatus ? <Button variant="ghost" size="icon" title="Edit" onClick={() => setModal({ mode: "edit", status })}><Pencil className="h-4 w-4" /></Button> : null}{canStatus ? <Button variant="ghost" size="icon" title={status.is_active ? "Disable" : "Enable"} onClick={() => setStatusActionTarget(status)}>{status.is_active ? <ToggleRight className="h-4 w-4 text-emerald-700" /> : <ToggleLeft className="h-4 w-4" />}</Button> : null}</div></TableCell>
+                        <TableCell><div className="flex justify-end gap-1"><RowActionButton intent="view" title="View"><Eye className="h-4 w-4" /></RowActionButton>{canStatus ? <RowActionButton intent="edit" title="Edit" onClick={() => setModal({ mode: "edit", status })}><Pencil className="h-4 w-4" /></RowActionButton> : null}{canStatus ? <RowActionButton intent={status.is_active ? "disable" : "enable"} title={status.is_active ? "Disable" : "Enable"} onClick={() => setStatusActionTarget(status)}>{status.is_active ? <ToggleRight className="h-4 w-4 text-emerald-700" /> : <ToggleLeft className="h-4 w-4" />}</RowActionButton> : null}</div></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

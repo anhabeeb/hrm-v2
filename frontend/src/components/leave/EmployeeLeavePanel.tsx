@@ -4,7 +4,7 @@ import { ApiError, api } from "../../lib/api";
 import type { Employee } from "../../types/employees";
 import type { LeaveBalance, LeaveDay, LeaveRequest, LeaveType } from "../../types/leave";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -85,7 +85,7 @@ export function EmployeeLeavePanel({ token, employee, permissions }: { token: st
       <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Dates</TableHead><TableHead>Days</TableHead><TableHead>Status</TableHead><TableHead>Document</TableHead><TableHead>Deduction</TableHead><TableHead>Current step</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-          <TableBody>{requests.map((request) => <TableRow key={request.id}><TableCell>{request.leave_type_name}</TableCell><TableCell>{request.start_date} to {request.end_date}</TableCell><TableCell>{request.requested_days}</TableCell><TableCell><Badge tone={tone(request.status)}>{request.status}</Badge></TableCell><TableCell>{request.document_status}</TableCell><TableCell>{request.salary_deduction_mode ?? "NONE"}</TableCell><TableCell>{request.current_approval_step ?? "-"}</TableCell><TableCell>{request.reason ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" onClick={() => setDetailRequest(request)}><Eye className="h-4 w-4" /></Button>{request.status === "DRAFT" && canCreate ? <Button variant="ghost" size="icon" onClick={() => void submit(request)}><RotateCcw className="h-4 w-4" /></Button> : null}{request.status !== "CANCELLED" && request.status !== "REJECTED" && canCancel ? <Button variant="ghost" size="icon" onClick={() => setCancelTarget(request)}><X className="h-4 w-4 text-red-600" /></Button> : null}</div></TableCell></TableRow>)}</TableBody>
+          <TableBody>{requests.map((request) => <TableRow key={request.id}><TableCell>{request.leave_type_name}</TableCell><TableCell>{request.start_date} to {request.end_date}</TableCell><TableCell>{request.requested_days}</TableCell><TableCell><Badge tone={tone(request.status)}>{request.status}</Badge></TableCell><TableCell>{request.document_status}</TableCell><TableCell>{request.salary_deduction_mode ?? "NONE"}</TableCell><TableCell>{request.current_approval_step ?? "-"}</TableCell><TableCell>{request.reason ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><RowActionButton intent="view" title="View details" onClick={() => setDetailRequest(request)}><Eye className="h-4 w-4" /></RowActionButton>{request.status === "DRAFT" && canCreate ? <RowActionButton intent="approve" title="Submit" onClick={() => void submit(request)}><RotateCcw className="h-4 w-4" /></RowActionButton> : null}{request.status !== "CANCELLED" && request.status !== "REJECTED" && canCancel ? <RowActionButton intent="delete" title="Cancel" onClick={() => setCancelTarget(request)}><X className="h-4 w-4 text-red-600" /></RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
         </Table>
         {requests.length === 0 ? <EmptyState title="No leave requests" description="Leave request history will appear here." /> : null}
       </div>

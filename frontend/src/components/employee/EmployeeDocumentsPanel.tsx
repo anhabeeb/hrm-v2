@@ -4,7 +4,7 @@ import { ApiError, api } from "../../lib/api";
 import type { DocumentType, EmployeeDocument, EmployeeDocumentVersion, MissingDocument } from "../../types/documents";
 import type { Employee } from "../../types/employees";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -165,13 +165,13 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
                 <TableCell>{document.uploaded_at ? new Date(document.uploaded_at).toLocaleDateString() : "-"}</TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
-                    <Button title="Versions" variant="ghost" size="icon" onClick={() => void showVersions(document)}><Eye className="h-4 w-4" /></Button>
-                    {canDownload ? <Button title="Download" variant="ghost" size="icon" onClick={() => void download(document)}><Download className="h-4 w-4" /></Button> : null}
-                    {canUpload && document.status === "ACTIVE" ? <Button title="Replace" variant="ghost" size="icon" onClick={() => setUploadModal({ mode: "replace", document })}><UploadCloud className="h-4 w-4" /></Button> : null}
-                    {canArchive && document.status === "ACTIVE" ? <Button title="Archive" variant="ghost" size="icon" onClick={() => setDocumentAction({ document, name: "archive", reason: "" })}><Archive className="h-4 w-4" /></Button> : null}
-                    {canArchive && document.status === "ARCHIVED" ? <Button title="Restore" variant="ghost" size="icon" onClick={() => setDocumentAction({ document, name: "restore", reason: "" })}><RotateCcw className="h-4 w-4" /></Button> : null}
-                    {canDelete && document.status !== "SOFT_DELETED" ? <Button title="Soft delete" variant="ghost" size="icon" onClick={() => setDocumentAction({ document, name: "soft-delete", reason: "" })}><Trash2 className="h-4 w-4" /></Button> : null}
-                    {canPermanentDelete ? <Button title="Permanent delete" variant="ghost" size="icon" onClick={() => setDocumentAction({ document, name: "permanent-delete", reason: "" })}><Trash2 className="h-4 w-4 text-red-600" /></Button> : null}
+                    <RowActionButton intent="view" title="Versions" onClick={() => void showVersions(document)}><Eye className="h-4 w-4" /></RowActionButton>
+                    {canDownload ? <RowActionButton intent="download" title="Download" onClick={() => void download(document)}><Download className="h-4 w-4" /></RowActionButton> : null}
+                    {canUpload && document.status === "ACTIVE" ? <RowActionButton intent="upload" title="Replace" onClick={() => setUploadModal({ mode: "replace", document })}><UploadCloud className="h-4 w-4" /></RowActionButton> : null}
+                    {canArchive && document.status === "ACTIVE" ? <RowActionButton intent="archive" title="Archive" onClick={() => setDocumentAction({ document, name: "archive", reason: "" })}><Archive className="h-4 w-4" /></RowActionButton> : null}
+                    {canArchive && document.status === "ARCHIVED" ? <RowActionButton intent="restore" title="Restore" onClick={() => setDocumentAction({ document, name: "restore", reason: "" })}><RotateCcw className="h-4 w-4" /></RowActionButton> : null}
+                    {canDelete && document.status !== "SOFT_DELETED" ? <RowActionButton intent="delete" title="Soft delete" onClick={() => setDocumentAction({ document, name: "soft-delete", reason: "" })}><Trash2 className="h-4 w-4" /></RowActionButton> : null}
+                    {canPermanentDelete ? <RowActionButton intent="delete" title="Permanent delete" onClick={() => setDocumentAction({ document, name: "permanent-delete", reason: "" })}><Trash2 className="h-4 w-4 text-red-600" /></RowActionButton> : null}
                   </div>
                 </TableCell>
               </TableRow>

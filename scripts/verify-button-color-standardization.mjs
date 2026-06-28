@@ -30,6 +30,10 @@ function has(file, marker, message) {
   assert(marker instanceof RegExp ? marker.test(content) : content.includes(marker), `${file}: ${message}`);
 }
 
+function scanFiles(files) {
+  return files.map((file) => ({ file, content: read(file), lines: read(file).split(/\r?\n/) }));
+}
+
 const pkg = JSON.parse(read("package.json"));
 assert(Boolean(pkg.scripts?.["verify:button-color-standardization"]), "package.json: missing verify:button-color-standardization script.");
 [
@@ -41,6 +45,7 @@ assert(Boolean(pkg.scripts?.["verify:button-color-standardization"]), "package.j
 
 assert(exists("frontend/src/components/ui/button.tsx"), "frontend/src/components/ui/button.tsx is missing.");
 assert(exists("frontend/src/components/ui/action-button.tsx"), "frontend/src/components/ui/action-button.tsx is missing.");
+assert(exists("frontend/src/components/ui/row-action-button.tsx"), "frontend/src/components/ui/row-action-button.tsx is missing.");
 
 [
   "actionCreate",
@@ -55,6 +60,72 @@ assert(exists("frontend/src/components/ui/action-button.tsx"), "frontend/src/com
   has("frontend/src/components/ui/button.tsx", variant, `Button variant ${variant} is missing.`);
   has("frontend/src/components/ui/action-button.tsx", variant, `ActionButton mapping for ${variant} is missing.`);
 });
+
+[
+  "rowActionNeutral",
+  "rowActionView",
+  "rowActionEdit",
+  "rowActionCreate",
+  "rowActionSave",
+  "rowActionWarning",
+  "rowActionDestructive",
+  "rowActionExport",
+  "rowActionImport",
+  "rowActionDisabled"
+].forEach((variant) => {
+  has("frontend/src/components/ui/button.tsx", variant, `Row action variant ${variant} is missing.`);
+});
+
+const buttonSource = read("frontend/src/components/ui/button.tsx");
+has("frontend/src/components/ui/button.tsx", "export type RowActionIntent", "RowActionIntent type is missing.");
+has("frontend/src/components/ui/button.tsx", "ROW_ACTION_VARIANT_BY_INTENT", "Row action intent mapping is missing.");
+has("frontend/src/components/ui/button.tsx", "export function RowActionButton", "RowActionButton component is missing.");
+has("frontend/src/components/ui/button.tsx", "export const ActionIconButton = RowActionButton", "ActionIconButton alias is missing.");
+has("frontend/src/components/ui/row-action-button.tsx", "RowActionButton", "Row action re-export file is missing RowActionButton.");
+has("frontend/src/components/ui/row-action-button.tsx", "ActionIconButton", "Row action re-export file is missing ActionIconButton.");
+
+[
+  "view",
+  "edit",
+  "create",
+  "save",
+  "approve",
+  "complete",
+  "enable",
+  "disable",
+  "delete",
+  "reject",
+  "archive",
+  "restore",
+  "warning",
+  "hold",
+  "release",
+  "download",
+  "upload",
+  "import",
+  "export",
+  "refresh",
+  "calculate",
+  "generate",
+  "neutral"
+].forEach((intent) => assert(buttonSource.includes(`| "${intent}"`) || buttonSource.includes(`${intent}:`), `RowActionButton intent ${intent} is missing.`));
+
+[
+  ["approve/confirm/complete row actions", "approve: \"rowActionSave\""],
+  ["enable row actions", "enable: \"rowActionSave\""],
+  ["release row actions", "release: \"rowActionSave\""],
+  ["reject row actions", "reject: \"rowActionDestructive\""],
+  ["delete row actions", "delete: \"rowActionDestructive\""],
+  ["disable row actions", "disable: \"rowActionDestructive\""],
+  ["archive row actions", "archive: \"rowActionDestructive\""],
+  ["hold row actions", "hold: \"rowActionWarning\""],
+  ["restore row actions", "restore: \"rowActionWarning\""],
+  ["download/export row actions", "download: \"rowActionExport\""],
+  ["upload/import row actions", "upload: \"rowActionImport\""],
+  ["view/open/detail row actions", "view: \"rowActionView\""],
+  ["edit row actions", "edit: \"rowActionEdit\""],
+  ["generate/create row actions", "generate: \"rowActionCreate\""]
+].forEach(([label, marker]) => assert(buttonSource.includes(marker), `RowActionButton mapping missing ${label}.`));
 
 [
   ["create/add/new/issue actions", /create\|add\|new\|link\|start\|issue/],
@@ -77,7 +148,6 @@ has("frontend/src/components/ui/button.tsx", "gap-2", "Consistent icon spacing m
 has("frontend/src/components/ui/button.tsx", "h-8 px-3 text-xs", "Small button height marker missing.");
 has("frontend/src/components/ui/button.tsx", "h-9 px-4 text-sm", "Default button height marker missing.");
 
-const buttonSource = read("frontend/src/components/ui/button.tsx");
 has("frontend/src/components/ui/button.tsx", "EXACT_NEUTRAL_ACTION_LABELS", "Exact neutral action set missing.");
 ["cancel", "close", "dismiss", "back", "clear", "reset"].forEach((label) => {
   assert(buttonSource.includes(`"${label}"`), `Button exact-neutral mapping missing ${label}.`);
@@ -98,6 +168,52 @@ has("frontend/src/components/ui/button.tsx", "ICON_ACTION_LABELS", "Icon-only ac
 has("frontend/src/components/ui/button.tsx", "effectiveAriaLabel", "Icon-only Button aria-label fallback missing.");
 has("frontend/src/components/ui/button.tsx", "size === \"icon\"", "Icon-only Button fallback must be size-aware.");
 has("frontend/src/components/ui/button.tsx", "title ?? (size === \"icon\" ? effectiveAriaLabel", "Icon-only Button title fallback missing.");
+has("frontend/src/components/ui/button.tsx", "title: string", "RowActionButton title must be required.");
+
+const sourceFiles = [
+  ...listFiles("frontend/src/pages", [".tsx"]),
+  ...listFiles("frontend/src/components", [".tsx"])
+];
+const scanned = scanFiles(sourceFiles);
+const combinedSources = scanned.map(({ content }) => content).join("\n");
+
+const rowActionTags = [...combinedSources.matchAll(/<RowActionButton\b[\s\S]*?>/g)].map((match) => match[0]);
+assert(rowActionTags.length > 20, "Expected real RowActionButton usage across table/list action columns.");
+rowActionTags.forEach((tag, index) => {
+  assert(/\btitle=/.test(tag) || /\baria-label=/.test(tag), `RowActionButton #${index + 1} is missing title/aria-label.`);
+});
+
+[
+  ["green approve/confirm actions", /<RowActionButton\b[^>]*intent="(approve|complete|enable|release)"[^>]*title="[^"]*(Approve|Confirm|Complete|Enable|Return|Release|Verify|Activate|Submit)/i],
+  ["red reject/delete/disable/archive/cancel actions", /<RowActionButton\b[^>]*intent="(reject|delete|disable|archive)"[^>]*title="[^"]*(Reject|Delete|Disable|Archive|Cancel|Remove|Soft delete|Permanent delete|Write off|Detach)/i],
+  ["amber hold/reopen/restore actions", /<RowActionButton\b[^>]*intent="(hold|warning|restore)"[^>]*title="[^"]*(Hold|Pause|Reopen|Restore|Unlock|Damage|Lost|Waive|Mark bank notified|Block)/i],
+  ["blue download/export/import/upload actions", /<RowActionButton\b[^>]*intent="(download|export|upload|import)"[^>]*title="[^"]*(Download|Export|Upload|Import|Replace|Files|Attachments|Version)/i],
+  ["neutral view/open/detail actions", /<RowActionButton\b[^>]*intent="view"[^>]*title="[^"]*(View|Open|Details|Preview|History|Events|Versions)/i],
+  ["teal edit actions", /<RowActionButton\b[^>]*intent="edit"[^>]*title="[^"]*Edit/i],
+  ["teal generate/create actions", /<RowActionButton\b[^>]*intent="(create|generate)"[^>]*title="[^"]*(Generate|Assign|Issue|Add|Deduct|Attachments)/i]
+].forEach(([label, pattern]) => assert(pattern.test(combinedSources), `Missing ${label} in real row-action usage.`));
+
+const meaningfulActionWords = /\b(approve|confirm|complete|reject|delete|disable|archive|cancel|hold|release|restore|download|upload|import|export|edit|view|open|history|detach|mark bank notified|pause|resume|soft delete|permanent delete|generate|calculate|recalculate)\b/i;
+const rawButtonPattern = /<Button\b[^>\n]*(?:variant="(?:ghost|outline)"[^>\n]*size="(?:icon|sm)"|size="(?:icon|sm)"[^>\n]*variant="(?:ghost|outline)")/;
+const rowContextPattern = /\b(TableCell|rows\.map|actions=\{\(?row|<DataTable|<RowsTable)/;
+const allowedChromePattern = /\b(Close|onClose|Previous month|Next month|Search|Notifications|Open navigation|sidebar|dialog|modal|Filter|Apply filters|Refresh diagnostics)\b/i;
+const modalChromePattern = /\b(fixed inset|onClose|set[A-Z][A-Za-z0-9]*\(null\)|set[A-Z][A-Za-z0-9]*\(false\))|>\s*(Cancel|Close)\s*<\/Button>/;
+
+scanned.forEach(({ file, lines }) => {
+  const normalizedFile = file.replaceAll("\\", "/");
+  if (normalizedFile.includes("/components/ui/") || normalizedFile.includes("/components/filters/") || normalizedFile.includes("/components/global/")) return;
+  lines.forEach((line, index) => {
+    if (!rawButtonPattern.test(line)) return;
+    const context = lines.slice(Math.max(0, index - 4), Math.min(lines.length, index + 5)).join(" ");
+    const rowLikeLine = rowContextPattern.test(line);
+    const rowLikeContext = rowContextPattern.test(context) && /\b(actions=\{\(?row|rows\.map)/.test(context);
+    if (modalChromePattern.test(line)) return;
+    if (allowedChromePattern.test(line) && !rowLikeLine && !rowLikeContext) return;
+    if (meaningfulActionWords.test(line) && (rowLikeLine || rowLikeContext)) {
+      failures.push(`${file}:${index + 1}: meaningful row/list action still uses raw ghost/outline Button instead of RowActionButton.`);
+    }
+  });
+});
 
 const frontendSources = listFiles("frontend/src", [".ts", ".tsx"]).map((file) => read(file)).join("\n");
 assert(!/\b(window\.)?(alert|confirm|prompt)\s*\(/.test(frontendSources), "Frontend source must not use browser alert/confirm/prompt.");

@@ -6,7 +6,7 @@ import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascad
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -323,7 +323,7 @@ function CasesSection({ kind, cases, loading, error, onCreate, onSelect }: { kin
                 <TableCell><StatusBadge value={"onboarding_status" in row ? row.onboarding_status : row.offboarding_status} /></TableCell>
                 <TableCell><StatusBadge value={"activation_status" in row ? row.activation_status : row.finalization_status} /></TableCell>
                 <TableCell>{row.due_date ?? "-"}</TableCell>
-                <TableCell><Button variant="outline" size="sm" onClick={() => onSelect(row.id)}>View</Button></TableCell>
+                <TableCell><RowActionButton intent="view" size="sm" title="View lifecycle case" onClick={() => onSelect(row.id)}>View</RowActionButton></TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -536,7 +536,7 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
                     <TableCell className="space-x-2">
                       <Button size="sm" variant="outline" onClick={() => void run(() => kind === "onboarding" ? api.completeOnboardingTask(token!, task.id) : api.completeOffboardingTask(token!, task.id))}>Complete</Button>
                       <Button size="sm" variant="outline" onClick={() => askReason("Waive task", (reason) => run(() => kind === "onboarding" ? api.waiveOnboardingTask(token!, task.id, reason) : api.waiveOffboardingTask(token!, task.id, reason)))}>Waive</Button>
-                      <Button size="sm" variant="ghost" onClick={() => void run(() => kind === "onboarding" ? api.reopenOnboardingTask(token!, task.id) : api.reopenOffboardingTask(token!, task.id))}>Reopen</Button>
+                      <RowActionButton intent="warning" size="sm" title="Reopen" onClick={() => void run(() => kind === "onboarding" ? api.reopenOnboardingTask(token!, task.id) : api.reopenOffboardingTask(token!, task.id))}>Reopen</RowActionButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -738,14 +738,7 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
                 const isActive = activeTab === tab;
                 const complete = sectionStatus(tab);
                 return (
-                  <Button
-                    key={tab}
-                    variant="ghost"
-                    size="sm"
-                    aria-current={isActive ? "page" : undefined}
-                    className={`w-full justify-start rounded-md px-2 text-left ${isActive ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-slate-700"} ${complete ? "font-semibold" : ""}`}
-                    onClick={() => setActiveTab(tab)}
-                  >
+                  <Button variant="ghost" size="sm" title={tab} key={tab} aria-current={isActive ? "page" : undefined} className={`w-full justify-start rounded-md px-2 text-left ${isActive ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-slate-700"} ${complete ? "font-semibold" : ""}`} onClick={() => setActiveTab(tab)}>
                     {complete ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="h-4 w-4 shrink-0 text-slate-300" />}
                     <span className="min-w-0 flex-1 truncate">{tab}</span>
                   </Button>

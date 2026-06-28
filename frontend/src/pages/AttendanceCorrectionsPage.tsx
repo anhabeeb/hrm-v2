@@ -5,7 +5,7 @@ import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
@@ -175,7 +175,7 @@ export function AttendanceCorrectionsPage() {
                 <TableCell><Badge tone={tone(correction.status)}>{correction.status}</Badge></TableCell>
                 <TableCell>{correction.requested_by_name ?? "-"}</TableCell>
                 <TableCell>{correction.reviewed_by_name ?? "-"}</TableCell>
-                <TableCell><div className="flex justify-end gap-1">{pending && canApprove ? <Button title="Approve" variant="ghost" size="icon" onClick={() => setReviewAction({ correction, type: "approve" })}><Check className="h-4 w-4" /></Button> : null}{pending && canReject ? <Button title="Reject" variant="ghost" size="icon" onClick={() => setReviewAction({ correction, type: "reject" })}><X className="h-4 w-4" /></Button> : null}{pending && canCancel ? <Button title="Cancel" variant="ghost" size="icon" onClick={() => setReviewAction({ correction, type: "cancel" })}><X className="h-4 w-4 text-red-600" /></Button> : null}</div></TableCell>
+                <TableCell><div className="flex justify-end gap-1">{pending && canApprove ? <RowActionButton intent="approve" title="Approve" onClick={() => setReviewAction({ correction, type: "approve" })}><Check className="h-4 w-4" /></RowActionButton> : null}{pending && canReject ? <RowActionButton intent="reject" title="Reject" onClick={() => setReviewAction({ correction, type: "reject" })}><X className="h-4 w-4" /></RowActionButton> : null}{pending && canCancel ? <RowActionButton intent="delete" title="Cancel" onClick={() => setReviewAction({ correction, type: "cancel" })}><X className="h-4 w-4 text-red-600" /></RowActionButton> : null}</div></TableCell>
               </TableRow>;
             })}</TableBody>
           </Table>

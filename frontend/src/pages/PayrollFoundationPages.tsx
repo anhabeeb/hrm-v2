@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { ResponsiveTableWrapper } from "../components/ui/data-table-shell";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -61,7 +61,7 @@ export function PayrollPaymentInstitutionsPage() {
     {!canView ? <Panel className="p-4"><EmptyState title="No permission" description="You do not have permission to view payment institutions." /></Panel> : null}
     <Panel className="overflow-hidden">
       <Header icon={<WalletCards className="h-4 w-4" />} title="Banks and payment institutions" action={canManage ? <Button size="sm" onClick={() => setForm({ code: "", name: "", type: "BANK", swift_code: "" })}><Plus className="h-4 w-4" /> Add institution</Button> : null} />
-      <DataTable rows={rows} columns={["code", "name", "type", "swift_code", "status", "display_order"]} actions={canManage ? (row) => row.status !== "ARCHIVED" ? <Button size="sm" variant="outline" onClick={() => token && api.archivePaymentInstitution(token, String(row.id)).then(load)}><Archive className="h-4 w-4" /> Archive</Button> : null : undefined} empty="No payment institutions configured." />
+      <DataTable rows={rows} columns={["code", "name", "type", "swift_code", "status", "display_order"]} actions={canManage ? (row) => row.status !== "ARCHIVED" ? <RowActionButton intent="archive" size="sm" title="Archive payment institution" onClick={() => token && api.archivePaymentInstitution(token, String(row.id)).then(load)}><Archive className="h-4 w-4" /> Archive</RowActionButton> : null : undefined} empty="No payment institutions configured." />
     </Panel>
     {form ? <Modal title="Add payment institution" onClose={() => setForm(null)} onConfirm={save} disabled={!form.code || !form.name}>
       <Field label="Code"><Input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} /></Field>
@@ -126,12 +126,12 @@ export function PayrollBankLoansPage() {
     {error ? <ErrorText message={error} /> : null}
     <Panel className="overflow-hidden">
       <Header icon={<Landmark className="h-4 w-4" />} title="Loan records" action={<Button size="sm" variant="outline" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>} />
-      <DataTable rows={loans} columns={["employee_no", "employee_name", "payment_institution_name", "loan_reference_number", "monthly_installment_amount", "eligibility_status", "status", "approval_status"]} actions={canApprove ? (row) => row.approval_status !== "APPROVED" ? <Button size="sm" variant="outline" onClick={() => token && api.payrollBankLoanAction(token, String(row.id), "approve").then(load)}><Check className="h-4 w-4" /> Approve</Button> : null : undefined} empty="No bank loan deduction records yet." />
+      <DataTable rows={loans} columns={["employee_no", "employee_name", "payment_institution_name", "loan_reference_number", "monthly_installment_amount", "eligibility_status", "status", "approval_status"]} actions={canApprove ? (row) => row.approval_status !== "APPROVED" ? <RowActionButton intent="approve" size="sm" title="Approve bank loan" onClick={() => token && api.payrollBankLoanAction(token, String(row.id), "approve").then(load)}><Check className="h-4 w-4" /> Approve</RowActionButton> : null : undefined} empty="No bank loan deduction records yet." />
     </Panel>
     <Panel className="overflow-hidden"><Header icon={<Landmark className="h-4 w-4" />} title="Payments and remittance" /><DataTable rows={payments} columns={["employee_name", "bank_name_snapshot", "loan_reference_number_snapshot", "scheduled_installment_amount", "deducted_amount", "shortfall_amount", "skipped_due_to_minimum_net_salary", "payment_status", "bank_notification_status", "bank_notification_reference", "bank_notified_at"]} actions={canConfirm ? (row) => {
       const directCollection = Boolean(row.skipped_due_to_minimum_net_salary) || Boolean(row.bank_direct_collection_required);
-      if (directCollection && row.bank_notification_status !== "BANK_NOTIFIED") return <Button size="sm" variant="outline" onClick={() => setNotifyForm({ payment: row as unknown as EmployeeBankLoanPayment, reference: "", note: "" })}>Mark bank notified</Button>;
-      if (!directCollection && row.payment_status !== "MANUALLY_CONFIRMED_PAID_TO_BANK") return <Button size="sm" variant="outline" onClick={() => token && api.confirmBankLoanPaidToBank(token, String(row.id), { remittance_reference: "MANUAL", notes: "Manual confirmation from Payroll Bank Loans page" }).then(load)}>Confirm</Button>;
+      if (directCollection && row.bank_notification_status !== "BANK_NOTIFIED") return <RowActionButton intent="warning" size="sm" title="Mark bank notified" onClick={() => setNotifyForm({ payment: row as unknown as EmployeeBankLoanPayment, reference: "", note: "" })}>Mark bank notified</RowActionButton>;
+      if (!directCollection && row.payment_status !== "MANUALLY_CONFIRMED_PAID_TO_BANK") return <RowActionButton intent="approve" size="sm" title="Confirm paid to bank" onClick={() => token && api.confirmBankLoanPaidToBank(token, String(row.id), { remittance_reference: "MANUAL", notes: "Manual confirmation from Payroll Bank Loans page" }).then(load)}>Confirm</RowActionButton>;
       return null;
     } : undefined} empty="No bank loan payment history yet." /></Panel>
     <div className="grid gap-4 xl:grid-cols-2">
@@ -300,8 +300,8 @@ export function PayrollCustomDeductionsPage() {
       <Header icon={<ReceiptText className="h-4 w-4" />} title="Custom deduction templates" action={canManageTemplates ? <Button size="sm" onClick={() => setTemplateForm(defaultTemplateForm())}><Plus className="h-4 w-4" /> Add template</Button> : null} />
       <DataTable rows={templates} columns={["code", "name", "category", "deduction_type", "amount_type", "default_amount", "default_percentage", "require_approval", "status"]} actions={canManageTemplates ? (row) => (
         <div className="flex justify-end gap-2">
-          <Button size="sm" variant="outline" onClick={() => setTemplateForm(templateToForm(row as unknown as CustomDeductionTemplate))}>Edit</Button>
-          {row.status !== "ARCHIVED" ? <Button size="sm" variant="outline" onClick={() => token && api.archiveCustomDeductionTemplate(token, String(row.id)).then(load)}>Archive</Button> : null}
+          <RowActionButton intent="edit" size="sm" title="Edit custom deduction template" onClick={() => setTemplateForm(templateToForm(row as unknown as CustomDeductionTemplate))}>Edit</RowActionButton>
+          {row.status !== "ARCHIVED" ? <RowActionButton intent="archive" size="sm" title="Archive custom deduction template" onClick={() => token && api.archiveCustomDeductionTemplate(token, String(row.id)).then(load)}>Archive</RowActionButton> : null}
         </div>
       ) : undefined} empty="No custom deduction templates configured." />
     </Panel>
@@ -310,11 +310,11 @@ export function PayrollCustomDeductionsPage() {
       <Header icon={<ReceiptText className="h-4 w-4" />} title="Employee custom deduction assignments" action={canManageAssignments ? <Button size="sm" onClick={() => setAssignmentForm(defaultAssignmentForm(templates))}><Plus className="h-4 w-4" /> Assign deduction</Button> : null} />
       <DataTable rows={deductions} columns={["employee_no", "employee_name", "template_name_snapshot", "category_snapshot", "assigned_amount", "total_amount", "remaining_balance", "approval_status", "status"]} actions={(row) => (
         <div className="flex justify-end gap-2">
-          {canApproveAssignments && row.approval_status !== "APPROVED" ? <Button size="sm" variant="outline" onClick={() => setActionForm({ id: String(row.id), action: "approve", reason: "" })}>Approve</Button> : null}
-          {canApproveAssignments && row.approval_status === "PENDING_APPROVAL" ? <Button size="sm" variant="outline" onClick={() => setActionForm({ id: String(row.id), action: "reject", reason: "" })}>Reject</Button> : null}
-          {canManageAssignments && row.status === "ACTIVE" ? <Button size="sm" variant="outline" onClick={() => setActionForm({ id: String(row.id), action: "pause", reason: "" })}>Pause</Button> : null}
-          {canManageAssignments && row.status === "PAUSED" ? <Button size="sm" variant="outline" onClick={() => setActionForm({ id: String(row.id), action: "resume", reason: "" })}>Resume</Button> : null}
-          {canManageAssignments && !["CANCELLED", "COMPLETED", "ARCHIVED"].includes(String(row.status)) ? <Button size="sm" variant="outline" onClick={() => setActionForm({ id: String(row.id), action: "cancel", reason: "" })}>Cancel</Button> : null}
+          {canApproveAssignments && row.approval_status !== "APPROVED" ? <RowActionButton intent="approve" size="sm" title="Approve assignment" onClick={() => setActionForm({ id: String(row.id), action: "approve", reason: "" })}>Approve</RowActionButton> : null}
+          {canApproveAssignments && row.approval_status === "PENDING_APPROVAL" ? <RowActionButton intent="reject" size="sm" title="Reject assignment" onClick={() => setActionForm({ id: String(row.id), action: "reject", reason: "" })}>Reject</RowActionButton> : null}
+          {canManageAssignments && row.status === "ACTIVE" ? <RowActionButton intent="hold" size="sm" title="Pause assignment" onClick={() => setActionForm({ id: String(row.id), action: "pause", reason: "" })}>Pause</RowActionButton> : null}
+          {canManageAssignments && row.status === "PAUSED" ? <RowActionButton intent="release" size="sm" title="Resume assignment" onClick={() => setActionForm({ id: String(row.id), action: "resume", reason: "" })}>Resume</RowActionButton> : null}
+          {canManageAssignments && !["CANCELLED", "COMPLETED", "ARCHIVED"].includes(String(row.status)) ? <RowActionButton intent="delete" size="sm" title="Cancel assignment" onClick={() => setActionForm({ id: String(row.id), action: "cancel", reason: "" })}>Cancel</RowActionButton> : null}
         </div>
       )} empty="No employee custom deduction assignments yet." />
     </Panel>

@@ -12,7 +12,7 @@ import type {
   PensionScheme
 } from "../../types/payroll";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -209,8 +209,8 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
           columns={["payment_method_type", "payment_institution_name", "bank_account_number_masked", "allocation_type", "allocation_percentage", "allocation_amount", "status", "verification_status"]}
           actions={(row) => canManagePayment || canVerifyPayment ? (
             <div className="flex justify-end gap-2">
-              {canVerifyPayment && row.verification_status !== "VERIFIED" ? <Button size="sm" variant="outline" onClick={() => token && run(async () => { await api.verifyEmployeePaymentMethod(token, employeeId, String(row.id)); }, "Payment method verified.")}>Verify</Button> : null}
-              {canManagePayment ? <Button size="sm" variant="outline" onClick={() => token && run(async () => { await api.archiveEmployeePaymentMethod(token, employeeId, String(row.id)); }, "Payment method archived.")}>Archive</Button> : null}
+              {canVerifyPayment && row.verification_status !== "VERIFIED" ? <RowActionButton intent="approve" size="sm" title="Verify payment method" onClick={() => token && run(async () => { await api.verifyEmployeePaymentMethod(token, employeeId, String(row.id)); }, "Payment method verified.")}>Verify</RowActionButton> : null}
+              {canManagePayment ? <RowActionButton intent="archive" size="sm" title="Archive payment method" onClick={() => token && run(async () => { await api.archiveEmployeePaymentMethod(token, employeeId, String(row.id)); }, "Payment method archived.")}>Archive</RowActionButton> : null}
             </div>
           ) : null}
           empty="No payment methods have been configured."
@@ -224,9 +224,9 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
           columns={["payment_institution_name", "loan_reference_number", "monthly_installment_amount", "outstanding_balance", "eligibility_status", "status", "approval_status"]}
           actions={(row) => canApproveLoans || canManageLoans ? (
             <div className="flex justify-end gap-2">
-              {canApproveLoans && row.approval_status !== "APPROVED" ? <Button size="sm" variant="outline" onClick={() => token && run(async () => { await api.payrollBankLoanAction(token, String(row.id), "approve"); }, "Bank loan approved.")}>Approve</Button> : null}
-              {canManageLoans && row.status === "ACTIVE" ? <Button size="sm" variant="outline" onClick={() => token && run(async () => { await api.payrollBankLoanAction(token, String(row.id), "pause"); }, "Bank loan paused.")}>Pause</Button> : null}
-              {canManageLoans && row.status !== "CANCELLED" ? <Button size="sm" variant="outline" onClick={() => token && run(async () => { await api.payrollBankLoanAction(token, String(row.id), "cancel"); }, "Bank loan cancelled.")}>Cancel</Button> : null}
+              {canApproveLoans && row.approval_status !== "APPROVED" ? <RowActionButton intent="approve" size="sm" title="Approve bank loan" onClick={() => token && run(async () => { await api.payrollBankLoanAction(token, String(row.id), "approve"); }, "Bank loan approved.")}>Approve</RowActionButton> : null}
+              {canManageLoans && row.status === "ACTIVE" ? <RowActionButton intent="hold" size="sm" title="Pause bank loan" onClick={() => token && run(async () => { await api.payrollBankLoanAction(token, String(row.id), "pause"); }, "Bank loan paused.")}>Pause</RowActionButton> : null}
+              {canManageLoans && row.status !== "CANCELLED" ? <RowActionButton intent="delete" size="sm" title="Cancel bank loan" onClick={() => token && run(async () => { await api.payrollBankLoanAction(token, String(row.id), "cancel"); }, "Bank loan cancelled.")}>Cancel</RowActionButton> : null}
             </div>
           ) : null}
           empty="No bank loan deduction records exist for this employee."
@@ -254,10 +254,10 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
           columns={["template_name_snapshot", "category_snapshot", "assigned_amount", "total_amount", "remaining_balance", "approval_status", "status"]}
           actions={(row) => canManageCustomDeductions || canApproveCustomDeductions ? (
             <div className="flex justify-end gap-2">
-              {canApproveCustomDeductions && row.approval_status !== "APPROVED" ? <Button size="sm" variant="outline" onClick={() => setCustomAction({ id: String(row.id), action: "approve", reason: "" })}>Approve</Button> : null}
-              {canManageCustomDeductions && row.status === "ACTIVE" ? <Button size="sm" variant="outline" onClick={() => setCustomAction({ id: String(row.id), action: "pause", reason: "" })}>Pause</Button> : null}
-              {canManageCustomDeductions && row.status === "PAUSED" ? <Button size="sm" variant="outline" onClick={() => setCustomAction({ id: String(row.id), action: "resume", reason: "" })}>Resume</Button> : null}
-              {canManageCustomDeductions && !["CANCELLED", "COMPLETED", "ARCHIVED"].includes(String(row.status)) ? <Button size="sm" variant="outline" onClick={() => setCustomAction({ id: String(row.id), action: "cancel", reason: "" })}>Cancel</Button> : null}
+              {canApproveCustomDeductions && row.approval_status !== "APPROVED" ? <RowActionButton intent="approve" size="sm" title="Approve custom deduction" onClick={() => setCustomAction({ id: String(row.id), action: "approve", reason: "" })}>Approve</RowActionButton> : null}
+              {canManageCustomDeductions && row.status === "ACTIVE" ? <RowActionButton intent="hold" size="sm" title="Pause custom deduction" onClick={() => setCustomAction({ id: String(row.id), action: "pause", reason: "" })}>Pause</RowActionButton> : null}
+              {canManageCustomDeductions && row.status === "PAUSED" ? <RowActionButton intent="release" size="sm" title="Resume custom deduction" onClick={() => setCustomAction({ id: String(row.id), action: "resume", reason: "" })}>Resume</RowActionButton> : null}
+              {canManageCustomDeductions && !["CANCELLED", "COMPLETED", "ARCHIVED"].includes(String(row.status)) ? <RowActionButton intent="delete" size="sm" title="Cancel custom deduction" onClick={() => setCustomAction({ id: String(row.id), action: "cancel", reason: "" })}>Cancel</RowActionButton> : null}
             </div>
           ) : null}
           empty="No custom deductions are assigned to this employee."

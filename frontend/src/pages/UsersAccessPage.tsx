@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton, type RowActionIntent } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { FormBlockingAlert } from "../components/forms/FormBlockingAlert";
@@ -1376,11 +1376,23 @@ function Select(props: {
   );
 }
 
+function rowActionIntentFromTitle(title: string): RowActionIntent {
+  const text = title.toLowerCase();
+  if (text.includes("view")) return "view";
+  if (text.includes("edit")) return "edit";
+  if (text.includes("assign") || text.includes("link")) return "create";
+  if (text.includes("enable") || text.includes("approve")) return "enable";
+  if (text.includes("disable") || text.includes("protected")) return "disable";
+  if (text.includes("unlock") || text.includes("reset password")) return "warning";
+  if (text.includes("lock")) return "warning";
+  return "neutral";
+}
+
 function IconAction(props: { title: string; icon: React.ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
-    <Button variant="ghost" size="icon" title={props.title} onClick={props.onClick} disabled={props.disabled}>
+    <RowActionButton intent={rowActionIntentFromTitle(props.title)} title={props.title} onClick={props.onClick} disabled={props.disabled}>
       {props.icon}
-    </Button>
+    </RowActionButton>
   );
 }
 

@@ -6,7 +6,7 @@ import { OrganizationCascadeSelector } from "../components/organization/Organiza
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
 import { RosterNav } from "../components/roster/RosterNav";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
@@ -332,7 +332,7 @@ export function RosterWeeklyPage() {
                             {statuses.filter((item) => !["SCHEDULED"].includes(item)).map((item) => <option key={item} value={item}>{item}</option>)}
                             {(weekly?.shift_templates ?? []).map((template) => <option key={template.id} value={`shift:${template.id}`}>{template.code}</option>)}
                           </SelectField>
-                          {canManage ? <Button title="Edit assignment details" variant="ghost" size="icon" onClick={() => openEdit(employee, day.date)}><Edit className="h-4 w-4" /></Button> : null}
+                          {canManage ? <RowActionButton intent="edit" title="Edit assignment details" onClick={() => openEdit(employee, day.date)}><Edit className="h-4 w-4" /></RowActionButton> : null}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-1">
                           <Badge tone={statusTone(status)}>{status === "OFF" ? "DAY_OFF" : status}</Badge>

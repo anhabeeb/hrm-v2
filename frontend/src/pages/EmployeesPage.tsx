@@ -2,7 +2,7 @@ import { Archive, Eye, Pencil, Plus, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
@@ -336,10 +336,10 @@ export function EmployeesPage() {
                     <TableCell><Badge tone={employee.user_linked ? "success" : "neutral"}>{employee.user_linked ? "Linked" : "Not linked"}</Badge></TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" title={employee.active_onboarding_case_id ? "Open onboarding case" : "View"} onClick={() => navigate(employeePrimaryRoute(employee))}><Eye className="h-4 w-4" /></Button>
-                        {canUpdate ? <Button variant="ghost" size="icon" title="Edit" onClick={() => setModal({ mode: "edit", employee })}><Pencil className="h-4 w-4" /></Button> : null}
-                        {canStatus ? <Button variant="ghost" size="icon" title="Change status" onClick={() => { setStatusModalError(null); setStatusModalEmployee(employee); }}><Settings2 className="h-4 w-4" /></Button> : null}
-                        {canArchive ? <Button variant="ghost" size="icon" title="Archive" onClick={() => setArchiveTarget(employee)}><Archive className="h-4 w-4" /></Button> : null}
+                        <RowActionButton intent="view" title={employee.active_onboarding_case_id ? "Open onboarding case" : "View"} onClick={() => navigate(employeePrimaryRoute(employee))}><Eye className="h-4 w-4" /></RowActionButton>
+                        {canUpdate ? <RowActionButton intent="edit" title="Edit" onClick={() => setModal({ mode: "edit", employee })}><Pencil className="h-4 w-4" /></RowActionButton> : null}
+                        {canStatus ? <RowActionButton intent="neutral" title="Change status" onClick={() => { setStatusModalError(null); setStatusModalEmployee(employee); }}><Settings2 className="h-4 w-4" /></RowActionButton> : null}
+                        {canArchive ? <RowActionButton intent="archive" title="Archive" onClick={() => setArchiveTarget(employee)}><Archive className="h-4 w-4" /></RowActionButton> : null}
                       </div>
                     </TableCell>
                   </TableRow>

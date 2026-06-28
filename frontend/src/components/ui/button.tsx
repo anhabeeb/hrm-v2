@@ -14,7 +14,17 @@ export type ButtonVariant =
   | "actionImport"
   | "actionWarning"
   | "actionDestructive"
-  | "actionDisabled";
+  | "actionDisabled"
+  | "rowActionNeutral"
+  | "rowActionView"
+  | "rowActionEdit"
+  | "rowActionCreate"
+  | "rowActionSave"
+  | "rowActionWarning"
+  | "rowActionDestructive"
+  | "rowActionExport"
+  | "rowActionImport"
+  | "rowActionDisabled";
 export type ButtonSize = "sm" | "md" | "icon";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -35,7 +45,17 @@ const variantClasses: Record<ButtonVariant, string> = {
   actionImport: "bg-sky-600 text-white hover:bg-sky-700",
   actionWarning: "border border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200",
   actionDestructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-  actionDisabled: "border border-slate-200 bg-slate-100 text-slate-400 hover:bg-slate-100"
+  actionDisabled: "border border-slate-200 bg-slate-100 text-slate-400 hover:bg-slate-100",
+  rowActionNeutral: "border border-transparent bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+  rowActionView: "border border-transparent bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+  rowActionEdit: "border border-transparent bg-transparent text-primary hover:bg-primary/10 hover:text-primary",
+  rowActionCreate: "border border-transparent bg-transparent text-primary hover:bg-primary/10 hover:text-primary",
+  rowActionSave: "border border-transparent bg-transparent text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800",
+  rowActionWarning: "border border-transparent bg-transparent text-amber-700 hover:bg-amber-50 hover:text-amber-800",
+  rowActionDestructive: "border border-transparent bg-transparent text-red-600 hover:bg-red-50 hover:text-red-700",
+  rowActionExport: "border border-transparent bg-transparent text-sky-700 hover:bg-sky-50 hover:text-sky-800",
+  rowActionImport: "border border-transparent bg-transparent text-sky-700 hover:bg-sky-50 hover:text-sky-800",
+  rowActionDisabled: "border border-transparent bg-transparent text-slate-400 hover:bg-transparent"
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -129,3 +149,75 @@ export function Button({ className, variant, size = "md", type = "button", child
     </button>
   );
 }
+
+export type RowActionIntent =
+  | "view"
+  | "edit"
+  | "create"
+  | "save"
+  | "approve"
+  | "complete"
+  | "enable"
+  | "disable"
+  | "delete"
+  | "reject"
+  | "archive"
+  | "restore"
+  | "warning"
+  | "hold"
+  | "release"
+  | "download"
+  | "upload"
+  | "import"
+  | "export"
+  | "refresh"
+  | "calculate"
+  | "generate"
+  | "neutral";
+
+const ROW_ACTION_VARIANT_BY_INTENT: Record<RowActionIntent, ButtonVariant> = {
+  view: "rowActionView",
+  edit: "rowActionEdit",
+  create: "rowActionCreate",
+  save: "rowActionSave",
+  approve: "rowActionSave",
+  complete: "rowActionSave",
+  enable: "rowActionSave",
+  disable: "rowActionDestructive",
+  delete: "rowActionDestructive",
+  reject: "rowActionDestructive",
+  archive: "rowActionDestructive",
+  restore: "rowActionWarning",
+  warning: "rowActionWarning",
+  hold: "rowActionWarning",
+  release: "rowActionSave",
+  download: "rowActionExport",
+  upload: "rowActionImport",
+  import: "rowActionImport",
+  export: "rowActionExport",
+  refresh: "rowActionNeutral",
+  calculate: "rowActionNeutral",
+  generate: "rowActionCreate",
+  neutral: "rowActionNeutral"
+};
+
+export interface RowActionButtonProps extends Omit<ButtonProps, "variant" | "title"> {
+  intent: RowActionIntent;
+  title: string;
+}
+
+export function RowActionButton({ intent, title, "aria-label": ariaLabel, className, disabled, size = "icon", ...props }: RowActionButtonProps) {
+  return (
+    <Button
+      {...props}
+      disabled={disabled}
+      size={size}
+      title={title ?? ariaLabel}
+      aria-label={ariaLabel ?? title}
+      variant={disabled ? "rowActionDisabled" : ROW_ACTION_VARIANT_BY_INTENT[intent]}
+      className={cn("shrink-0", className)}
+    />
+  );
+}
+
+export const ActionIconButton = RowActionButton;

@@ -4,7 +4,7 @@ import { ApiError, api } from "../../lib/api";
 import type { Employee } from "../../types/employees";
 import type { RosterAssignment, ShiftTemplate } from "../../types/roster";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Panel } from "../ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -136,7 +136,7 @@ function AssignmentRow({ assignment, canManage, onEdit }: { assignment: RosterAs
       <TableCell>{assignment.leave_indicator ? <Badge tone="warning">{assignment.leave_indicator}</Badge> : "-"}</TableCell>
       <TableCell>{assignment.attendance_indicator ? <Badge tone="info">{assignment.attendance_indicator}</Badge> : "-"}</TableCell>
       <TableCell>{assignment.period_status ? <Badge tone={assignment.period_status === "PUBLISHED" ? "success" : "neutral"}>{assignment.period_status}</Badge> : "-"}</TableCell>
-      {canManage ? <TableCell><div className="flex justify-end"><Button title="Edit assignment" variant="ghost" size="icon" onClick={() => onEdit(assignment)}><Edit className="h-4 w-4" /></Button></div></TableCell> : null}
+      {canManage ? <TableCell><div className="flex justify-end"><RowActionButton intent="edit" title="Edit assignment" onClick={() => onEdit(assignment)}><Edit className="h-4 w-4" /></RowActionButton></div></TableCell> : null}
     </TableRow>
   );
 }

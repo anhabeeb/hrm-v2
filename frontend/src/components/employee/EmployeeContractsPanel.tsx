@@ -1,7 +1,7 @@
 import { FileSignature, Plus, RefreshCw } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Button, RowActionButton } from "../ui/button";
 import { DataTableFrame } from "../ui/data-table";
 import { EmptyState } from "../ui/empty-state";
 import { Input } from "../ui/input";
@@ -173,10 +173,10 @@ function ContractHistory({ rows, canManage, onAction }: { rows: Row[]; canManage
       columns={["contract_number", "contract_type_display_name", "status", "approval_status", "contract_start_date", "contract_end_date", "probation_status", "renewal_status"]}
       actions={canManage ? (row) => (
         <div className="flex flex-wrap justify-end gap-1">
-          <Button variant="outline" size="sm" onClick={() => onAction({ row, action: "submit-for-approval", title: "Submit for approval" })}>Submit</Button>
-          <Button variant="outline" size="sm" onClick={() => onAction({ row, action: "approve", title: "Approve" })}>Approve</Button>
-          <Button variant="outline" size="sm" onClick={() => onAction({ row, action: "activate", title: "Activate" })}>Activate</Button>
-          <Button variant="danger" size="sm" onClick={() => onAction({ row, action: "cancel", title: "Cancel contract", reasonRequired: true })}>Cancel</Button>
+          <RowActionButton intent="approve" size="sm" title="Submit for approval" onClick={() => onAction({ row, action: "submit-for-approval", title: "Submit for approval" })}>Submit</RowActionButton>
+          <RowActionButton intent="approve" size="sm" title="Approve contract" onClick={() => onAction({ row, action: "approve", title: "Approve" })}>Approve</RowActionButton>
+          <RowActionButton intent="approve" size="sm" title="Activate contract" onClick={() => onAction({ row, action: "activate", title: "Activate" })}>Activate</RowActionButton>
+          <RowActionButton intent="delete" size="sm" title="Cancel contract" onClick={() => onAction({ row, action: "cancel", title: "Cancel contract", reasonRequired: true })}>Cancel</RowActionButton>
         </div>
       ) : undefined}
     />

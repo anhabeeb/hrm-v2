@@ -1,6 +1,6 @@
 import { MoreHorizontal, Plus } from "lucide-react";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
@@ -59,9 +59,9 @@ export function PlaceholderModulePage({ title, permission }: PlaceholderModulePa
       <Panel className="overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-sm font-semibold">Row action pattern</h2>
-          <Button variant="ghost" size="icon" title="More actions">
+          <RowActionButton intent="view" title="More actions">
             <MoreHorizontal className="h-4 w-4" />
-          </Button>
+          </RowActionButton>
         </div>
         <div className="px-4 py-3 text-sm text-muted-foreground">Prepared for compact edit, archive, document, and audit actions.</div>
       </Panel>

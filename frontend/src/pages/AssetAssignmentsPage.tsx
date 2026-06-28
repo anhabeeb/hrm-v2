@@ -6,7 +6,7 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { AssetsNav } from "../components/assets/AssetsNav";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -152,15 +152,15 @@ export function AssetAssignmentsPage() {
                   <TableCell>{row.returned_date ?? row.returned_at ?? "-"}</TableCell>
                   <TableCell>{row.deduction_amount ?? "-"}</TableCell>
                   <TableCell><div className="flex min-w-[520px] justify-end gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => setModal({ type: "events", row })}><Eye className="h-4 w-4" /> Events</Button>
-                    {canManage ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "attachments", row })}><FilePlus className="h-4 w-4" /> Attachments</Button> : null}
-                    {row.status === "ISSUED" && canReturn ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "lifecycle", row, action: "return" })}>Return</Button> : null}
-                    {row.status === "ISSUED" && canDamage ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "lifecycle", row, action: "mark-damaged" })}>Damage</Button> : null}
-                    {row.status === "ISSUED" && canLost ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "lifecycle", row, action: "mark-lost" })}>Lost</Button> : null}
-                    {row.status === "ISSUED" && canWriteOff ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "lifecycle", row, action: "write-off" })}>Write off</Button> : null}
-                    {row.status === "ISSUED" && canIssue ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "replace", row })}><Repeat2 className="h-4 w-4" /> Replace</Button> : null}
-                    {canDeductions ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "deduction", row })}><Link2 className="h-4 w-4" /> Deduction</Button> : null}
-                    <Link to={`/employees/${row.employee_id}`}><Button variant="ghost" size="sm">Employee 360</Button></Link>
+                    <RowActionButton intent="view" size="sm" title="Events" onClick={() => setModal({ type: "events", row })}><Eye className="h-4 w-4" /> Events</RowActionButton>
+                    {canManage ? <RowActionButton intent="upload" size="sm" title="Attachments" onClick={() => setModal({ type: "attachments", row })}><FilePlus className="h-4 w-4" /> Attachments</RowActionButton> : null}
+                    {row.status === "ISSUED" && canReturn ? <RowActionButton intent="release" size="sm" title="Return" onClick={() => setModal({ type: "lifecycle", row, action: "return" })}>Return</RowActionButton> : null}
+                    {row.status === "ISSUED" && canDamage ? <RowActionButton intent="warning" size="sm" title="Damage" onClick={() => setModal({ type: "lifecycle", row, action: "mark-damaged" })}>Damage</RowActionButton> : null}
+                    {row.status === "ISSUED" && canLost ? <RowActionButton intent="warning" size="sm" title="Lost" onClick={() => setModal({ type: "lifecycle", row, action: "mark-lost" })}>Lost</RowActionButton> : null}
+                    {row.status === "ISSUED" && canWriteOff ? <RowActionButton intent="delete" size="sm" title="Write off" onClick={() => setModal({ type: "lifecycle", row, action: "write-off" })}>Write off</RowActionButton> : null}
+                    {row.status === "ISSUED" && canIssue ? <RowActionButton intent="upload" size="sm" title="Replace" onClick={() => setModal({ type: "replace", row })}><Repeat2 className="h-4 w-4" /> Replace</RowActionButton> : null}
+                    {canDeductions ? <RowActionButton intent="create" size="sm" title="Deduction" onClick={() => setModal({ type: "deduction", row })}><Link2 className="h-4 w-4" /> Deduction</RowActionButton> : null}
+                    <Link to={`/employees/${row.employee_id}`}><RowActionButton intent="view" size="sm" title="Employee 360">Employee 360</RowActionButton></Link>
                   </div></TableCell>
                 </TableRow>
               ))}
@@ -292,7 +292,7 @@ function AttachmentsModal({ row, onClose }: { row: AssetAssignment; onClose: () 
     await api.detachAssetDocument(token, row.id, id);
     await load();
   }
-  return <ReadDialog title="Assignment attachments" onClose={onClose}>{error ? <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="mb-3 grid gap-2 md:grid-cols-3"><SelectField label="Document" value={documentId} onChange={setDocumentId} options={documents.map((document) => [document.id, document.original_filename ?? document.document_number ?? document.document_type_name ?? document.id])} /><Field label="Description" value={description} onChange={setDescription} /><div className="flex items-end"><Button size="sm" disabled={!documentId} onClick={() => void attach()}>Attach</Button></div></div><Table><TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Type</TableHead><TableHead>Description</TableHead><TableHead>Attached</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{attachments.map((attachment) => <TableRow key={String(attachment.id)}><TableCell>{Boolean(attachment.restricted) ? <span className="flex items-center gap-2">Restricted document <Badge tone="warning">Restricted</Badge></span> : Boolean(attachment.unavailable) ? "Unavailable document" : String(attachment.original_filename ?? attachment.document_number ?? "-")}</TableCell><TableCell>{Boolean(attachment.restricted) ? "Restricted document" : String(attachment.document_type_name ?? "-")}</TableCell><TableCell>{String(attachment.description ?? "-")}</TableCell><TableCell>{String(attachment.attached_at ?? "-")}</TableCell><TableCell className="text-right"><Button variant="ghost" size="sm" onClick={() => void detach(String(attachment.id))}>Detach</Button></TableCell></TableRow>)}</TableBody></Table></ReadDialog>;
+  return <ReadDialog title="Assignment attachments" onClose={onClose}>{error ? <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="mb-3 grid gap-2 md:grid-cols-3"><SelectField label="Document" value={documentId} onChange={setDocumentId} options={documents.map((document) => [document.id, document.original_filename ?? document.document_number ?? document.document_type_name ?? document.id])} /><Field label="Description" value={description} onChange={setDescription} /><div className="flex items-end"><Button size="sm" disabled={!documentId} onClick={() => void attach()}>Attach</Button></div></div><Table><TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Type</TableHead><TableHead>Description</TableHead><TableHead>Attached</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{attachments.map((attachment) => <TableRow key={String(attachment.id)}><TableCell>{Boolean(attachment.restricted) ? <span className="flex items-center gap-2">Restricted document <Badge tone="warning">Restricted</Badge></span> : Boolean(attachment.unavailable) ? "Unavailable document" : String(attachment.original_filename ?? attachment.document_number ?? "-")}</TableCell><TableCell>{Boolean(attachment.restricted) ? "Restricted document" : String(attachment.document_type_name ?? "-")}</TableCell><TableCell>{String(attachment.description ?? "-")}</TableCell><TableCell>{String(attachment.attached_at ?? "-")}</TableCell><TableCell className="text-right"><RowActionButton intent="delete" size="sm" title="Detach" onClick={() => void detach(String(attachment.id))}>Detach</RowActionButton></TableCell></TableRow>)}</TableBody></Table></ReadDialog>;
 }
 
 function Dialog({ title, error, children, saveLabel = "Save", onClose, onSave }: { title: string; error: string | null; children: ReactNode; saveLabel?: string; onClose: () => void; onSave: () => void | Promise<void> }) {

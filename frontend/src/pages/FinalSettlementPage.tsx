@@ -5,7 +5,7 @@ import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, 
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -350,9 +350,9 @@ export function FinalSettlementPage() {
                     <TableCell className="font-semibold">{money(row.net_settlement_amount)}</TableCell>
                     <TableCell>{row.payment_status ? <StatusBadge value={row.payment_status} /> : "-"}</TableCell>
                     <TableCell><div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" title="View details" onClick={() => void loadDetails(row)}><FileText className="h-4 w-4" /></Button>
-                      {canCalculate ? <Button variant="ghost" size="icon" title="Calculate" onClick={() => void calculate(row, row.status !== "DRAFT")}><Calculator className="h-4 w-4" /></Button> : null}
-                      <Button variant="ghost" size="icon" title="More actions" onClick={() => { setCaseAction({ type: "submit", row }); setNote(""); setReason(""); }}><Send className="h-4 w-4" /></Button>
+                      <RowActionButton intent="view" title="View details" onClick={() => void loadDetails(row)}><FileText className="h-4 w-4" /></RowActionButton>
+                      {canCalculate ? <RowActionButton intent="calculate" title="Calculate" onClick={() => void calculate(row, row.status !== "DRAFT")}><Calculator className="h-4 w-4" /></RowActionButton> : null}
+                      <RowActionButton intent="view" title="More actions" onClick={() => { setCaseAction({ type: "submit", row }); setNote(""); setReason(""); }}><Send className="h-4 w-4" /></RowActionButton>
                     </div></TableCell>
                   </TableRow>
                 ))}</TableBody>
@@ -468,7 +468,7 @@ function CaseActionDialog({ action, row, note, reason, amount, adjustmentType, o
 function PaymentTable({ rows, canManage, onAction }: { rows: FinalSettlementPaymentRegister[]; canManage: boolean; onAction: (type: PaymentAction, row: FinalSettlementPaymentRegister) => void }) {
   return <Panel className="overflow-hidden"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Direction</TableHead><TableHead>Net</TableHead><TableHead>Method</TableHead><TableHead>Institution</TableHead><TableHead>Status</TableHead><TableHead>Reference</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => {
     const actionable = row.payment_status === "PENDING" || row.payment_status === "PREPARED";
-    return <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot} employeeNumber={row.employee_number_snapshot ?? row.employee_no_snapshot} size="sm" /></TableCell><TableCell>{row.payment_direction}</TableCell><TableCell>{row.net_settlement_amount == null ? "Restricted" : money(row.net_settlement_amount)}</TableCell><TableCell>{row.payment_method_type_snapshot ?? row.payment_method_snapshot ?? "-"}</TableCell><TableCell>{row.payment_institution_snapshot ?? row.bank_name_snapshot ?? "-"}</TableCell><TableCell><StatusBadge value={row.payment_status} /></TableCell><TableCell>{row.confirmation_reference ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <Button variant="ghost" size="icon" title="Confirm manual payment" disabled={!actionable} onClick={() => onAction("confirm-paid", row)}><CheckCircle2 className="h-4 w-4" /></Button> : null}{canManage ? <Button variant="ghost" size="icon" title="Cancel row" disabled={!actionable} onClick={() => onAction("cancel-payment", row)}><XCircle className="h-4 w-4" /></Button> : null}</div></TableCell></TableRow>;
+    return <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot} employeeNumber={row.employee_number_snapshot ?? row.employee_no_snapshot} size="sm" /></TableCell><TableCell>{row.payment_direction}</TableCell><TableCell>{row.net_settlement_amount == null ? "Restricted" : money(row.net_settlement_amount)}</TableCell><TableCell>{row.payment_method_type_snapshot ?? row.payment_method_snapshot ?? "-"}</TableCell><TableCell>{row.payment_institution_snapshot ?? row.bank_name_snapshot ?? "-"}</TableCell><TableCell><StatusBadge value={row.payment_status} /></TableCell><TableCell>{row.confirmation_reference ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <RowActionButton intent="approve" title="Confirm manual payment" disabled={!actionable} onClick={() => onAction("confirm-paid", row)}><CheckCircle2 className="h-4 w-4" /></RowActionButton> : null}{canManage ? <RowActionButton intent="disable" title="Cancel row" disabled={!actionable} onClick={() => onAction("cancel-payment", row)}><XCircle className="h-4 w-4" /></RowActionButton> : null}</div></TableCell></TableRow>;
   })}</TableBody></Table></div>{rows.length === 0 ? <EmptyState title="No payment register rows" description="Finalize a settlement and prepare a manual payment row." /> : null}</Panel>;
 }
 

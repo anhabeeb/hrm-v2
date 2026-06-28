@@ -16,7 +16,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, useSearchParams } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput } from "../components/filters";
@@ -425,7 +425,7 @@ export function AdminSettingsPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader><TableRow><TableHead>Module</TableHead><TableHead>Status</TableHead><TableHead>Enabled</TableHead><TableHead>Required</TableHead><TableHead>Dependencies</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-                <TableBody>{modules.map((module) => <TableRow key={String(module.module_key)}><TableCell>{text(module.module_name)}<div className="text-xs text-muted-foreground">{text(module.module_key)}</div></TableCell><TableCell><Badge tone={statusTone(module.status)}>{text(module.status)}</Badge></TableCell><TableCell>{boolInput(module.is_enabled) ? "Yes" : "No"}</TableCell><TableCell>{boolInput(module.is_required) ? "Yes" : "No"}</TableCell><TableCell className="max-w-[360px] truncate">{text(module.dependency_keys)}</TableCell><TableCell><Button size="sm" variant="outline" disabled={boolInput(module.is_required) && boolInput(module.is_enabled)} onClick={() => void requestModuleToggle(module)}>{boolInput(module.is_enabled) ? "Disable" : "Enable"}</Button></TableCell></TableRow>)}</TableBody>
+                <TableBody>{modules.map((module) => <TableRow key={String(module.module_key)}><TableCell>{text(module.module_name)}<div className="text-xs text-muted-foreground">{text(module.module_key)}</div></TableCell><TableCell><Badge tone={statusTone(module.status)}>{text(module.status)}</Badge></TableCell><TableCell>{boolInput(module.is_enabled) ? "Yes" : "No"}</TableCell><TableCell>{boolInput(module.is_required) ? "Yes" : "No"}</TableCell><TableCell className="max-w-[360px] truncate">{text(module.dependency_keys)}</TableCell><TableCell><RowActionButton intent={boolInput(module.is_enabled) ? "disable" : "enable"} size="sm" title={boolInput(module.is_enabled) ? "Disable module" : "Enable module"} disabled={boolInput(module.is_required) && boolInput(module.is_enabled)} onClick={() => void requestModuleToggle(module)}>{boolInput(module.is_enabled) ? "Disable" : "Enable"}</RowActionButton></TableCell></TableRow>)}</TableBody>
               </Table>
             </div>
           </Panel>
