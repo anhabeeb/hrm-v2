@@ -31,8 +31,9 @@ import { Link } from "react-router-dom";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { DashboardWidget, PageHeader, PageShell, QuickActionCard, WarningPanel } from "../components/ui/page-shell";
+import { DashboardWidget, PageHeader, PageShell, WarningPanel } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
+import { Tooltip } from "../components/ui/tooltip";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/useAuth";
@@ -152,6 +153,18 @@ function toneSummaryValueClass(value: DashboardTone) {
   }[value];
 }
 
+function priorityIconToneClass(tone: DashboardTone, count: number) {
+  if (count <= 0) return "border-slate-200 bg-slate-50 text-slate-500 shadow-none";
+
+  return {
+    neutral: "border-slate-300 bg-slate-50 text-slate-800 shadow-[0_0_0_3px_rgba(100,116,139,0.14)]",
+    success: "border-emerald-300 bg-emerald-50 text-emerald-800 shadow-[0_0_0_3px_rgba(16,185,129,0.18)]",
+    warning: "border-amber-300 bg-amber-50 text-amber-800 shadow-[0_0_0_3px_rgba(245,158,11,0.2)]",
+    danger: "border-red-300 bg-red-50 text-red-800 shadow-[0_0_0_3px_rgba(239,68,68,0.18)]",
+    info: "border-cyan-300 bg-cyan-50 text-cyan-800 shadow-[0_0_0_3px_rgba(6,182,212,0.18)]"
+  }[tone];
+}
+
 function getPreferredOpenGroup(groups: CommandCenterGroup[]) {
   return groups.find((group) => group.key === "workforce" && group.available)?.key
     ?? groups.find((group) => group.available)?.key
@@ -219,10 +232,13 @@ export function DashboardPage() {
         eyebrow="HRM command center"
         description="Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators."
         actions={
-          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            Refresh
-          </Button>
+          <div className="flex min-w-0 items-center gap-2">
+            <PriorityKpiIconStrip actions={priorityActions} />
+            <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+              Refresh
+            </Button>
+          </div>
         }
       />
 
@@ -291,21 +307,53 @@ export function DashboardPage() {
               </div>
             </Panel>
           )}
-
-          <DashboardWidget title="Priority Actions" description="Permission-safe shortcuts into queues that need attention first.">
-            {priorityActions.length ? (
-              <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
-                {priorityActions.map((action) => <PriorityActionCard key={action.id} action={action} />)}
-              </div>
-            ) : (
-              <div className="p-4">
-                <QuickActionCard title="No urgent actions" description="Enabled modules do not currently have high-priority queues in your scope." />
-              </div>
-            )}
-          </DashboardWidget>
         </div>
       ) : null}
     </PageShell>
+  );
+}
+
+function PriorityKpiIconStrip({ actions }: { actions: PriorityAction[] }) {
+  if (!actions.length) return null;
+
+  return (
+    <div className="PriorityKpiIconStrip min-w-0 max-w-[min(48vw,36rem)] overflow-x-auto rounded-md border bg-white px-2 py-1 shadow-panel">
+      <div className="flex min-w-max items-center gap-1.5">
+        {actions.map((action) => <PriorityKpiIcon key={action.id} action={action} />)}
+      </div>
+    </div>
+  );
+}
+
+function PriorityKpiIcon({ action }: { action: PriorityAction }) {
+  const Icon = iconMap[action.icon_key] ?? Bell;
+  const hasCount = action.count > 0;
+
+  return (
+    <Tooltip
+      content={
+        <div className="space-y-1">
+          <p className="font-semibold text-slate-950">{action.title}</p>
+          <p>
+            <span className="font-medium">Count:</span> {action.count.toLocaleString()}
+          </p>
+          <p className="text-muted-foreground">{action.description}</p>
+          <p className="font-medium text-primary">Open related queue</p>
+        </div>
+      }
+    >
+      <Link
+        to={action.route}
+        aria-label={`${action.title}: ${action.count.toLocaleString()}`}
+        className={cn(
+          "inline-flex h-9 min-w-9 shrink-0 items-center justify-center gap-1 rounded-md border px-2 text-xs font-semibold transition hover:-translate-y-0.5 hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20",
+          priorityIconToneClass(action.tone, action.count)
+        )}
+      >
+        <Icon className="h-4 w-4" />
+        <span className={cn("tabular-nums", hasCount ? "text-current" : "text-slate-500")}>{action.count.toLocaleString()}</span>
+      </Link>
+    </Tooltip>
   );
 }
 
@@ -372,26 +420,6 @@ function CommandCenterKpiCard({ card }: { card: CommandCenterKpi }) {
             {card.secondary_value ? <p className="mt-1 truncate text-xs text-muted-foreground" title={String(card.secondary_value)}>{card.secondary_value}</p> : null}
           </div>
           <Badge tone={card.tone} className="shrink-0">{card.tone}</Badge>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function PriorityActionCard({ action }: { action: PriorityAction }) {
-  const Icon = iconMap[action.icon_key] ?? Activity;
-  return (
-    <Link to={action.route} className="block min-w-0 rounded-lg border bg-white p-4 shadow-panel transition hover:border-primary/40 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary/20">
-      <div className="flex min-w-0 items-start gap-3">
-        <span className={cn("mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md border", kpiTone(action.tone))}>
-          <Icon className="h-4 w-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <h3 className="truncate text-sm font-semibold text-slate-950">{action.title}</h3>
-            <Badge tone={action.tone} className="shrink-0">{action.count.toLocaleString()}</Badge>
-          </div>
-          <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{action.description}</p>
         </div>
       </div>
     </Link>

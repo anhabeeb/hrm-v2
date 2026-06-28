@@ -169,7 +169,7 @@ for (const marker of [
 for (const marker of ["lazyPage", "Suspense"]) has(appRoutes, marker, `app routes ${marker}`);
 has(viteConfig, "manualChunks", "Vite manualChunks preserved");
 
-for (const marker of ["PageShell", "PageHeader", "DashboardWidget", "QuickActionCard", "Accordion", "CommandCenterKpiGrid"]) has(dashboard, marker, `dashboard ${marker}`);
+for (const marker of ["PageShell", "PageHeader", "DashboardWidget", "PriorityKpiIconStrip", "Accordion", "CommandCenterKpiGrid"]) has(dashboard, marker, `dashboard ${marker}`);
 for (const marker of ["EmployeeAvatar", "EmployeeProfilePhotoControls", "ResponsiveTabs", "EmployeePayrollPanel", "EmployeeDocumentsPanel"]) has(employeeProfile, marker, `Employee 360 ${marker}`);
 for (const marker of ["Payroll run status stepper", "MetricGrid", "StatCard", "DashboardWidget"]) has(payrollDashboard, marker, `payroll dashboard ${marker}`);
 for (const marker of ["Report Center", "PageHeader", "PageShell", "groupedReports"]) has(reports, marker, `reports page ${marker}`);
