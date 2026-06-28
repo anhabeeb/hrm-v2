@@ -26,7 +26,7 @@ import {
   Wallet,
   type LucideIcon
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Badge } from "../components/ui/badge";
@@ -142,6 +142,16 @@ function kpiTone(value: DashboardTone) {
   }[value];
 }
 
+function toneSummaryValueClass(value: DashboardTone) {
+  return {
+    neutral: "text-slate-700",
+    success: "text-emerald-700",
+    warning: "text-amber-700",
+    danger: "text-red-700",
+    info: "text-cyan-700"
+  }[value];
+}
+
 function getPreferredOpenGroup(groups: CommandCenterGroup[]) {
   return groups.find((group) => group.key === "workforce" && group.available)?.key
     ?? groups.find((group) => group.available)?.key
@@ -149,27 +159,13 @@ function getPreferredOpenGroup(groups: CommandCenterGroup[]) {
     ?? "";
 }
 
-const KPI_SUMMARY_LIMIT = 5;
 const KPI_ROW_SIZE = 5;
-const commandCenterKpiCardClass = "w-full sm:w-[18rem] xl:w-[16.75rem]";
-
-function getKpiGroupSummary(group: CommandCenterGroup) {
-  if (!group.available) return group.warning ?? "This KPI group is temporarily unavailable.";
-  if (!group.kpis.length) return "No KPI cards available.";
-
-  const visibleSummary = group.kpis
-    .slice(0, KPI_SUMMARY_LIMIT)
-    .map((kpi) => `${kpi.title} ${formatValue(kpi.value)}`);
-  const hiddenCount = Math.max(group.kpis.length - visibleSummary.length, 0);
-
-  return hiddenCount > 0
-    ? `${visibleSummary.join(" · ")} · +${hiddenCount} more`
-    : visibleSummary.join(" · ");
-}
+const commandCenterKpiCardClass = "w-full min-w-0";
 
 function getKpiGroupFullSummary(group: CommandCenterGroup) {
   if (!group.available) return group.warning ?? "This KPI group is temporarily unavailable.";
-  return group.kpis.map((kpi) => `${kpi.title} ${formatValue(kpi.value)}`).join(" · ");
+  if (!group.kpis.length) return "No KPI cards available.";
+  return group.kpis.map((kpi) => `${kpi.title}: ${formatValue(kpi.value)}`).join(" | ");
 }
 
 function chunkKpis<T>(items: T[], size = KPI_ROW_SIZE) {
@@ -263,10 +259,10 @@ export function DashboardPage() {
                         <Badge tone={group.available ? "success" : "warning"}>{group.available ? "Live" : "Warning"}</Badge>
                       </div>
                       <p
-                        className="kpi-summary-region min-w-0 flex-1 text-left text-xs font-normal leading-5 text-muted-foreground lg:text-right"
+                        className="kpi-summary-region min-w-0 flex-1 text-left text-xs font-normal leading-5 lg:text-right"
                         title={getKpiGroupFullSummary(group)}
                       >
-                        {getKpiGroupSummary(group)}
+                        <CommandCenterKpiSummary group={group} />
                       </p>
                     </div>
                   </AccordionTrigger>
@@ -317,11 +313,37 @@ function CommandCenterKpiGrid({ kpis }: { kpis: CommandCenterKpi[] }) {
   return (
     <div className="mx-auto flex max-w-[89rem] flex-col items-center gap-4 p-4">
       {chunkKpis(kpis, KPI_ROW_SIZE).map((row, rowIndex) => (
-        <div key={rowIndex} className="flex w-full flex-wrap justify-center gap-4">
+        <div
+          key={rowIndex}
+          className="kpi-row grid w-full justify-center gap-4 [grid-template-columns:minmax(0,1fr)] sm:[grid-template-columns:repeat(2,minmax(0,18rem))] lg:[grid-template-columns:repeat(3,minmax(0,17rem))] 2xl:[grid-template-columns:repeat(var(--kpi-row-count),16.75rem)]"
+          style={{ "--kpi-row-count": row.length } as CSSProperties & Record<"--kpi-row-count", number>}
+        >
           {row.map((card) => <CommandCenterKpiCard key={card.id} card={card} />)}
         </div>
       ))}
     </div>
+  );
+}
+
+function CommandCenterKpiSummary({ group }: { group: CommandCenterGroup }) {
+  if (!group.available) {
+    return <span className="text-amber-700">{group.warning ?? "This KPI group is temporarily unavailable."}</span>;
+  }
+
+  if (!group.kpis.length) {
+    return <span className="text-slate-500">No KPI cards available.</span>;
+  }
+
+  return (
+    <span className="inline-flex flex-wrap justify-start gap-x-2 gap-y-1 lg:justify-end">
+      {group.kpis.map((kpi, index) => (
+        <span key={kpi.id} className="inline-flex min-w-0 items-baseline gap-1">
+          <span className="text-slate-600">{kpi.title}:</span>
+          <span className={cn("font-semibold", toneSummaryValueClass(kpi.tone))}>{formatValue(kpi.value)}</span>
+          {index < group.kpis.length - 1 ? <span className="ml-1 text-slate-300" aria-hidden="true">|</span> : null}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -385,7 +407,11 @@ function CommandCenterSkeleton() {
         <DashboardWidget key={group} title={group} description="Loading live KPI cards.">
           <div className="mx-auto flex max-w-[89rem] flex-col items-center gap-4 p-4">
             {chunkKpis(skeletonCards, KPI_ROW_SIZE).map((row, rowIndex) => (
-              <div key={rowIndex} className="flex w-full flex-wrap justify-center gap-4">
+              <div
+                key={rowIndex}
+                className="kpi-row grid w-full justify-center gap-4 [grid-template-columns:minmax(0,1fr)] sm:[grid-template-columns:repeat(2,minmax(0,18rem))] lg:[grid-template-columns:repeat(3,minmax(0,17rem))] 2xl:[grid-template-columns:repeat(var(--kpi-row-count),16.75rem)]"
+                style={{ "--kpi-row-count": row.length } as CSSProperties & Record<"--kpi-row-count", number>}
+              >
                 {row.map((card) => (
                   <Panel key={card.id} className={cn("min-h-[148px] animate-pulse p-4", commandCenterKpiCardClass)}>
                     <div className="h-4 w-32 rounded bg-slate-100" />
