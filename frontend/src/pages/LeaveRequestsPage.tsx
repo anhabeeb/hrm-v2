@@ -69,6 +69,7 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const leaveDateRange: StandardDateRange = useMemo(() => ({ from: startFrom, to: startTo }), [startFrom, startTo]);
+  const endDateRange: StandardDateRange = useMemo(() => ({ from: endFrom, to: endTo }), [endFrom, endTo]);
   const submittedDateRange: StandardDateRange = useMemo(() => ({ from: submittedFrom, to: submittedTo }), [submittedFrom, submittedTo]);
 
   const filters = useMemo(() => ({
@@ -148,6 +149,11 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
     setSubmittedTo(range.to ?? "");
   }
 
+  function setEndDateRange(range: StandardDateRange) {
+    setEndFrom(range.from ?? "");
+    setEndTo(range.to ?? "");
+  }
+
   function resetFilters() {
     setSearch("");
     setTypeId("");
@@ -172,6 +178,7 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
     positionId ? { key: "position", label: "Position", value: positions.find((position) => position.id === positionId)?.title ?? "Selected", onRemove: () => setPositionId("") } : null,
     locationId ? { key: "location", label: "Location", value: locations.find((location) => location.id === locationId)?.name ?? "Selected", onRemove: () => setLocationId("") } : null,
     startFrom || startTo ? { key: "leaveDate", label: "Leave Date", value: `${startFrom || "Any"} - ${startTo || "Any"}`, onRemove: () => setLeaveDateRange({}) } : null,
+    endFrom || endTo ? { key: "endDate", label: "End Date", value: `${endFrom || "Any"} - ${endTo || "Any"}`, onRemove: () => setEndDateRange({}) } : null,
     submittedFrom || submittedTo ? { key: "submittedDate", label: "Submitted", value: `${submittedFrom || "Any"} - ${submittedTo || "Any"}`, onRemove: () => setSubmittedDateRange({}) } : null,
     pendingMine && !approvalsOnly ? { key: "pendingMine", label: "Approval", value: "Pending mine", onRemove: () => setPendingMine(false) } : null
   ].filter(Boolean) as Array<{ key: string; label: string; value: string; onRemove: () => void }>;
@@ -207,10 +214,7 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
             </FilterSection>
             <FilterSection title="Date">
               <StandardDateRangeFilter value={submittedDateRange} onChange={setSubmittedDateRange} label="Requested Date Range" />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-1.5 text-sm font-medium text-slate-800">End from<Input type="date" value={endFrom} onChange={(event) => setEndFrom(event.target.value)} /></label>
-                <label className="grid gap-1.5 text-sm font-medium text-slate-800">End to<Input type="date" value={endTo} onChange={(event) => setEndTo(event.target.value)} /></label>
-              </div>
+              <StandardDateRangeFilter value={endDateRange} onChange={setEndDateRange} label="End Date Range" />
             </FilterSection>
           </MoreFiltersSheet>
         }

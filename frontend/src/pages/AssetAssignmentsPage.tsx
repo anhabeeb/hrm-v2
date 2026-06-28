@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { AssetsNav } from "../components/assets/AssetsNav";
+import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -51,6 +52,10 @@ export function AssetAssignmentsPage() {
   const [filters, setFilters] = useState({ search: "", department_id: "", location_id: "", category_id: "", status: "", issued_date_from: "", issued_date_to: "", expected_return_date_from: "", expected_return_date_to: "", returned_date_from: "", returned_date_to: "" });
   const [modal, setModal] = useState<ModalState>(null);
   const [error, setError] = useState<string | null>(null);
+  const issuedRange = { from: filters.issued_date_from, to: filters.issued_date_to };
+  const expectedRange = { from: filters.expected_return_date_from, to: filters.expected_return_date_to };
+  const returnedRange = { from: filters.returned_date_from, to: filters.returned_date_to };
+  const resetFilters = () => setFilters({ search: "", department_id: "", location_id: "", category_id: "", status: "", issued_date_from: "", issued_date_to: "", expected_return_date_from: "", expected_return_date_to: "", returned_date_from: "", returned_date_to: "" });
 
   async function load() {
     if (!token) return;
@@ -82,33 +87,40 @@ export function AssetAssignmentsPage() {
       <PageHeader title="Asset Assignments" description="Issue, return, replace, damage/lost, recovery, attachment, and event tracking." />
       <AssetsNav />
       <Panel className="p-0">
-        <div className="grid gap-2 p-4 md:grid-cols-4 xl:grid-cols-6">
-          <Input placeholder="Employee or asset" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
-          <div className="md:col-span-2">
-            <OrganizationCascadeSelector
-              value={{ locationId: filters.location_id, departmentId: filters.department_id }}
-              onChange={(next) => setFilters({ ...filters, location_id: next.locationId ?? "", department_id: next.departmentId ?? "" })}
-              departments={departments}
-              locations={locations}
-              jobLevels={[]}
-              positions={[]}
-              includeLocation
-              includeJobLevel={false}
-              includePosition={false}
-              mode="asset-rule"
-              labels={{ locationId: "Location", departmentId: "Department" }}
-              className="grid gap-2 md:grid-cols-2"
-            />
-          </div>
-          <Select value={filters.category_id} onChange={(category_id) => setFilters({ ...filters, category_id })} empty="All categories" options={categories.map((row) => [row.id, row.name])} />
-          <Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} empty="All status" options={["ISSUED","RETURNED","DAMAGED","LOST","REPLACED","WRITTEN_OFF"]} />
-          <Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>
-          <Field label="Issued from" type="date" value={filters.issued_date_from} onChange={(issued_date_from) => setFilters({ ...filters, issued_date_from })} />
-          <Field label="Issued to" type="date" value={filters.issued_date_to} onChange={(issued_date_to) => setFilters({ ...filters, issued_date_to })} />
-          <Field label="Expected from" type="date" value={filters.expected_return_date_from} onChange={(expected_return_date_from) => setFilters({ ...filters, expected_return_date_from })} />
-          <Field label="Expected to" type="date" value={filters.expected_return_date_to} onChange={(expected_return_date_to) => setFilters({ ...filters, expected_return_date_to })} />
-          <Field label="Returned from" type="date" value={filters.returned_date_from} onChange={(returned_date_from) => setFilters({ ...filters, returned_date_from })} />
-          <Field label="Returned to" type="date" value={filters.returned_date_to} onChange={(returned_date_to) => setFilters({ ...filters, returned_date_to })} />
+        <div className="p-4">
+          <StandardFilterBar
+            search={<StandardSearchInput value={filters.search} onDebouncedChange={(search) => setFilters((current) => ({ ...current, search }))} placeholder="Employee or asset" />}
+            reset={<FilterResetButton onReset={resetFilters} />}
+            actions={<Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>}
+            moreFilters={
+              <MoreFiltersSheet onReset={resetFilters} onApply={() => void load()}>
+                <FilterSection title="Organization">
+                  <OrganizationCascadeSelector
+                    value={{ locationId: filters.location_id, departmentId: filters.department_id }}
+                    onChange={(next) => setFilters((current) => ({ ...current, location_id: next.locationId ?? "", department_id: next.departmentId ?? "" }))}
+                    departments={departments}
+                    locations={locations}
+                    jobLevels={[]}
+                    positions={[]}
+                    includeLocation
+                    includeJobLevel={false}
+                    includePosition={false}
+                    mode="asset-rule"
+                    labels={{ locationId: "Location", departmentId: "Department" }}
+                    className="grid gap-2"
+                  />
+                </FilterSection>
+                <FilterSection title="Assignment dates">
+                  <StandardDateRangeFilter value={issuedRange} onChange={(range) => setFilters((current) => ({ ...current, issued_date_from: range.from ?? "", issued_date_to: range.to ?? "" }))} label="Issued Date Range" />
+                  <StandardDateRangeFilter value={expectedRange} onChange={(range) => setFilters((current) => ({ ...current, expected_return_date_from: range.from ?? "", expected_return_date_to: range.to ?? "" }))} label="Expected Return Range" />
+                  <StandardDateRangeFilter value={returnedRange} onChange={(range) => setFilters((current) => ({ ...current, returned_date_from: range.from ?? "", returned_date_to: range.to ?? "" }))} label="Returned Date Range" />
+                </FilterSection>
+              </MoreFiltersSheet>
+            }
+          >
+            <StandardSelectFilter value={filters.category_id} onValueChange={(category_id) => setFilters((current) => ({ ...current, category_id }))} allLabel="All categories" width="documentType" options={categories.map((row) => ({ value: row.id, label: row.name }))} />
+            <StandardSelectFilter value={filters.status} onValueChange={(status) => setFilters((current) => ({ ...current, status }))} allLabel="All status" width="status" options={["ISSUED","RETURNED","DAMAGED","LOST","REPLACED","WRITTEN_OFF"].map((value) => ({ value, label: value }))} />
+          </StandardFilterBar>
         </div>
         <div className="flex justify-end border-t p-3">{canIssue ? <Button size="sm" onClick={() => setModal({ type: "issue" })}>Issue asset</Button> : null}</div>
       </Panel>

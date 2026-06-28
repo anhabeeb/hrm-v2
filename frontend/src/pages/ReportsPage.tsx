@@ -1,12 +1,20 @@
-import { Download, FileSpreadsheet, FileText, History, RefreshCw, Search } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, History, RefreshCw } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Button } from "../components/ui/button";
-import { ValidatedDateRangeField } from "../components/forms/ValidatedDateRangeField";
 import { DataTableFrame } from "../components/ui/data-table";
 import { Input } from "../components/ui/input";
-import { AlertBanner, ExportActionBar, FilterBar, PageHeader, PageShell, SelectField, StandardTabs } from "../components/ui/page-shell";
+import {
+  ActiveFilterChips,
+  FilterResetButton,
+  FilterSection,
+  MoreFiltersSheet,
+  StandardDateRangeFilter,
+  StandardFilterBar,
+  StandardSearchInput
+} from "../components/filters";
+import { AlertBanner, ExportActionBar, PageHeader, PageShell, SelectField, StandardTabs } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -238,6 +246,13 @@ export function ReportsPage() {
   }
 
   const filterChips = Object.entries(activeFilters).filter(([, value]) => value).slice(0, 12);
+  const reportDateRange = { from: filters.date_from, to: filters.date_to };
+  const activeFilterChips = filterChips.map(([key, value]) => ({
+    key,
+    label: key.replace(/_/g, " "),
+    value,
+    onRemove: () => setFilter(setFilters, key as keyof FilterState, "")
+  }));
 
   return (
     <PageShell constrained={false}>
@@ -260,83 +275,87 @@ export function ReportsPage() {
       />
 
       <Panel className="overflow-hidden">
-        <FilterBar className="rounded-none border-0 shadow-none lg:grid-cols-4 xl:grid-cols-6">
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm xl:col-span-2" value={selected} onChange={(event) => setSelected(event.target.value)}>
-            {groupedReports.map(([group, reports]) => (
-              <optgroup key={group} label={group}>
-                {reports.map((option) => (
-                  <option key={option.key} value={option.key}>{option.label}</option>
-                ))}
-              </optgroup>
-            ))}
-          </SelectField>
-          <div className="relative lg:col-span-2">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input className="pl-9" placeholder="Search employee, report row, action..." value={filters.search} onChange={(event) => setFilter(setFilters, "search", event.target.value)} />
-          </div>
-          <Input placeholder="Employee no" value={filters.employee_number} onChange={(event) => setFilter(setFilters, "employee_number", event.target.value)} />
-          <SelectStatic label="Export format" value={filters.export_format} options={["CSV", "JSON", "EXCEL", "PDF"]} onChange={(value) => setFilter(setFilters, "export_format", value)} />
-          <ValidatedDateRangeField start={filters.date_from} end={filters.date_to} onStartChange={(value) => setFilter(setFilters, "date_from", value)} onEndChange={(value) => setFilter(setFilters, "date_to", value)} />
-          <SelectFilter label="Payroll period" value={filters.payroll_period_id} options={payrollPeriods} onChange={(value) => setFilter(setFilters, "payroll_period_id", value)} />
-          <div className="lg:col-span-3">
-            <OrganizationCascadeSelector
-              value={{ locationId: filters.location_id, departmentId: filters.department_id, positionId: filters.position_id }}
-              onChange={(next) => {
-                setFilters((current) => ({
-                  ...current,
-                  location_id: next.locationId ?? "",
-                  department_id: next.departmentId ?? "",
-                  position_id: next.positionId ?? "",
-                  page: "1"
-                }));
-              }}
-              departments={departments}
-              locations={locations}
-              jobLevels={[]}
-              positions={positions}
-              includeLocation
-              includeJobLevel={false}
-              requireJobLevelForPosition={false}
-              mode="report-filter"
-              labels={{ locationId: "Worksite/location", departmentId: "Department", positionId: "Position" }}
-              className="grid gap-2 md:grid-cols-3"
-            />
-          </div>
-          <SelectStatic label="Employee type" value={filters.employee_type} options={["LOCAL", "FOREIGN", "OTHER"]} onChange={(value) => setFilter(setFilters, "employee_type", value)} />
-          <SelectStatic label="Employment type" value={filters.employment_type} options={["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]} onChange={(value) => setFilter(setFilters, "employment_type", value)} />
-          <Input placeholder="Employee status" value={filters.employee_status} onChange={(event) => setFilter(setFilters, "employee_status", event.target.value)} />
-          <Input placeholder="Row status" value={filters.status} onChange={(event) => setFilter(setFilters, "status", event.target.value)} />
-          <Input placeholder="Payroll run status" value={filters.payroll_run_status} onChange={(event) => setFilter(setFilters, "payroll_run_status", event.target.value)} />
-          <Input placeholder="Payment status" value={filters.payment_status} onChange={(event) => setFilter(setFilters, "payment_status", event.target.value)} />
-          <SelectFilter label="Pension scheme" value={filters.pension_scheme_id} options={pensionSchemes} onChange={(value) => setFilter(setFilters, "pension_scheme_id", value)} />
-          <SelectFilter label="Bank/payment institution" value={filters.payment_institution_id} options={paymentInstitutions} onChange={(value) => setFilter(setFilters, "payment_institution_id", value)} />
-          <SelectFilter label="Deduction template" value={filters.deduction_template_id} options={deductionTemplates} onChange={(value) => setFilter(setFilters, "deduction_template_id", value)} />
-          <Input placeholder="Deduction category" value={filters.deduction_category} onChange={(event) => setFilter(setFilters, "deduction_category", event.target.value)} />
-          <Input placeholder="Final settlement status" value={filters.final_settlement_status} onChange={(event) => setFilter(setFilters, "final_settlement_status", event.target.value)} />
-          <SelectFilter label="Leave type" value={filters.leave_type_id} options={leaveTypes} onChange={(value) => setFilter(setFilters, "leave_type_id", value)} />
-          <Input placeholder="Attendance status" value={filters.attendance_status} onChange={(event) => setFilter(setFilters, "attendance_status", event.target.value)} />
-          <SelectStatic label="Pending my approval" value={filters.pending_my_approval} options={["true"]} onChange={(value) => setFilter(setFilters, "pending_my_approval", value)} />
-          <SelectFilter label="Document type" value={filters.document_type_id} options={documentTypes} onChange={(value) => setFilter(setFilters, "document_type_id", value)} />
-          <SelectFilter label="Category" value={filters.category_id} options={documentCategories.concat(assetCategories)} onChange={(value) => setFilter(setFilters, "category_id", value)} />
-          <SelectStatic label="Sensitive" value={filters.sensitive} options={["true", "false"]} onChange={(value) => setFilter(setFilters, "sensitive", value)} />
-          <SelectStatic label="Source" value={filters.source} options={["DEVICE", "MANUAL", "CORRECTION", "LEAVE", "ROSTER", "SYSTEM"]} onChange={(value) => setFilter(setFilters, "source", value)} />
-          <SelectStatic label="Missed punch" value={filters.missed_punch} options={["true"]} onChange={(value) => setFilter(setFilters, "missed_punch", value)} />
-          <SelectStatic label="Late only" value={filters.late_only} options={["true"]} onChange={(value) => setFilter(setFilters, "late_only", value)} />
-          <SelectStatic label="Early leave" value={filters.early_checkout_only} options={["true"]} onChange={(value) => setFilter(setFilters, "early_checkout_only", value)} />
-          <Input type="date" value={filters.week_start_date} onChange={(event) => setFilter(setFilters, "week_start_date", event.target.value)} />
-          <SelectFilter label="Shift" value={filters.shift_template_id} options={shiftTemplates} onChange={(value) => setFilter(setFilters, "shift_template_id", value)} />
-          <SelectFilter label="Actor" value={filters.actor_user_id} options={users} onChange={(value) => setFilter(setFilters, "actor_user_id", value)} />
-          <Input placeholder="Audit module" value={filters.module} onChange={(event) => setFilter(setFilters, "module", event.target.value)} />
-          <Input placeholder="Audit action" value={filters.action} onChange={(event) => setFilter(setFilters, "action", event.target.value)} />
-          <Input placeholder="Entity type" value={filters.entity_type} onChange={(event) => setFilter(setFilters, "entity_type", event.target.value)} />
-          <Button variant="outline" size="sm" onClick={() => setFilters(initialFilters)}>Reset</Button>
-          <Button variant="outline" size="sm" onClick={() => void (tab === "exports" ? loadExportLogs() : load())}>Apply</Button>
-        </FilterBar>
-        {filterChips.length ? (
-          <div className="border-t px-3 py-3 flex flex-wrap gap-1">
-            {filterChips.map(([key, value]) => <span key={key} className="rounded border bg-muted px-2 py-1 text-xs text-muted-foreground">{key}: {value}</span>)}
-          </div>
-        ) : null}
+        <div className="p-3">
+          <StandardFilterBar
+            search={<StandardSearchInput value={filters.search} onDebouncedChange={(value) => setFilter(setFilters, "search", value)} placeholder="Search employee, report row, action..." />}
+            reset={<FilterResetButton onReset={() => setFilters(initialFilters)} />}
+            actions={<Button variant="outline" size="sm" onClick={() => void (tab === "exports" ? loadExportLogs() : load())}>Apply</Button>}
+            moreFilters={
+              <MoreFiltersSheet onReset={() => setFilters(initialFilters)} onApply={() => void (tab === "exports" ? loadExportLogs() : load())}>
+                <FilterSection title="Employee and organization">
+                  <Input placeholder="Employee no" value={filters.employee_number} onChange={(event) => setFilter(setFilters, "employee_number", event.target.value)} />
+                  <OrganizationCascadeSelector
+                    value={{ locationId: filters.location_id, departmentId: filters.department_id, positionId: filters.position_id }}
+                    onChange={(next) => {
+                      setFilters((current) => ({
+                        ...current,
+                        location_id: next.locationId ?? "",
+                        department_id: next.departmentId ?? "",
+                        position_id: next.positionId ?? "",
+                        page: "1"
+                      }));
+                    }}
+                    departments={departments}
+                    locations={locations}
+                    jobLevels={[]}
+                    positions={positions}
+                    includeLocation
+                    includeJobLevel={false}
+                    requireJobLevelForPosition={false}
+                    mode="report-filter"
+                    labels={{ locationId: "Worksite/location", departmentId: "Department", positionId: "Position" }}
+                    className="grid gap-2"
+                  />
+                  <SelectStatic label="Employee type" value={filters.employee_type} options={["LOCAL", "FOREIGN", "OTHER"]} onChange={(value) => setFilter(setFilters, "employee_type", value)} />
+                  <SelectStatic label="Employment type" value={filters.employment_type} options={["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]} onChange={(value) => setFilter(setFilters, "employment_type", value)} />
+                  <Input placeholder="Employee status" value={filters.employee_status} onChange={(event) => setFilter(setFilters, "employee_status", event.target.value)} />
+                </FilterSection>
+                <FilterSection title="Payroll and compliance">
+                  <Input placeholder="Row status" value={filters.status} onChange={(event) => setFilter(setFilters, "status", event.target.value)} />
+                  <Input placeholder="Payroll run status" value={filters.payroll_run_status} onChange={(event) => setFilter(setFilters, "payroll_run_status", event.target.value)} />
+                  <Input placeholder="Payment status" value={filters.payment_status} onChange={(event) => setFilter(setFilters, "payment_status", event.target.value)} />
+                  <SelectFilter label="Pension scheme" value={filters.pension_scheme_id} options={pensionSchemes} onChange={(value) => setFilter(setFilters, "pension_scheme_id", value)} />
+                  <SelectFilter label="Bank/payment institution" value={filters.payment_institution_id} options={paymentInstitutions} onChange={(value) => setFilter(setFilters, "payment_institution_id", value)} />
+                  <SelectFilter label="Deduction template" value={filters.deduction_template_id} options={deductionTemplates} onChange={(value) => setFilter(setFilters, "deduction_template_id", value)} />
+                  <Input placeholder="Deduction category" value={filters.deduction_category} onChange={(event) => setFilter(setFilters, "deduction_category", event.target.value)} />
+                  <Input placeholder="Final settlement status" value={filters.final_settlement_status} onChange={(event) => setFilter(setFilters, "final_settlement_status", event.target.value)} />
+                </FilterSection>
+                <FilterSection title="Attendance, leave, documents, and audit">
+                  <SelectFilter label="Leave type" value={filters.leave_type_id} options={leaveTypes} onChange={(value) => setFilter(setFilters, "leave_type_id", value)} />
+                  <Input placeholder="Attendance status" value={filters.attendance_status} onChange={(event) => setFilter(setFilters, "attendance_status", event.target.value)} />
+                  <SelectStatic label="Pending my approval" value={filters.pending_my_approval} options={["true"]} onChange={(value) => setFilter(setFilters, "pending_my_approval", value)} />
+                  <SelectFilter label="Document type" value={filters.document_type_id} options={documentTypes} onChange={(value) => setFilter(setFilters, "document_type_id", value)} />
+                  <SelectFilter label="Category" value={filters.category_id} options={documentCategories.concat(assetCategories)} onChange={(value) => setFilter(setFilters, "category_id", value)} />
+                  <SelectStatic label="Sensitive" value={filters.sensitive} options={["true", "false"]} onChange={(value) => setFilter(setFilters, "sensitive", value)} />
+                  <SelectStatic label="Source" value={filters.source} options={["DEVICE", "MANUAL", "CORRECTION", "LEAVE", "ROSTER", "SYSTEM"]} onChange={(value) => setFilter(setFilters, "source", value)} />
+                  <SelectStatic label="Missed punch" value={filters.missed_punch} options={["true"]} onChange={(value) => setFilter(setFilters, "missed_punch", value)} />
+                  <SelectStatic label="Late only" value={filters.late_only} options={["true"]} onChange={(value) => setFilter(setFilters, "late_only", value)} />
+                  <SelectStatic label="Early leave" value={filters.early_checkout_only} options={["true"]} onChange={(value) => setFilter(setFilters, "early_checkout_only", value)} />
+                  <StandardDateRangeFilter value={{ from: filters.week_start_date, to: filters.week_start_date }} onChange={(range) => setFilter(setFilters, "week_start_date", range.from ?? "")} label="Week Start Date" />
+                  <SelectFilter label="Shift" value={filters.shift_template_id} options={shiftTemplates} onChange={(value) => setFilter(setFilters, "shift_template_id", value)} />
+                  <SelectFilter label="Actor" value={filters.actor_user_id} options={users} onChange={(value) => setFilter(setFilters, "actor_user_id", value)} />
+                  <Input placeholder="Audit module" value={filters.module} onChange={(event) => setFilter(setFilters, "module", event.target.value)} />
+                  <Input placeholder="Audit action" value={filters.action} onChange={(event) => setFilter(setFilters, "action", event.target.value)} />
+                  <Input placeholder="Entity type" value={filters.entity_type} onChange={(event) => setFilter(setFilters, "entity_type", event.target.value)} />
+                </FilterSection>
+              </MoreFiltersSheet>
+            }
+          >
+            <SelectField className="h-10 min-w-[260px] rounded-md border bg-white px-3 text-sm" value={selected} onChange={(event) => setSelected(event.target.value)}>
+              {groupedReports.map(([group, reports]) => (
+                <optgroup key={group} label={group}>
+                  {reports.map((option) => (
+                    <option key={option.key} value={option.key}>{option.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </SelectField>
+            <StandardDateRangeFilter value={reportDateRange} onChange={(range) => setFilters((current) => ({ ...current, date_from: range.from ?? "", date_to: range.to ?? "", page: "1" }))} label="Report Date Range" />
+            <SelectFilter label="Payroll period" value={filters.payroll_period_id} options={payrollPeriods} onChange={(value) => setFilter(setFilters, "payroll_period_id", value)} />
+            <SelectStatic label="Export format" value={filters.export_format} options={["CSV", "JSON", "EXCEL", "PDF"]} onChange={(value) => setFilter(setFilters, "export_format", value)} />
+          </StandardFilterBar>
+        </div>
+        <ActiveFilterChips chips={activeFilterChips} className="border-t px-3 py-3" />
         {message ? <div className="border-t p-3"><AlertBanner tone="warning">{message}</AlertBanner></div> : null}
       </Panel>
 

@@ -1,9 +1,9 @@
-import { Download, Search } from "lucide-react";
+import { Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
+import { FilterResetButton, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput } from "../components/filters";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
-import { Input } from "../components/ui/input";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
@@ -30,6 +30,7 @@ export function AttendanceReportsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const filters = useMemo(() => ({ search, department_id: departmentId, location_id: locationId, date_from: dateFrom, date_to: dateTo }), [search, departmentId, locationId, dateFrom, dateTo]);
+  const dateRange = useMemo(() => ({ from: dateFrom, to: dateTo }), [dateFrom, dateTo]);
 
   async function load() {
     if (!token || !canView) return;
@@ -89,29 +90,34 @@ export function AttendanceReportsPage() {
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
-        <div className="grid gap-2 border-b p-3 md:grid-cols-5">
-          <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <div className="md:col-span-2">
-            <OrganizationCascadeSelector
-              value={{ locationId, departmentId }}
-              onChange={(next) => {
-                setLocationId(next.locationId ?? "");
-                setDepartmentId(next.departmentId ?? "");
-              }}
-              departments={departments}
-              locations={locations}
-              jobLevels={[]}
-              positions={[]}
-              includeLocation
-              includeJobLevel={false}
-              includePosition={false}
-              mode="report-filter"
-              labels={{ locationId: "Location", departmentId: "Department" }}
-              className="grid gap-2 md:grid-cols-2"
-            />
-          </div>
-          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Date from" />
-          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Date to" />
+        <div className="border-b p-3">
+          <StandardFilterBar
+            search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee" />}
+            reset={<FilterResetButton onReset={() => { setSearch(""); setDepartmentId(""); setLocationId(""); }} />}
+            moreFilters={
+              <MoreFiltersSheet onReset={() => { setDepartmentId(""); setLocationId(""); }}>
+                <OrganizationCascadeSelector
+                  value={{ locationId, departmentId }}
+                  onChange={(next) => {
+                    setLocationId(next.locationId ?? "");
+                    setDepartmentId(next.departmentId ?? "");
+                  }}
+                  departments={departments}
+                  locations={locations}
+                  jobLevels={[]}
+                  positions={[]}
+                  includeLocation
+                  includeJobLevel={false}
+                  includePosition={false}
+                  mode="report-filter"
+                  labels={{ locationId: "Location", departmentId: "Department" }}
+                  className="grid gap-2"
+                />
+              </MoreFiltersSheet>
+            }
+          >
+            <StandardDateRangeFilter value={dateRange} onChange={(range) => { setDateFrom(range.from ?? ""); setDateTo(range.to ?? ""); }} label="Date Range" />
+          </StandardFilterBar>
         </div>
         <div className="overflow-x-auto">
           <Table>

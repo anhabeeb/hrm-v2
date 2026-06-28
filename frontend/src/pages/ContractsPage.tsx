@@ -14,11 +14,9 @@ import {
   FilterResetButton,
   FilterSection,
   MoreFiltersSheet,
-  StandardDateRangeFilter,
   StandardFilterBar,
   StandardSearchInput,
-  StandardSelectFilter,
-  type StandardDateRange
+  StandardSelectFilter
 } from "../components/filters";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
@@ -197,8 +195,6 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
               <MoreFiltersSheet onReset={resetFilters}>
                 <FilterSection title="Contract">
                   <StandardSelectFilter value={filters.contract_type_id} onValueChange={(value) => setFilters((current) => ({ ...current, contract_type_id: value }))} allLabel="All contract types" options={activeTypes.map((type) => ({ value: String(type.id), label: text(type.name) }))} />
-                  <StandardDateRangeFilter value={{}} onChange={() => undefined} label="Expiry Date Range" disabled />
-                  <div className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Expiry range filters are displayed in contract reports and alerts where due dates are available.</div>
                 </FilterSection>
                 <FilterSection title="Employee">
                   <StandardSelectFilter value={filters.department_id} onValueChange={(value) => setFilters((current) => ({ ...current, department_id: value }))} allLabel="All departments" width="department" options={organizationRefs.departments.filter((department) => department.is_active !== false).map((department) => ({ value: department.id, label: department.name }))} />

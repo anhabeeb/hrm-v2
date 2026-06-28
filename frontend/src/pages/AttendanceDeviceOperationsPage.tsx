@@ -1,7 +1,8 @@
-﻿import { Download, FileUp, Plus, RefreshCw, Save, Search, ShieldCheck, Wrench } from "lucide-react";
+﻿import { Download, FileUp, Plus, RefreshCw, Save, ShieldCheck, Wrench } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
+import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
@@ -164,7 +165,7 @@ function BiometricMappings({ token }: { token: string }) {
 
   return (
     <Panel className="overflow-hidden">
-      <Toolbar><SearchBox value={search} onChange={setSearch} placeholder="Search employee, biometric ID, or code" /><Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add mapping</Button></Toolbar>
+      <Toolbar><DeviceSearchInput value={search} onChange={setSearch} placeholder="Search employee, biometric ID, or code" /><FilterResetButton onReset={() => setSearch("")} /><Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add mapping</Button></Toolbar>
       <StatusLine error={error} />
       <DataTable rows={mappings} columns={["employee_name", "employee_no", "device_name", "biometric_user_id", "external_employee_code", "mapping_source", "status"]} />
       {mappings.length === 0 ? <EmptyState title="No biometric mappings" description="Map ZKTeco biometric user IDs to employees." /> : null}
@@ -227,7 +228,7 @@ function RawLogs({ token }: { token: string }) {
     setRows((await api.listAttendanceRawLogs(token, { search, process_status: status })).logs);
   }
   useEffect(() => { void load().catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load raw logs.")); }, [token, search, status]);
-  return <Panel className="overflow-hidden"><Toolbar><SearchBox value={search} onChange={setSearch} placeholder="Search raw logs" /><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["PENDING", "MATCHED", "UNMATCHED", "DUPLICATE", "ERROR", "NORMALIZED", "LOCKED_WARNING"].map((item) => <option key={item}>{item}</option>)}</SelectField></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={["employee_name", "employee_no", "device_name", "biometric_user_id", "external_employee_code", "punch_time", "punch_type", "source", "process_status", "error_message"]} /></Panel>;
+  return <Panel className="overflow-hidden"><Toolbar><DeviceSearchInput value={search} onChange={setSearch} placeholder="Search raw logs" /><MoreFiltersSheet title="Raw log filters" onReset={() => setStatus("")}><FilterSection title="Processing"><StandardSelectFilter value={status} onValueChange={setStatus} options={["PENDING", "MATCHED", "UNMATCHED", "DUPLICATE", "ERROR", "NORMALIZED", "LOCKED_WARNING"].map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} allLabel="All statuses" ariaLabel="Process status" /></FilterSection></MoreFiltersSheet><FilterResetButton onReset={() => { setSearch(""); setStatus(""); }} /></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={["employee_name", "employee_no", "device_name", "biometric_user_id", "external_employee_code", "punch_time", "punch_type", "source", "process_status", "error_message"]} /></Panel>;
 }
 
 function UnmatchedLogs({ token }: { token: string }) {
@@ -296,7 +297,7 @@ function DeviceReports({ token }: { token: string }) {
     link.click();
     URL.revokeObjectURL(url);
   }
-  return <Panel className="overflow-hidden"><Toolbar><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={key} onChange={(event) => setKey(event.target.value)}>{reportKeys.map((item) => <option key={item} value={item}>{item}</option>)}</SelectField><Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={columns} /></Panel>;
+  return <Panel className="overflow-hidden"><Toolbar><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={key} onChange={(event) => setKey(event.target.value)}>{reportKeys.map((item) => <option key={item} value={item}>{item}</option>)}</SelectField><FilterResetButton onReset={() => setKey(reportKeys[0])} /><Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={columns} /></Panel>;
 }
 
 function MappingModal({ token, mapping, employees, devices, onClose, onSaved }: { token: string; mapping?: EmployeeBiometricMapping | null; employees: Employee[]; devices: AttendanceDevice[]; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -372,12 +373,12 @@ function renderValue(value: unknown) {
   return text;
 }
 
-function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
-  return <div className="relative min-w-72"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} /></div>;
+function DeviceSearchInput({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
+  return <StandardSearchInput value={value} onDebouncedChange={onChange} placeholder={placeholder} />;
 }
 
 function Toolbar({ children }: { children: ReactNode }) {
-  return <div className="flex flex-wrap items-center justify-between gap-2 border-b p-3">{children}</div>;
+  return <div className="border-b p-3"><StandardFilterBar className="border-0 shadow-none">{children}</StandardFilterBar></div>;
 }
 
 function StatusLine({ error, message }: { error?: string | null; message?: string | null }) {

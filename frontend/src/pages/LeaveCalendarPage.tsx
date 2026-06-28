@@ -1,10 +1,9 @@
-import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { FilterResetButton, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
-import { Input } from "../components/ui/input";
-import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -28,6 +27,7 @@ export function LeaveCalendarPage() {
   const [startTo, setStartTo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const startRange = useMemo(() => ({ from: startFrom, to: startTo }), [startFrom, startTo]);
 
   const filters = useMemo(() => ({
     search,
@@ -71,14 +71,21 @@ export function LeaveCalendarPage() {
       <PageHeader title="Leave Calendar" description="Compact calendar/list foundation for approved and pending leave blocks." />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
-        <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-7">
-          <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <SelectField aria-label="Department" value={departmentId} onValueChange={setDepartmentId}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectField>
-          <SelectField aria-label="Location" value={locationId} onValueChange={setLocationId}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</SelectField>
-          <SelectField aria-label="Leave type" value={typeId} onValueChange={setTypeId}><option value="">All leave types</option>{types.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</SelectField>
-          <SelectField aria-label="Status" value={status} onValueChange={setStatus}><option value="">Approved and pending</option><option value="APPROVED">Approved</option><option value="PENDING_APPROVAL">Pending approval</option></SelectField>
-          <Input type="date" aria-label="Start date from" value={startFrom} onChange={(event) => setStartFrom(event.target.value)} />
-          <Input type="date" aria-label="Start date to" value={startTo} onChange={(event) => setStartTo(event.target.value)} />
+        <div className="border-b p-3">
+          <StandardFilterBar
+            search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee" />}
+            reset={<FilterResetButton onReset={() => { setSearch(""); setDepartmentId(""); setLocationId(""); setTypeId(""); setStatus(""); setStartFrom(""); setStartTo(""); }} />}
+            moreFilters={
+              <MoreFiltersSheet onReset={() => { setDepartmentId(""); setLocationId(""); }}>
+                <StandardSelectFilter value={departmentId} onValueChange={setDepartmentId} allLabel="All departments" width="department" options={departments.map((department) => ({ value: department.id, label: department.name }))} />
+                <StandardSelectFilter value={locationId} onValueChange={setLocationId} allLabel="All locations" width="department" options={locations.map((location) => ({ value: location.id, label: location.name }))} />
+              </MoreFiltersSheet>
+            }
+          >
+            <StandardSelectFilter value={typeId} onValueChange={setTypeId} allLabel="All leave types" width="leaveType" options={types.map((type) => ({ value: type.id, label: type.name }))} />
+            <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="Approved and pending" width="status" options={[{ value: "APPROVED", label: "Approved" }, { value: "PENDING_APPROVAL", label: "Pending approval" }]} />
+            <StandardDateRangeFilter value={startRange} onChange={(range) => { setStartFrom(range.from ?? ""); setStartTo(range.to ?? ""); }} label="Start Date Range" />
+          </StandardFilterBar>
         </div>
         <div className="overflow-x-auto">
           <Table>

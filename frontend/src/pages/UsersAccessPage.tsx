@@ -7,7 +7,6 @@ import {
   MoreHorizontal,
   Plus,
   RefreshCw,
-  Search,
   ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
@@ -23,6 +22,7 @@ import { EmptyState } from "../components/ui/empty-state";
 import { FormBlockingAlert } from "../components/forms/FormBlockingAlert";
 import { FormWarningAlert } from "../components/forms/FormWarningAlert";
 import { ValidationSummary } from "../components/forms/ValidationSummary";
+import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput } from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -526,23 +526,28 @@ interface UsersTableProps {
 function UsersTable(props: UsersTableProps) {
   return (
     <div>
-      <FilterBar>
-        <SearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search users" />
+      <UsersAccessFilterBar>
+        <UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search users" />
         <Select value={props.statusFilter} onChange={props.onStatusFilterChange}>
           <option value="ALL">All statuses</option>
           <option value="ACTIVE">Active</option>
           <option value="DISABLED">Disabled</option>
           <option value="LOCKED">Locked</option>
         </Select>
-        <Select value={props.roleFilter} onChange={props.onRoleFilterChange}>
-          <option value="ALL">All roles</option>
-          {props.roles.map((role) => (
-            <option key={role.id} value={role.id}>
-              {role.name}
-            </option>
-          ))}
-        </Select>
-      </FilterBar>
+        <MoreFiltersSheet title="User filters" onReset={() => props.onRoleFilterChange("ALL")}>
+          <FilterSection title="Role">
+            <Select value={props.roleFilter} onChange={props.onRoleFilterChange}>
+              <option value="ALL">All roles</option>
+              {props.roles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.name}
+                </option>
+              ))}
+            </Select>
+          </FilterSection>
+        </MoreFiltersSheet>
+        <FilterResetButton onReset={() => { props.onQueryChange(""); props.onStatusFilterChange("ALL"); props.onRoleFilterChange("ALL"); }} />
+      </UsersAccessFilterBar>
       {props.loading ? <LoadingRow text="Loading users" /> : null}
       {!props.loading && props.users.length === 0 ? <EmptyState title="No users found" description="Adjust filters or create a user." /> : null}
       {!props.loading && props.users.length > 0 ? (
@@ -638,9 +643,10 @@ interface RolesTableProps {
 function RolesTable(props: RolesTableProps) {
   return (
     <div>
-      <FilterBar>
-        <SearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search roles" />
-      </FilterBar>
+      <UsersAccessFilterBar>
+        <UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search roles" />
+        <FilterResetButton onReset={() => props.onQueryChange("")} />
+      </UsersAccessFilterBar>
       {props.loading ? <LoadingRow text="Loading roles" /> : null}
       {!props.loading && props.roles.length === 0 ? <EmptyState title="No roles found" description="Create a role template to assign permissions." /> : null}
       {!props.loading && props.roles.length > 0 ? (
@@ -716,22 +722,27 @@ function PermissionsTable(props: PermissionsTableProps) {
   const modules = Array.from(new Set(props.allPermissions.map((permission) => permission.module)));
   return (
     <div>
-      <FilterBar>
-        <SearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search permissions" />
-        <Select value={props.moduleFilter} onChange={props.onModuleFilterChange}>
-          <option value="ALL">All modules</option>
-          {modules.map((module) => (
-            <option key={module} value={module}>
-              {MODULE_LABELS[module] ?? module}
-            </option>
-          ))}
-        </Select>
-        <Select value={props.criticalFilter} onChange={props.onCriticalFilterChange}>
-          <option value="ALL">All criticality</option>
-          <option value="CRITICAL">Critical</option>
-          <option value="NON_CRITICAL">Non-critical</option>
-        </Select>
-      </FilterBar>
+      <UsersAccessFilterBar>
+        <UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search permissions" />
+        <MoreFiltersSheet title="Permission filters" onReset={() => { props.onModuleFilterChange("ALL"); props.onCriticalFilterChange("ALL"); }}>
+          <FilterSection title="Registry">
+            <Select value={props.moduleFilter} onChange={props.onModuleFilterChange}>
+              <option value="ALL">All modules</option>
+              {modules.map((module) => (
+                <option key={module} value={module}>
+                  {MODULE_LABELS[module] ?? module}
+                </option>
+              ))}
+            </Select>
+            <Select value={props.criticalFilter} onChange={props.onCriticalFilterChange}>
+              <option value="ALL">All criticality</option>
+              <option value="CRITICAL">Critical</option>
+              <option value="NON_CRITICAL">Non-critical</option>
+            </Select>
+          </FilterSection>
+        </MoreFiltersSheet>
+        <FilterResetButton onReset={() => { props.onQueryChange(""); props.onModuleFilterChange("ALL"); props.onCriticalFilterChange("ALL"); }} />
+      </UsersAccessFilterBar>
       {props.loading ? <LoadingRow text="Loading permissions" /> : null}
       {!props.loading && props.permissions.length === 0 ? <EmptyState title="No permissions found" description="Adjust filters to view the registry." /> : null}
       {!props.loading && props.permissions.length > 0 ? (
@@ -773,7 +784,7 @@ function RoleMappingsTable(props: {
 }) {
   return (
     <div>
-      <FilterBar><SearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search role mappings" /></FilterBar>
+      <UsersAccessFilterBar><UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search role mappings" /><FilterResetButton onReset={() => props.onQueryChange("")} /></UsersAccessFilterBar>
       <div className="border-b bg-sky-50 px-4 py-3 text-sm text-sky-950">
         <div className="font-medium">Roles decide what the user can do. Scopes decide which employees, departments, and locations the user can access.</div>
         <div className="mt-1 text-xs">Examples: Employee Self-Service + SELF_ONLY, Store Manager + OWN_LOCATION, Finance Payroll Manager + SELECTED_LOCATIONS, HR Manager + WHOLE_COMPANY, HR Head + WHOLE_COMPANY. Higher priority rules win when multiple mappings match.</div>
@@ -817,11 +828,16 @@ function AccessScopesTable(props: {
 }) {
   return (
     <div>
-      <FilterBar>
-        <SearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search scopes" />
-        <Select value={props.moduleFilter} onChange={props.onModuleFilterChange}><option value="ALL">All modules</option><option value="ALL_MODULES">All-module rules</option>{ACCESS_SCOPE_MODULES.map((module) => <option key={module} value={module}>{MODULE_LABELS[module] ?? module}</option>)}</Select>
-        <Select value={props.ownerFilter} onChange={props.onOwnerFilterChange}><option value="ALL">All owners</option><option value="ROLE">Role</option><option value="USER">User</option><option value="ROLE_MAPPING_RULE">Role mapping</option></Select>
-      </FilterBar>
+      <UsersAccessFilterBar>
+        <UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search scopes" />
+        <MoreFiltersSheet title="Access scope filters" onReset={() => { props.onModuleFilterChange("ALL"); props.onOwnerFilterChange("ALL"); }}>
+          <FilterSection title="Scope">
+            <Select value={props.moduleFilter} onChange={props.onModuleFilterChange}><option value="ALL">All modules</option><option value="ALL_MODULES">All-module rules</option>{ACCESS_SCOPE_MODULES.map((module) => <option key={module} value={module}>{MODULE_LABELS[module] ?? module}</option>)}</Select>
+            <Select value={props.ownerFilter} onChange={props.onOwnerFilterChange}><option value="ALL">All owners</option><option value="ROLE">Role</option><option value="USER">User</option><option value="ROLE_MAPPING_RULE">Role mapping</option></Select>
+          </FilterSection>
+        </MoreFiltersSheet>
+        <FilterResetButton onReset={() => { props.onQueryChange(""); props.onModuleFilterChange("ALL"); props.onOwnerFilterChange("ALL"); }} />
+      </UsersAccessFilterBar>
       <div className="border-b bg-sky-50 px-4 py-3 text-sm text-sky-950">
         <div className="font-medium">Roles control what a user can do. Scopes control which employees, departments, and locations the user can access.</div>
         <div className="mt-1 text-xs">Role mapping scopes are templates. When a mapping is applied, HRM v2 copies those templates to the linked user and updates the existing mapped scope on later applies.</div>
@@ -1279,17 +1295,12 @@ function Field(props: { label: string; children: React.ReactNode }) {
   );
 }
 
-function FilterBar(props: { children: React.ReactNode }) {
-  return <div className="flex flex-wrap items-center gap-2 border-b bg-white px-3 py-3">{props.children}</div>;
+function UsersAccessFilterBar(props: { children: React.ReactNode }) {
+  return <div className="border-b bg-white p-3"><StandardFilterBar className="border-0 shadow-none">{props.children}</StandardFilterBar></div>;
 }
 
-function SearchInput(props: { value: string; placeholder: string; onChange: (value: string) => void }) {
-  return (
-    <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
-      <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-      <Input value={props.value} onChange={(event) => props.onChange(event.target.value)} placeholder={props.placeholder} className="pl-9" />
-    </div>
-  );
+function UsersAccessSearchInput(props: { value: string; placeholder: string; onChange: (value: string) => void }) {
+  return <StandardSearchInput value={props.value} onDebouncedChange={props.onChange} placeholder={props.placeholder} />;
 }
 
 function Select(props: {

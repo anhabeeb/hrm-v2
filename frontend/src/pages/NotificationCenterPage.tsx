@@ -4,8 +4,17 @@ import { useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
-import { Input } from "../components/ui/input";
-import { FilterBar, LoadingSkeleton, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
+import {
+  ActiveFilterChips,
+  FilterResetButton,
+  FilterSection,
+  MoreFiltersSheet,
+  StandardDateRangeFilter,
+  StandardFilterBar,
+  StandardSearchInput,
+  StandardSelectFilter
+} from "../components/filters";
+import { LoadingSkeleton, PageHeader, PageShell } from "../components/ui/page-shell";
 import { StatusBadge } from "../components/ui/status-badge";
 import { useAuth } from "../hooks/useAuth";
 import { api, type HrmNotification } from "../lib/api";
@@ -29,6 +38,17 @@ export function NotificationCenterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({ read: "", module: "", severity: "", date_from: "", date_to: "" });
+  const dateRange = { from: filters.date_from, to: filters.date_to };
+  const activeChips = [
+    filters.module ? { key: "module", label: "Module", value: filters.module, onRemove: () => setFilters((current) => ({ ...current, module: "" })) } : null,
+    filters.read ? { key: "read", label: "Read", value: filters.read, onRemove: () => setFilters((current) => ({ ...current, read: "" })) } : null,
+    filters.severity ? { key: "severity", label: "Severity", value: filters.severity, onRemove: () => setFilters((current) => ({ ...current, severity: "" })) } : null,
+    filters.date_from || filters.date_to ? { key: "date", label: "Date", value: `${filters.date_from || "Any"} - ${filters.date_to || "Any"}`, onRemove: () => setFilters((current) => ({ ...current, date_from: "", date_to: "" })) } : null
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string; onRemove: () => void }>;
+
+  function resetFilters() {
+    setFilters({ read: "", module: "", severity: "", date_from: "", date_to: "" });
+  }
 
   async function load() {
     if (!token) return;
@@ -84,21 +104,22 @@ export function NotificationCenterPage() {
         }
       />
 
-      <FilterBar className="lg:grid-cols-6">
-        <SelectField value={filters.read} onChange={(event) => setFilters({ ...filters, read: event.target.value })} aria-label="Read filter">
-          <option value="">All read states</option>
-          <option value="unread">Unread only</option>
-          <option value="read">Read only</option>
-        </SelectField>
-        <Input placeholder="Module" value={filters.module} onChange={(event) => setFilters({ ...filters, module: event.target.value })} />
-        <SelectField value={filters.severity} onChange={(event) => setFilters({ ...filters, severity: event.target.value })} aria-label="Severity filter">
-          <option value="">All severities</option>
-          {["INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"].map((severity) => <option key={severity} value={severity}>{severity}</option>)}
-        </SelectField>
-        <Input type="date" value={filters.date_from} onChange={(event) => setFilters({ ...filters, date_from: event.target.value })} />
-        <Input type="date" value={filters.date_to} onChange={(event) => setFilters({ ...filters, date_to: event.target.value })} />
-        <Button variant="outline" onClick={() => void load()}>Apply filters</Button>
-      </FilterBar>
+      <StandardFilterBar
+        search={<StandardSearchInput value={filters.module} onDebouncedChange={(module) => setFilters((current) => ({ ...current, module }))} placeholder="Filter module..." />}
+        reset={<FilterResetButton onReset={resetFilters} />}
+        actions={<Button variant="outline" onClick={() => void load()}>Apply filters</Button>}
+        moreFilters={
+          <MoreFiltersSheet onReset={resetFilters} onApply={() => void load()}>
+            <FilterSection title="Notification date">
+              <StandardDateRangeFilter value={dateRange} onChange={(range) => setFilters((current) => ({ ...current, date_from: range.from ?? "", date_to: range.to ?? "" }))} label="Created Date Range" />
+            </FilterSection>
+          </MoreFiltersSheet>
+        }
+      >
+        <StandardSelectFilter value={filters.read} onValueChange={(read) => setFilters((current) => ({ ...current, read }))} allLabel="All read states" width="status" options={[{ value: "unread", label: "Unread only" }, { value: "read", label: "Read only" }]} />
+        <StandardSelectFilter value={filters.severity} onValueChange={(severity) => setFilters((current) => ({ ...current, severity }))} allLabel="All severities" width="status" options={["INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"].map((severity) => ({ value: severity, label: severity }))} />
+      </StandardFilterBar>
+      <ActiveFilterChips chips={activeChips} />
 
       {loading ? <LoadingSkeleton rows={6} /> : null}
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}

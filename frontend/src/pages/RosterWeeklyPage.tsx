@@ -1,6 +1,7 @@
-import { CalendarDays, ClipboardCopy, Edit, Eraser, Lock, Megaphone, Save, Search, Undo2, Unlock } from "lucide-react";
+import { ClipboardCopy, Edit, Eraser, Lock, Megaphone, Save, Undo2, Unlock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { FilterResetButton, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
 import { RosterNav } from "../components/roster/RosterNav";
@@ -74,6 +75,7 @@ export function RosterWeeklyPage() {
   const [overwrite, setOverwrite] = useState(false);
 
   const filters = useMemo(() => ({ week_start_date: weekStart, search, department_id: departmentId, location_id: locationId }), [weekStart, search, departmentId, locationId]);
+  const weekRange = useMemo(() => ({ from: weekStart, to: weekStart }), [weekStart]);
 
   async function load() {
     if (!token || !canView) return;
@@ -263,30 +265,36 @@ export function RosterWeeklyPage() {
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
       <Panel className="overflow-hidden">
-        <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-8">
-          <Input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} aria-label="Week start date" />
-          <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee or number" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <div className="md:col-span-3">
-            <OrganizationCascadeSelector
-              includeLocation
-              mode="report-filter"
-              departments={departments}
-              jobLevels={jobLevels}
-              positions={positions}
-              locations={locations}
-              value={{ departmentId, jobLevelId, positionId, locationId }}
-              onChange={(next) => {
-                setDepartmentId(next.departmentId ?? "");
-                setJobLevelId(next.jobLevelId ?? "");
-                setPositionId(next.positionId ?? "");
-                setLocationId(next.locationId ?? "");
-              }}
-              labels={{ locationId: "Location filter", departmentId: "Department filter", jobLevelId: "Job level filter", positionId: "Position filter" }}
-              className="grid gap-2 md:grid-cols-2 xl:grid-cols-4"
-            />
-          </div>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Any assignment status</option>{statuses.map((status) => <option key={status} value={status}>{status}</option>)}</SelectField>
-          <div className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm"><CalendarDays className="h-4 w-4 text-muted-foreground" /><span>{weekly?.weekStart ?? weekStart} to {weekly?.weekEnd ?? "-"}</span></div>
+        <div className="border-b p-3">
+          <StandardFilterBar
+            search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee or number" />}
+            reset={<FilterResetButton onReset={() => { setSearch(""); setDepartmentId(""); setJobLevelId(""); setPositionId(""); setLocationId(""); setStatusFilter(""); }} />}
+            moreFilters={
+              <MoreFiltersSheet onReset={() => { setDepartmentId(""); setJobLevelId(""); setPositionId(""); setLocationId(""); }}>
+                <OrganizationCascadeSelector
+                  includeLocation
+                  mode="report-filter"
+                  departments={departments}
+                  jobLevels={jobLevels}
+                  positions={positions}
+                  locations={locations}
+                  value={{ departmentId, jobLevelId, positionId, locationId }}
+                  onChange={(next) => {
+                    setDepartmentId(next.departmentId ?? "");
+                    setJobLevelId(next.jobLevelId ?? "");
+                    setPositionId(next.positionId ?? "");
+                    setLocationId(next.locationId ?? "");
+                  }}
+                  labels={{ locationId: "Location filter", departmentId: "Department filter", jobLevelId: "Job level filter", positionId: "Position filter" }}
+                  className="grid gap-2"
+                />
+              </MoreFiltersSheet>
+            }
+          >
+            <StandardDateRangeFilter value={weekRange} onChange={(range) => setWeekStart(range.from ?? weekStart)} label="Week Start" />
+            <StandardSelectFilter value={statusFilter} onValueChange={setStatusFilter} allLabel="Any assignment status" width="status" options={statuses.map((status) => ({ value: status, label: status }))} />
+            <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-muted-foreground">{weekly?.weekStart ?? weekStart} to {weekly?.weekEnd ?? "-"}</div>
+          </StandardFilterBar>
         </div>
         <div className="overflow-x-auto">
           <Table className="min-w-[1180px]">

@@ -1,14 +1,15 @@
-import { Check, Plus, Search, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceCorrectionModal } from "../components/attendance/AttendanceCorrectionModal";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { FilterResetButton, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
-import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -60,6 +61,7 @@ export function AttendanceCorrectionsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const filters = useMemo(() => ({ search, status, department_id: departmentId, location_id: locationId, date_from: dateFrom, date_to: dateTo }), [search, status, departmentId, locationId, dateFrom, dateTo]);
+  const dateRange = useMemo(() => ({ from: dateFrom, to: dateTo }), [dateFrom, dateTo]);
 
   async function load() {
     if (!token || !canView) return;
@@ -120,30 +122,35 @@ export function AttendanceCorrectionsPage() {
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
-        <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-6">
-          <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <SelectField aria-label="Status" value={status} onValueChange={setStatus}><option value="">All statuses</option>{["PENDING", "APPROVED", "REJECTED", "CANCELLED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
-          <div className="md:col-span-3 xl:col-span-2">
-            <OrganizationCascadeSelector
-              value={{ locationId, departmentId }}
-              onChange={(next) => {
-                setLocationId(next.locationId ?? "");
-                setDepartmentId(next.departmentId ?? "");
-              }}
-              departments={departments}
-              locations={locations}
-              jobLevels={[]}
-              positions={[]}
-              includeLocation
-              includeJobLevel={false}
-              includePosition={false}
-              mode="report-filter"
-              labels={{ locationId: "Location", departmentId: "Department" }}
-              className="grid gap-2 md:grid-cols-2"
-            />
-          </div>
-          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Date from" />
-          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Date to" />
+        <div className="border-b p-3">
+          <StandardFilterBar
+            search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee" />}
+            reset={<FilterResetButton onReset={() => { setSearch(""); setStatus(""); setDepartmentId(""); setLocationId(""); setDateFrom(""); setDateTo(""); }} />}
+            moreFilters={
+              <MoreFiltersSheet onReset={() => { setDepartmentId(""); setLocationId(""); }}>
+                <OrganizationCascadeSelector
+                  value={{ locationId, departmentId }}
+                  onChange={(next) => {
+                    setLocationId(next.locationId ?? "");
+                    setDepartmentId(next.departmentId ?? "");
+                  }}
+                  departments={departments}
+                  locations={locations}
+                  jobLevels={[]}
+                  positions={[]}
+                  includeLocation
+                  includeJobLevel={false}
+                  includePosition={false}
+                  mode="report-filter"
+                  labels={{ locationId: "Location", departmentId: "Department" }}
+                  className="grid gap-2"
+                />
+              </MoreFiltersSheet>
+            }
+          >
+            <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["PENDING", "APPROVED", "REJECTED", "CANCELLED"].map((item) => ({ value: item, label: item }))} />
+            <StandardDateRangeFilter value={dateRange} onChange={(range) => { setDateFrom(range.from ?? ""); setDateTo(range.to ?? ""); }} label="Date Range" />
+          </StandardFilterBar>
         </div>
         <div className="overflow-x-auto">
           <Table>

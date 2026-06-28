@@ -316,7 +316,7 @@ export function FilterBar({ children, className }: { children: ReactNode; classN
     <div
       data-legacy-standard-filter-bar
       className={cn(
-        "box-border flex w-full max-w-none min-w-0 flex-col gap-2 rounded-lg border bg-white p-3 shadow-panel sm:flex-row sm:flex-wrap sm:items-center [&_input]:h-10 [&_select]:h-10",
+        "box-border grid w-full max-w-none min-w-0 gap-2 rounded-lg border bg-white p-3 shadow-panel sm:grid-cols-[repeat(auto-fit,minmax(180px,max-content))] sm:items-center [&_input]:h-10 [&_select]:h-10",
         className
       )}
     >

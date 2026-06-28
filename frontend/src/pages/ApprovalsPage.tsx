@@ -12,7 +12,6 @@ import {
   FilterResetButton,
   FilterSection,
   MoreFiltersSheet,
-  StandardDateRangeFilter,
   StandardFilterBar,
   StandardSearchInput,
   StandardSelectFilter
@@ -225,10 +224,6 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
               <MoreFiltersSheet onReset={resetFilters}>
                 <FilterSection title="Approval">
                   <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["DRAFT", "ACTIVE", "PENDING", "PARTIALLY_APPROVED", "APPROVED", "REJECTED", "SENT_BACK", "CANCELLED", "ARCHIVED"].map((item) => ({ value: item, label: item }))} />
-                </FilterSection>
-                <FilterSection title="Request">
-                  <StandardDateRangeFilter value={{}} onChange={() => undefined} label="Created Date Range" disabled />
-                  <div className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Created-date filtering is available in reports where request timestamps are exposed.</div>
                 </FilterSection>
               </MoreFiltersSheet>
             }

@@ -1,8 +1,18 @@
-import { CalendarDays, Check, ChevronDown, Save, Search, SlidersHorizontal, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Save, Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { SelectField } from "../ui/page-shell";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger
+} from "../ui/sheet";
 import { cn } from "../../lib/utils";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationPosition } from "../../types/organization";
 
@@ -44,6 +54,33 @@ function isoDate(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function parseIsoDate(value?: string) {
+  if (!value) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${date.getMonth()}`;
+}
+
+function addMonths(date: Date, amount: number) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function getCalendarDays(visibleMonth: Date) {
+  const firstOfMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
+  const start = new Date(firstOfMonth);
+  start.setDate(firstOfMonth.getDate() - firstOfMonth.getDay());
+  return Array.from({ length: 42 }, (_, index) => addDays(start, index));
+}
+
+function isDateInRange(day: string, range: StandardDateRange) {
+  if (!range.from || !range.to) return false;
+  return day > range.from && day < range.to;
 }
 
 function startOfWeek(date: Date) {
@@ -336,8 +373,36 @@ export function StandardDateRangeFilter({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<StandardDateRange>(value);
+  const [visibleMonth, setVisibleMonth] = useState(() => parseIsoDate(value.from) ?? new Date());
+  const calendarDays = useMemo(() => getCalendarDays(visibleMonth), [visibleMonth]);
+  const visibleMonthLabel = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(visibleMonth);
+  const selectedStart = draft.from ?? "";
+  const selectedEnd = draft.to ?? "";
 
-  useEffect(() => setDraft(value), [value.from, value.to]);
+  useEffect(() => {
+    setDraft(value);
+    const selectedDate = parseIsoDate(value.from);
+    if (selectedDate) setVisibleMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+  }, [value.from, value.to]);
+
+  function selectPreset(range: StandardDateRange) {
+    setDraft(range);
+    const start = parseIsoDate(range.from);
+    if (start) setVisibleMonth(new Date(start.getFullYear(), start.getMonth(), 1));
+  }
+
+  function selectDay(day: Date) {
+    const nextIso = isoDate(day);
+    if (!selectedStart || selectedEnd) {
+      setDraft({ from: nextIso, to: "" });
+      return;
+    }
+    if (nextIso < selectedStart) {
+      setDraft({ from: nextIso, to: selectedStart });
+      return;
+    }
+    setDraft({ from: selectedStart, to: nextIso });
+  }
 
   return (
     <div className={cn("relative", className)} data-standard-date-range-filter>
@@ -358,7 +423,7 @@ export function StandardDateRangeFilter({
       {open ? (
         <div className="absolute right-0 z-40 mt-2 w-[min(92vw,560px)] rounded-lg border bg-white shadow-xl" role="dialog" aria-label={`${label} picker`}>
           <div className="grid gap-0 p-3 sm:grid-cols-[170px_1fr]">
-            <div className="border-b pb-3 sm:border-b-0 sm:border-r sm:pr-3">
+            <div className="border-b pb-3 sm:border-b-0 sm:border-r sm:pr-3" data-calendar-range-presets>
               <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Presets</p>
               <div className="grid gap-1">
                 {dateRangePresets.map((preset) => (
@@ -369,8 +434,7 @@ export function StandardDateRangeFilter({
                     variant="ghost"
                     onClick={() => {
                       const range = preset.getRange();
-                      setDraft(range);
-                      if (preset.key !== "custom") onChange(range);
+                      selectPreset(range);
                     }}
                   >
                     {preset.label}
@@ -378,16 +442,51 @@ export function StandardDateRangeFilter({
                 ))}
               </div>
             </div>
-            <div className="grid gap-3 pt-3 sm:pl-3 sm:pt-0">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Custom Range</p>
-              <label className="grid gap-1.5 text-sm font-medium text-slate-800">
-                Start date
-                <Input type="date" value={draft.from ?? ""} onChange={(event) => setDraft((current) => ({ ...current, from: event.target.value }))} />
-              </label>
-              <label className="grid gap-1.5 text-sm font-medium text-slate-800">
-                End date
-                <Input type="date" value={draft.to ?? ""} onChange={(event) => setDraft((current) => ({ ...current, to: event.target.value }))} />
-              </label>
+            <div className="grid gap-3 pt-3 sm:pl-3 sm:pt-0" data-standard-calendar-grid>
+              <div className="flex items-center justify-between gap-2">
+                <Button aria-label="Previous month" className="h-8 w-8 p-0" size="icon" variant="ghost" onClick={() => setVisibleMonth((current) => addMonths(current, -1))}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <p className="text-sm font-semibold text-slate-900">{visibleMonthLabel}</p>
+                <Button aria-label="Next month" className="h-8 w-8 p-0" size="icon" variant="ghost" onClick={() => setVisibleMonth((current) => addMonths(current, 1))}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => <span key={day}>{day}</span>)}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {calendarDays.map((day) => {
+                  const dayIso = isoDate(day);
+                  const isCurrentMonth = monthKey(day) === monthKey(visibleMonth);
+                  const isStart = dayIso === selectedStart;
+                  const isEnd = dayIso === selectedEnd;
+                  const inRange = isDateInRange(dayIso, draft);
+                  const isSelected = isStart || isEnd;
+                  return (
+                    <Button
+                      key={dayIso}
+                      aria-label={`Select ${dayIso}`}
+                      aria-pressed={isSelected || inRange}
+                      className={cn(
+                        "h-9 min-w-0 rounded-md px-0 text-sm font-medium",
+                        !isCurrentMonth && "text-muted-foreground/45",
+                        inRange && "bg-cyan-50 text-cyan-800 hover:bg-cyan-100",
+                        isSelected && "bg-primary text-primary-foreground hover:bg-primary/90"
+                      )}
+                      data-calendar-range-day
+                      size="sm"
+                      variant={isSelected ? "primary" : "ghost"}
+                      onClick={() => selectDay(day)}
+                    >
+                      {day.getDate()}
+                    </Button>
+                  );
+                })}
+              </div>
+              <p className="min-h-5 text-xs text-muted-foreground">
+                {selectedStart && !selectedEnd ? "Select an end date." : formatDateRangeLabel(draft, "Choose a date range")}
+              </p>
             </div>
           </div>
           <div className="flex justify-end gap-2 border-t bg-slate-50 px-3 py-3">
@@ -429,38 +528,27 @@ export function MoreFiltersSheet({
   };
 
   return (
-    <>
-      <Button data-shadcn-sheet-trigger variant="outline" className="h-10 whitespace-nowrap" disabled={disabled} onClick={() => setOpen(true)}>
-        <SlidersHorizontal className="h-4 w-4" />
-        {triggerLabel}
-      </Button>
-      {isOpen ? (
-        <div className="fixed inset-0 z-50" data-shadcn-sheet role="dialog" aria-modal="true" aria-label={title}>
-          <Button
-            aria-label="Close filters"
-            className="absolute inset-0 h-full w-full rounded-none border-0 bg-slate-950/30 p-0 hover:bg-slate-950/30"
-            variant="ghost"
-            onClick={() => setOpen(false)}
-          />
-          <aside className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col border-l bg-white shadow-xl">
-            <div className="flex items-start justify-between gap-3 border-b px-4 py-4">
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-                {description ? <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p> : null}
-              </div>
-              <Button aria-label="Close filters" variant="ghost" size="icon" onClick={() => setOpen(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">{children}</div>
-            <div className="sticky bottom-0 flex justify-end gap-2 border-t bg-slate-50 px-4 py-3">
-              <Button variant="outline" size="sm" onClick={onReset}>Reset Filters</Button>
-              <Button size="sm" onClick={() => { onApply?.(); setOpen(false); }}>Apply Filters</Button>
-            </div>
-          </aside>
-        </div>
-      ) : null}
-    </>
+    <Sheet open={isOpen} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="outline" className="h-10 whitespace-nowrap" disabled={disabled}>
+          <SlidersHorizontal className="h-4 w-4" />
+          {triggerLabel}
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="right" aria-label={title}>
+        <SheetHeader>
+          <SheetTitle>{title}</SheetTitle>
+          {description ? <SheetDescription>{description}</SheetDescription> : null}
+        </SheetHeader>
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">{children}</div>
+        <SheetFooter>
+          <Button variant="outline" size="sm" onClick={onReset}>Reset Filters</Button>
+          <SheetClose asChild>
+            <Button size="sm" onClick={onApply}>Apply Filters</Button>
+          </SheetClose>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 

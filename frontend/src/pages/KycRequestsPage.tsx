@@ -1,10 +1,10 @@
-import { Check, RefreshCw, Search, X } from "lucide-react";
+import { Check, RefreshCw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { ConfirmDialog } from "../components/ui/dialogs";
-import { Input } from "../components/ui/input";
-import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -27,6 +27,7 @@ export function KycRequestsPage() {
   const [reviewNote, setReviewNote] = useState("");
 
   const filters = useMemo(() => ({ search, status, section, date_from: dateFrom, date_to: dateTo }), [search, status, section, dateFrom, dateTo]);
+  const dateRange = useMemo(() => ({ from: dateFrom, to: dateTo }), [dateFrom, dateTo]);
 
   async function load() {
     if (!token) return;
@@ -81,23 +82,19 @@ export function KycRequestsPage() {
       />
 
       <Panel className="p-3">
-        <div className="grid gap-2 md:grid-cols-[1fr_150px_150px_150px_150px_auto]">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input className="pl-9" placeholder="Search employee, field, reason..." value={search} onChange={(event) => setSearch(event.target.value)} />
-          </div>
-          <SelectField aria-label="Status" value={status} onValueChange={setStatus}>
-            <option value="">Status</option>
-            {["SUBMITTED", "REVIEWED", "APPROVED", "REJECTED", "CANCELLED"].map((item) => <option key={item} value={item}>{item}</option>)}
-          </SelectField>
-          <SelectField aria-label="Section" value={section} onValueChange={setSection}>
-            <option value="">Section</option>
-            {["contact", "personal", "emergency", "other"].map((item) => <option key={item} value={item}>{item}</option>)}
-          </SelectField>
-          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-          <Button variant="outline" size="sm" onClick={() => void load()}>Apply</Button>
-        </div>
+        <StandardFilterBar
+          search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee, field, reason..." />}
+          reset={<FilterResetButton onReset={() => { setSearch(""); setStatus(""); setSection(""); setDateFrom(""); setDateTo(""); }} />}
+          actions={<Button variant="outline" size="sm" onClick={() => void load()}>Apply</Button>}
+        >
+          <StandardDateRangeFilter value={dateRange} onChange={(range) => { setDateFrom(range.from ?? ""); setDateTo(range.to ?? ""); }} label="Request Date Range" />
+          <MoreFiltersSheet title="KYC request filters" onReset={() => { setStatus(""); setSection(""); }}>
+            <FilterSection title="Request">
+              <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="Status" width="status" options={["SUBMITTED", "REVIEWED", "APPROVED", "REJECTED", "CANCELLED"].map((item) => ({ value: item, label: item }))} />
+              <StandardSelectFilter value={section} onValueChange={setSection} allLabel="Section" width="status" options={["contact", "personal", "emergency", "other"].map((item) => ({ value: item, label: item }))} />
+            </FilterSection>
+          </MoreFiltersSheet>
+        </StandardFilterBar>
       </Panel>
 
       <Panel className="overflow-hidden">
