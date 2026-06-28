@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AttendanceCorrectionModal } from "../components/attendance/AttendanceCorrectionModal";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
-import { FilterResetButton, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -62,6 +62,13 @@ export function AttendanceCorrectionsPage() {
 
   const filters = useMemo(() => ({ search, status, department_id: departmentId, location_id: locationId, date_from: dateFrom, date_to: dateTo }), [search, status, departmentId, locationId, dateFrom, dateTo]);
   const dateRange = useMemo(() => ({ from: dateFrom, to: dateTo }), [dateFrom, dateTo]);
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(status ? [{ key: "status", label: "Status", value: status.replace(/_/g, " "), title: status, onRemove: () => setStatus("") }] : []),
+    ...(departmentId ? [{ key: "department", label: "Department", value: departments.find((department) => department.id === departmentId)?.name ?? departmentId, onRemove: () => setDepartmentId("") }] : []),
+    ...(locationId ? [{ key: "location", label: "Location", value: locations.find((location) => location.id === locationId)?.name ?? locationId, onRemove: () => setLocationId("") }] : []),
+    ...(dateFrom || dateTo ? [{ key: "date", label: "Date", value: formatDateRangeLabel(dateRange), onRemove: () => { setDateFrom(""); setDateTo(""); } }] : [])
+  ], [dateFrom, dateRange, dateTo, departmentId, departments, locationId, locations, search, status]);
 
   async function load() {
     if (!token || !canView) return;
@@ -151,6 +158,7 @@ export function AttendanceCorrectionsPage() {
             <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["PENDING", "APPROVED", "REJECTED", "CANCELLED"].map((item) => ({ value: item, label: item }))} />
             <StandardDateRangeFilter value={dateRange} onChange={(range) => { setDateFrom(range.from ?? ""); setDateTo(range.to ?? ""); }} label="Date Range" />
           </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="overflow-x-auto">
           <Table>

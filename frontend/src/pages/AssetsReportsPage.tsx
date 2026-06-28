@@ -1,7 +1,7 @@
 import { Download } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AssetsNav } from "../components/assets/AssetsNav";
-import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
@@ -26,6 +26,14 @@ export function AssetsReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const issuedRange = { from: filters.issued_date_from, to: filters.issued_date_to };
   const resetFilters = () => setFilters({ search: "", status: "", category_id: "", department_id: "", location_id: "", issued_date_from: "", issued_date_to: "" });
+  const activeFilterChips = useMemo(() => [
+    ...(filters.search ? [{ key: "search", label: "Search", value: filters.search, onRemove: () => setFilters((current) => ({ ...current, search: "" })) }] : []),
+    ...(filters.status ? [{ key: "status", label: "Status", value: filters.status.replace(/_/g, " "), title: filters.status, onRemove: () => setFilters((current) => ({ ...current, status: "" })) }] : []),
+    ...(filters.category_id ? [{ key: "category", label: "Category", value: categories.find((category) => category.id === filters.category_id)?.name ?? filters.category_id, onRemove: () => setFilters((current) => ({ ...current, category_id: "" })) }] : []),
+    ...(filters.location_id ? [{ key: "location", label: "Location", value: locations.find((location) => location.id === filters.location_id)?.name ?? filters.location_id, onRemove: () => setFilters((current) => ({ ...current, location_id: "" })) }] : []),
+    ...(filters.department_id ? [{ key: "department", label: "Department", value: departments.find((department) => department.id === filters.department_id)?.name ?? filters.department_id, onRemove: () => setFilters((current) => ({ ...current, department_id: "" })) }] : []),
+    ...(filters.issued_date_from || filters.issued_date_to ? [{ key: "issued", label: "Issued", value: formatDateRangeLabel(issuedRange), onRemove: () => setFilters((current) => ({ ...current, issued_date_from: "", issued_date_to: "" })) }] : [])
+  ], [categories, departments, filters, issuedRange, locations]);
 
   async function load() {
     if (!token) return;
@@ -75,10 +83,11 @@ export function AssetsReportsPage() {
               </FilterSection>
             </MoreFiltersSheet>
           }
-        >
+          >
           <StandardSelectFilter value={filters.status} onValueChange={(status) => setFilters((current) => ({ ...current, status }))} allLabel="All status" width="status" options={["ISSUED","RETURNED","DAMAGED","LOST","REPLACED","WRITTEN_OFF"].map((value) => ({ value, label: value }))} />
           <StandardSelectFilter value={filters.category_id} onValueChange={(category_id) => setFilters((current) => ({ ...current, category_id }))} allLabel="All categories" width="documentType" options={categories.map((category) => ({ value: category.id, label: category.name }))} />
         </StandardFilterBar>
+        <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
       </Panel>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((row, index) => <TableRow key={index}>{columns.map((column) => <TableCell key={column}>{String(row[column] ?? "-")}</TableCell>)}</TableRow>)}</TableBody></Table>{!rows.length ? <EmptyState title="No report rows" description="Adjust filters or issue assets to employees." /> : null}</div></Panel>

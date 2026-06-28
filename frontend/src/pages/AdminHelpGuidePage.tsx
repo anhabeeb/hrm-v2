@@ -1,9 +1,9 @@
-import { Check, Copy, ExternalLink, Hash, ListChecks, Search, ShieldCheck } from "lucide-react";
+import { Check, Copy, ExternalLink, Hash, ListChecks, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { InfoPanel, PageHeader, PageShell, PermissionDeniedState, SectionCard, WarningPanel } from "../components/ui/page-shell";
 import { canAccessAdminHelp } from "../features/admin-help/AdminHelpLink";
 import { guideSearchKeywords, guideSections, type GuideBlock, type GuideSection } from "../features/admin-help/hrmGuideContent";
@@ -138,6 +138,7 @@ export function AdminHelpGuidePage() {
     () => guideSections.filter((section) => sectionMatches(section, normalizedQuery)),
     [normalizedQuery]
   );
+  const activeFilterChips = useMemo(() => normalizedQuery ? [{ key: "query", label: "Search", value: normalizedQuery, onRemove: () => setQuery("") }] : [], [normalizedQuery]);
 
   if (!canView) {
     return (
@@ -171,10 +172,11 @@ export function AdminHelpGuidePage() {
       <div className="grid min-w-0 gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
           <SectionCard title="Guide Navigation" description={`${visibleSections.length} of ${guideSections.length} sections`} bodyClassName="space-y-3 p-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search guide..." className="pl-9" aria-label="Search guide" />
-            </div>
+            <StandardFilterBar
+              search={<StandardSearchInput value={query} onDebouncedChange={setQuery} placeholder="Search guide..." ariaLabel="Search guide" />}
+              reset={<FilterResetButton onReset={() => setQuery("")} />}
+            />
+            <ActiveFilterChips chips={activeFilterChips} />
             <div className="rounded-md border bg-slate-50 px-3 py-2 text-xs leading-5 text-muted-foreground">
               Search covers section titles, checklist text, aliases, and keywords such as {guideSearchKeywords.slice(0, 4).join(", ")}.
             </div>

@@ -1,6 +1,7 @@
-import { FileUp, Search } from "lucide-react";
+import { FileUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -37,6 +38,17 @@ export function MissingDocumentsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const activeFilters = useMemo(() => Object.fromEntries(Object.entries(filters).filter(([, value]) => value)), [filters]);
+  const departmentName = (id: string) => departments.find((item) => item.id === id)?.name ?? id;
+  const locationName = (id: string) => locations.find((item) => item.id === id)?.name ?? id;
+  const documentTypeName = (id: string) => types.find((item) => item.id === id)?.name ?? id;
+  const activeFilterChips = useMemo(() => [
+    ...(filters.search ? [{ key: "search", label: "Search", value: filters.search, onRemove: () => setFilters((current) => ({ ...current, search: "" })) }] : []),
+    ...(filters.department_id ? [{ key: "department", label: "Department", value: departmentName(filters.department_id), onRemove: () => setFilters((current) => ({ ...current, department_id: "" })) }] : []),
+    ...(filters.document_type_id ? [{ key: "document_type", label: "Document Type", value: documentTypeName(filters.document_type_id), onRemove: () => setFilters((current) => ({ ...current, document_type_id: "" })) }] : []),
+    ...(filters.location_id ? [{ key: "location", label: "Location", value: locationName(filters.location_id), onRemove: () => setFilters((current) => ({ ...current, location_id: "" })) }] : []),
+    ...(filters.employee_type ? [{ key: "employee_type", label: "Employee Type", value: filters.employee_type.replace(/_/g, " "), title: filters.employee_type, onRemove: () => setFilters((current) => ({ ...current, employee_type: "" })) }] : []),
+    ...(filters.employment_type ? [{ key: "employment_type", label: "Employment Type", value: filters.employment_type.replace(/_/g, " "), title: filters.employment_type, onRemove: () => setFilters((current) => ({ ...current, employment_type: "" })) }] : [])
+  ], [departments, filters, locations, types]);
 
   async function load() {
     if (!token || !canView) return;
@@ -75,17 +87,24 @@ export function MissingDocumentsPage() {
       />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
-        <div className="grid gap-2 border-b p-3 lg:grid-cols-6">
-          <div className="relative lg:col-span-2">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input className="pl-9" placeholder="Search employee or document type" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
-          </div>
-          <FilterSelect label="All departments" value={filters.department_id} onChange={(value) => setFilters({ ...filters, department_id: value })} options={departments.map((item) => ({ value: item.id, label: item.name }))} />
-          <FilterSelect label="All locations" value={filters.location_id} onChange={(value) => setFilters({ ...filters, location_id: value })} options={locations.map((item) => ({ value: item.id, label: item.name }))} />
-          <FilterSelect label="All document types" value={filters.document_type_id} onChange={(value) => setFilters({ ...filters, document_type_id: value })} options={types.map((item) => ({ value: item.id, label: item.name }))} />
-          <SelectField aria-label="Employee type" value={filters.employee_type} onValueChange={(employee_type) => setFilters({ ...filters, employee_type })}><option value="">All employee types</option>{["LOCAL", "FOREIGN", "OTHER"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
-          <SelectField aria-label="Employment type" value={filters.employment_type} onValueChange={(employment_type) => setFilters({ ...filters, employment_type })}><option value="">All employment types</option>{["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
-          <Button variant="outline" size="sm" onClick={() => setFilters(emptyFilters)}>Reset filters</Button>
+        <div className="border-b p-3">
+          <StandardFilterBar
+            search={<StandardSearchInput value={filters.search} onDebouncedChange={(search) => setFilters((current) => ({ ...current, search }))} placeholder="Search employee or document type" />}
+            reset={<FilterResetButton onReset={() => setFilters(emptyFilters)} />}
+            moreFilters={
+              <MoreFiltersSheet title="Missing document filters" onReset={() => setFilters((current) => ({ ...current, location_id: "", employee_type: "", employment_type: "" }))}>
+                <FilterSection title="Additional filters">
+                  <StandardSelectFilter value={filters.location_id} onValueChange={(location_id) => setFilters((current) => ({ ...current, location_id }))} allLabel="All locations" width="department" options={locations.map((item) => ({ value: item.id, label: item.name }))} />
+                  <StandardSelectFilter value={filters.employee_type} onValueChange={(employee_type) => setFilters((current) => ({ ...current, employee_type }))} allLabel="All employee types" width="status" options={["LOCAL", "FOREIGN", "OTHER"].map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} />
+                  <StandardSelectFilter value={filters.employment_type} onValueChange={(employment_type) => setFilters((current) => ({ ...current, employment_type }))} allLabel="All employment types" width="status" options={["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"].map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} />
+                </FilterSection>
+              </MoreFiltersSheet>
+            }
+          >
+            <StandardSelectFilter value={filters.department_id} onValueChange={(department_id) => setFilters((current) => ({ ...current, department_id }))} allLabel="All departments" width="department" options={departments.map((item) => ({ value: item.id, label: item.name }))} />
+            <StandardSelectFilter value={filters.document_type_id} onValueChange={(document_type_id) => setFilters((current) => ({ ...current, document_type_id }))} allLabel="All document types" width="documentType" options={types.map((item) => ({ value: item.id, label: item.name }))} />
+          </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="overflow-x-auto">
           <Table>
@@ -135,10 +154,6 @@ function MissingUploadModal({ token, row, type, onClose, onSaved }: { token: str
   }
 
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-2xl rounded-lg border bg-white shadow-xl"><div className="flex items-center justify-between border-b px-4 py-3"><div><h2 className="text-sm font-semibold">Upload missing document</h2><p className="text-xs text-muted-foreground">{row.employee_name} · {row.employee_no} · {row.document_type_name}</p></div><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="grid gap-3 p-4 md:grid-cols-2"><div className="space-y-1.5 md:col-span-2"><Label>File</Label><Input type="file" accept={type?.allowed_file_types?.join(",")} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />{type ? <p className="text-xs text-muted-foreground">Max {type.max_file_size_mb} MB. {type.allowed_file_types?.join(", ")}</p> : null}</div><Field label={`Document number${type?.requires_document_number ? " *" : ""}`} value={documentNumber} onChange={setDocumentNumber} /><Field label={`Issue date${type?.requires_issue_date ? " *" : ""}`} type="date" value={issueDate} onChange={setIssueDate} /><Field label={`Expiry date${type?.requires_expiry_date ? " *" : ""}`} type="date" value={expiryDate} onChange={setExpiryDate} /><Field label="Notes" value={notes} onChange={setNotes} /></div>{error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" disabled={saving} onClick={() => void submit()}>{saving ? "Uploading..." : "Upload"}</Button></div></div></div>;
-}
-
-function FilterSelect({ value, onChange, options, label }: { value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }>; label: string }) {
-  return <SelectField aria-label={label} value={value} onValueChange={onChange}><option value="">{label}</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</SelectField>;
 }
 
 function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {

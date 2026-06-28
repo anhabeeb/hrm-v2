@@ -6,7 +6,7 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { AssetsNav } from "../components/assets/AssetsNav";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
-import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ResponsiveTableWrapper } from "../components/ui/data-table-shell";
@@ -150,6 +150,7 @@ export function UniformTypesPage() {
 
   useEffect(() => { void load(); }, [token]);
   const filtered = rows.filter((row) => !query || `${row.code} ${row.name} ${row.category}`.toLowerCase().includes(query.toLowerCase()));
+  const activeFilterChips = useMemo(() => query ? [{ key: "search", label: "Search", value: query, onRemove: () => setQuery("") }] : [], [query]);
 
   return (
     <PageShell>
@@ -160,6 +161,7 @@ export function UniformTypesPage() {
         reset={<FilterResetButton onReset={() => setQuery("")} disabled={!query} />}
         actions={<Button variant="outline" size="sm" onClick={() => void load()}>Refresh</Button>}
       />
+      <ActiveFilterChips chips={activeFilterChips} />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       <Panel className="overflow-hidden p-0"><TableWrap><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Category</TableHead><TableHead>Cycle</TableHead><TableHead>Clearance</TableHead><TableHead>Deduction</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filtered.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.code}</TableCell><TableCell>{row.name}</TableCell><TableCell>{row.category}</TableCell><TableCell>{row.default_replacement_cycle_months ?? "-"}</TableCell><TableCell>{isOn(row.default_clearance_required) ? "Required" : "Not required"}</TableCell><TableCell>{row.default_deduction_amount ?? "-"}</TableCell><TableCell><Badge tone={tone(row.status)}>{row.status}</Badge></TableCell><TableCell className="text-right"><Button variant="ghost" size="sm" disabled={!canManage} onClick={() => setModal({ type: "type", row })}>Edit</Button><Button variant="ghost" size="sm" disabled={!canManage} onClick={() => { if (token) void api.archiveUniformType(token, row.id).then(load); }}>Archive</Button></TableCell></TableRow>)}</TableBody></Table>{!filtered.length ? <EmptyState title="No uniform types" description="Create uniform types such as shirts, shoes, aprons, and name badges." /> : null}</TableWrap></Panel>
       {modal?.type === "type" ? <UniformTypeModal row={modal.row} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
@@ -195,6 +197,12 @@ export function UniformInventoryPage() {
   }
 
   useEffect(() => { void load(); }, [token]);
+  const activeFilterChips = useMemo(() => [
+    ...(filters.search ? [{ key: "search", label: "Search", value: filters.search, onRemove: () => setFilters((current) => ({ ...current, search: "" })) }] : []),
+    ...(filters.uniform_type_id ? [{ key: "type", label: "Uniform Type", value: types.find((row) => row.id === filters.uniform_type_id)?.name ?? filters.uniform_type_id, onRemove: () => setFilters((current) => ({ ...current, uniform_type_id: "" })) }] : []),
+    ...(filters.location_id ? [{ key: "location", label: "Location", value: locations.find((row) => row.id === filters.location_id)?.name ?? filters.location_id, onRemove: () => setFilters((current) => ({ ...current, location_id: "" })) }] : []),
+    ...(filters.status ? [{ key: "status", label: "Status", value: filters.status.replace(/_/g, " "), title: filters.status, onRemove: () => setFilters((current) => ({ ...current, status: "" })) }] : [])
+  ], [filters, locations, types]);
 
   return (
     <PageShell>
@@ -213,6 +221,7 @@ export function UniformInventoryPage() {
           </FilterSection>
         </MoreFiltersSheet>
       </StandardFilterBar>
+      <ActiveFilterChips chips={activeFilterChips} />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       <Panel className="overflow-hidden p-0"><TableWrap><Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Size</TableHead><TableHead>Location</TableHead><TableHead>Total</TableHead><TableHead>Available</TableHead><TableHead>Issued</TableHead><TableHead>Damaged/Lost</TableHead><TableHead>Reorder</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{stock.map((row) => <TableRow key={row.id}><TableCell><div className="font-medium">{row.uniform_type_name}</div><div className="text-xs text-muted-foreground">{row.uniform_type_code}</div></TableCell><TableCell>{row.size_label ?? "-"}</TableCell><TableCell>{row.location_name ?? "-"}</TableCell><TableCell>{row.total_quantity}</TableCell><TableCell>{row.available_quantity}</TableCell><TableCell>{row.issued_quantity}</TableCell><TableCell>{row.damaged_quantity} / {row.lost_quantity}</TableCell><TableCell>{row.reorder_level ?? "-"}</TableCell><TableCell><Badge tone={tone(row.status)}>{row.status}</Badge></TableCell><TableCell className="text-right"><Button variant="ghost" size="sm" disabled={!canManage} onClick={() => setModal({ type: "stock", row })}>Edit</Button></TableCell></TableRow>)}</TableBody></Table>{!stock.length ? <EmptyState title="No uniform stock" description="Add stock quantities by type, size, and location." /> : null}</TableWrap></Panel>
       {modal?.type === "stock" ? <UniformStockModal row={modal.row} types={types} locations={locations} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
@@ -257,6 +266,11 @@ export function UniformAssignmentsPage() {
 
   useEffect(() => { void load(); }, [token]);
   const availableStock = stock.filter((row) => row.available_quantity > 0);
+  const activeFilterChips = useMemo(() => [
+    ...(filters.search ? [{ key: "search", label: "Search", value: filters.search, onRemove: () => setFilters((current) => ({ ...current, search: "" })) }] : []),
+    ...(filters.status ? [{ key: "status", label: "Status", value: filters.status.replace(/_/g, " "), title: filters.status, onRemove: () => setFilters((current) => ({ ...current, status: "" })) }] : []),
+    ...(filters.location_id ? [{ key: "location", label: "Location", value: locations.find((row) => row.id === filters.location_id)?.name ?? filters.location_id, onRemove: () => setFilters((current) => ({ ...current, location_id: "" })) }] : [])
+  ], [filters, locations]);
 
   return (
     <PageShell>
@@ -274,6 +288,7 @@ export function UniformAssignmentsPage() {
           </FilterSection>
         </MoreFiltersSheet>
       </StandardFilterBar>
+      <ActiveFilterChips chips={activeFilterChips} />
       {error ? <Alert tone="danger">{error}</Alert> : null}
       <Panel className="overflow-hidden p-0"><TableWrap><Table><TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Uniform</TableHead><TableHead>Qty</TableHead><TableHead>Status</TableHead><TableHead>Clearance</TableHead><TableHead>Issued</TableHead><TableHead>Expected return</TableHead><TableHead>Deduction</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} departmentName={row.department_name} locationName={row.location_name} size="sm" to={`/employees/${row.employee_id}`} /></TableCell><TableCell><div>{row.uniform_type_name}</div><div className="text-xs text-muted-foreground">{row.uniform_type_code} / {row.size_label ?? "-"}</div></TableCell><TableCell>{row.quantity_issued} issued<br /><span className="text-xs text-muted-foreground">{row.quantity_returned} returned, {row.quantity_damaged} damaged, {row.quantity_lost} lost</span></TableCell><TableCell><Badge tone={tone(row.assignment_status)}>{row.assignment_status}</Badge></TableCell><TableCell><Badge tone={tone(row.clearance_status)}>{row.clearance_status}</Badge></TableCell><TableCell>{row.issued_date}</TableCell><TableCell>{row.expected_return_date ?? "-"}</TableCell><TableCell>{row.deduction_amount ?? "-"}</TableCell><TableCell><div className="flex min-w-[390px] justify-end gap-1">{row.assignment_status === "ISSUED" && canReturn ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "action", row, action: "return" })}>Return</Button> : null}{row.assignment_status === "ISSUED" && canDamage ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "action", row, action: "mark-damaged" })}>Damage</Button> : null}{row.assignment_status === "ISSUED" && canLost ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "action", row, action: "mark-lost" })}>Lost</Button> : null}{canDeduct ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "action", row, action: "apply-deduction" })}>Deduct</Button> : null}{canDeduct ? <Button variant="ghost" size="sm" onClick={() => setModal({ type: "action", row, action: "waive" })}>Waive</Button> : null}<Link to={`/employees/${row.employee_id}`}><Button variant="ghost" size="sm">Employee 360</Button></Link></div></TableCell></TableRow>)}</TableBody></Table>{!rows.length ? <EmptyState title="No uniform assignments" description="Uniform assignments appear after stock is issued to employees." /> : null}</TableWrap></Panel>
       {modal?.type === "issue" ? <IssueUniformModal employees={employees} organizationRefs={organizationRefs} stock={availableStock} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}

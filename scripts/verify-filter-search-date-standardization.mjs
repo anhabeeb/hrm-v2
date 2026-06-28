@@ -102,14 +102,26 @@ contains(filterFile, "jobLevelId", "job level cascade input");
 contains(filterFile, "filteredPositions", "position cascade output");
 
 const migratedPages = [
+  "frontend/src/pages/AdminHelpGuidePage.tsx",
+  "frontend/src/pages/AdminSettingsPage.tsx",
+  "frontend/src/pages/AssetAssignmentsPage.tsx",
+  "frontend/src/pages/AssetUniformAdvancedPages.tsx",
+  "frontend/src/pages/AssetsItemsPage.tsx",
+  "frontend/src/pages/AssetsReportsPage.tsx",
   "frontend/src/pages/EmployeesPage.tsx",
+  "frontend/src/pages/AttendanceDevicesPage.tsx",
   "frontend/src/pages/AttendanceRecordsPage.tsx",
   "frontend/src/pages/AttendanceReportsPage.tsx",
   "frontend/src/pages/AttendanceCorrectionsPage.tsx",
   "frontend/src/pages/AttendanceCalendarPage.tsx",
   "frontend/src/pages/AttendanceDeviceOperationsPage.tsx",
+  "frontend/src/pages/DocumentCompliancePage.tsx",
+  "frontend/src/pages/FinalSettlementPage.tsx",
   "frontend/src/pages/LeaveRequestsPage.tsx",
   "frontend/src/pages/LeaveCalendarPage.tsx",
+  "frontend/src/pages/MissingDocumentsPage.tsx",
+  "frontend/src/pages/OrganizationSettingsPage.tsx",
+  "frontend/src/pages/PayrollPeriodsPage.tsx",
   "frontend/src/pages/PayrollRunsPage.tsx",
   "frontend/src/pages/PayrollAdminPages.tsx",
   "frontend/src/pages/DocumentRegistryPage.tsx",
@@ -120,9 +132,39 @@ const migratedPages = [
   "frontend/src/pages/NotificationCenterPage.tsx",
   "frontend/src/pages/UsersAccessPage.tsx",
   "frontend/src/pages/KycRequestsPage.tsx",
+  "frontend/src/pages/RosterReportsPage.tsx",
+  "frontend/src/pages/RosterShiftTemplatesPage.tsx",
+  "frontend/src/pages/RosterWeeklyPage.tsx",
+  "frontend/src/pages/SearchResultsPage.tsx"
+];
+
+const pagesWithMoreFilters = [
+  "frontend/src/pages/EmployeesPage.tsx",
+  "frontend/src/pages/AttendanceDevicesPage.tsx",
+  "frontend/src/pages/AttendanceRecordsPage.tsx",
+  "frontend/src/pages/AttendanceReportsPage.tsx",
+  "frontend/src/pages/AttendanceCorrectionsPage.tsx",
+  "frontend/src/pages/AttendanceCalendarPage.tsx",
+  "frontend/src/pages/AttendanceDeviceOperationsPage.tsx",
   "frontend/src/pages/AssetAssignmentsPage.tsx",
-  "frontend/src/pages/AssetsReportsPage.tsx",
   "frontend/src/pages/AssetUniformAdvancedPages.tsx",
+  "frontend/src/pages/AssetsItemsPage.tsx",
+  "frontend/src/pages/AssetsReportsPage.tsx",
+  "frontend/src/pages/FinalSettlementPage.tsx",
+  "frontend/src/pages/LeaveRequestsPage.tsx",
+  "frontend/src/pages/LeaveCalendarPage.tsx",
+  "frontend/src/pages/MissingDocumentsPage.tsx",
+  "frontend/src/pages/PayrollPeriodsPage.tsx",
+  "frontend/src/pages/PayrollRunsPage.tsx",
+  "frontend/src/pages/PayrollAdminPages.tsx",
+  "frontend/src/pages/DocumentRegistryPage.tsx",
+  "frontend/src/pages/ContractsPage.tsx",
+  "frontend/src/pages/ApprovalsPage.tsx",
+  "frontend/src/pages/AuditLogPage.tsx",
+  "frontend/src/pages/ReportsPage.tsx",
+  "frontend/src/pages/NotificationCenterPage.tsx",
+  "frontend/src/pages/UsersAccessPage.tsx",
+  "frontend/src/pages/KycRequestsPage.tsx",
   "frontend/src/pages/RosterReportsPage.tsx",
   "frontend/src/pages/RosterWeeklyPage.tsx"
 ];
@@ -132,9 +174,12 @@ for (const page of migratedPages) {
   assert(source.includes("StandardFilterBar"), `${page} must use StandardFilterBar.`);
   assert(source.includes("StandardSearchInput"), `${page} must use StandardSearchInput.`);
   assert(source.includes("FilterResetButton"), `${page} must expose Reset.`);
-  assert(source.includes("MoreFiltersSheet"), `${page} must route advanced filters through MoreFiltersSheet.`);
   assert(!/import\s*\{[^}]*\bFilterBar\b[^}]*\}\s*from\s*["'][^"']*page-shell["']/.test(source), `${page} must not import legacy FilterBar.`);
   assert(!/function\s+FilterBar\s*\(/.test(source), `${page} must not define a legacy local FilterBar.`);
+}
+
+for (const page of pagesWithMoreFilters) {
+  contains(page, "MoreFiltersSheet", "MoreFiltersSheet for advanced filters");
 }
 
 [
@@ -160,7 +205,31 @@ for (const page of migratedPages) {
 [
   "frontend/src/pages/EmployeesPage.tsx",
   "frontend/src/pages/AttendanceRecordsPage.tsx",
+  "frontend/src/pages/AdminSettingsPage.tsx",
+  "frontend/src/pages/AdminHelpGuidePage.tsx",
+  "frontend/src/pages/AssetAssignmentsPage.tsx",
+  "frontend/src/pages/AssetUniformAdvancedPages.tsx",
+  "frontend/src/pages/AssetsItemsPage.tsx",
+  "frontend/src/pages/AssetsReportsPage.tsx",
+  "frontend/src/pages/AttendanceCalendarPage.tsx",
+  "frontend/src/pages/AttendanceCorrectionsPage.tsx",
+  "frontend/src/pages/AttendanceDeviceOperationsPage.tsx",
+  "frontend/src/pages/AttendanceDevicesPage.tsx",
+  "frontend/src/pages/AttendanceReportsPage.tsx",
+  "frontend/src/pages/DocumentCompliancePage.tsx",
+  "frontend/src/pages/FinalSettlementPage.tsx",
+  "frontend/src/pages/KycRequestsPage.tsx",
   "frontend/src/pages/LeaveRequestsPage.tsx",
+  "frontend/src/pages/LeaveCalendarPage.tsx",
+  "frontend/src/pages/MissingDocumentsPage.tsx",
+  "frontend/src/pages/OrganizationSettingsPage.tsx",
+  "frontend/src/pages/PayrollAdminPages.tsx",
+  "frontend/src/pages/PayrollPeriodsPage.tsx",
+  "frontend/src/pages/RosterReportsPage.tsx",
+  "frontend/src/pages/RosterShiftTemplatesPage.tsx",
+  "frontend/src/pages/RosterWeeklyPage.tsx",
+  "frontend/src/pages/SearchResultsPage.tsx",
+  "frontend/src/pages/UsersAccessPage.tsx",
   "frontend/src/pages/DocumentRegistryPage.tsx",
   "frontend/src/pages/AuditLogPage.tsx",
   "frontend/src/pages/ReportsPage.tsx"
@@ -183,6 +252,27 @@ const allPageSource = listTsxFiles("frontend/src/pages").map((file) => `${file}\
 assert(!/StandardDateRangeFilter[\s\S]{0,180}\bdisabled\b/.test(allPageSource), "Disabled placeholder StandardDateRangeFilter detected.");
 assert(!/onChange=\{\(\)\s*=>\s*undefined\}[\s\S]{0,180}Date Range/.test(allPageSource), "Non-functional placeholder date range filter detected.");
 assert(!/Created-date filtering is available|Expiry range filters are displayed/.test(allPageSource), "Disabled placeholder filter helper text detected.");
+
+const allPages = listTsxFiles("frontend/src/pages");
+for (const page of allPages) {
+  const source = read(page);
+  if (source.includes("StandardFilterBar") && /(Filter|filter|search|query|dateFrom|dateTo|status)/.test(source)) {
+    assert(source.includes("ActiveFilterChips"), `${page} uses StandardFilterBar with filter state but lacks ActiveFilterChips.`);
+  }
+}
+
+forbid("frontend/src/pages/DocumentCompliancePage.tsx", /<Input[^>]*placeholder=["']Search employee or document["']/s, "DocumentCompliancePage must not use raw search Input in its compliance filter bar.");
+forbid("frontend/src/pages/DocumentCompliancePage.tsx", /grid gap-2 border-b p-3 md:grid-cols-4/, "DocumentCompliancePage must not use the old raw grid filter bar.");
+forbid("frontend/src/pages/MissingDocumentsPage.tsx", /function\s+FilterSelect\b/, "MissingDocumentsPage must not keep the old local FilterSelect helper.");
+forbid("frontend/src/pages/MissingDocumentsPage.tsx", /lg:grid-cols-6/, "MissingDocumentsPage must not use the old six-column raw filter grid.");
+forbid("frontend/src/pages/FinalSettlementPage.tsx", /<Input[^>]*placeholder=["']Search employee, department, location["']/s, "FinalSettlementPage must not use raw search Input in its case filter bar.");
+forbid("frontend/src/pages/AttendanceDevicesPage.tsx", /<Input[^>]*placeholder=["']Search devices["']/s, "AttendanceDevicesPage must not use raw search Input in its device filter bar.");
+forbid("frontend/src/pages/AssetsItemsPage.tsx", /<Input[^>]*placeholder=["']Search code\/name\/serial["']/s, "AssetsItemsPage must not use raw search Input in its item filter bar.");
+forbid("frontend/src/pages/RosterShiftTemplatesPage.tsx", /<Input[^>]*placeholder=["']Search shift templates["']/s, "RosterShiftTemplatesPage must not use raw search Input in its template filter bar.");
+forbid("frontend/src/pages/PayrollPeriodsPage.tsx", /grid gap-2 border-b p-3/, "PayrollPeriodsPage must not use the old raw grid filter bar.");
+forbid("frontend/src/pages/SearchResultsPage.tsx", /<Input[^>]*value=\{query\}/s, "SearchResultsPage must not use raw Input for result search.");
+forbid("frontend/src/pages/OrganizationSettingsPage.tsx", /function\s+SearchFilter[\s\S]{0,260}<Input\b/, "OrganizationSettingsPage SearchFilter must render StandardSearchInput.");
+forbid("frontend/src/pages/AdminHelpGuidePage.tsx", /<Input[^>]*placeholder=["']Search guide["']/s, "AdminHelpGuidePage must not use raw search Input for guide search.");
 
 const changedUiSources = [filterFile, "frontend/src/components/ui/sheet.tsx", ...migratedPages].map((file) => [file, read(file)]);
 for (const [file, source] of changedUiSources) {

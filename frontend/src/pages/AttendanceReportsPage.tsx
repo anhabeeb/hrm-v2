@@ -1,7 +1,7 @@
 import { Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
-import { FilterResetButton, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput } from "../components/filters";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
@@ -23,14 +23,21 @@ export function AttendanceReportsPage() {
   const [search, setSearch] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [locationId, setLocationId] = useState("");
-  const [dateFrom, setDateFrom] = useState(new Date().toISOString().slice(0, 10));
-  const [dateTo, setDateTo] = useState(new Date().toISOString().slice(0, 10));
+  const defaultDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [dateFrom, setDateFrom] = useState(defaultDate);
+  const [dateTo, setDateTo] = useState(defaultDate);
   const [attendanceDisabled, setAttendanceDisabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const filters = useMemo(() => ({ search, department_id: departmentId, location_id: locationId, date_from: dateFrom, date_to: dateTo }), [search, departmentId, locationId, dateFrom, dateTo]);
   const dateRange = useMemo(() => ({ from: dateFrom, to: dateTo }), [dateFrom, dateTo]);
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(departmentId ? [{ key: "department", label: "Department", value: departments.find((department) => department.id === departmentId)?.name ?? departmentId, onRemove: () => setDepartmentId("") }] : []),
+    ...(locationId ? [{ key: "location", label: "Location", value: locations.find((location) => location.id === locationId)?.name ?? locationId, onRemove: () => setLocationId("") }] : []),
+    ...(dateFrom !== defaultDate || dateTo !== defaultDate ? [{ key: "date", label: "Date", value: formatDateRangeLabel(dateRange), onRemove: () => { setDateFrom(defaultDate); setDateTo(defaultDate); } }] : [])
+  ], [dateFrom, dateRange, dateTo, defaultDate, departmentId, departments, locationId, locations, search]);
 
   async function load() {
     if (!token || !canView) return;
@@ -118,6 +125,7 @@ export function AttendanceReportsPage() {
           >
             <StandardDateRangeFilter value={dateRange} onChange={(range) => { setDateFrom(range.from ?? ""); setDateTo(range.to ?? ""); }} label="Date Range" />
           </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="overflow-x-auto">
           <Table>

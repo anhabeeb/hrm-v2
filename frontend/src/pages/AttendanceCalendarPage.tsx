@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
-import { FilterResetButton, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
@@ -35,14 +35,23 @@ export function AttendanceCalendarPage() {
   const [departmentId, setDepartmentId] = useState("");
   const [locationId, setLocationId] = useState("");
   const [status, setStatus] = useState("");
-  const [dateFrom, setDateFrom] = useState(new Date().toISOString().slice(0, 10));
-  const [dateTo, setDateTo] = useState(new Date().toISOString().slice(0, 10));
+  const defaultDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [dateFrom, setDateFrom] = useState(defaultDate);
+  const [dateTo, setDateTo] = useState(defaultDate);
   const [attendanceDisabled, setAttendanceDisabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const filters = useMemo(() => ({ search, employee_id: employeeId, department_id: departmentId, location_id: locationId, status, date_from: dateFrom, date_to: dateTo }), [search, employeeId, departmentId, locationId, status, dateFrom, dateTo]);
   const dateRange = useMemo(() => ({ from: dateFrom, to: dateTo }), [dateFrom, dateTo]);
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(employeeId ? [{ key: "employee", label: "Employee", value: employees.find((employee) => employee.id === employeeId)?.full_name ?? employeeId, onRemove: () => setEmployeeId("") }] : []),
+    ...(departmentId ? [{ key: "department", label: "Department", value: departments.find((department) => department.id === departmentId)?.name ?? departmentId, onRemove: () => setDepartmentId("") }] : []),
+    ...(locationId ? [{ key: "location", label: "Location", value: locations.find((location) => location.id === locationId)?.name ?? locationId, onRemove: () => setLocationId("") }] : []),
+    ...(status ? [{ key: "status", label: "Status", value: status.replace(/_/g, " "), title: status, onRemove: () => setStatus("") }] : []),
+    ...(dateFrom !== defaultDate || dateTo !== defaultDate ? [{ key: "date", label: "Date", value: formatDateRangeLabel(dateRange), onRemove: () => { setDateFrom(defaultDate); setDateTo(defaultDate); } }] : [])
+  ], [dateFrom, dateRange, dateTo, defaultDate, departmentId, departments, employeeId, employees, locationId, locations, search, status]);
 
   async function load() {
     if (!token || !canView) return;
@@ -122,6 +131,7 @@ export function AttendanceCalendarPage() {
             <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"].map((item) => ({ value: item, label: item }))} />
             <StandardDateRangeFilter value={dateRange} onChange={(range) => { setDateFrom(range.from ?? ""); setDateTo(range.to ?? ""); }} label="Date Range" />
           </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="overflow-x-auto">
           <Table>

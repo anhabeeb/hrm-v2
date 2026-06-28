@@ -1,7 +1,7 @@
 import { ClipboardCopy, Edit, Eraser, Lock, Megaphone, Save, Undo2, Unlock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
-import { FilterResetButton, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
 import { RosterNav } from "../components/roster/RosterNav";
@@ -51,7 +51,8 @@ export function RosterWeeklyPage() {
   const canUnpublish = permissions.has("roster.periods.unpublish") || permissions.has("roster.periods.manage") || permissions.has("roster.manage");
   const canLock = permissions.has("roster.periods.lock") || permissions.has("roster.periods.manage");
   const canUnlock = permissions.has("roster.periods.unlock") || permissions.has("roster.periods.manage");
-  const [weekStart, setWeekStart] = useState(mondayOf(new Date()));
+  const defaultWeekStart = useMemo(() => mondayOf(new Date()), []);
+  const [weekStart, setWeekStart] = useState(defaultWeekStart);
   const [search, setSearch] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [jobLevelId, setJobLevelId] = useState("");
@@ -76,6 +77,15 @@ export function RosterWeeklyPage() {
 
   const filters = useMemo(() => ({ week_start_date: weekStart, search, department_id: departmentId, location_id: locationId }), [weekStart, search, departmentId, locationId]);
   const weekRange = useMemo(() => ({ from: weekStart, to: weekStart }), [weekStart]);
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(weekStart !== defaultWeekStart ? [{ key: "week", label: "Week", value: formatDateRangeLabel(weekRange), onRemove: () => setWeekStart(defaultWeekStart) }] : []),
+    ...(statusFilter ? [{ key: "status", label: "Status", value: statusFilter.replace(/_/g, " "), title: statusFilter, onRemove: () => setStatusFilter("") }] : []),
+    ...(locationId ? [{ key: "location", label: "Location", value: locations.find((location) => location.id === locationId)?.name ?? locationId, onRemove: () => setLocationId("") }] : []),
+    ...(departmentId ? [{ key: "department", label: "Department", value: departments.find((department) => department.id === departmentId)?.name ?? departmentId, onRemove: () => setDepartmentId("") }] : []),
+    ...(jobLevelId ? [{ key: "job_level", label: "Job Level", value: jobLevels.find((level) => level.id === jobLevelId)?.name ?? jobLevelId, onRemove: () => setJobLevelId("") }] : []),
+    ...(positionId ? [{ key: "position", label: "Position", value: positions.find((position) => position.id === positionId)?.title ?? positionId, onRemove: () => setPositionId("") }] : [])
+  ], [defaultWeekStart, departmentId, departments, jobLevelId, jobLevels, locationId, locations, positionId, positions, search, statusFilter, weekRange, weekStart]);
 
   async function load() {
     if (!token || !canView) return;
@@ -268,7 +278,7 @@ export function RosterWeeklyPage() {
         <div className="border-b p-3">
           <StandardFilterBar
             search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee or number" />}
-            reset={<FilterResetButton onReset={() => { setSearch(""); setDepartmentId(""); setJobLevelId(""); setPositionId(""); setLocationId(""); setStatusFilter(""); }} />}
+            reset={<FilterResetButton onReset={() => { setSearch(""); setWeekStart(defaultWeekStart); setDepartmentId(""); setJobLevelId(""); setPositionId(""); setLocationId(""); setStatusFilter(""); }} />}
             moreFilters={
               <MoreFiltersSheet onReset={() => { setDepartmentId(""); setJobLevelId(""); setPositionId(""); setLocationId(""); }}>
                 <OrganizationCascadeSelector
@@ -295,6 +305,7 @@ export function RosterWeeklyPage() {
             <StandardSelectFilter value={statusFilter} onValueChange={setStatusFilter} allLabel="Any assignment status" width="status" options={statuses.map((status) => ({ value: status, label: status }))} />
             <div className="flex h-10 items-center rounded-md border bg-slate-50 px-3 text-sm text-muted-foreground">{weekly?.weekStart ?? weekStart} to {weekly?.weekEnd ?? "-"}</div>
           </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="overflow-x-auto">
           <Table className="min-w-[1180px]">

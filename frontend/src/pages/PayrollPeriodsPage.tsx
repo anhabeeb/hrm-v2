@@ -1,6 +1,7 @@
 import { CalendarPlus, Edit, PlayCircle, Search, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
+import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -14,6 +15,7 @@ import { ApiError, api } from "../lib/api";
 import type { PayrollPeriod } from "../types/payroll";
 
 const statuses = ["", "DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"];
+const defaultPayrollYear = String(new Date().getFullYear());
 
 function normalizePeriodStatus(status: string) {
   if (status === "OPEN") return "DRAFT";
@@ -33,7 +35,7 @@ export function PayrollPeriodsPage() {
   const canCalculate = permissions.has("payroll.periods.calculate") || permissions.has("payroll.runs.calculate") || permissions.has("payroll.periods.manage") || permissions.has("payroll.runs.manage") || permissions.has("payroll.manage");
   const canCancel = permissions.has("payroll.periods.cancel") || permissions.has("payroll.periods.manage") || permissions.has("payroll.manage");
   const [periods, setPeriods] = useState<PayrollPeriod[]>([]);
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [year, setYear] = useState(defaultPayrollYear);
   const [month, setMonth] = useState("");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
@@ -42,6 +44,19 @@ export function PayrollPeriodsPage() {
   const [modal, setModal] = useState<{ type: "create" | "edit" | "generate" | "cancel"; period?: PayrollPeriod } | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const filters = useMemo(() => ({ year, month, status, search }), [year, month, status, search]);
+  const yearOptions = useMemo(() => Array.from(new Set([defaultPayrollYear, ...periods.map((period) => String(period.period_year))])).sort((a, b) => Number(b) - Number(a)), [periods]);
+  const resetFilters = () => {
+    setSearch("");
+    setStatus("");
+    setMonth("");
+    setYear(defaultPayrollYear);
+  };
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(status ? [{ key: "status", label: "Status", value: humanizeStatus(status), title: status, onRemove: () => setStatus("") }] : []),
+    ...(month ? [{ key: "month", label: "Month", value: month, onRemove: () => setMonth("") }] : []),
+    ...(year && year !== defaultPayrollYear ? [{ key: "year", label: "Year", value: year, onRemove: () => setYear(defaultPayrollYear) }] : [])
+  ], [month, search, status, year]);
 
   async function load() {
     if (!token || !canView) return;
@@ -99,11 +114,22 @@ export function PayrollPeriodsPage() {
       <PayrollNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
-        <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-6">
-          <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search period" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <Input value={year} onChange={(event) => setYear(event.target.value)} placeholder="Year" />
-          <SelectField aria-label="Month" value={month} onValueChange={setMonth}><option value="">All months</option>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</SelectField>
-          <SelectField aria-label="Status" value={status} onValueChange={setStatus}>{statuses.map((item) => <option key={item || "all"} value={item}>{item ? humanizeStatus(item) : "All statuses"}</option>)}</SelectField>
+        <div className="border-b p-3">
+          <StandardFilterBar
+            search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search period" />}
+            reset={<FilterResetButton onReset={resetFilters} />}
+            moreFilters={
+              <MoreFiltersSheet title="Payroll period filters" onReset={() => { setYear(defaultPayrollYear); setMonth(""); }}>
+                <FilterSection title="Period">
+                  <StandardSelectFilter value={year} onValueChange={setYear} allLabel="Current year" width="status" options={yearOptions.map((item) => ({ value: item, label: item }))} />
+                  <StandardSelectFilter value={month} onValueChange={setMonth} allLabel="All months" width="status" options={Array.from({ length: 12 }, (_, index) => ({ value: String(index + 1), label: String(index + 1) }))} />
+                </FilterSection>
+              </MoreFiltersSheet>
+            }
+          >
+            <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={statuses.filter(Boolean).map((item) => ({ value: item, label: humanizeStatus(item) }))} />
+          </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="overflow-x-auto">
           <Table>

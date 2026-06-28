@@ -22,7 +22,7 @@ import { EmptyState } from "../components/ui/empty-state";
 import { FormBlockingAlert } from "../components/forms/FormBlockingAlert";
 import { FormWarningAlert } from "../components/forms/FormWarningAlert";
 import { ValidationSummary } from "../components/forms/ValidationSummary";
-import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter, type ActiveFilterChip } from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -524,26 +524,35 @@ interface UsersTableProps {
 }
 
 function UsersTable(props: UsersTableProps) {
+  const activeFilterChips: ActiveFilterChip[] = [
+    ...(props.query ? [{ key: "search", label: "Search", value: props.query, onRemove: () => props.onQueryChange("") }] : []),
+    ...(props.statusFilter !== "ALL" ? [{ key: "status", label: "Status", value: props.statusFilter.replace(/_/g, " "), title: props.statusFilter, onRemove: () => props.onStatusFilterChange("ALL") }] : []),
+    ...(props.roleFilter !== "ALL" ? [{ key: "role", label: "Role", value: props.roles.find((role) => role.id === props.roleFilter)?.name ?? props.roleFilter, onRemove: () => props.onRoleFilterChange("ALL") }] : [])
+  ];
+
   return (
     <div>
-      <UsersAccessFilterBar>
+      <UsersAccessFilterBar chips={activeFilterChips}>
         <UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search users" />
-        <Select value={props.statusFilter} onChange={props.onStatusFilterChange}>
-          <option value="ALL">All statuses</option>
-          <option value="ACTIVE">Active</option>
-          <option value="DISABLED">Disabled</option>
-          <option value="LOCKED">Locked</option>
-        </Select>
+        <StandardSelectFilter
+          value={props.statusFilter}
+          onValueChange={props.onStatusFilterChange}
+          width="status"
+          options={[
+            { value: "ALL", label: "All statuses" },
+            { value: "ACTIVE", label: "Active" },
+            { value: "DISABLED", label: "Disabled" },
+            { value: "LOCKED", label: "Locked" }
+          ]}
+        />
         <MoreFiltersSheet title="User filters" onReset={() => props.onRoleFilterChange("ALL")}>
           <FilterSection title="Role">
-            <Select value={props.roleFilter} onChange={props.onRoleFilterChange}>
-              <option value="ALL">All roles</option>
-              {props.roles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </Select>
+            <StandardSelectFilter
+              value={props.roleFilter}
+              onValueChange={props.onRoleFilterChange}
+              width="employee"
+              options={[{ value: "ALL", label: "All roles" }, ...props.roles.map((role) => ({ value: role.id, label: role.name }))]}
+            />
           </FilterSection>
         </MoreFiltersSheet>
         <FilterResetButton onReset={() => { props.onQueryChange(""); props.onStatusFilterChange("ALL"); props.onRoleFilterChange("ALL"); }} />
@@ -641,9 +650,13 @@ interface RolesTableProps {
 }
 
 function RolesTable(props: RolesTableProps) {
+  const activeFilterChips: ActiveFilterChip[] = props.query
+    ? [{ key: "search", label: "Search", value: props.query, onRemove: () => props.onQueryChange("") }]
+    : [];
+
   return (
     <div>
-      <UsersAccessFilterBar>
+      <UsersAccessFilterBar chips={activeFilterChips}>
         <UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search roles" />
         <FilterResetButton onReset={() => props.onQueryChange("")} />
       </UsersAccessFilterBar>
@@ -720,25 +733,34 @@ interface PermissionsTableProps {
 
 function PermissionsTable(props: PermissionsTableProps) {
   const modules = Array.from(new Set(props.allPermissions.map((permission) => permission.module)));
+  const activeFilterChips: ActiveFilterChip[] = [
+    ...(props.query ? [{ key: "search", label: "Search", value: props.query, onRemove: () => props.onQueryChange("") }] : []),
+    ...(props.moduleFilter !== "ALL" ? [{ key: "module", label: "Module", value: MODULE_LABELS[props.moduleFilter] ?? props.moduleFilter, onRemove: () => props.onModuleFilterChange("ALL") }] : []),
+    ...(props.criticalFilter !== "ALL" ? [{ key: "critical", label: "Criticality", value: props.criticalFilter === "CRITICAL" ? "Critical" : "Non-critical", onRemove: () => props.onCriticalFilterChange("ALL") }] : [])
+  ];
+
   return (
     <div>
-      <UsersAccessFilterBar>
+      <UsersAccessFilterBar chips={activeFilterChips}>
         <UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search permissions" />
         <MoreFiltersSheet title="Permission filters" onReset={() => { props.onModuleFilterChange("ALL"); props.onCriticalFilterChange("ALL"); }}>
           <FilterSection title="Registry">
-            <Select value={props.moduleFilter} onChange={props.onModuleFilterChange}>
-              <option value="ALL">All modules</option>
-              {modules.map((module) => (
-                <option key={module} value={module}>
-                  {MODULE_LABELS[module] ?? module}
-                </option>
-              ))}
-            </Select>
-            <Select value={props.criticalFilter} onChange={props.onCriticalFilterChange}>
-              <option value="ALL">All criticality</option>
-              <option value="CRITICAL">Critical</option>
-              <option value="NON_CRITICAL">Non-critical</option>
-            </Select>
+            <StandardSelectFilter
+              value={props.moduleFilter}
+              onValueChange={props.onModuleFilterChange}
+              width="employee"
+              options={[{ value: "ALL", label: "All modules" }, ...modules.map((module) => ({ value: module, label: MODULE_LABELS[module] ?? module }))]}
+            />
+            <StandardSelectFilter
+              value={props.criticalFilter}
+              onValueChange={props.onCriticalFilterChange}
+              width="status"
+              options={[
+                { value: "ALL", label: "All criticality" },
+                { value: "CRITICAL", label: "Critical" },
+                { value: "NON_CRITICAL", label: "Non-critical" }
+              ]}
+            />
           </FilterSection>
         </MoreFiltersSheet>
         <FilterResetButton onReset={() => { props.onQueryChange(""); props.onModuleFilterChange("ALL"); props.onCriticalFilterChange("ALL"); }} />
@@ -782,9 +804,13 @@ function RoleMappingsTable(props: {
   onEdit: (mapping: RoleMappingRule) => void;
   onAction: (mapping: RoleMappingRule, action: "enable" | "disable") => void;
 }) {
+  const activeFilterChips: ActiveFilterChip[] = props.query
+    ? [{ key: "search", label: "Search", value: props.query, onRemove: () => props.onQueryChange("") }]
+    : [];
+
   return (
     <div>
-      <UsersAccessFilterBar><UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search role mappings" /><FilterResetButton onReset={() => props.onQueryChange("")} /></UsersAccessFilterBar>
+      <UsersAccessFilterBar chips={activeFilterChips}><UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search role mappings" /><FilterResetButton onReset={() => props.onQueryChange("")} /></UsersAccessFilterBar>
       <div className="border-b bg-sky-50 px-4 py-3 text-sm text-sky-950">
         <div className="font-medium">Roles decide what the user can do. Scopes decide which employees, departments, and locations the user can access.</div>
         <div className="mt-1 text-xs">Examples: Employee Self-Service + SELF_ONLY, Store Manager + OWN_LOCATION, Finance Payroll Manager + SELECTED_LOCATIONS, HR Manager + WHOLE_COMPANY, HR Head + WHOLE_COMPANY. Higher priority rules win when multiple mappings match.</div>
@@ -826,14 +852,39 @@ function AccessScopesTable(props: {
   onEdit: (scope: AccessScopeRule) => void;
   onAction: (scope: AccessScopeRule, action: "enable" | "disable") => void;
 }) {
+  const activeFilterChips: ActiveFilterChip[] = [
+    ...(props.query ? [{ key: "search", label: "Search", value: props.query, onRemove: () => props.onQueryChange("") }] : []),
+    ...(props.moduleFilter !== "ALL" ? [{ key: "module", label: "Module", value: props.moduleFilter === "ALL_MODULES" ? "All-module rules" : MODULE_LABELS[props.moduleFilter] ?? props.moduleFilter, onRemove: () => props.onModuleFilterChange("ALL") }] : []),
+    ...(props.ownerFilter !== "ALL" ? [{ key: "owner", label: "Owner", value: props.ownerFilter === "ROLE_MAPPING_RULE" ? "Role mapping" : props.ownerFilter.toLowerCase().replace(/^\w/, (value) => value.toUpperCase()), onRemove: () => props.onOwnerFilterChange("ALL") }] : [])
+  ];
+
   return (
     <div>
-      <UsersAccessFilterBar>
+      <UsersAccessFilterBar chips={activeFilterChips}>
         <UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search scopes" />
         <MoreFiltersSheet title="Access scope filters" onReset={() => { props.onModuleFilterChange("ALL"); props.onOwnerFilterChange("ALL"); }}>
           <FilterSection title="Scope">
-            <Select value={props.moduleFilter} onChange={props.onModuleFilterChange}><option value="ALL">All modules</option><option value="ALL_MODULES">All-module rules</option>{ACCESS_SCOPE_MODULES.map((module) => <option key={module} value={module}>{MODULE_LABELS[module] ?? module}</option>)}</Select>
-            <Select value={props.ownerFilter} onChange={props.onOwnerFilterChange}><option value="ALL">All owners</option><option value="ROLE">Role</option><option value="USER">User</option><option value="ROLE_MAPPING_RULE">Role mapping</option></Select>
+            <StandardSelectFilter
+              value={props.moduleFilter}
+              onValueChange={props.onModuleFilterChange}
+              width="employee"
+              options={[
+                { value: "ALL", label: "All modules" },
+                { value: "ALL_MODULES", label: "All-module rules" },
+                ...ACCESS_SCOPE_MODULES.map((module) => ({ value: module, label: MODULE_LABELS[module] ?? module }))
+              ]}
+            />
+            <StandardSelectFilter
+              value={props.ownerFilter}
+              onValueChange={props.onOwnerFilterChange}
+              width="status"
+              options={[
+                { value: "ALL", label: "All owners" },
+                { value: "ROLE", label: "Role" },
+                { value: "USER", label: "User" },
+                { value: "ROLE_MAPPING_RULE", label: "Role mapping" }
+              ]}
+            />
           </FilterSection>
         </MoreFiltersSheet>
         <FilterResetButton onReset={() => { props.onQueryChange(""); props.onModuleFilterChange("ALL"); props.onOwnerFilterChange("ALL"); }} />
@@ -1295,8 +1346,13 @@ function Field(props: { label: string; children: React.ReactNode }) {
   );
 }
 
-function UsersAccessFilterBar(props: { children: React.ReactNode }) {
-  return <div className="border-b bg-white p-3"><StandardFilterBar className="border-0 shadow-none">{props.children}</StandardFilterBar></div>;
+function UsersAccessFilterBar(props: { children: React.ReactNode; chips?: ActiveFilterChip[] }) {
+  return (
+    <div className="border-b bg-white p-3">
+      <StandardFilterBar className="border-0 shadow-none">{props.children}</StandardFilterBar>
+      <ActiveFilterChips chips={props.chips ?? []} className="mt-2" />
+    </div>
+  );
 }
 
 function UsersAccessSearchInput(props: { value: string; placeholder: string; onChange: (value: string) => void }) {

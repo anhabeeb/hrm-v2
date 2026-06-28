@@ -19,7 +19,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
-import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput } from "../components/filters";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -175,6 +175,12 @@ export function AdminSettingsPage() {
   const [moduleWarnings, setModuleWarnings] = useState<Row[]>([]);
   const [auditFilters, setAuditFilters] = useState({ search: "", module: "", action: "", date_from: "", date_to: "" });
   const auditDateRange = { from: auditFilters.date_from, to: auditFilters.date_to };
+  const auditFilterChips = useMemo(() => [
+    ...(auditFilters.search ? [{ key: "search", label: "Search", value: auditFilters.search, onRemove: () => setAuditFilters((current) => ({ ...current, search: "" })) }] : []),
+    ...(auditFilters.module ? [{ key: "module", label: "Module", value: auditFilters.module, onRemove: () => setAuditFilters((current) => ({ ...current, module: "" })) }] : []),
+    ...(auditFilters.action ? [{ key: "action", label: "Action", value: auditFilters.action, onRemove: () => setAuditFilters((current) => ({ ...current, action: "" })) }] : []),
+    ...(auditFilters.date_from || auditFilters.date_to ? [{ key: "date", label: "Date", value: formatDateRangeLabel(auditDateRange), onRemove: () => setAuditFilters((current) => ({ ...current, date_from: "", date_to: "" })) }] : [])
+  ], [auditFilters, auditDateRange]);
 
   const permissions = useMemo(() => new Set(user?.permissions ?? []), [user]);
   const canView = Boolean(user?.is_owner || permissions.has("admin.settings_hub.view") || permissions.has("settings.view"));
@@ -428,7 +434,7 @@ export function AdminSettingsPage() {
 
       {active === "checks" ? <div className="space-y-4"><Button size="sm" onClick={() => runAction("Consistency checks completed.", async () => { if (token) setChecks((await api.runAdminConsistencyChecks(token)).checks); })}>Run consistency checks</Button><RowsTable rows={checks} columns={["severity", "status", "category", "check_name", "module_key", "message", "suggested_action", "last_checked_at"]} empty="No consistency checks yet." /></div> : null}
 
-      {active === "audit" ? <div className="space-y-4"><Panel className="p-4"><StandardFilterBar search={<StandardSearchInput value={auditFilters.search} onDebouncedChange={(search) => setAuditFilters((current) => ({ ...current, search }))} placeholder="Search audit log" />} reset={<FilterResetButton onReset={() => setAuditFilters({ search: "", module: "", action: "", date_from: "", date_to: "" })} />} actions={<Button size="sm" variant="outline" onClick={() => void load()}>Filter</Button>} moreFilters={<MoreFiltersSheet onReset={() => setAuditFilters({ search: "", module: "", action: "", date_from: "", date_to: "" })} onApply={() => void load()}><FilterSection title="Audit metadata"><Input placeholder="Module" value={auditFilters.module} onChange={(e) => setAuditFilters({ ...auditFilters, module: e.target.value })} /><Input placeholder="Action" value={auditFilters.action} onChange={(e) => setAuditFilters({ ...auditFilters, action: e.target.value })} /><StandardDateRangeFilter value={auditDateRange} onChange={(range) => setAuditFilters((current) => ({ ...current, date_from: range.from ?? "", date_to: range.to ?? "" }))} label="Audit Date Range" /></FilterSection></MoreFiltersSheet>} /></Panel><RowsTable rows={auditRows} columns={["created_at", "module", "action", "entity_type", "entity_id", "actor_email", "reason", "sensitive", "restricted"]} empty="No audit logs found." /></div> : null}
+      {active === "audit" ? <div className="space-y-4"><Panel className="p-4"><StandardFilterBar search={<StandardSearchInput value={auditFilters.search} onDebouncedChange={(search) => setAuditFilters((current) => ({ ...current, search }))} placeholder="Search audit log" />} reset={<FilterResetButton onReset={() => setAuditFilters({ search: "", module: "", action: "", date_from: "", date_to: "" })} />} actions={<Button size="sm" variant="outline" onClick={() => void load()}>Filter</Button>} moreFilters={<MoreFiltersSheet onReset={() => setAuditFilters({ search: "", module: "", action: "", date_from: "", date_to: "" })} onApply={() => void load()}><FilterSection title="Audit metadata"><Input placeholder="Module" value={auditFilters.module} onChange={(e) => setAuditFilters({ ...auditFilters, module: e.target.value })} /><Input placeholder="Action" value={auditFilters.action} onChange={(e) => setAuditFilters({ ...auditFilters, action: e.target.value })} /><StandardDateRangeFilter value={auditDateRange} onChange={(range) => setAuditFilters((current) => ({ ...current, date_from: range.from ?? "", date_to: range.to ?? "" }))} label="Audit Date Range" /></FilterSection></MoreFiltersSheet>} /><ActiveFilterChips chips={auditFilterChips} className="mt-2" /></Panel><RowsTable rows={auditRows} columns={["created_at", "module", "action", "entity_type", "entity_id", "actor_email", "reason", "sensitive", "restricted"]} empty="No audit logs found." /></div> : null}
 
       {active === "security-events" ? <RowsTable rows={securityEvents} columns={["created_at", "severity", "event_type", "result", "actor_email_snapshot", "target_user_id", "module_key", "message", "restricted"]} empty="No security events found." /> : null}
 

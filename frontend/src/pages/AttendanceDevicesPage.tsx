@@ -1,11 +1,11 @@
-import { Archive, Edit, Plus, Power, PowerOff, Search, Wrench } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Archive, Edit, Plus, Power, PowerOff, Wrench } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { AttendanceDeviceModal } from "../components/attendance/AttendanceDeviceModal";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
+import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
-import { Input } from "../components/ui/input";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -24,9 +24,31 @@ export function AttendanceDevicesPage() {
   const [devices, setDevices] = useState<AttendanceDevice[]>([]);
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [healthFilter, setHealthFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
   const [editing, setEditing] = useState<AttendanceDevice | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const statusOptions = useMemo(() => Array.from(new Set(devices.map((device) => device.status).filter(Boolean))).sort(), [devices]);
+  const typeOptions = useMemo(() => Array.from(new Set(devices.map((device) => device.type).filter(Boolean))).sort(), [devices]);
+  const healthOptions = useMemo(() => Array.from(new Set(devices.map((device) => device.health_status ?? "UNKNOWN").filter(Boolean))).sort(), [devices]);
+  const resetFilters = () => {
+    setSearch("");
+    setStatusFilter("");
+    setTypeFilter("");
+    setHealthFilter("");
+    setLocationFilter("");
+  };
+  const locationName = (id: string) => locations.find((location) => location.id === id)?.name ?? id;
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(statusFilter ? [{ key: "status", label: "Status", value: statusFilter.replace(/_/g, " "), title: statusFilter, onRemove: () => setStatusFilter("") }] : []),
+    ...(typeFilter ? [{ key: "type", label: "Device Type", value: typeFilter.replace(/_/g, " "), title: typeFilter, onRemove: () => setTypeFilter("") }] : []),
+    ...(healthFilter ? [{ key: "health", label: "Health", value: healthFilter.replace(/_/g, " "), title: healthFilter, onRemove: () => setHealthFilter("") }] : []),
+    ...(locationFilter ? [{ key: "location", label: "Location", value: locationName(locationFilter), onRemove: () => setLocationFilter("") }] : [])
+  ], [healthFilter, locationFilter, locations, search, statusFilter, typeFilter]);
 
   async function load() {
     if (!token || !canView) return;
@@ -77,7 +99,14 @@ export function AttendanceDevicesPage() {
     }
   }
 
-  const filtered = devices.filter((device) => [device.name, device.device_code, device.location_name, device.type, device.status].some((value) => String(value ?? "").toLowerCase().includes(search.toLowerCase())));
+  const filtered = devices.filter((device) => {
+    const matchesSearch = [device.name, device.device_code, device.location_name, device.type, device.status].some((value) => String(value ?? "").toLowerCase().includes(search.toLowerCase()));
+    return matchesSearch
+      && (!statusFilter || device.status === statusFilter)
+      && (!typeFilter || device.type === typeFilter)
+      && (!healthFilter || (device.health_status ?? "UNKNOWN") === healthFilter)
+      && (!locationFilter || device.location_id === locationFilter);
+  });
 
   if (!canView) return <PageShell><Panel><EmptyState title="Attendance devices unavailable" description="Your account needs attendance.view permission." /></Panel></PageShell>;
 
@@ -91,7 +120,24 @@ export function AttendanceDevicesPage() {
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
-        <div className="border-b p-3"><div className="relative max-w-md"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search devices" value={search} onChange={(event) => setSearch(event.target.value)} /></div></div>
+        <div className="border-b p-3">
+          <StandardFilterBar
+            search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search devices" />}
+            reset={<FilterResetButton onReset={resetFilters} />}
+            moreFilters={
+              <MoreFiltersSheet title="Device filters" onReset={() => { setHealthFilter(""); setLocationFilter(""); }}>
+                <FilterSection title="Device metadata">
+                  <StandardSelectFilter value={healthFilter} onValueChange={setHealthFilter} allLabel="All health" width="status" options={healthOptions.map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} />
+                  <StandardSelectFilter value={locationFilter} onValueChange={setLocationFilter} allLabel="All locations" width="department" options={locations.map((location) => ({ value: location.id, label: location.name }))} />
+                </FilterSection>
+              </MoreFiltersSheet>
+            }
+          >
+            <StandardSelectFilter value={statusFilter} onValueChange={setStatusFilter} allLabel="All statuses" width="status" options={statusOptions.map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} />
+            <StandardSelectFilter value={typeFilter} onValueChange={setTypeFilter} allLabel="All device types" width="status" options={typeOptions.map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} />
+          </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
+        </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Code</TableHead><TableHead>Vendor</TableHead><TableHead>Mode</TableHead><TableHead>Type</TableHead><TableHead>Location</TableHead><TableHead>Status</TableHead><TableHead>Health</TableHead><TableHead>Last sync</TableHead><TableHead>Network</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>

@@ -1,10 +1,10 @@
 import { Eye, FilePlus, Link2, Repeat2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { AssetsNav } from "../components/assets/AssetsNav";
-import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -56,6 +56,16 @@ export function AssetAssignmentsPage() {
   const expectedRange = { from: filters.expected_return_date_from, to: filters.expected_return_date_to };
   const returnedRange = { from: filters.returned_date_from, to: filters.returned_date_to };
   const resetFilters = () => setFilters({ search: "", department_id: "", location_id: "", category_id: "", status: "", issued_date_from: "", issued_date_to: "", expected_return_date_from: "", expected_return_date_to: "", returned_date_from: "", returned_date_to: "" });
+  const activeFilterChips = useMemo(() => [
+    ...(filters.search ? [{ key: "search", label: "Search", value: filters.search, onRemove: () => setFilters((current) => ({ ...current, search: "" })) }] : []),
+    ...(filters.category_id ? [{ key: "category", label: "Category", value: categories.find((category) => category.id === filters.category_id)?.name ?? filters.category_id, onRemove: () => setFilters((current) => ({ ...current, category_id: "" })) }] : []),
+    ...(filters.status ? [{ key: "status", label: "Status", value: filters.status.replace(/_/g, " "), title: filters.status, onRemove: () => setFilters((current) => ({ ...current, status: "" })) }] : []),
+    ...(filters.location_id ? [{ key: "location", label: "Location", value: locations.find((location) => location.id === filters.location_id)?.name ?? filters.location_id, onRemove: () => setFilters((current) => ({ ...current, location_id: "" })) }] : []),
+    ...(filters.department_id ? [{ key: "department", label: "Department", value: departments.find((department) => department.id === filters.department_id)?.name ?? filters.department_id, onRemove: () => setFilters((current) => ({ ...current, department_id: "" })) }] : []),
+    ...(filters.issued_date_from || filters.issued_date_to ? [{ key: "issued", label: "Issued", value: formatDateRangeLabel(issuedRange), onRemove: () => setFilters((current) => ({ ...current, issued_date_from: "", issued_date_to: "" })) }] : []),
+    ...(filters.expected_return_date_from || filters.expected_return_date_to ? [{ key: "expected", label: "Expected Return", value: formatDateRangeLabel(expectedRange), onRemove: () => setFilters((current) => ({ ...current, expected_return_date_from: "", expected_return_date_to: "" })) }] : []),
+    ...(filters.returned_date_from || filters.returned_date_to ? [{ key: "returned", label: "Returned", value: formatDateRangeLabel(returnedRange), onRemove: () => setFilters((current) => ({ ...current, returned_date_from: "", returned_date_to: "" })) }] : [])
+  ], [categories, departments, expectedRange, filters, issuedRange, locations, returnedRange]);
 
   async function load() {
     if (!token) return;
@@ -121,6 +131,7 @@ export function AssetAssignmentsPage() {
             <StandardSelectFilter value={filters.category_id} onValueChange={(category_id) => setFilters((current) => ({ ...current, category_id }))} allLabel="All categories" width="documentType" options={categories.map((row) => ({ value: row.id, label: row.name }))} />
             <StandardSelectFilter value={filters.status} onValueChange={(status) => setFilters((current) => ({ ...current, status }))} allLabel="All status" width="status" options={["ISSUED","RETURNED","DAMAGED","LOST","REPLACED","WRITTEN_OFF"].map((value) => ({ value, label: value }))} />
           </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="flex justify-end border-t p-3">{canIssue ? <Button size="sm" onClick={() => setModal({ type: "issue" })}>Issue asset</Button> : null}</div>
       </Panel>

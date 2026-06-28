@@ -1,6 +1,7 @@
 import { Calculator, CheckCircle2, FileText, Lock, Plus, RefreshCw, Send, Settings, Wallet, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
@@ -85,6 +86,8 @@ export function FinalSettlementPage() {
   const [events, setEvents] = useState<FinalSettlementEvent[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [exitType, setExitType] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -98,10 +101,29 @@ export function FinalSettlementPage() {
   const [form, setForm] = useState({ employee_id: "", exit_type: "RESIGNED", exit_date: "", last_working_day: "", reason: "" });
   const organizationRefs = useOrganizationReferences(token);
 
+  const exitTypeOptions = useMemo(() => Array.from(new Set(cases.map((row) => row.exit_type).filter(Boolean).map(String))).sort(), [cases]);
+  const departmentOptions = useMemo(() => Array.from(new Set(cases.map((row) => row.department_snapshot ?? row.department_name).filter(Boolean).map(String))).sort(), [cases]);
+  const resetCaseFilters = () => {
+    setSearch("");
+    setStatus("");
+    setExitType("");
+    setDepartmentFilter("");
+  };
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(status ? [{ key: "status", label: "Status", value: humanizeStatus(status), title: status, onRemove: () => setStatus("") }] : []),
+    ...(exitType ? [{ key: "exit_type", label: "Exit Type", value: exitType.replace(/_/g, " "), title: exitType, onRemove: () => setExitType("") }] : []),
+    ...(departmentFilter ? [{ key: "department", label: "Department", value: departmentFilter, onRemove: () => setDepartmentFilter("") }] : [])
+  ], [departmentFilter, exitType, search, status]);
+
   const filteredCases = useMemo(() => cases.filter((row) => {
     const text = `${row.employee_no ?? row.employee_number_snapshot ?? ""} ${row.employee_name ?? row.employee_name_snapshot ?? row.full_name ?? ""} ${row.department_snapshot ?? ""} ${row.location_snapshot ?? row.worksite_snapshot ?? ""}`.toLowerCase();
-    return (!search || text.includes(search.toLowerCase())) && (!status || row.status === status);
-  }), [cases, search, status]);
+    const rowDepartment = row.department_snapshot ?? row.department_name ?? "";
+    return (!search || text.includes(search.toLowerCase()))
+      && (!status || row.status === status)
+      && (!exitType || row.exit_type === exitType)
+      && (!departmentFilter || rowDepartment === departmentFilter);
+  }), [cases, departmentFilter, exitType, search, status]);
 
   async function load() {
     if (!token || !canView) return;
@@ -298,10 +320,23 @@ export function FinalSettlementPage() {
       {tab === "cases" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
           <Panel className="overflow-hidden">
-            <div className="grid gap-2 border-b p-3 md:grid-cols-4">
-              <Input placeholder="Search employee, department, location" value={search} onChange={(event) => setSearch(event.target.value)} />
-              <SelectField value={status} onChange={setStatus}><option value="">All statuses</option>{["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "SUBMITTED_FOR_APPROVAL", "APPROVED", "REJECTED", "SENT_BACK", "FINALIZED", "LOCKED", "CANCELLED"].map((item) => <option key={item} value={item}>{humanizeStatus(item)}</option>)}</SelectField>
-              <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>
+            <div className="border-b p-3">
+              <StandardFilterBar
+                search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee, department, location" />}
+                reset={<FilterResetButton onReset={resetCaseFilters} />}
+                actions={<Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>}
+                moreFilters={
+                  <MoreFiltersSheet title="Exit payroll filters" onReset={() => { setExitType(""); setDepartmentFilter(""); }}>
+                    <FilterSection title="Case details">
+                      <StandardSelectFilter value={exitType} onValueChange={setExitType} allLabel="All exit types" width="status" options={exitTypeOptions.map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} />
+                      <StandardSelectFilter value={departmentFilter} onValueChange={setDepartmentFilter} allLabel="All departments" width="department" options={departmentOptions.map((item) => ({ value: item, label: item }))} />
+                    </FilterSection>
+                  </MoreFiltersSheet>
+                }
+              >
+                <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "SUBMITTED_FOR_APPROVAL", "APPROVED", "REJECTED", "SENT_BACK", "FINALIZED", "LOCKED", "CANCELLED"].map((item) => ({ value: item, label: humanizeStatus(item) }))} />
+              </StandardFilterBar>
+              <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
             </div>
             <div className="overflow-x-auto">
               <Table>

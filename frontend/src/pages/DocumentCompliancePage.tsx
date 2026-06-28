@@ -2,6 +2,7 @@ import { Bell, CheckCircle2, ClipboardList, FileWarning, RefreshCw, Settings, XC
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -28,6 +29,8 @@ const tabs: Array<{ mode: Mode; label: string; to: string }> = [
   { mode: "waivers", label: "Waivers", to: "/documents/compliance/waivers" },
   { mode: "type-settings", label: "Type Rules", to: "/settings/documents/compliance/types" }
 ];
+
+const complianceStatusOptions = ["OPEN", "ACKNOWLEDGED", "RESOLVED", "DISMISSED", "IN_PROGRESS", "WAITING_FOR_EMPLOYEE", "COMPLETED", "CANCELLED", "ACTIVE"];
 
 function statusTone(status?: string) {
   if (!status) return "neutral";
@@ -64,6 +67,14 @@ export function DocumentCompliancePage({ mode = "dashboard" }: { mode?: Mode }) 
   const [typeModal, setTypeModal] = useState<DocumentType | null>(null);
 
   const activeFilters = useMemo(() => ({ search, status }), [search, status]);
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(status ? [{ key: "status", label: "Status", value: status.replace(/_/g, " "), title: status, onRemove: () => setStatus("") }] : [])
+  ], [search, status]);
+  const resetFilters = () => {
+    setSearch("");
+    setStatus("");
+  };
 
   async function load() {
     if (!token || !canView) return;
@@ -148,12 +159,20 @@ export function DocumentCompliancePage({ mode = "dashboard" }: { mode?: Mode }) 
         {error ? <div className="m-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
 
         {mode !== "dashboard" && mode !== "settings" && mode !== "type-settings" ? (
-          <div className="grid gap-2 border-b p-3 md:grid-cols-4">
-            <Input placeholder="Search employee or document" value={search} onChange={(event) => setSearch(event.target.value)} />
-            <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">All statuses</option>
-              {["OPEN", "ACKNOWLEDGED", "RESOLVED", "DISMISSED", "IN_PROGRESS", "WAITING_FOR_EMPLOYEE", "COMPLETED", "CANCELLED", "ACTIVE"].map((item) => <option key={item} value={item}>{item}</option>)}
-            </SelectField>
+          <div className="border-b p-3">
+            <StandardFilterBar
+              search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee or document" />}
+              reset={<FilterResetButton onReset={resetFilters} />}
+            >
+              <StandardSelectFilter
+                value={status}
+                onValueChange={setStatus}
+                allLabel="All statuses"
+                width="status"
+                options={complianceStatusOptions.map((item) => ({ value: item, label: item.replace(/_/g, " ") }))}
+              />
+            </StandardFilterBar>
+            <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
           </div>
         ) : null}
 

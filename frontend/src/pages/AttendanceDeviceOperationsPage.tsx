@@ -2,7 +2,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
-import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter, type ActiveFilterChip } from "../components/filters";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Badge } from "../components/ui/badge";
@@ -162,10 +162,11 @@ function BiometricMappings({ token }: { token: string }) {
     }
   }
   useEffect(() => { void load(); }, [token, search]);
+  const chips = useMemo<ActiveFilterChip[]>(() => search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : [], [search]);
 
   return (
     <Panel className="overflow-hidden">
-      <Toolbar><DeviceSearchInput value={search} onChange={setSearch} placeholder="Search employee, biometric ID, or code" /><FilterResetButton onReset={() => setSearch("")} /><Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add mapping</Button></Toolbar>
+      <Toolbar chips={chips}><DeviceSearchInput value={search} onChange={setSearch} placeholder="Search employee, biometric ID, or code" /><FilterResetButton onReset={() => setSearch("")} /><Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add mapping</Button></Toolbar>
       <StatusLine error={error} />
       <DataTable rows={mappings} columns={["employee_name", "employee_no", "device_name", "biometric_user_id", "external_employee_code", "mapping_source", "status"]} />
       {mappings.length === 0 ? <EmptyState title="No biometric mappings" description="Map ZKTeco biometric user IDs to employees." /> : null}
@@ -228,7 +229,11 @@ function RawLogs({ token }: { token: string }) {
     setRows((await api.listAttendanceRawLogs(token, { search, process_status: status })).logs);
   }
   useEffect(() => { void load().catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load raw logs.")); }, [token, search, status]);
-  return <Panel className="overflow-hidden"><Toolbar><DeviceSearchInput value={search} onChange={setSearch} placeholder="Search raw logs" /><MoreFiltersSheet title="Raw log filters" onReset={() => setStatus("")}><FilterSection title="Processing"><StandardSelectFilter value={status} onValueChange={setStatus} options={["PENDING", "MATCHED", "UNMATCHED", "DUPLICATE", "ERROR", "NORMALIZED", "LOCKED_WARNING"].map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} allLabel="All statuses" ariaLabel="Process status" /></FilterSection></MoreFiltersSheet><FilterResetButton onReset={() => { setSearch(""); setStatus(""); }} /></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={["employee_name", "employee_no", "device_name", "biometric_user_id", "external_employee_code", "punch_time", "punch_type", "source", "process_status", "error_message"]} /></Panel>;
+  const chips = useMemo<ActiveFilterChip[]>(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(status ? [{ key: "status", label: "Status", value: status.replace(/_/g, " "), title: status, onRemove: () => setStatus("") }] : [])
+  ], [search, status]);
+  return <Panel className="overflow-hidden"><Toolbar chips={chips}><DeviceSearchInput value={search} onChange={setSearch} placeholder="Search raw logs" /><MoreFiltersSheet title="Raw log filters" onReset={() => setStatus("")}><FilterSection title="Processing"><StandardSelectFilter value={status} onValueChange={setStatus} options={["PENDING", "MATCHED", "UNMATCHED", "DUPLICATE", "ERROR", "NORMALIZED", "LOCKED_WARNING"].map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} allLabel="All statuses" ariaLabel="Process status" /></FilterSection></MoreFiltersSheet><FilterResetButton onReset={() => { setSearch(""); setStatus(""); }} /></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={["employee_name", "employee_no", "device_name", "biometric_user_id", "external_employee_code", "punch_time", "punch_type", "source", "process_status", "error_message"]} /></Panel>;
 }
 
 function UnmatchedLogs({ token }: { token: string }) {
@@ -297,7 +302,8 @@ function DeviceReports({ token }: { token: string }) {
     link.click();
     URL.revokeObjectURL(url);
   }
-  return <Panel className="overflow-hidden"><Toolbar><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={key} onChange={(event) => setKey(event.target.value)}>{reportKeys.map((item) => <option key={item} value={item}>{item}</option>)}</SelectField><FilterResetButton onReset={() => setKey(reportKeys[0])} /><Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={columns} /></Panel>;
+  const chips = useMemo<ActiveFilterChip[]>(() => key !== reportKeys[0] ? [{ key: "report", label: "Report", value: key, onRemove: () => setKey(reportKeys[0]) }] : [], [key]);
+  return <Panel className="overflow-hidden"><Toolbar chips={chips}><StandardSelectFilter value={key} onValueChange={setKey} allLabel={reportKeys[0]} width="documentType" options={reportKeys.slice(1).map((item) => ({ value: item, label: item }))} /><FilterResetButton onReset={() => setKey(reportKeys[0])} /><Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={columns} /></Panel>;
 }
 
 function MappingModal({ token, mapping, employees, devices, onClose, onSaved }: { token: string; mapping?: EmployeeBiometricMapping | null; employees: Employee[]; devices: AttendanceDevice[]; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -377,8 +383,8 @@ function DeviceSearchInput({ value, onChange, placeholder }: { value: string; on
   return <StandardSearchInput value={value} onDebouncedChange={onChange} placeholder={placeholder} />;
 }
 
-function Toolbar({ children }: { children: ReactNode }) {
-  return <div className="border-b p-3"><StandardFilterBar className="border-0 shadow-none">{children}</StandardFilterBar></div>;
+function Toolbar({ children, chips = [] }: { children: ReactNode; chips?: ActiveFilterChip[] }) {
+  return <div className="border-b p-3"><StandardFilterBar className="border-0 shadow-none">{children}</StandardFilterBar><ActiveFilterChips chips={chips} className="mt-2" /></div>;
 }
 
 function StatusLine({ error, message }: { error?: string | null; message?: string | null }) {

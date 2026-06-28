@@ -1,6 +1,6 @@
 import { Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { FilterResetButton, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterNav } from "../components/roster/RosterNav";
 import { Button } from "../components/ui/button";
@@ -20,7 +20,8 @@ export function RosterReportsPage() {
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("roster.reports.view");
   const canExport = permissions.has("roster.reports.export");
-  const [weekStart, setWeekStart] = useState(new Date().toISOString().slice(0, 10));
+  const defaultWeekStart = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [weekStart, setWeekStart] = useState(defaultWeekStart);
   const [search, setSearch] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [locationId, setLocationId] = useState("");
@@ -33,6 +34,13 @@ export function RosterReportsPage() {
   const [loading, setLoading] = useState(true);
   const filters = useMemo(() => ({ week_start_date: weekStart, search, department_id: departmentId, location_id: locationId, status }), [weekStart, search, departmentId, locationId, status]);
   const weekRange = useMemo(() => ({ from: weekStart, to: weekStart }), [weekStart]);
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(weekStart !== defaultWeekStart ? [{ key: "week", label: "Week", value: formatDateRangeLabel(weekRange), onRemove: () => setWeekStart(defaultWeekStart) }] : []),
+    ...(status ? [{ key: "status", label: "Status", value: status.replace(/_/g, " "), title: status, onRemove: () => setStatus("") }] : []),
+    ...(departmentId ? [{ key: "department", label: "Department", value: departments.find((department) => department.id === departmentId)?.name ?? departmentId, onRemove: () => setDepartmentId("") }] : []),
+    ...(locationId ? [{ key: "location", label: "Location", value: locations.find((location) => location.id === locationId)?.name ?? locationId, onRemove: () => setLocationId("") }] : [])
+  ], [defaultWeekStart, departmentId, departments, locationId, locations, search, status, weekRange, weekStart]);
 
   async function load() {
     if (!token || !canView) return;
@@ -101,7 +109,7 @@ export function RosterReportsPage() {
         <div className="border-b p-3">
           <StandardFilterBar
             search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee" />}
-            reset={<FilterResetButton onReset={() => { setSearch(""); setDepartmentId(""); setLocationId(""); setStatus(""); }} />}
+            reset={<FilterResetButton onReset={() => { setSearch(""); setWeekStart(defaultWeekStart); setDepartmentId(""); setLocationId(""); setStatus(""); }} />}
             moreFilters={
               <MoreFiltersSheet onReset={() => { setDepartmentId(""); setLocationId(""); }}>
                 <OrganizationCascadeSelector
@@ -127,6 +135,7 @@ export function RosterReportsPage() {
             <StandardDateRangeFilter value={weekRange} onChange={(range) => setWeekStart(range.from ?? weekStart)} label="Week Start" />
             <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={statuses.map((item) => ({ value: item, label: item }))} />
           </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="overflow-x-auto">
           <Table>

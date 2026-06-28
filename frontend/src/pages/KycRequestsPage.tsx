@@ -1,6 +1,6 @@
 import { Check, RefreshCw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { FilterResetButton, FilterSection, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { ConfirmDialog } from "../components/ui/dialogs";
@@ -28,6 +28,12 @@ export function KycRequestsPage() {
 
   const filters = useMemo(() => ({ search, status, section, date_from: dateFrom, date_to: dateTo }), [search, status, section, dateFrom, dateTo]);
   const dateRange = useMemo(() => ({ from: dateFrom, to: dateTo }), [dateFrom, dateTo]);
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(status ? [{ key: "status", label: "Status", value: status.replace(/_/g, " "), title: status, onRemove: () => setStatus("") }] : []),
+    ...(section ? [{ key: "section", label: "Section", value: section, onRemove: () => setSection("") }] : []),
+    ...(dateFrom || dateTo ? [{ key: "date", label: "Request Date", value: formatDateRangeLabel(dateRange), onRemove: () => { setDateFrom(""); setDateTo(""); } }] : [])
+  ], [dateFrom, dateRange, dateTo, search, section, status]);
 
   async function load() {
     if (!token) return;
@@ -95,6 +101,7 @@ export function KycRequestsPage() {
             </FilterSection>
           </MoreFiltersSheet>
         </StandardFilterBar>
+        <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
       </Panel>
 
       <Panel className="overflow-hidden">

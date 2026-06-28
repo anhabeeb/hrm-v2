@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
-import { FilterResetButton, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
@@ -38,6 +38,14 @@ export function LeaveCalendarPage() {
     start_date_from: startFrom,
     start_date_to: startTo
   }), [search, departmentId, locationId, typeId, status, startFrom, startTo]);
+  const activeFilterChips = useMemo(() => [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+    ...(typeId ? [{ key: "type", label: "Leave Type", value: types.find((type) => type.id === typeId)?.name ?? typeId, onRemove: () => setTypeId("") }] : []),
+    ...(status ? [{ key: "status", label: "Status", value: status.replace(/_/g, " "), title: status, onRemove: () => setStatus("") }] : []),
+    ...(departmentId ? [{ key: "department", label: "Department", value: departments.find((department) => department.id === departmentId)?.name ?? departmentId, onRemove: () => setDepartmentId("") }] : []),
+    ...(locationId ? [{ key: "location", label: "Location", value: locations.find((location) => location.id === locationId)?.name ?? locationId, onRemove: () => setLocationId("") }] : []),
+    ...(startFrom || startTo ? [{ key: "start", label: "Start Date", value: formatDateRangeLabel(startRange), onRemove: () => { setStartFrom(""); setStartTo(""); } }] : [])
+  ], [departmentId, departments, locationId, locations, search, startFrom, startRange, startTo, status, typeId, types]);
 
   useEffect(() => {
     async function load() {
@@ -86,6 +94,7 @@ export function LeaveCalendarPage() {
             <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="Approved and pending" width="status" options={[{ value: "APPROVED", label: "Approved" }, { value: "PENDING_APPROVAL", label: "Pending approval" }]} />
             <StandardDateRangeFilter value={startRange} onChange={(range) => { setStartFrom(range.from ?? ""); setStartTo(range.to ?? ""); }} label="Start Date Range" />
           </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="overflow-x-auto">
           <Table>

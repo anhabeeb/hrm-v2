@@ -1,6 +1,7 @@
-import { Edit, Plus, Search } from "lucide-react";
+import { Edit, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput } from "../components/filters";
 import { RosterNav } from "../components/roster/RosterNav";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -54,6 +55,7 @@ export function RosterShiftTemplatesPage() {
   }, [token, canView]);
 
   const filtered = useMemo(() => templates.filter((template) => `${template.code} ${template.name}`.toLowerCase().includes(search.toLowerCase())), [templates, search]);
+  const activeFilterChips = useMemo(() => search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : [], [search]);
 
   async function save(input: ShiftForm) {
     if (!token) return;
@@ -99,7 +101,11 @@ export function RosterShiftTemplatesPage() {
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="border-b p-3">
-          <div className="relative max-w-md"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search code or name" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+          <StandardFilterBar
+            search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search code or name" />}
+            reset={<FilterResetButton onReset={() => setSearch("")} />}
+          />
+          <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="overflow-x-auto">
           <Table>

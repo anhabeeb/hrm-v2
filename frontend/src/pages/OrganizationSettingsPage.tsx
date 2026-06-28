@@ -1,6 +1,7 @@
-import { Building2, Eye, Pencil, Plus, RotateCcw, Save, Search, ToggleLeft, ToggleRight } from "lucide-react";
+import { Building2, Eye, Pencil, Plus, RotateCcw, Save, ToggleLeft, ToggleRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput, StandardSelectFilter, type ActiveFilterChip } from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -437,22 +438,11 @@ function SelectField({
 }
 
 function SearchFilter({ search, onSearch }: { search: string; onSearch: (value: string) => void }) {
-  return (
-    <div className="relative min-w-[220px] flex-1">
-      <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-      <Input className="pl-9" placeholder="Search records" value={search} onChange={(event) => onSearch(event.target.value)} />
-    </div>
-  );
+  return <StandardSearchInput value={search} onDebouncedChange={onSearch} placeholder="Search records" />;
 }
 
 function StatusFilterSelect({ value, onChange }: { value: StatusFilter; onChange: (value: StatusFilter) => void }) {
-  return (
-    <SelectField value={value} onChange={(next) => onChange(next as StatusFilter)}>
-      <option value="all">All status</option>
-      <option value="active">Active</option>
-      <option value="inactive">Inactive</option>
-    </SelectField>
-  );
+  return <StandardSelectFilter value={value} onValueChange={(next) => onChange(next as StatusFilter)} allLabel="All status" width="status" options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]} />;
 }
 
 function SectionToolbar({
@@ -463,6 +453,8 @@ function SectionToolbar({
   onSearch,
   onStatus,
   onCreate,
+  onExtraReset,
+  extraChips = [],
   children
 }: {
   canManage: boolean;
@@ -472,25 +464,40 @@ function SectionToolbar({
   onSearch: (value: string) => void;
   onStatus: (value: StatusFilter) => void;
   onCreate: () => void;
+  onExtraReset?: () => void;
+  extraChips?: ActiveFilterChip[];
   children?: ReactNode;
 }) {
+  const chips: ActiveFilterChip[] = [
+    ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => onSearch("") }] : []),
+    ...(statusFilter !== "all" ? [{ key: "status", label: "Status", value: statusFilter === "active" ? "Active" : "Inactive", onRemove: () => onStatus("all") }] : []),
+    ...extraChips
+  ];
+  const reset = () => {
+    onSearch("");
+    onStatus("all");
+    onExtraReset?.();
+  };
   return (
-    <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+    <div className="mb-3 space-y-3">
       <div>
         <h2 className="text-sm font-semibold">{title}</h2>
         <p className="text-xs text-muted-foreground">Lower rank order means the lower level in the organization hierarchy.</p>
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <SearchFilter search={search} onSearch={onSearch} />
-        <StatusFilterSelect value={statusFilter} onChange={onStatus} />
-        {children}
-        {canManage ? (
+      <StandardFilterBar
+        search={<SearchFilter search={search} onSearch={onSearch} />}
+        reset={<FilterResetButton onReset={reset} />}
+        actions={canManage ? (
           <Button size="sm" onClick={onCreate}>
             <Plus className="h-4 w-4" />
             New
           </Button>
         ) : null}
-      </div>
+      >
+        <StatusFilterSelect value={statusFilter} onChange={onStatus} />
+        {children}
+      </StandardFilterBar>
+      <ActiveFilterChips chips={chips} />
     </div>
   );
 }
@@ -623,15 +630,13 @@ function LocationsTab(props: {
 }) {
   return (
     <>
-      <SectionToolbar {...props} title="Outlets / Locations">
-        <SelectField value={props.typeFilter} onChange={(value) => props.onType(value as "all" | LocationType)}>
-          <option value="all">All types</option>
-          {locationTypes.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
-        </SelectField>
+      <SectionToolbar
+        {...props}
+        title="Outlets / Locations"
+        onExtraReset={() => props.onType("all")}
+        extraChips={props.typeFilter !== "all" ? [{ key: "type", label: "Type", value: props.typeFilter, onRemove: () => props.onType("all") }] : []}
+      >
+        <StandardSelectFilter value={props.typeFilter} onValueChange={(value) => props.onType(value as "all" | LocationType)} allLabel="All types" width="status" options={locationTypes.map((type) => ({ value: type, label: type }))} />
       </SectionToolbar>
       <TableWrap empty={!props.locations.length} emptyTitle="No locations found">
         <Table>
@@ -789,23 +794,17 @@ function PositionsTab(props: {
 }) {
   return (
     <>
-      <SectionToolbar {...props} title="Positions / Designations">
-        <SelectField value={props.departmentFilter} onChange={props.onDepartment}>
-          <option value="all">All departments</option>
-          {props.departments.map((department) => (
-            <option key={department.id} value={department.id}>
-              {department.name}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField value={props.levelFilter} onChange={props.onLevel}>
-          <option value="all">All levels</option>
-          {props.jobLevels.map((level) => (
-            <option key={level.id} value={level.id}>
-              {level.name}
-            </option>
-          ))}
-        </SelectField>
+      <SectionToolbar
+        {...props}
+        title="Positions / Designations"
+        onExtraReset={() => { props.onDepartment("all"); props.onLevel("all"); }}
+        extraChips={[
+          ...(props.departmentFilter !== "all" ? [{ key: "department", label: "Department", value: props.departments.find((department) => department.id === props.departmentFilter)?.name ?? props.departmentFilter, onRemove: () => props.onDepartment("all") }] : []),
+          ...(props.levelFilter !== "all" ? [{ key: "job_level", label: "Job Level", value: props.jobLevels.find((level) => level.id === props.levelFilter)?.name ?? props.levelFilter, onRemove: () => props.onLevel("all") }] : [])
+        ]}
+      >
+        <StandardSelectFilter value={props.departmentFilter} onValueChange={props.onDepartment} allLabel="All departments" width="department" options={props.departments.map((department) => ({ value: department.id, label: department.name }))} />
+        <StandardSelectFilter value={props.levelFilter} onValueChange={props.onLevel} allLabel="All levels" width="jobLevel" options={props.jobLevels.map((level) => ({ value: level.id, label: level.name }))} />
       </SectionToolbar>
       <TableWrap empty={!props.positions.length} emptyTitle="No positions found">
         <Table>

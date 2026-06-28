@@ -1,11 +1,11 @@
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { EmptyState } from "../components/ui/empty-state";
-import { LoadingSkeleton, PageHeader, PageShell, SelectField, StandardTabs } from "../components/ui/page-shell";
+import { LoadingSkeleton, PageHeader, PageShell, StandardTabs } from "../components/ui/page-shell";
 import { StatusBadge } from "../components/ui/status-badge";
 import { useAuth } from "../hooks/useAuth";
 import { api, type GlobalSearchGroup, type GlobalSearchItem } from "../lib/api";
@@ -33,6 +33,10 @@ export function SearchResultsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const total = useMemo(() => groups.reduce((sum, group) => sum + group.items.length, 0), [groups]);
+  const activeFilterChips = useMemo(() => [
+    ...(query.trim() ? [{ key: "query", label: "Search", value: query.trim(), onRemove: () => { setQuery(""); setParams(type === "all" ? {} : { type }); } }] : []),
+    ...(type !== "all" ? [{ key: "type", label: "Type", value: moduleFilters.find((item) => item.key === type)?.label ?? type, onRemove: () => { setType("all"); const next: Record<string, string> = {}; if (query.trim()) next.q = query.trim(); setParams(next); } }] : [])
+  ], [query, setParams, type]);
 
   async function load(nextQuery = query, nextType = type) {
     if (!token) return;
@@ -82,13 +86,14 @@ export function SearchResultsPage() {
       />
 
       <div className="rounded-lg border bg-white p-3 shadow-panel">
-        <div className="grid gap-2 lg:grid-cols-[1fr_220px_auto]">
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitSearch(); }} placeholder="Search HRM records" />
-          <SelectField value={type} onChange={(event) => setType(event.target.value)} aria-label="Search type">
-            {moduleFilters.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
-          </SelectField>
-          <Button onClick={submitSearch}><Search className="h-4 w-4" /> Search</Button>
-        </div>
+        <StandardFilterBar
+          search={<StandardSearchInput value={query} onValueChange={setQuery} placeholder="Search HRM records" ariaLabel="Search HRM records" />}
+          reset={<FilterResetButton onReset={() => { setQuery(""); setType("all"); setParams({}); }} />}
+          actions={<Button onClick={submitSearch}><Search className="h-4 w-4" /> Search</Button>}
+        >
+          <StandardSelectFilter value={type} onValueChange={setType} allLabel="All" width="status" options={moduleFilters.filter((item) => item.key !== "all").map((item) => ({ value: item.key, label: item.label }))} ariaLabel="Search type" />
+        </StandardFilterBar>
+        <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         <div className="mt-3">
           <StandardTabs
             items={moduleFilters.map((item) => ({ key: item.key, label: item.label }))}
