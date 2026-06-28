@@ -16,6 +16,7 @@
   --border: 214 22% 84%;
   --input: 214 22% 84%;
   --ring: 188 92% 28%;
+  --frontend-asset-version: "pages-mime-hardening-2026-06-29";
 }
 
 * {

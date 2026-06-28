@@ -15,6 +15,12 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function getHeaderBlock(headers, rule) {
+  const pattern = new RegExp(`(^|\\n)${rule.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\n([\\s\\S]*?)(?=\\n/|$)`);
+  const match = headers.match(pattern);
+  return match?.[2] ?? "";
+}
+
 function listFiles(dir, extension) {
   const absoluteDir = path.join(root, dir);
   if (!fs.existsSync(absoluteDir)) return [];
@@ -47,14 +53,24 @@ assert(indexHeaderIndex !== -1, "_headers must include /index.html.");
 assert(faviconHeaderIndex !== -1, "_headers must include /favicon.ico.");
 assert(assetsHeaderIndex > wildcardHeaderIndex, "/assets/* header rule must appear after /* so immutable asset cache wins.");
 assert(faviconHeaderIndex > wildcardHeaderIndex, "/favicon.ico header rule must appear after /* so the icon cache rule wins.");
-assert(/\/\*[\s\S]*?Cache-Control:\s*no-cache,\s*no-store,\s*must-revalidate/.test(headers), "SPA wildcard route must be no-cache, no-store, must-revalidate.");
-assert(/\/\*[\s\S]*?X-Content-Type-Options:\s*nosniff/.test(headers), "SPA wildcard route must set nosniff.");
-assert(/\/\*[\s\S]*?Referrer-Policy:\s*strict-origin-when-cross-origin/.test(headers), "SPA wildcard route must set Referrer-Policy.");
-assert(/\/assets\/\*[\s\S]*?Cache-Control:\s*public,\s*max-age=31536000,\s*immutable/.test(headers), "/assets/* must use immutable caching.");
-assert(/\/assets\/\*[\s\S]*?X-Content-Type-Options:\s*nosniff/.test(headers), "/assets/* must set nosniff.");
-assert(/\/index\.html[\s\S]*?Cache-Control:\s*no-cache,\s*no-store,\s*must-revalidate/.test(headers), "/index.html must be no-cache, no-store, must-revalidate.");
-assert(/\/favicon\.ico[\s\S]*?Cache-Control:\s*public,\s*max-age=86400/.test(headers), "/favicon.ico cache rule is missing.");
-assert(/\/favicon\.ico[\s\S]*?X-Content-Type-Options:\s*nosniff/.test(headers), "/favicon.ico must set nosniff.");
+const wildcardHeader = getHeaderBlock(headers, "/*");
+const assetHeader = getHeaderBlock(headers, "/assets/*");
+const indexHeader = getHeaderBlock(headers, "/index.html");
+const faviconHeader = getHeaderBlock(headers, "/favicon.ico");
+
+assert(/Cache-Control:\s*no-cache,\s*no-store,\s*must-revalidate/.test(wildcardHeader), "SPA wildcard route must be no-cache, no-store, must-revalidate.");
+assert(/Pragma:\s*no-cache/.test(wildcardHeader), "SPA wildcard route must set Pragma: no-cache.");
+assert(/Expires:\s*0/.test(wildcardHeader), "SPA wildcard route must set Expires: 0.");
+assert(/X-Content-Type-Options:\s*nosniff/.test(wildcardHeader), "SPA wildcard route must set nosniff.");
+assert(/Referrer-Policy:\s*strict-origin-when-cross-origin/.test(wildcardHeader), "SPA wildcard route must set Referrer-Policy.");
+assert(/Cache-Control:\s*public,\s*max-age=31536000,\s*immutable/.test(assetHeader), "/assets/* must use immutable caching.");
+assert(/X-Content-Type-Options:\s*nosniff/.test(assetHeader), "/assets/* must set nosniff.");
+assert(/Cache-Control:\s*no-cache,\s*no-store,\s*must-revalidate/.test(indexHeader), "/index.html must be no-cache, no-store, must-revalidate.");
+assert(/Pragma:\s*no-cache/.test(indexHeader), "/index.html must set Pragma: no-cache.");
+assert(/Expires:\s*0/.test(indexHeader), "/index.html must set Expires: 0.");
+assert(/X-Content-Type-Options:\s*nosniff/.test(indexHeader), "/index.html must set nosniff.");
+assert(/Cache-Control:\s*public,\s*max-age=86400/.test(faviconHeader), "/favicon.ico cache rule is missing.");
+assert(/X-Content-Type-Options:\s*nosniff/.test(faviconHeader), "/favicon.ico must set nosniff.");
 
 const redirects = read(redirectsPath);
 const assetRedirectIndex = redirects.indexOf("/assets/* /assets/:splat 200");
@@ -75,6 +91,7 @@ const distIndex = read(distIndexPath);
 assert(distIndex.includes('href="/favicon.ico"'), "Built index.html must reference /favicon.ico.");
 const assetReferences = Array.from(distIndex.matchAll(/(?:src|href)="\/?([^"]+\.(?:js|css))"/g)).map((match) => match[1]);
 assert(assetReferences.length > 0, "Built index.html does not reference CSS/JS assets.");
+assert(!assetReferences.some((asset) => asset.endsWith("index-UZP1m5JP.css")), "Built index.html still references the stale index-UZP1m5JP.css asset.");
 for (const asset of assetReferences) {
   assert(exists(path.join("frontend/dist", asset)), `Built index.html references missing asset ${asset}.`);
 }
@@ -83,6 +100,11 @@ const cssAssets = listFiles("frontend/dist/assets", ".css");
 const jsAssets = listFiles("frontend/dist/assets", ".js");
 assert(cssAssets.length > 0, "Built frontend/dist/assets has no CSS assets.");
 assert(jsAssets.length > 0, "Built frontend/dist/assets has no JS assets.");
+for (const cssAsset of cssAssets) {
+  const css = read(cssAsset);
+  assert(css.trim().length > 1000, `${cssAsset} is unexpectedly empty or tiny.`);
+  assert(/--tw-|border-color|font-family|frontend-asset-version/.test(css), `${cssAsset} does not look like the app Tailwind output.`);
+}
 
 assert(exists("frontend/dist/_headers"), "Built Pages output must include _headers.");
 assert(exists("frontend/dist/_redirects"), "Built Pages output must include _redirects.");

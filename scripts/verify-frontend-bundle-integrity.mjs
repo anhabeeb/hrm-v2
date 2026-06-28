@@ -117,6 +117,10 @@ assert(/\/index\.html\s+Cache-Control:\s*no-cache/s.test(headers), "index.html n
 assert(/(^|\n)\/\*\s+Cache-Control:\s*no-cache/s.test(headers), "SPA route wildcard no-cache header is missing.");
 assert(/\/index\.html\s+Cache-Control:[^\n]*no-store/s.test(headers), "index.html no-store header is missing.");
 assert(/(^|\n)\/\*\s+Cache-Control:[^\n]*no-store/s.test(headers), "SPA route wildcard no-store header is missing.");
+assert(/\/index\.html[\s\S]*Pragma:\s*no-cache/s.test(headers), "index.html Pragma no-cache header is missing.");
+assert(/\/index\.html[\s\S]*Expires:\s*0/s.test(headers), "index.html Expires 0 header is missing.");
+assert(/(^|\n)\/\*[\s\S]*Pragma:\s*no-cache/s.test(headers), "SPA route wildcard Pragma no-cache header is missing.");
+assert(/(^|\n)\/\*[\s\S]*Expires:\s*0/s.test(headers), "SPA route wildcard Expires 0 header is missing.");
 assert(/\/assets\/\*\s+Cache-Control:\s*public,\s*max-age=31536000,\s*immutable/s.test(headers), "immutable asset cache header is missing.");
 assert(/\/assets\/\*[\s\S]*X-Content-Type-Options:\s*nosniff/s.test(headers), "asset nosniff header is missing.");
 assert(/\/favicon\.ico\s+Cache-Control:\s*public,\s*max-age=86400/s.test(headers), "favicon cache header is missing.");

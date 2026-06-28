@@ -4,10 +4,10 @@ Use this checklist when Cloudflare Pages serves stale HTML, cancels a stylesheet
 
 ## Check SPA document routes
 
-Open DevTools Network and load:
+Run:
 
-```text
-https://hr.cafeasiana.com.mv/login
+```powershell
+Invoke-WebRequest "https://hr.cafeasiana.com.mv/login" -Method Head | Select-Object -ExpandProperty Headers
 ```
 
 Expected response headers:
@@ -15,6 +15,8 @@ Expected response headers:
 ```text
 Content-Type: text/html; charset=utf-8
 Cache-Control: no-cache, no-store, must-revalidate
+Pragma: no-cache
+Expires: 0
 X-Content-Type-Options: nosniff
 Referrer-Policy: strict-origin-when-cross-origin
 ```
@@ -23,10 +25,10 @@ The same no-cache behavior should apply to other app routes such as `/dashboard`
 
 ## Check CSS asset routes
 
-Open the CSS asset referenced by the current page, for example:
+Run this against the current CSS asset referenced by the deployed `index.html`:
 
-```text
-https://hr.cafeasiana.com.mv/assets/index-UZP1m5JP.css
+```powershell
+Invoke-WebRequest "https://hr.cafeasiana.com.mv/assets/<new-css-file>.css" -Method Head | Select-Object -ExpandProperty Headers
 ```
 
 Expected response headers:
@@ -41,10 +43,10 @@ If the stylesheet is shown as `canceled` in the Network tab, enable **Disable ca
 
 ## Check favicon
 
-Open:
+Run:
 
-```text
-https://hr.cafeasiana.com.mv/favicon.ico
+```powershell
+Invoke-WebRequest "https://hr.cafeasiana.com.mv/favicon.ico" -Method Head | Select-Object -ExpandProperty Headers
 ```
 
 Expected:
@@ -64,7 +66,8 @@ In Chrome DevTools:
 3. Right-click the reload button.
 4. Choose **Empty Cache and Hard Reload**.
 5. Reload `/login`.
-6. Confirm stylesheet requests show `200` or memory/disk cache with `text/css`, not `text/html`.
+6. Confirm the CSS request shows `200` as a stylesheet, not `canceled`.
+7. Confirm the CSS request does not show `text/html` as its MIME type.
 
 If the issue disappears with **Disable cache** enabled, the browser had a stale cached HTML or asset response.
 
