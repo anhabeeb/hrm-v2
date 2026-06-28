@@ -57,8 +57,8 @@ assert(exists("frontend/src/components/ui/action-button.tsx"), "frontend/src/com
 });
 
 [
-  ["create/add/new actions", /create\|add\|new\|link\|start/],
-  ["save/confirm/activate/approve/complete actions", /save\|confirm\|activate\|approve\|complete\|finalize/],
+  ["create/add/new/issue actions", /create\|add\|new\|link\|start\|issue/],
+  ["save/confirm/activate/approve/complete/return actions", /save\|confirm\|activate\|approve\|complete\|finalize\|return/],
   ["neutral refresh/settings/view/open actions", /refresh\|settings\|view\|open\|details\|more\|filter\|reset/],
   ["export/download actions", /export\|download/],
   ["import/upload actions", /import\|upload/],
@@ -76,6 +76,23 @@ has("frontend/src/components/ui/button.tsx", "bg-slate-100 text-slate-400", "Dis
 has("frontend/src/components/ui/button.tsx", "gap-2", "Consistent icon spacing missing from Button.");
 has("frontend/src/components/ui/button.tsx", "h-8 px-3 text-xs", "Small button height marker missing.");
 has("frontend/src/components/ui/button.tsx", "h-9 px-4 text-sm", "Default button height marker missing.");
+
+const buttonSource = read("frontend/src/components/ui/button.tsx");
+has("frontend/src/components/ui/button.tsx", "EXACT_NEUTRAL_ACTION_LABELS", "Exact neutral action set missing.");
+["cancel", "close", "dismiss", "back", "clear", "reset"].forEach((label) => {
+  assert(buttonSource.includes(`"${label}"`), `Button exact-neutral mapping missing ${label}.`);
+});
+has("frontend/src/components/ui/button.tsx", "DESTRUCTIVE_CANCEL_ACTION_PATTERN", "Destructive cancel phrase pattern missing.");
+["cancel\\s+", "leave", "payroll", "contract", "request", "row"].forEach((marker) => {
+  assert(buttonSource.includes(marker), `Button destructive cancel pattern missing ${marker}.`);
+});
+assert(buttonSource.indexOf("EXACT_NEUTRAL_ACTION_LABELS.has(text)") < buttonSource.lastIndexOf('return "actionCreate";'), "Exact Cancel/Close/Dismiss must be checked before actionCreate fallback.");
+
+const saveRule = buttonSource.match(/save\|confirm\|activate\|approve\|complete\|finalize[^\n]+/)?.[0] ?? "";
+assert(saveRule.includes("return"), "Return actions must remain in green/save mapping.");
+assert(!saveRule.includes("issue"), "Issue must not be listed in the save/green mapping.");
+const createRule = buttonSource.match(/create\|add\|new\|link\|start[^\n]+/)?.[0] ?? "";
+assert(createRule.includes("issue"), "Issue must be listed in create/teal mapping.");
 
 has("frontend/src/components/ui/button.tsx", "ICON_ACTION_LABELS", "Icon-only action label mapping missing from Button.");
 has("frontend/src/components/ui/button.tsx", "effectiveAriaLabel", "Icon-only Button aria-label fallback missing.");

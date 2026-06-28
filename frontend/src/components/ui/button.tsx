@@ -68,6 +68,9 @@ const ICON_ACTION_LABELS: Record<string, string> = {
   XCircle: "Cancel"
 };
 
+const EXACT_NEUTRAL_ACTION_LABELS = new Set(["cancel", "close", "dismiss", "back", "clear", "reset"]);
+const DESTRUCTIVE_CANCEL_ACTION_PATTERN = /\bcancel\s+(leave|payroll|contract|request|case|record|run|row|employee|onboarding|offboarding|settlement|payment|period|advance|adjustment|deduction|loan|document)\b/;
+
 function iconLabelFromReactNode(value: ReactNode): string {
   if (Array.isArray(value)) return value.map(iconLabelFromReactNode).filter(Boolean).join(" ");
   if (!isValidElement(value)) return "";
@@ -91,14 +94,15 @@ function textFromReactNode(value: ReactNode): string {
 function inferActionVariant(label: string): ButtonVariant {
   const text = label.toLowerCase().replace(/\s+/g, " ").trim();
   if (!text) return "actionCreate";
+  if (EXACT_NEUTRAL_ACTION_LABELS.has(text)) return "actionNeutral";
   if (/\b(delete|reject|disable|archive|remove|permanent delete)\b/.test(text)) return "actionDestructive";
-  if (/\bcancel\b/.test(text) && !/^(cancel|close)$/i.test(text)) return "actionDestructive";
+  if (DESTRUCTIVE_CANCEL_ACTION_PATTERN.test(text)) return "actionDestructive";
   if (/\b(send back|hold|put on hold|reopen|needs review|warning|damaged|lost)\b/.test(text)) return "actionWarning";
-  if (/\b(save|confirm|activate|approve|complete|finalize|issue|return|publish)\b/.test(text)) return "actionSave";
+  if (/\b(save|confirm|activate|approve|complete|finalize|return|publish)\b/.test(text)) return "actionSave";
   if (/\b(export|download)\b/.test(text)) return "actionExport";
   if (/\b(import|upload)\b/.test(text)) return "actionImport";
   if (/\b(refresh|settings|view|open|details|more|filter|reset|copy|preview|edit|load|diagnostic|clear current browser cache)\b/.test(text)) return "actionNeutral";
-  if (/\b(create|add|new|link|start)\b/.test(text)) return "actionCreate";
+  if (/\b(create|add|new|link|start|issue)\b/.test(text)) return "actionCreate";
   return "actionCreate";
 }
 
