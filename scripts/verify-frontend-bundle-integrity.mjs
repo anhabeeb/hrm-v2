@@ -114,19 +114,23 @@ assert(reactVendorSource.includes("useLayoutEffect"), "react-vendor chunk should
 
 const headers = read("frontend/public/_headers");
 assert(/\/index\.html\s+Cache-Control:\s*no-cache/s.test(headers), "index.html no-cache header is missing.");
-assert(/(^|\n)\/\s+Cache-Control:\s*no-cache/s.test(headers), "root no-cache header is missing.");
+assert(/(^|\n)\/\*\s+Cache-Control:\s*no-cache/s.test(headers), "SPA route wildcard no-cache header is missing.");
 assert(/\/index\.html\s+Cache-Control:[^\n]*no-store/s.test(headers), "index.html no-store header is missing.");
-assert(/(^|\n)\/\s+Cache-Control:[^\n]*no-store/s.test(headers), "root no-store header is missing.");
+assert(/(^|\n)\/\*\s+Cache-Control:[^\n]*no-store/s.test(headers), "SPA route wildcard no-store header is missing.");
 assert(/\/assets\/\*\s+Cache-Control:\s*public,\s*max-age=31536000,\s*immutable/s.test(headers), "immutable asset cache header is missing.");
 assert(/\/assets\/\*[\s\S]*X-Content-Type-Options:\s*nosniff/s.test(headers), "asset nosniff header is missing.");
+assert(/\/favicon\.ico\s+Cache-Control:\s*public,\s*max-age=86400/s.test(headers), "favicon cache header is missing.");
 
 assert(exists("frontend/public/_redirects"), "frontend/public/_redirects is missing.");
 const redirects = read("frontend/public/_redirects");
 const assetRedirectIndex = redirects.indexOf("/assets/* /assets/:splat 200");
+const faviconRedirectIndex = redirects.indexOf("/favicon.ico /favicon.ico 200");
 const spaFallbackIndex = redirects.indexOf("/* /index.html 200");
 assert(assetRedirectIndex !== -1, "Pages redirects must include an /assets/* static asset guard.");
+assert(faviconRedirectIndex !== -1, "Pages redirects must include a favicon static asset guard.");
 assert(spaFallbackIndex !== -1, "Pages redirects must include the SPA fallback.");
 assert(assetRedirectIndex < spaFallbackIndex, "The /assets/* redirect guard must appear before the SPA fallback.");
+assert(faviconRedirectIndex < spaFallbackIndex, "The favicon redirect guard must appear before the SPA fallback.");
 assert(exists("frontend/dist/_headers"), "Built Pages output must include _headers.");
 assert(exists("frontend/dist/_redirects"), "Built Pages output must include _redirects.");
 
