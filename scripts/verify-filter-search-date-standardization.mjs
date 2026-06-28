@@ -63,6 +63,7 @@ contains(filterFile, "min-w-[220px]", "standard department width");
 contains(filterFile, "departmentId", "department cascade input");
 contains(filterFile, "jobLevelId", "job level cascade input");
 contains(filterFile, "filteredPositions", "position cascade output");
+contains("frontend/src/components/ui/page-shell.tsx", "data-legacy-standard-filter-bar", "legacy FilterBar compact standardization marker");
 
 const migratedPages = [
   "frontend/src/pages/EmployeesPage.tsx",

@@ -312,7 +312,17 @@ export function ActionBar({ children, className }: { children: ReactNode; classN
 }
 
 export function FilterBar({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("box-border grid w-full max-w-none min-w-0 gap-2 rounded-lg border bg-white p-3 shadow-panel sm:grid-cols-2 lg:grid-cols-4", className)}>{children}</div>;
+  return (
+    <div
+      data-legacy-standard-filter-bar
+      className={cn(
+        "box-border flex w-full max-w-none min-w-0 flex-col gap-2 rounded-lg border bg-white p-3 shadow-panel sm:flex-row sm:flex-wrap sm:items-center [&_input]:h-10 [&_select]:h-10",
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function FilterDrawer({ open, title = "Filters", children, onClose, actions }: { open: boolean; title?: ReactNode; children: ReactNode; onClose: () => void; actions?: ReactNode }) {
