@@ -74,7 +74,13 @@ contains("frontend/src/components/ui/sheet.tsx", "SheetClose", "SheetClose expor
 contains("frontend/package.json", "@radix-ui/react-dialog", "Sheet dependency");
 
 contains(filterFile, "data-standard-filter-bar", "compact filter bar marker");
+contains(filterFile, "data-filter-left-group", "left filter group marker");
+contains(filterFile, "data-filter-left-filters", "left filter slot marker");
 contains(filterFile, "data-filter-search-first", "search-first marker");
+contains(filterFile, "data-filter-right-actions", "right action group marker");
+contains(filterFile, "lg:ml-auto", "right action desktop auto alignment");
+assert(/data-filter-left-group[\s\S]*data-filter-search-first[\s\S]*\{children\}/.test(filterSource), "StandardFilterBar must keep search and primary filters in the left group.");
+assert(/data-filter-right-actions[\s\S]*\{moreFilters\}[\s\S]*\{reset\}/.test(filterSource), "StandardFilterBar must render More Filters and Reset in the right action group.");
 contains(filterFile, "window.setTimeout", "300ms debounce implementation");
 contains(filterFile, "data-active-filter-chips", "active filter chip marker");
 contains(filterFile, "Reset Filters", "advanced sheet reset footer");
@@ -95,8 +101,21 @@ contains(filterFile, "ChevronRight", "calendar next month control");
 forbid(filterFile, /\btype=["']date["']/, "StandardDateRangeFilter must not use native date inputs.");
 forbid(filterFile, /Start date.*End date/s, "StandardDateRangeFilter should not be a start/end native date-input layout.");
 
-contains(filterFile, "min-w-[260px]", "standard date range width");
-contains(filterFile, "min-w-[220px]", "standard department width");
+contains(filterFile, "lg:w-[420px]", "long desktop search width");
+contains(filterFile, "xl:max-w-[480px]", "large desktop search max width");
+forbid(filterFile, /sm:w-\[300px\]/, "StandardSearchInput must not regress to the old short desktop width.");
+forbid(filterFile, /h-\[100px\]/, "StandardSearchInput must not use oversized search height.");
+contains(filterFile, "widthVariant", "filter width variant prop");
+contains(filterFile, "FilterWidthVariant", "filter width variant type");
+contains(filterFile, "short: \"min-w-[140px] max-w-[160px]\"", "compact short filter width");
+contains(filterFile, "auto: \"w-auto min-w-fit max-w-[220px]\"", "content-fit auto filter width");
+contains(filterFile, "status: \"min-w-[130px] max-w-[150px]\"", "compact status filter width");
+contains(filterFile, "department: \"min-w-[170px] max-w-[210px]\"", "compact department filter width");
+contains(filterFile, "employee: \"min-w-[220px] max-w-[260px]\"", "employee filter width");
+contains(filterFile, "dateRange: \"min-w-[220px] max-w-[260px]\"", "compact date range width");
+contains(filterFile, "filterSelectMinWidths[resolvedWidth]", "StandardSelectFilter resolved width mapping");
+contains(filterFile, "filterSelectMinWidths[widthVariant]", "StandardDateRangeFilter width variant mapping");
+assert(!/status:\s*["'][^"']*260px/.test(filterSource), "Status filters must not be as wide as employee/date filters.");
 contains(filterFile, "departmentId", "department cascade input");
 contains(filterFile, "jobLevelId", "job level cascade input");
 contains(filterFile, "filteredPositions", "position cascade output");

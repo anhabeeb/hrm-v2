@@ -37,17 +37,22 @@ export type ActiveFilterChip = {
 };
 
 export const filterSelectMinWidths = {
-  status: "min-w-[160px]",
-  department: "min-w-[220px]",
-  jobLevel: "min-w-[180px]",
-  position: "min-w-[240px]",
-  employee: "min-w-[260px]",
-  payrollPeriod: "min-w-[220px]",
-  documentType: "min-w-[240px]",
-  leaveType: "min-w-[220px]",
-  dateRange: "min-w-[260px]",
-  default: "min-w-[180px]"
+  status: "min-w-[130px] max-w-[150px]",
+  short: "min-w-[140px] max-w-[160px]",
+  department: "min-w-[170px] max-w-[210px]",
+  jobLevel: "min-w-[150px] max-w-[180px]",
+  position: "min-w-[190px] max-w-[230px]",
+  employee: "min-w-[220px] max-w-[260px]",
+  payrollPeriod: "min-w-[180px] max-w-[220px]",
+  period: "min-w-[180px] max-w-[220px]",
+  documentType: "min-w-[190px] max-w-[230px]",
+  leaveType: "min-w-[180px] max-w-[220px]",
+  dateRange: "min-w-[220px] max-w-[260px]",
+  auto: "w-auto min-w-fit max-w-[220px]",
+  default: "min-w-[150px] max-w-[180px]"
 } as const;
+
+export type FilterWidthVariant = keyof typeof filterSelectMinWidths;
 
 function isoDate(date: Date) {
   const year = date.getFullYear();
@@ -231,17 +236,27 @@ export function StandardFilterBar({
       data-standard-filter-bar
       className={cn("rounded-lg border bg-white px-3 py-3 shadow-panel", className)}
     >
-      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
-        <div data-filter-search-first className="min-w-0 grow lg:grow-0">
-          {search}
+      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+        <div data-filter-left-group data-filter-left-filters className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          {search ? (
+            <div data-filter-search-first className="min-w-0 sm:shrink-0">
+              {search}
+            </div>
+          ) : null}
+          {children ? (
+            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              {children}
+            </div>
+          ) : null}
         </div>
-        {children ? <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">{children}</div> : null}
-        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:ml-auto">
-          {moreFilters}
-          {reset}
-          {saveView}
-          {actions}
-        </div>
+        {moreFilters || reset || saveView || actions ? (
+          <div data-filter-right-actions className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap lg:ml-auto">
+            {moreFilters}
+            {reset}
+            {saveView}
+            {actions}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -290,7 +305,7 @@ export function StandardSearchInput({
   }
 
   return (
-    <div className={cn("relative w-full min-w-0 sm:w-[300px]", className)}>
+    <div className={cn("relative w-full min-w-0 sm:w-[340px] lg:w-[420px] xl:max-w-[480px]", className)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         aria-label={ariaLabel ?? placeholder}
@@ -324,6 +339,7 @@ export function StandardSelectFilter({
   disabled,
   loading,
   width = "default",
+  widthVariant,
   className,
   ariaLabel
 }: {
@@ -334,14 +350,17 @@ export function StandardSelectFilter({
   placeholder?: string;
   disabled?: boolean;
   loading?: boolean;
-  width?: keyof typeof filterSelectMinWidths;
+  width?: FilterWidthVariant;
+  widthVariant?: FilterWidthVariant;
   className?: string;
   ariaLabel?: string;
 }) {
+  const resolvedWidth = widthVariant ?? width;
+
   return (
     <SelectField
       aria-label={ariaLabel ?? placeholder ?? allLabel ?? "Filter"}
-      className={cn("h-10 max-w-full truncate", filterSelectMinWidths[width], className)}
+      className={cn("h-10 max-w-full truncate", filterSelectMinWidths[resolvedWidth], className)}
       disabled={disabled || loading}
       value={value}
       onValueChange={onValueChange}
@@ -363,12 +382,14 @@ export function StandardDateRangeFilter({
   onChange,
   disabled,
   label = "Date Range",
+  widthVariant = "dateRange",
   className
 }: {
   value: StandardDateRange;
   onChange: (value: StandardDateRange) => void;
   disabled?: boolean;
   label?: string;
+  widthVariant?: FilterWidthVariant;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -409,7 +430,7 @@ export function StandardDateRangeFilter({
       <Button
         aria-expanded={open}
         aria-label={label}
-        className={cn("h-10 justify-between border bg-white px-3 text-left font-normal text-slate-700 hover:bg-slate-50", filterSelectMinWidths.dateRange)}
+        className={cn("h-10 justify-between border bg-white px-3 text-left font-normal text-slate-700 hover:bg-slate-50", filterSelectMinWidths[widthVariant])}
         disabled={disabled}
         variant="outline"
         onClick={() => setOpen((current) => !current)}
@@ -594,7 +615,7 @@ export function FilterResetButton({ onReset, disabled, label = "Reset" }: { onRe
 }
 
 export function FilterToolbarActions({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex flex-wrap items-center gap-2", className)}>{children}</div>;
+  return <div className={cn("flex flex-wrap items-center justify-end gap-2", className)}>{children}</div>;
 }
 
 type SavedFilterView<T> = {
