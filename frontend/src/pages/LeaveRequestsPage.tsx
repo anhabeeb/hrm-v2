@@ -9,6 +9,17 @@ import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
+import {
+  ActiveFilterChips,
+  FilterResetButton,
+  FilterSection,
+  MoreFiltersSheet,
+  StandardDateRangeFilter,
+  StandardFilterBar,
+  StandardSearchInput,
+  StandardSelectFilter,
+  type StandardDateRange
+} from "../components/filters";
 import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -57,6 +68,8 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
   const [actionNote, setActionNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const leaveDateRange: StandardDateRange = useMemo(() => ({ from: startFrom, to: startTo }), [startFrom, startTo]);
+  const submittedDateRange: StandardDateRange = useMemo(() => ({ from: submittedFrom, to: submittedTo }), [submittedFrom, submittedTo]);
 
   const filters = useMemo(() => ({
     search,
@@ -125,6 +138,44 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
     }
   }
 
+  function setLeaveDateRange(range: StandardDateRange) {
+    setStartFrom(range.from ?? "");
+    setStartTo(range.to ?? "");
+  }
+
+  function setSubmittedDateRange(range: StandardDateRange) {
+    setSubmittedFrom(range.from ?? "");
+    setSubmittedTo(range.to ?? "");
+  }
+
+  function resetFilters() {
+    setSearch("");
+    setTypeId("");
+    setStatus("");
+    setDepartmentId("");
+    setPositionId("");
+    setLocationId("");
+    setStartFrom("");
+    setStartTo("");
+    setEndFrom("");
+    setEndTo("");
+    setSubmittedFrom("");
+    setSubmittedTo("");
+    setPendingMine(approvalsOnly);
+  }
+
+  const activeChips = [
+    search.trim() ? { key: "search", label: "Search", value: search.trim(), onRemove: () => setSearch("") } : null,
+    typeId ? { key: "leaveType", label: "Leave Type", value: types.find((type) => type.id === typeId)?.name ?? "Selected", onRemove: () => setTypeId("") } : null,
+    status ? { key: "status", label: "Status", value: status, onRemove: () => setStatus("") } : null,
+    departmentId ? { key: "department", label: "Department", value: departments.find((department) => department.id === departmentId)?.name ?? "Selected", onRemove: () => setDepartmentId("") } : null,
+    positionId ? { key: "position", label: "Position", value: positions.find((position) => position.id === positionId)?.title ?? "Selected", onRemove: () => setPositionId("") } : null,
+    locationId ? { key: "location", label: "Location", value: locations.find((location) => location.id === locationId)?.name ?? "Selected", onRemove: () => setLocationId("") } : null,
+    startFrom || startTo ? { key: "leaveDate", label: "Leave Date", value: `${startFrom || "Any"} - ${startTo || "Any"}`, onRemove: () => setLeaveDateRange({}) } : null,
+    submittedFrom || submittedTo ? { key: "submittedDate", label: "Submitted", value: `${submittedFrom || "Any"} - ${submittedTo || "Any"}`, onRemove: () => setSubmittedDateRange({}) } : null,
+    pendingMine && !approvalsOnly ? { key: "pendingMine", label: "Approval", value: "Pending mine", onRemove: () => setPendingMine(false) } : null
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string; onRemove: () => void }>;
+
   if (!canView) return <PageShell><Panel><EmptyState title="Leave unavailable" description="Your account needs leave.view permission." /></Panel></PageShell>;
 
   return (
@@ -141,22 +192,35 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
         }
       />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      <StandardFilterBar
+        search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee..." />}
+        reset={<FilterResetButton onReset={resetFilters} />}
+        moreFilters={
+          <MoreFiltersSheet onReset={resetFilters}>
+            <FilterSection title="Employee">
+              <StandardSelectFilter value={departmentId} onValueChange={setDepartmentId} allLabel="All departments" width="department" options={departments.filter((department) => department.is_active !== false).map((department) => ({ value: department.id, label: department.name }))} />
+              <StandardSelectFilter value={positionId} onValueChange={setPositionId} allLabel="All positions" width="position" options={positions.filter((position) => position.is_active !== false).map((position) => ({ value: position.id, label: position.title }))} />
+              <StandardSelectFilter value={locationId} onValueChange={setLocationId} allLabel="All locations" width="department" options={locations.filter((location) => location.is_active !== false).map((location) => ({ value: location.id, label: location.name }))} />
+            </FilterSection>
+            <FilterSection title="Leave Rules">
+              <CheckboxField label="Pending my approval" checked={pendingMine} disabled={approvalsOnly} onChange={setPendingMine} />
+            </FilterSection>
+            <FilterSection title="Date">
+              <StandardDateRangeFilter value={submittedDateRange} onChange={setSubmittedDateRange} label="Requested Date Range" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1.5 text-sm font-medium text-slate-800">End from<Input type="date" value={endFrom} onChange={(event) => setEndFrom(event.target.value)} /></label>
+                <label className="grid gap-1.5 text-sm font-medium text-slate-800">End to<Input type="date" value={endTo} onChange={(event) => setEndTo(event.target.value)} /></label>
+              </div>
+            </FilterSection>
+          </MoreFiltersSheet>
+        }
+      >
+        <StandardSelectFilter value={typeId} onValueChange={setTypeId} allLabel="All leave types" width="leaveType" options={types.map((type) => ({ value: type.id, label: type.name }))} />
+        <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["DRAFT", "PENDING_APPROVAL", "APPROVED", "REJECTED", "CANCELLED"].map((item) => ({ value: item, label: item }))} />
+        <StandardDateRangeFilter value={leaveDateRange} onChange={setLeaveDateRange} label="Date Range" />
+      </StandardFilterBar>
+      <ActiveFilterChips chips={activeChips} />
       <Panel className="overflow-hidden">
-        <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-6">
-          <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <SelectField aria-label="Leave type" value={typeId} onValueChange={setTypeId}><option value="">All leave types</option>{types.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</SelectField>
-          <SelectField aria-label="Status" value={status} onValueChange={setStatus}><option value="">All statuses</option>{["DRAFT", "PENDING_APPROVAL", "APPROVED", "REJECTED", "CANCELLED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
-          <SelectField aria-label="Department" value={departmentId} onValueChange={setDepartmentId}><option value="">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectField>
-          <SelectField aria-label="Position" value={positionId} onValueChange={setPositionId}><option value="">All positions</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</SelectField>
-          <SelectField aria-label="Location" value={locationId} onValueChange={setLocationId}><option value="">All locations</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</SelectField>
-          <Input type="date" aria-label="Start date from" value={startFrom} onChange={(event) => setStartFrom(event.target.value)} />
-          <Input type="date" aria-label="Start date to" value={startTo} onChange={(event) => setStartTo(event.target.value)} />
-          <Input type="date" aria-label="End date from" value={endFrom} onChange={(event) => setEndFrom(event.target.value)} />
-          <Input type="date" aria-label="End date to" value={endTo} onChange={(event) => setEndTo(event.target.value)} />
-          <Input type="date" aria-label="Submitted from" value={submittedFrom} onChange={(event) => setSubmittedFrom(event.target.value)} />
-          <Input type="date" aria-label="Submitted to" value={submittedTo} onChange={(event) => setSubmittedTo(event.target.value)} />
-          <CheckboxField label="Pending my approval" checked={pendingMine} disabled={approvalsOnly} onChange={setPendingMine} />
-        </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Leave type</TableHead><TableHead>Dates</TableHead><TableHead>Days</TableHead><TableHead>Status</TableHead><TableHead>Document</TableHead><TableHead>Deduction</TableHead><TableHead>Current step</TableHead><TableHead>Submitted</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>

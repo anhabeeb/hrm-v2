@@ -1,4 +1,4 @@
-import { Archive, Download, Eye, History, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Archive, Download, Eye, History, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
@@ -7,6 +7,17 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import {
+  ActiveFilterChips,
+  FilterResetButton,
+  FilterSection,
+  MoreFiltersSheet,
+  StandardDateRangeFilter,
+  StandardFilterBar,
+  StandardSearchInput,
+  StandardSelectFilter,
+  type StandardDateRange
+} from "../components/filters";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -70,6 +81,9 @@ export function DocumentRegistryPage() {
   const [error, setError] = useState<string | null>(null);
 
   const activeFilters = useMemo(() => Object.fromEntries(Object.entries(filters).filter(([, value]) => value)), [filters]);
+  const expiryDateRange: StandardDateRange = useMemo(() => ({ from: filters.expiry_from, to: filters.expiry_to }), [filters.expiry_from, filters.expiry_to]);
+  const issueDateRange: StandardDateRange = useMemo(() => ({ from: filters.issue_from, to: filters.issue_to }), [filters.issue_from, filters.issue_to]);
+  const uploadedDateRange: StandardDateRange = useMemo(() => ({ from: filters.uploaded_from, to: filters.uploaded_to }), [filters.uploaded_from, filters.uploaded_to]);
 
   async function load() {
     if (!token || !canView) return;
@@ -141,6 +155,37 @@ export function DocumentRegistryPage() {
     }
   }
 
+  function setFilter(key: keyof typeof defaultFilters, value: string) {
+    setFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  function setExpiryDateRange(range: StandardDateRange) {
+    setFilters((current) => ({ ...current, expiry_from: range.from ?? "", expiry_to: range.to ?? "" }));
+  }
+
+  function setIssueDateRange(range: StandardDateRange) {
+    setFilters((current) => ({ ...current, issue_from: range.from ?? "", issue_to: range.to ?? "" }));
+  }
+
+  function setUploadedDateRange(range: StandardDateRange) {
+    setFilters((current) => ({ ...current, uploaded_from: range.from ?? "", uploaded_to: range.to ?? "" }));
+  }
+
+  const activeChips = [
+    filters.search.trim() ? { key: "search", label: "Search", value: filters.search.trim(), onRemove: () => setFilter("search", "") } : null,
+    filters.document_type_id ? { key: "documentType", label: "Document Type", value: types.find((type) => type.id === filters.document_type_id)?.name ?? "Selected", onRemove: () => setFilter("document_type_id", "") } : null,
+    filters.display_status ? { key: "displayStatus", label: "Compliance", value: filters.display_status, onRemove: () => setFilter("display_status", "") } : null,
+    filters.department_id ? { key: "department", label: "Department", value: departments.find((department) => department.id === filters.department_id)?.name ?? "Selected", onRemove: () => setFilter("department_id", "") } : null,
+    filters.position_id ? { key: "position", label: "Position", value: positions.find((position) => position.id === filters.position_id)?.title ?? "Selected", onRemove: () => setFilter("position_id", "") } : null,
+    filters.location_id ? { key: "location", label: "Location", value: locations.find((location) => location.id === filters.location_id)?.name ?? "Selected", onRemove: () => setFilter("location_id", "") } : null,
+    filters.category_id ? { key: "category", label: "Category", value: categories.find((category) => category.id === filters.category_id)?.name ?? "Selected", onRemove: () => setFilter("category_id", "") } : null,
+    filters.status ? { key: "storedStatus", label: "Stored", value: filters.status, onRemove: () => setFilter("status", "") } : null,
+    filters.sensitive ? { key: "sensitive", label: "Sensitivity", value: filters.sensitive === "true" ? "Sensitive" : "Non-sensitive", onRemove: () => setFilter("sensitive", "") } : null,
+    filters.expiry_from || filters.expiry_to ? { key: "expiry", label: "Expiry", value: `${filters.expiry_from || "Any"} - ${filters.expiry_to || "Any"}`, onRemove: () => setExpiryDateRange({}) } : null,
+    filters.issue_from || filters.issue_to ? { key: "issue", label: "Issue", value: `${filters.issue_from || "Any"} - ${filters.issue_to || "Any"}`, onRemove: () => setIssueDateRange({}) } : null,
+    filters.uploaded_from || filters.uploaded_to ? { key: "uploaded", label: "Uploaded", value: `${filters.uploaded_from || "Any"} - ${filters.uploaded_to || "Any"}`, onRemove: () => setUploadedDateRange({}) } : null
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string; onRemove: () => void }>;
+
   if (!canView) return <PageShell><Panel><EmptyState title="Documents unavailable" description="Your account needs documents.view or documents.registry.view permission." /></Panel></PageShell>;
 
   return (
@@ -159,28 +204,35 @@ export function DocumentRegistryPage() {
 
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
 
+      <StandardFilterBar
+        search={<StandardSearchInput value={filters.search} onDebouncedChange={(value) => setFilter("search", value)} placeholder="Search documents..." />}
+        reset={<FilterResetButton onReset={() => setFilters(defaultFilters)} />}
+        moreFilters={
+          <MoreFiltersSheet onReset={() => setFilters(defaultFilters)}>
+            <FilterSection title="Document">
+              <StandardSelectFilter value={filters.category_id} onValueChange={(value) => setFilter("category_id", value)} allLabel="All categories" options={categories.map((item) => ({ value: item.id, label: item.name }))} />
+              <StandardSelectFilter value={filters.status} onValueChange={(value) => setFilter("status", value)} allLabel="All stored statuses" width="status" options={["ACTIVE", "ARCHIVED", "SOFT_DELETED"].map((item) => ({ value: item, label: item }))} />
+              <StandardSelectFilter value={filters.sensitive} onValueChange={(value) => setFilter("sensitive", value)} allLabel="All sensitivity" options={[{ value: "true", label: "Sensitive" }, { value: "false", label: "Non-sensitive" }]} />
+            </FilterSection>
+            <FilterSection title="Employee">
+              <StandardSelectFilter value={filters.department_id} onValueChange={(value) => setFilter("department_id", value)} allLabel="All departments" width="department" options={departments.filter((item) => item.is_active !== false).map((item) => ({ value: item.id, label: item.name }))} />
+              <StandardSelectFilter value={filters.position_id} onValueChange={(value) => setFilter("position_id", value)} allLabel="All positions" width="position" options={positions.filter((item) => item.is_active !== false).map((item) => ({ value: item.id, label: item.title }))} />
+              <StandardSelectFilter value={filters.location_id} onValueChange={(value) => setFilter("location_id", value)} allLabel="All locations" width="department" options={locations.filter((item) => item.is_active !== false).map((item) => ({ value: item.id, label: item.name }))} />
+            </FilterSection>
+            <FilterSection title="Date">
+              <StandardDateRangeFilter value={issueDateRange} onChange={setIssueDateRange} label="Issue Date Range" />
+              <StandardDateRangeFilter value={uploadedDateRange} onChange={setUploadedDateRange} label="Uploaded Date Range" />
+            </FilterSection>
+          </MoreFiltersSheet>
+        }
+      >
+        <StandardSelectFilter value={filters.document_type_id} onValueChange={(value) => setFilter("document_type_id", value)} allLabel="All document types" width="documentType" options={types.map((item) => ({ value: item.id, label: item.name }))} />
+        <StandardSelectFilter value={filters.display_status} onValueChange={(value) => setFilter("display_status", value)} allLabel="All compliance" width="status" options={["VALID", "EXPIRING_SOON", "EXPIRED", "ARCHIVED", "SOFT_DELETED"].map((item) => ({ value: item, label: item }))} />
+        <StandardDateRangeFilter value={expiryDateRange} onChange={setExpiryDateRange} label="Expiry Date Range" />
+      </StandardFilterBar>
+      <ActiveFilterChips chips={activeChips} />
+
       <Panel className="overflow-hidden">
-        <div className="grid gap-2 border-b p-3 lg:grid-cols-6">
-          <div className="relative lg:col-span-2">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input className="pl-9" placeholder="Search employee, document, or number" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
-          </div>
-          <FilterSelect value={filters.department_id} onChange={(value) => setFilters({ ...filters, department_id: value })} options={departments.map((item) => ({ value: item.id, label: item.name }))} label="All departments" />
-          <FilterSelect value={filters.position_id} onChange={(value) => setFilters({ ...filters, position_id: value })} options={positions.map((item) => ({ value: item.id, label: item.title }))} label="All positions" />
-          <FilterSelect value={filters.location_id} onChange={(value) => setFilters({ ...filters, location_id: value })} options={locations.map((item) => ({ value: item.id, label: item.name }))} label="All locations" />
-          <FilterSelect value={filters.category_id} onChange={(value) => setFilters({ ...filters, category_id: value })} options={categories.map((item) => ({ value: item.id, label: item.name }))} label="All categories" />
-          <FilterSelect value={filters.document_type_id} onChange={(value) => setFilters({ ...filters, document_type_id: value })} options={types.map((item) => ({ value: item.id, label: item.name }))} label="All document types" />
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="">All stored statuses</option>{["ACTIVE", "ARCHIVED", "SOFT_DELETED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.display_status} onChange={(event) => setFilters({ ...filters, display_status: event.target.value })}><option value="">All display statuses</option>{["VALID", "EXPIRING_SOON", "EXPIRED", "ARCHIVED", "SOFT_DELETED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.sensitive} onChange={(event) => setFilters({ ...filters, sensitive: event.target.value })}><option value="">All sensitivity</option><option value="true">Sensitive</option><option value="false">Non-sensitive</option></SelectField>
-          <DateField label="Issue from" value={filters.issue_from} onChange={(value) => setFilters({ ...filters, issue_from: value })} />
-          <DateField label="Issue to" value={filters.issue_to} onChange={(value) => setFilters({ ...filters, issue_to: value })} />
-          <DateField label="Expiry from" value={filters.expiry_from} onChange={(value) => setFilters({ ...filters, expiry_from: value })} />
-          <DateField label="Expiry to" value={filters.expiry_to} onChange={(value) => setFilters({ ...filters, expiry_to: value })} />
-          <DateField label="Uploaded from" value={filters.uploaded_from} onChange={(value) => setFilters({ ...filters, uploaded_from: value })} />
-          <DateField label="Uploaded to" value={filters.uploaded_to} onChange={(value) => setFilters({ ...filters, uploaded_to: value })} />
-          <Button variant="outline" size="sm" onClick={() => setFilters(defaultFilters)}>Reset filters</Button>
-        </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Position</TableHead><TableHead>Location</TableHead><TableHead>Document</TableHead><TableHead>Category</TableHead><TableHead>Display</TableHead><TableHead>Stored</TableHead><TableHead>Document No</TableHead><TableHead>Issue</TableHead><TableHead>Expiry</TableHead><TableHead>Version</TableHead><TableHead>Uploaded</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>

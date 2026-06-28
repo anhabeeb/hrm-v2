@@ -9,6 +9,17 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
+import {
+  ActiveFilterChips,
+  FilterResetButton,
+  FilterSection,
+  MoreFiltersSheet,
+  StandardDateRangeFilter,
+  StandardFilterBar,
+  StandardSearchInput,
+  StandardSelectFilter,
+  type StandardDateRange
+} from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -62,6 +73,7 @@ export function AttendanceRecordsPage() {
   const [rawJson, setRawJson] = useState("[\n  {\n    \"external_employee_code\": \"EMP001\",\n    \"punch_time\": \"2026-06-20T09:00:00\",\n    \"punch_type\": \"IN\"\n  }\n]");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const dateRange: StandardDateRange = useMemo(() => ({ from: dateFrom, to: dateTo }), [dateFrom, dateTo]);
 
   const filters = useMemo(() => ({
     search,
@@ -149,6 +161,41 @@ export function AttendanceRecordsPage() {
     }
   }
 
+  function setRange(range: StandardDateRange) {
+    setDateFrom(range.from ?? "");
+    setDateTo(range.to ?? "");
+  }
+
+  function resetFilters() {
+    const today = new Date().toISOString().slice(0, 10);
+    setSearch("");
+    setStatus("");
+    setSource("");
+    setDepartmentId("");
+    setPositionId("");
+    setLocationId("");
+    setDateFrom(today);
+    setDateTo(today);
+    setMissedPunch("");
+    setLateOnly(false);
+    setEarlyCheckoutOnly(false);
+    setPayrollImpact(false);
+  }
+
+  const activeChips = [
+    search.trim() ? { key: "search", label: "Search", value: search.trim(), onRemove: () => setSearch("") } : null,
+    status ? { key: "status", label: "Status", value: status, onRemove: () => setStatus("") } : null,
+    source ? { key: "source", label: "Source", value: source, onRemove: () => setSource("") } : null,
+    departmentId ? { key: "department", label: "Department", value: departments.find((department) => department.id === departmentId)?.name ?? "Selected", onRemove: () => setDepartmentId("") } : null,
+    positionId ? { key: "position", label: "Position", value: positions.find((position) => position.id === positionId)?.title ?? "Selected", onRemove: () => setPositionId("") } : null,
+    locationId ? { key: "location", label: "Location", value: locations.find((location) => location.id === locationId)?.name ?? "Selected", onRemove: () => setLocationId("") } : null,
+    missedPunch ? { key: "missedPunch", label: "Missed Punch", value: missedPunch === "true" ? "Yes" : "No", onRemove: () => setMissedPunch("") } : null,
+    lateOnly ? { key: "lateOnly", label: "Late", value: "Late only", onRemove: () => setLateOnly(false) } : null,
+    earlyCheckoutOnly ? { key: "earlyCheckout", label: "Early", value: "Early checkout", onRemove: () => setEarlyCheckoutOnly(false) } : null,
+    payrollImpact ? { key: "payrollImpact", label: "Payroll", value: "Impact only", onRemove: () => setPayrollImpact(false) } : null,
+    dateFrom || dateTo ? { key: "date", label: "Date", value: `${dateFrom || "Any"} - ${dateTo || "Any"}`, onRemove: () => setRange({}) } : null
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string; onRemove: () => void }>;
+
   if (!canView) return <PageShell><Panel><EmptyState title="Attendance unavailable" description="Your account needs attendance.view permission." /></Panel></PageShell>;
   if (attendanceDisabled) return <PageShell><PageHeader title="Attendance Records" description="Attendance module is disabled." /><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Attendance records and manual actions are hidden until an administrator enables the module in Attendance Settings." /></Panel></PageShell>;
 
@@ -168,38 +215,32 @@ export function AttendanceRecordsPage() {
       />
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      <StandardFilterBar
+        search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employee..." />}
+        reset={<FilterResetButton onReset={resetFilters} />}
+        moreFilters={
+          <MoreFiltersSheet onReset={resetFilters}>
+            <FilterSection title="Attendance">
+              <StandardSelectFilter value={source} onValueChange={setSource} allLabel="All sources" options={["DEVICE", "MANUAL", "CORRECTION", "LEAVE", "ROSTER", "SYSTEM"].map((item) => ({ value: item, label: item }))} />
+              <StandardSelectFilter value={missedPunch} onValueChange={setMissedPunch} allLabel="Missed punch: any" options={[{ value: "true", label: "Missed punch" }, { value: "false", label: "No missed punch" }]} />
+              <CheckboxField label="Late only" checked={lateOnly} onChange={setLateOnly} />
+              <CheckboxField label="Early checkout" checked={earlyCheckoutOnly} onChange={setEarlyCheckoutOnly} />
+              <CheckboxField label="Payroll impact" checked={payrollImpact} onChange={setPayrollImpact} />
+            </FilterSection>
+            <FilterSection title="Organization">
+              <StandardSelectFilter value={locationId} onValueChange={setLocationId} allLabel="All locations" width="department" options={locations.filter((location) => location.is_active !== false).map((location) => ({ value: location.id, label: location.name }))} />
+              <StandardSelectFilter value={departmentId} onValueChange={setDepartmentId} allLabel="All departments" width="department" options={departments.filter((department) => department.is_active !== false).map((department) => ({ value: department.id, label: department.name }))} />
+              <StandardSelectFilter value={positionId} onValueChange={setPositionId} allLabel="All positions" width="position" options={positions.filter((position) => position.is_active !== false).map((position) => ({ value: position.id, label: position.title }))} />
+            </FilterSection>
+          </MoreFiltersSheet>
+        }
+      >
+        <StandardSelectFilter value={departmentId} onValueChange={setDepartmentId} allLabel="All departments" width="department" options={departments.filter((department) => department.is_active !== false).map((department) => ({ value: department.id, label: department.name }))} />
+        <StandardDateRangeFilter value={dateRange} onChange={setRange} label="Date Range" />
+        <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"].map((item) => ({ value: item, label: item }))} />
+      </StandardFilterBar>
+      <ActiveFilterChips chips={activeChips} />
       <Panel className="overflow-hidden">
-        <div className="grid gap-2 border-b p-3 md:grid-cols-4 xl:grid-cols-8">
-          <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search employee or number" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={source} onChange={(event) => setSource(event.target.value)}><option value="">All sources</option>{["DEVICE", "MANUAL", "CORRECTION", "LEAVE", "ROSTER", "SYSTEM"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField>
-          <div className="md:col-span-4 xl:col-span-3">
-            <OrganizationCascadeSelector
-              value={{ locationId, departmentId, positionId }}
-              onChange={(next) => {
-                setLocationId(next.locationId ?? "");
-                setDepartmentId(next.departmentId ?? "");
-                setPositionId(next.positionId ?? "");
-              }}
-              departments={departments}
-              locations={locations}
-              jobLevels={jobLevels}
-              positions={positions}
-              includeLocation
-              includeJobLevel={false}
-              requireJobLevelForPosition={false}
-              mode="report-filter"
-              labels={{ locationId: "Location", departmentId: "Department", positionId: "Position" }}
-              className="grid gap-2 md:grid-cols-3"
-            />
-          </div>
-          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Date from" />
-          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Date to" />
-          <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={missedPunch} onChange={(event) => setMissedPunch(event.target.value)}><option value="">Missed punch: any</option><option value="true">Missed punch</option><option value="false">No missed punch</option></SelectField>
-          <CheckboxField label="Late only" checked={lateOnly} onChange={setLateOnly} />
-          <CheckboxField label="Early checkout" checked={earlyCheckoutOnly} onChange={setEarlyCheckoutOnly} />
-          <CheckboxField label="Payroll impact" checked={payrollImpact} onChange={setPayrollImpact} />
-        </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>Clock in/out</TableHead><TableHead>Work</TableHead><TableHead>Late/Early</TableHead><TableHead>Source</TableHead><TableHead>Payroll impact</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>

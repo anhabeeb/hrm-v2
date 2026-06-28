@@ -47,6 +47,7 @@
     "verify:shadcn-navigation-tabs": "node scripts/verify-shadcn-navigation-tabs.mjs",
     "verify:global-search-notifications": "node scripts/verify-global-search-notifications.mjs",
     "verify:performance-optimization": "node scripts/verify-performance-optimization.mjs",
+    "verify:filter-search-date-standardization": "node scripts/verify-filter-search-date-standardization.mjs",
     "verify:payroll-submodules": "node scripts/verify-payroll-submodule-toggles.mjs",
     "verify:page-layout-consistency": "node scripts/verify-page-layout-consistency.mjs",
     "verify:admin-help": "node scripts/verify-admin-help-guide.mjs",

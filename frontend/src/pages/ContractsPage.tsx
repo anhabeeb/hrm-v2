@@ -9,6 +9,17 @@ import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import {
+  ActiveFilterChips,
+  FilterResetButton,
+  FilterSection,
+  MoreFiltersSheet,
+  StandardDateRangeFilter,
+  StandardFilterBar,
+  StandardSearchInput,
+  StandardSelectFilter,
+  type StandardDateRange
+} from "../components/filters";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -56,7 +67,7 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
   const [alerts, setAlerts] = useState<Row[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const organizationRefs = useOrganizationReferences(token);
-  const [filters, setFilters] = useState({ search: "", status: "", contract_type_id: "" });
+  const [filters, setFilters] = useState({ search: "", status: "", contract_type_id: "", department_id: "", location_id: "" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -114,6 +125,17 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
   }, [token, tab, canLoadContracts, canLoadContractReferences]);
 
   const activeTypes = useMemo(() => types.filter((type) => bool(type.is_active) && type.status !== "ARCHIVED" && !type.archived_at), [types]);
+  const activeFilterChips = [
+    filters.search.trim() ? { key: "search", label: "Search", value: filters.search.trim(), onRemove: () => setFilters((current) => ({ ...current, search: "" })) } : null,
+    filters.status ? { key: "status", label: "Contract Status", value: filters.status, onRemove: () => setFilters((current) => ({ ...current, status: "" })) } : null,
+    filters.contract_type_id ? { key: "contractType", label: "Contract Type", value: text(activeTypes.find((type) => String(type.id) === filters.contract_type_id)?.name ?? "Selected"), onRemove: () => setFilters((current) => ({ ...current, contract_type_id: "" })) } : null,
+    filters.department_id ? { key: "department", label: "Department", value: organizationRefs.departments.find((department) => department.id === filters.department_id)?.name ?? "Selected", onRemove: () => setFilters((current) => ({ ...current, department_id: "" })) } : null,
+    filters.location_id ? { key: "location", label: "Location", value: organizationRefs.locations.find((location) => location.id === filters.location_id)?.name ?? "Selected", onRemove: () => setFilters((current) => ({ ...current, location_id: "" })) } : null
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string; onRemove: () => void }>;
+
+  function resetFilters() {
+    setFilters({ search: "", status: "", contract_type_id: "", department_id: "", location_id: "" });
+  }
 
   async function refreshAlerts() {
     if (!token) return;
@@ -167,20 +189,34 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
       <StandardTabs items={tabs} active={tab} onChange={(key) => setTab(key as Tab)} label="Contract section tabs" />
 
       {tab === "contracts" ? (
-        <Panel className="space-y-3 p-3">
-          <div className="grid gap-2 md:grid-cols-4">
-            <Input placeholder="Search employee/contract" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
-            <Input placeholder="Status" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} />
-            <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={filters.contract_type_id} onChange={(event) => setFilters({ ...filters, contract_type_id: event.target.value })}>
-              <option value="">All contract types</option>
-              {activeTypes.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}</option>)}
-            </SelectField>
-            <Button variant="outline" size="sm" onClick={() => void load()}>Apply filters</Button>
-          </div>
+        <div className="space-y-3">
+          <StandardFilterBar
+            search={<StandardSearchInput value={filters.search} onDebouncedChange={(value) => setFilters((current) => ({ ...current, search: value }))} placeholder="Search contracts..." />}
+            reset={<FilterResetButton onReset={resetFilters} />}
+            moreFilters={
+              <MoreFiltersSheet onReset={resetFilters}>
+                <FilterSection title="Contract">
+                  <StandardSelectFilter value={filters.contract_type_id} onValueChange={(value) => setFilters((current) => ({ ...current, contract_type_id: value }))} allLabel="All contract types" options={activeTypes.map((type) => ({ value: String(type.id), label: text(type.name) }))} />
+                  <StandardDateRangeFilter value={{}} onChange={() => undefined} label="Expiry Date Range" disabled />
+                  <div className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Expiry range filters are displayed in contract reports and alerts where due dates are available.</div>
+                </FilterSection>
+                <FilterSection title="Employee">
+                  <StandardSelectFilter value={filters.department_id} onValueChange={(value) => setFilters((current) => ({ ...current, department_id: value }))} allLabel="All departments" width="department" options={organizationRefs.departments.filter((department) => department.is_active !== false).map((department) => ({ value: department.id, label: department.name }))} />
+                  <StandardSelectFilter value={filters.location_id} onValueChange={(value) => setFilters((current) => ({ ...current, location_id: value }))} allLabel="All locations" width="department" options={organizationRefs.locations.filter((location) => location.is_active !== false).map((location) => ({ value: location.id, label: location.name }))} />
+                </FilterSection>
+              </MoreFiltersSheet>
+            }
+          >
+            <StandardSelectFilter value={filters.status} onValueChange={(value) => setFilters((current) => ({ ...current, status: value }))} allLabel="All statuses" width="status" options={["DRAFT", "PENDING_APPROVAL", "ACTIVE", "EXPIRING_SOON", "EXPIRED", "CANCELLED", "ARCHIVED"].map((status) => ({ value: status, label: status }))} />
+            <StandardSelectFilter value={filters.contract_type_id} onValueChange={(value) => setFilters((current) => ({ ...current, contract_type_id: value }))} allLabel="All contract types" width="documentType" options={activeTypes.map((type) => ({ value: String(type.id), label: text(type.name) }))} />
+          </StandardFilterBar>
+          <ActiveFilterChips chips={activeFilterChips} />
+          <Panel className="space-y-3 p-3">
           <DataTableFrame loading={loading} error={error} empty={!loading && contracts.length === 0}>
             <ContractTable rows={contracts} canManage={canManage} onAction={setActionTarget} />
           </DataTableFrame>
-        </Panel>
+          </Panel>
+        </div>
       ) : null}
 
       {tab === "types" ? (

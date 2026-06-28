@@ -1,16 +1,28 @@
-import { Archive, Eye, Pencil, Plus, Search, Settings2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Archive, Eye, Pencil, Plus, Settings2 } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
+import {
+  ActiveFilterChips,
+  FilterResetButton,
+  FilterSection,
+  MoreFiltersSheet,
+  StandardDateRangeFilter,
+  StandardFilterBar,
+  StandardSearchInput,
+  StandardSelectFilter,
+  useCascadingOrganizationFilters,
+  type StandardDateRange
+} from "../components/filters";
 import { DataTableShell } from "../components/ui/data-table-shell";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { AlertBanner, CheckboxField, FilterBar, PageHeader, PageShell, SelectField, SelectField as UiSelectField } from "../components/ui/page-shell";
+import { AlertBanner, CheckboxField, PageHeader, PageShell, SelectField, SelectField as UiSelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -80,6 +92,8 @@ export function EmployeesPage() {
   const [levelId, setLevelId] = useState("all");
   const [employeeType, setEmployeeType] = useState("all");
   const [employmentType, setEmploymentType] = useState("all");
+  const [joinedDateRange, setJoinedDateRange] = useState<StandardDateRange>({});
+  const [userLinked, setUserLinked] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<{ mode: "create" | "edit"; employee?: Employee } | null>(null);
@@ -96,6 +110,17 @@ export function EmployeesPage() {
   const canArchive = permissions.has("employees.archive");
   const canNumber = permissions.has("employees.numbering.manage");
   const canStatus = permissions.has("employees.status.manage");
+  const { activeDepartments, filteredJobLevels, filteredPositions } = useCascadingOrganizationFilters({
+    departments,
+    jobLevels,
+    positions,
+    departmentId: departmentId === "all" ? "" : departmentId,
+    jobLevelId: levelId === "all" ? "" : levelId,
+    onInvalidSelection: (next) => {
+      if (next.jobLevelId === "") setLevelId("all");
+      if (next.positionId === "") setPositionId("all");
+    }
+  });
 
   async function load() {
     if (!token || !canView) return;
@@ -141,10 +166,39 @@ export function EmployeesPage() {
         (positionId === "all" || employee.primary_position_id === positionId) &&
         (levelId === "all" || employee.job_level_id === levelId) &&
         (employeeType === "all" || employee.employee_type === employeeType) &&
-        (employmentType === "all" || employee.employment_type === employmentType)
+        (employmentType === "all" || employee.employment_type === employmentType) &&
+        (userLinked === "all" || (userLinked === "linked" ? employee.user_linked : !employee.user_linked)) &&
+        (!joinedDateRange.from || (employee.joining_date ?? "") >= joinedDateRange.from) &&
+        (!joinedDateRange.to || (employee.joining_date ?? "") <= joinedDateRange.to)
       );
     });
-  }, [departmentId, employeeType, employees, employmentType, levelId, locationId, positionId, search, statusId]);
+  }, [departmentId, employeeType, employees, employmentType, joinedDateRange.from, joinedDateRange.to, levelId, locationId, positionId, search, statusId, userLinked]);
+
+  function resetFilters() {
+    setSearch("");
+    setStatusId("all");
+    setDepartmentId("all");
+    setLocationId("all");
+    setPositionId("all");
+    setLevelId("all");
+    setEmployeeType("all");
+    setEmploymentType("all");
+    setJoinedDateRange({});
+    setUserLinked("all");
+  }
+
+  const activeChips = [
+    search.trim() ? { key: "search", label: "Search", value: search.trim(), onRemove: () => setSearch("") } : null,
+    statusId !== "all" ? { key: "status", label: "Status", value: statuses.find((status) => status.id === statusId)?.name ?? "Selected", onRemove: () => setStatusId("all") } : null,
+    departmentId !== "all" ? { key: "department", label: "Department", value: departments.find((department) => department.id === departmentId)?.name ?? "Selected", onRemove: () => { setDepartmentId("all"); setLevelId("all"); setPositionId("all"); } } : null,
+    levelId !== "all" ? { key: "level", label: "Job Level", value: jobLevels.find((level) => level.id === levelId)?.name ?? "Selected", onRemove: () => { setLevelId("all"); setPositionId("all"); } } : null,
+    positionId !== "all" ? { key: "position", label: "Position", value: positions.find((position) => position.id === positionId)?.title ?? "Selected", onRemove: () => setPositionId("all") } : null,
+    locationId !== "all" ? { key: "location", label: "Location", value: locations.find((location) => location.id === locationId)?.name ?? "Selected", onRemove: () => setLocationId("all") } : null,
+    employeeType !== "all" ? { key: "employeeType", label: "Employee Type", value: employeeType, onRemove: () => setEmployeeType("all") } : null,
+    employmentType !== "all" ? { key: "employmentType", label: "Employment", value: employmentType, onRemove: () => setEmploymentType("all") } : null,
+    userLinked !== "all" ? { key: "userLinked", label: "User", value: userLinked === "linked" ? "Linked" : "Not linked", onRemove: () => setUserLinked("all") } : null,
+    joinedDateRange.from || joinedDateRange.to ? { key: "joiningDate", label: "Joined", value: `${joinedDateRange.from || "Any"} - ${joinedDateRange.to || "Any"}`, onRemove: () => setJoinedDateRange({}) } : null
+  ].filter(Boolean) as Array<{ key: string; label: string; value: ReactNode; onRemove: () => void }>;
 
   async function saveEmployee(input: EmployeeInput) {
     if (!token || !modal) return;
@@ -212,19 +266,33 @@ export function EmployeesPage() {
       {error ? <AlertBanner tone="danger"><strong>Unable to complete employee action.</strong> {error}</AlertBanner> : null}
 
       <div className="space-y-3">
-          <FilterBar className="lg:grid-cols-4 xl:grid-cols-8">
-            <div className="relative lg:col-span-2">
-              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Search name or employee no" value={search} onChange={(event) => setSearch(event.target.value)} />
-            </div>
-            <Select value={statusId} onChange={setStatusId}><option value="all">All statuses</option>{statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>
-            <Select value={departmentId} onChange={setDepartmentId}><option value="all">All departments</option>{departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select>
-            <Select value={locationId} onChange={setLocationId}><option value="all">All locations</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</Select>
-            <Select value={positionId} onChange={setPositionId}><option value="all">All positions</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</Select>
-            <Select value={levelId} onChange={setLevelId}><option value="all">All levels</option>{jobLevels.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</Select>
-            <Select value={employeeType} onChange={setEmployeeType}><option value="all">All types</option>{employeeTypes.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
-            <Select value={employmentType} onChange={setEmploymentType}><option value="all">All employment</option>{employmentTypes.map((t) => <option key={t} value={t}>{t}</option>)}</Select>
-          </FilterBar>
+        <StandardFilterBar
+          search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search employees..." />}
+          reset={<FilterResetButton onReset={resetFilters} />}
+          moreFilters={
+            <MoreFiltersSheet onReset={resetFilters}>
+              <FilterSection title="Organization">
+                <StandardSelectFilter value={departmentId === "all" ? "" : departmentId} onValueChange={(value) => { setDepartmentId(value || "all"); setLevelId("all"); setPositionId("all"); }} allLabel="All departments" width="department" options={activeDepartments.map((department) => ({ value: department.id, label: department.name }))} />
+                <StandardSelectFilter value={levelId === "all" ? "" : levelId} onValueChange={(value) => { setLevelId(value || "all"); setPositionId("all"); }} allLabel="All job levels" width="jobLevel" options={filteredJobLevels.map((level) => ({ value: level.id, label: level.name }))} />
+                <StandardSelectFilter value={positionId === "all" ? "" : positionId} onValueChange={(value) => setPositionId(value || "all")} allLabel="All positions" width="position" options={filteredPositions.map((position) => ({ value: position.id, label: position.title }))} />
+                <StandardSelectFilter value={locationId === "all" ? "" : locationId} onValueChange={(value) => setLocationId(value || "all")} allLabel="All locations" width="department" options={locations.filter((location) => location.is_active !== false).map((location) => ({ value: location.id, label: location.name }))} />
+              </FilterSection>
+              <FilterSection title="Employment">
+                <StandardSelectFilter value={employeeType === "all" ? "" : employeeType} onValueChange={(value) => setEmployeeType(value || "all")} allLabel="All employee types" options={employeeTypes.map((type) => ({ value: type, label: type }))} />
+                <StandardSelectFilter value={employmentType === "all" ? "" : employmentType} onValueChange={(value) => setEmploymentType(value || "all")} allLabel="All employment" options={employmentTypes.map((type) => ({ value: type, label: type }))} />
+                <StandardDateRangeFilter value={joinedDateRange} onChange={setJoinedDateRange} label="Joined Date Range" />
+              </FilterSection>
+              <FilterSection title="Compliance">
+                <StandardSelectFilter value={userLinked === "all" ? "" : userLinked} onValueChange={(value) => setUserLinked(value || "all")} allLabel="Any user link" options={[{ value: "linked", label: "Linked user" }, { value: "not_linked", label: "Not linked" }]} />
+              </FilterSection>
+            </MoreFiltersSheet>
+          }
+        >
+          <StandardSelectFilter value={statusId === "all" ? "" : statusId} onValueChange={(value) => setStatusId(value || "all")} allLabel="All statuses" width="status" options={statuses.map((status) => ({ value: status.id, label: status.name }))} />
+          <StandardSelectFilter value={departmentId === "all" ? "" : departmentId} onValueChange={(value) => { setDepartmentId(value || "all"); setLevelId("all"); setPositionId("all"); }} allLabel="All departments" width="department" options={activeDepartments.map((department) => ({ value: department.id, label: department.name }))} />
+          <StandardSelectFilter value={levelId === "all" ? "" : levelId} onValueChange={(value) => { setLevelId(value || "all"); setPositionId("all"); }} allLabel="All job levels" width="jobLevel" options={filteredJobLevels.map((level) => ({ value: level.id, label: level.name }))} />
+        </StandardFilterBar>
+        <ActiveFilterChips chips={activeChips} />
         <DataTableShell loading={loading} empty={filtered.length === 0} emptyTitle="No employees found" emptyDescription="Create a draft employee or adjust filters.">
             <Table>
               <TableHeader>
@@ -321,10 +389,6 @@ export function EmployeesPage() {
       ) : null}
     </PageShell>
   );
-}
-
-function Select({ value, onChange, children }: { value: string; onChange: (value: string) => void; children: React.ReactNode }) {
-  return <UiSelectField value={value} onValueChange={onChange}>{children}</UiSelectField>;
 }
 
 function toInput(employee?: Employee): EmployeeInput {

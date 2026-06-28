@@ -7,6 +7,16 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import {
+  ActiveFilterChips,
+  FilterResetButton,
+  FilterSection,
+  MoreFiltersSheet,
+  StandardDateRangeFilter,
+  StandardFilterBar,
+  StandardSearchInput,
+  StandardSelectFilter
+} from "../components/filters";
 import { SubNavigationBar, SubNavigationItem } from "../components/ui/navigation-tabs";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -106,6 +116,16 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
     void load();
   }, [token, canView, mode, search, status]);
 
+  function resetFilters() {
+    setSearch("");
+    setStatus("");
+  }
+
+  const activeChips = [
+    search.trim() ? { key: "search", label: "Search", value: search.trim(), onRemove: () => setSearch("") } : null,
+    status ? { key: "status", label: "Approval Status", value: status, onRemove: () => setStatus("") } : null
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string; onRemove: () => void }>;
+
   async function openInstance(instance: ApprovalInstance) {
     if (!token) return;
     setSelected(await api.getApprovalInstance(token, instance.id));
@@ -196,17 +216,31 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
         {tabs.map((tab) => <SubNavigationItem key={tab.mode} to={tab.to} active={mode === tab.mode}>{tab.label}</SubNavigationItem>)}
       </SubNavigationBar>
 
+      {!["settings", "templates", "delegations", "reports"].includes(mode) ? (
+        <>
+          <StandardFilterBar
+            search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search requests..." />}
+            reset={<FilterResetButton onReset={resetFilters} />}
+            moreFilters={
+              <MoreFiltersSheet onReset={resetFilters}>
+                <FilterSection title="Approval">
+                  <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["DRAFT", "ACTIVE", "PENDING", "PARTIALLY_APPROVED", "APPROVED", "REJECTED", "SENT_BACK", "CANCELLED", "ARCHIVED"].map((item) => ({ value: item, label: item }))} />
+                </FilterSection>
+                <FilterSection title="Request">
+                  <StandardDateRangeFilter value={{}} onChange={() => undefined} label="Created Date Range" disabled />
+                  <div className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Created-date filtering is available in reports where request timestamps are exposed.</div>
+                </FilterSection>
+              </MoreFiltersSheet>
+            }
+          >
+            <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["DRAFT", "ACTIVE", "PENDING", "PARTIALLY_APPROVED", "APPROVED", "REJECTED", "SENT_BACK", "CANCELLED", "ARCHIVED"].map((item) => ({ value: item, label: item }))} />
+          </StandardFilterBar>
+          <ActiveFilterChips chips={activeChips} />
+        </>
+      ) : null}
+
       <Panel className="overflow-hidden">
         {error ? <div className="m-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-        {!["settings", "templates", "delegations", "reports"].includes(mode) ? (
-          <div className="grid gap-2 border-b p-3 md:grid-cols-4">
-            <Input placeholder="Search approval title/module" value={search} onChange={(event) => setSearch(event.target.value)} />
-            <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">All statuses</option>
-              {["DRAFT", "ACTIVE", "PENDING", "PARTIALLY_APPROVED", "APPROVED", "REJECTED", "SENT_BACK", "CANCELLED", "ARCHIVED"].map((item) => <option key={item} value={item}>{item}</option>)}
-            </SelectField>
-          </div>
-        ) : null}
         {["inbox", "submitted", "overdue", "escalated", "delegated", "history", "self-service"].includes(mode) ? <ApprovalTable rows={approvals} loading={loading} onOpen={openInstance} /> : null}
         {mode === "workflows" ? <WorkflowBuilder rows={workflows} loading={loading} form={workflowForm} setForm={setWorkflowForm} onSave={saveWorkflow} onOpen={openWorkflow} canManage={canManage} /> : null}
         {mode === "settings" && settings ? <SettingsPanel settings={settings} token={token!} canManage={canManage} onSaved={load} onError={setError} /> : null}

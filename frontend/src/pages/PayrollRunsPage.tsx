@@ -1,11 +1,19 @@
-import { Download, Eye, PlayCircle, RefreshCw, Search, XCircle } from "lucide-react";
+import { Download, Eye, PlayCircle, RefreshCw, XCircle } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
-import { Input } from "../components/ui/input";
-import { AlertBanner, FilterBar, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
+import {
+  ActiveFilterChips,
+  FilterResetButton,
+  FilterSection,
+  MoreFiltersSheet,
+  StandardFilterBar,
+  StandardSearchInput,
+  StandardSelectFilter
+} from "../components/filters";
+import { AlertBanner, PageHeader, PageShell } from "../components/ui/page-shell";
 import { DataTableShell } from "../components/ui/data-table-shell";
 import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -27,7 +35,7 @@ function normalizeRunStatus(status: string) {
 
 export function PayrollRunsPage() {
   const { token, user } = useAuth();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("payroll.runs.view") || permissions.has("payroll.view");
   const canRecalculate = permissions.has("payroll.runs.recalculate") || permissions.has("payroll.periods.recalculate") || permissions.has("payroll.runs.manage") || permissions.has("payroll.periods.manage") || permissions.has("payroll.manage");
@@ -42,6 +50,7 @@ export function PayrollRunsPage() {
   const [action, setAction] = useState<{ run: PayrollRun; name: "recalculate" | "approve" | "cancel" } | null>(null);
   const [reason, setReason] = useState("");
   const filters = useMemo(() => ({ status, search, period_id: params.get("period_id") ?? "" }), [status, search, params]);
+  const payrollRunStatuses = ["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"];
 
   async function load() {
     if (!token || !canView) return;
@@ -93,6 +102,17 @@ export function PayrollRunsPage() {
     }
   }
 
+  function resetFilters() {
+    setSearch("");
+    setStatus("");
+  }
+
+  const activeChips = [
+    search.trim() ? { key: "search", label: "Search", value: search.trim(), onRemove: () => setSearch("") } : null,
+    status ? { key: "status", label: "Status", value: humanizeStatus(status), title: status, onRemove: () => setStatus("") } : null,
+    params.get("period_id") ? { key: "period", label: "Payroll Period", value: "Linked period", title: params.get("period_id") ?? undefined, onRemove: () => setParams({}) } : null
+  ].filter(Boolean) as Array<{ key: string; label: string; value: string; title?: string; onRemove: () => void }>;
+
   if (!canView) return <PageShell><AlertBanner tone="danger">Payroll runs are unavailable. Your account needs payroll.view permission.</AlertBanner></PageShell>;
 
   return (
@@ -103,10 +123,21 @@ export function PayrollRunsPage() {
         breadcrumbs={[{ label: "Payroll", href: "/payroll" }, { label: "Runs" }]}
       />
       <PayrollNav />
-      <FilterBar>
-          <div className="relative md:col-span-2"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search run" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-          <SelectField aria-label="Status" value={status} onValueChange={setStatus}><option value="">All statuses</option>{["DRAFT", "CALCULATING", "READY_FOR_REVIEW", "APPROVED_PLACEHOLDER", "FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"].map((item) => <option key={item} value={item}>{humanizeStatus(item)}</option>)}</SelectField>
-      </FilterBar>
+      <StandardFilterBar
+        search={<StandardSearchInput value={search} onDebouncedChange={setSearch} placeholder="Search payroll runs..." />}
+        reset={<FilterResetButton onReset={resetFilters} />}
+        moreFilters={
+          <MoreFiltersSheet onReset={resetFilters}>
+            <FilterSection title="Payroll">
+              <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={payrollRunStatuses.map((item) => ({ value: item, label: humanizeStatus(item) }))} />
+              <div className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Payroll Period filters are preserved from linked period routes.</div>
+            </FilterSection>
+          </MoreFiltersSheet>
+        }
+      >
+        <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={payrollRunStatuses.map((item) => ({ value: item, label: humanizeStatus(item) }))} />
+      </StandardFilterBar>
+      <ActiveFilterChips chips={activeChips} />
       <DataTableShell loading={loading} error={error} empty={!runs.length} emptyTitle="No payroll runs" emptyDescription="Generate a run from a payroll period.">
           <Table>
             <TableHeader><TableRow><TableHead>Run</TableHead><TableHead>Period</TableHead><TableHead>Status</TableHead><TableHead>Mode</TableHead><TableHead>Generated by</TableHead><TableHead>Generated</TableHead><TableHead>Approved</TableHead><TableHead>Paid</TableHead><TableHead>Employees</TableHead><TableHead>Earnings</TableHead><TableHead>Deductions</TableHead><TableHead>Net salary</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
