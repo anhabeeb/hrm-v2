@@ -174,6 +174,8 @@ function getPreferredOpenGroup(groups: CommandCenterGroup[]) {
 
 const KPI_ROW_SIZE = 5;
 const commandCenterKpiCardClass = "w-full min-w-0";
+const commandCenterKpiRowClass =
+  "kpi-row grid w-full justify-center gap-4 [grid-template-columns:minmax(0,1fr)] sm:[grid-template-columns:repeat(2,minmax(0,18rem))] lg:[grid-template-columns:repeat(var(--kpi-row-count),minmax(0,12rem))] xl:[grid-template-columns:repeat(var(--kpi-row-count),minmax(0,14rem))] 2xl:[grid-template-columns:repeat(var(--kpi-row-count),16.75rem)]";
 
 function getKpiGroupFullSummary(group: CommandCenterGroup) {
   if (!group.available) return group.warning ?? "This KPI group is temporarily unavailable.";
@@ -363,7 +365,7 @@ function CommandCenterKpiGrid({ kpis }: { kpis: CommandCenterKpi[] }) {
       {chunkKpis(kpis, KPI_ROW_SIZE).map((row, rowIndex) => (
         <div
           key={rowIndex}
-          className="kpi-row grid w-full justify-center gap-4 [grid-template-columns:minmax(0,1fr)] sm:[grid-template-columns:repeat(2,minmax(0,18rem))] lg:[grid-template-columns:repeat(3,minmax(0,17rem))] 2xl:[grid-template-columns:repeat(var(--kpi-row-count),16.75rem)]"
+          className={commandCenterKpiRowClass}
           style={{ "--kpi-row-count": row.length } as CSSProperties & Record<"--kpi-row-count", number>}
         >
           {row.map((card) => <CommandCenterKpiCard key={card.id} card={card} />)}
@@ -437,7 +439,7 @@ function CommandCenterSkeleton() {
             {chunkKpis(skeletonCards, KPI_ROW_SIZE).map((row, rowIndex) => (
               <div
                 key={rowIndex}
-                className="kpi-row grid w-full justify-center gap-4 [grid-template-columns:minmax(0,1fr)] sm:[grid-template-columns:repeat(2,minmax(0,18rem))] lg:[grid-template-columns:repeat(3,minmax(0,17rem))] 2xl:[grid-template-columns:repeat(var(--kpi-row-count),16.75rem)]"
+                className={commandCenterKpiRowClass}
                 style={{ "--kpi-row-count": row.length } as CSSProperties & Record<"--kpi-row-count", number>}
               >
                 {row.map((card) => (

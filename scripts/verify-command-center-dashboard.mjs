@@ -61,6 +61,26 @@ has(dashboardRoute, "buildEmployeeScopeWhereClause", "Summary API must enforce e
 has(dashboardRoute, "payroll_employee_results", "Payroll dashboard summary must use active payroll result tables.");
 has(dashboardRoute, "employee_uniform_assignments", "Assets/uniforms KPI coverage is missing.");
 has(dashboardRoute, "catch", "Dashboard group failures must be isolated.");
+has(dashboardRoute, "Math.max(0, Number(countValue) || 0)", "Priority helper must clamp invalid or negative counts to 0.");
+hasNo(dashboardRoute, "countValue <= 0", "Priority helper must not hide enabled/permitted KPI icons when the count is 0.");
+hasNo(dashboardRoute, /function priority[\s\S]{0,260}return null/, "Priority helper must return an action for zero-count priorities.");
+hasNo(dashboardRoute, /filter\(Boolean\)\s+as\s+PriorityAction\[\]/, "Priority actions must not rely on zero-count filtering.");
+has(dashboardRoute, "canViewOnboardingPriority", "Onboarding priority icon must be gated by module and permission availability.");
+has(dashboardRoute, "canViewOffboardingPriority", "Offboarding priority icon must be gated by module and permission availability.");
+for (const priorityId of [
+  "complete-onboarding",
+  "complete-offboarding",
+  "resolve-attendance-corrections",
+  "review-pending-leave",
+  "leave-documents",
+  "payroll-holds",
+  "missing-documents",
+  "contract-renewals",
+  "pending-approvals",
+  "asset-returns"
+]) {
+  has(dashboardRoute, priorityId, `Required priority KPI ${priorityId} is missing.`);
+}
 
 has(dashboardPage, "HRM Command Center", "Command Center header title is missing.");
 has(dashboardPage, "Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators.", "Command Center subtitle must match the required copy.");
@@ -74,8 +94,10 @@ has(dashboardPage, "action.count.toLocaleString()", "Priority KPI icons must sho
 has(dashboardPage, "to={action.route}", "Priority KPI icons must click through to their related route.");
 has(dashboardPage, "priorityIconToneClass", "Priority KPI icon tone/glow helper is missing.");
 has(dashboardPage, "count <= 0", "Priority KPI icons must have a neutral zero-count state.");
+has(dashboardPage, "shadow-none", "Priority KPI zero-count icon state must remove glow/shadow.");
 has(dashboardPage, "shadow-[0_0_0_3px", "Priority KPI icons with count > 0 must use a visible glow/color state.");
 has(dashboardPage, "text-slate-500", "Priority KPI zero-count icon state must be neutral/grey.");
+has(dashboardPage, "hasCount ? \"text-current\" : \"text-slate-500\"", "Priority KPI count text must use a neutral style for zero counts.");
 has(dashboardPage, "summary?.priority_actions", "Priority actions must come from the summary API.");
 hasNo(dashboardPage, "title=\"Priority Actions\"", "Priority Actions must not remain duplicated as a lower section.");
 has(dashboardPage, "Accordion", "Dashboard KPI groups must use the shadcn Accordion primitive.");
@@ -105,13 +127,19 @@ hasNo(dashboardPage, "Â·", "Collapsed KPI summary must not include encoded dot
 has(dashboardPage, "CommandCenterKpiGrid", "Dashboard KPI grid wrapper marker is missing.");
 has(dashboardPage, "max-w-[89rem]", "Dashboard KPI grid must cap wide rows to five cards.");
 has(dashboardPage, "KPI_ROW_SIZE = 5", "Dashboard KPI grid must use an explicit five-card row size.");
+has(dashboardPage, "commandCenterKpiRowClass", "Dashboard KPI rows must use a shared deterministic row class.");
 has(dashboardPage, "chunkKpis", "Dashboard KPI grid must split cards into deterministic rows.");
 has(dashboardPage, "chunkKpis(kpis, KPI_ROW_SIZE)", "Dashboard KPI grid must render KPI cards in deterministic five-card rows.");
 has(dashboardPage, "chunkKpis(skeletonCards, KPI_ROW_SIZE)", "Dashboard KPI skeleton must use the same deterministic row chunking.");
 has(dashboardPage, "flex-col items-center", "Dashboard KPI grid must stack centered KPI rows.");
 has(dashboardPage, "kpi-row grid w-full justify-center", "Dashboard KPI rows must be deterministic centered grid rows.");
+has(dashboardPage, "lg:[grid-template-columns:repeat(var(--kpi-row-count),minmax(0,12rem))]", "Normal desktop KPI rows must render the full chunk instead of falling back to three columns.");
+has(dashboardPage, "xl:[grid-template-columns:repeat(var(--kpi-row-count),minmax(0,14rem))]", "Wide KPI rows must preserve deterministic chunk columns before 2xl.");
 has(dashboardPage, "2xl:[grid-template-columns:repeat(var(--kpi-row-count),16.75rem)]", "Wide desktop KPI rows must use row chunk size instead of stretching/wrapping.");
 has(dashboardPage, '"--kpi-row-count": row.length', "KPI row column count must be driven by each chunk length.");
+has(dashboardPage, "className={commandCenterKpiRowClass}", "Live and skeleton KPI rows must share the deterministic row class.");
+hasNo(dashboardPage, "lg:[grid-template-columns:repeat(3", "Command Center KPI rows must not use a three-column desktop breakpoint.");
+hasNo(dashboardPage, /grid-template-columns:repeat\(3/, "Command Center KPI rows must not visually split a five-card chunk into 3+2.");
 hasNo(dashboardPage, "flex w-full flex-wrap justify-center", "Wide KPI rows must not rely on generic flex-wrap.");
 has(dashboardPage, "DashboardWidget", "Dashboard groups must use standardized dashboard widgets.");
 has(dashboardPage, "to={card.route}", "KPI cards must be clickable and route-aware.");

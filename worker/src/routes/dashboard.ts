@@ -231,9 +231,8 @@ function kpi(id: string, title: string, value: number | string, description: str
   return { id, title, value, description, tone, icon_key, route, secondary_value: secondaryValue ?? null };
 }
 
-function priority(id: string, title: string, description: string, countValue: number, tone: DashboardTone, icon_key: string, route: string): PriorityAction | null {
-  if (countValue <= 0) return null;
-  return { id, title, description, count: countValue, tone, icon_key, route };
+function priority(id: string, title: string, description: string, countValue: number, tone: DashboardTone, icon_key: string, route: string): PriorityAction {
+  return { id, title, description, count: Math.max(0, Number(countValue) || 0), tone, icon_key, route };
 }
 
 async function countPayrollRuns(db: D1Database, scope: EmployeeScopeFilter, status: string) {
@@ -270,17 +269,17 @@ async function buildCommandCenterSummary(c: Context<AppBindings>) {
 
   const groups = {
     workforce: await safeDashboardSummaryGroup("workforce", "Workforce", hasAny(c, ["employees.view"]), async () => {
-      const onboardingCount = enabledModules.onboarding && hasAny(c, ["onboarding.cases.view", "onboarding.dashboard.view", "employees.lifecycle.view"])
+      const canViewOnboardingPriority = enabledModules.onboarding && hasAny(c, ["onboarding.cases.view", "onboarding.dashboard.view", "employees.lifecycle.view"]);
+      const canViewOffboardingPriority = enabledModules.offboarding && hasAny(c, ["offboarding.cases.view", "offboarding.dashboard.view", "employees.lifecycle.view"]);
+      const onboardingCount = canViewOnboardingPriority
         ? await count(db, `SELECT COUNT(*) AS value FROM employee_onboarding_cases oc JOIN employees e ON e.id = oc.employee_id WHERE ${employeeScope.sql} AND oc.activation_status != 'ACTIVATED' AND oc.onboarding_status != 'CANCELLED'`, ...employeeScope.params)
         : 0;
-      const offboardingCount = enabledModules.offboarding && hasAny(c, ["offboarding.cases.view", "offboarding.dashboard.view", "employees.lifecycle.view"])
+      const offboardingCount = canViewOffboardingPriority
         ? await count(db, `SELECT COUNT(*) AS value FROM employee_offboarding_cases oc JOIN employees e ON e.id = oc.employee_id WHERE ${employeeScope.sql} AND oc.finalization_status != 'FINALIZED' AND oc.offboarding_status != 'CANCELLED'`, ...employeeScope.params)
         : 0;
       const exitingThisMonth = await count(db, `SELECT COUNT(*) AS value FROM employees e WHERE ${employeeScope.sql} AND e.exit_date >= ? AND e.exit_date < ?`, ...employeeScope.params, monthStart, nextMonthStart);
-      priorityActions.push(...[
-        priority("complete-onboarding", "Complete onboarding cases", "Open employees waiting for activation readiness.", onboardingCount, "warning", "check-circle", "/onboarding/cases?status=active"),
-        priority("complete-offboarding", "Complete offboarding cases", "Open exit cases that still need clearance or finalization.", offboardingCount, "warning", "archive", "/offboarding/cases?status=active")
-      ].filter(Boolean) as PriorityAction[]);
+      if (canViewOnboardingPriority) priorityActions.push(priority("complete-onboarding", "Complete onboarding cases", "Open employees waiting for activation readiness.", onboardingCount, "warning", "check-circle", "/onboarding/cases?status=active"));
+      if (canViewOffboardingPriority) priorityActions.push(priority("complete-offboarding", "Complete offboarding cases", "Open exit cases that still need clearance or finalization.", offboardingCount, "warning", "archive", "/offboarding/cases?status=active"));
       const cards = [
         kpi("total-employees", "Total Employees", await count(db, `SELECT COUNT(*) AS value FROM employees e WHERE ${employeeScope.sql} AND e.archived_at IS NULL`, ...employeeScope.params), "Employees visible inside your access scope.", "info", "users", "/employees"),
         kpi("active-employees", "Active Employees", await count(db, `SELECT COUNT(*) AS value FROM employees e JOIN employee_statuses s ON s.id = e.status_id WHERE ${employeeScope.sql} AND s.key = 'ACTIVE' AND e.archived_at IS NULL`, ...employeeScope.params), "Currently active employee records.", "success", "user-check", "/employees?status=ACTIVE")
@@ -293,9 +292,7 @@ async function buildCommandCenterSummary(c: Context<AppBindings>) {
     }),
     attendance: await safeDashboardSummaryGroup("attendance", "Attendance", enabledModules.attendance && hasAny(c, ["attendance.view"]), async () => {
       const pendingCorrections = await count(db, `SELECT COUNT(*) AS value FROM attendance_correction_requests WHERE employee_id IN (${scopedEmployeeIds(attendanceScope)}) AND status IN ('PENDING','SUBMITTED')`, ...attendanceScope.params);
-      priorityActions.push(...[
-        priority("resolve-attendance-corrections", "Resolve attendance corrections", "Review pending correction requests before payroll lock.", pendingCorrections, "warning", "calendar-check", "/attendance/corrections?status=PENDING")
-      ].filter(Boolean) as PriorityAction[]);
+      priorityActions.push(priority("resolve-attendance-corrections", "Resolve attendance corrections", "Review pending correction requests before payroll lock.", pendingCorrections, "warning", "calendar-check", "/attendance/corrections?status=PENDING"));
       return [
         kpi("present-today", "Present Today", await count(db, `SELECT COUNT(*) AS value FROM attendance_daily_records WHERE employee_id IN (${scopedEmployeeIds(attendanceScope)}) AND attendance_date = ? AND status IN ('PRESENT','LATE','HALF_DAY','EARLY_LEAVE')`, ...attendanceScope.params, today), "Present, late, half-day, and early-leave records today.", "success", "calendar-check", `/attendance/records?date=${today}`),
         kpi("absent-today", "Absent Today", await count(db, `SELECT COUNT(*) AS value FROM attendance_daily_records WHERE employee_id IN (${scopedEmployeeIds(attendanceScope)}) AND attendance_date = ? AND status = 'ABSENT'`, ...attendanceScope.params, today), "Absent records for today.", "danger", "calendar-x", `/attendance/records?date=${today}&status=ABSENT`),
@@ -308,10 +305,10 @@ async function buildCommandCenterSummary(c: Context<AppBindings>) {
     leave: await safeDashboardSummaryGroup("leave", "Leave", enabledModules.leave && hasAny(c, ["leave.view"]), async () => {
       const pendingLeave = await count(db, `SELECT COUNT(*) AS value FROM leave_requests WHERE employee_id IN (${scopedEmployeeIds(leaveScope)}) AND status IN ('SUBMITTED','PENDING_APPROVAL')`, ...leaveScope.params);
       const missingDocs = await count(db, `SELECT COUNT(*) AS value FROM leave_requests WHERE employee_id IN (${scopedEmployeeIds(leaveScope)}) AND document_status = 'REQUIRED_PENDING'`, ...leaveScope.params);
-      priorityActions.push(...[
+      priorityActions.push(
         priority("review-pending-leave", "Review pending leave", "Open submitted leave requests and approval queues.", pendingLeave, "warning", "clipboard-list", "/leave/approvals?status=PENDING_APPROVAL"),
         priority("leave-documents", "Review leave document gaps", "Open leave requests that still need supporting documents.", missingDocs, "warning", "file-warning", "/leave/requests?document_status=REQUIRED_PENDING")
-      ].filter(Boolean) as PriorityAction[]);
+      );
       return [
         kpi("on-leave-today", "Employees On Leave Today", await count(db, `SELECT COUNT(DISTINCT employee_id) AS value FROM leave_requests WHERE employee_id IN (${scopedEmployeeIds(leaveScope)}) AND status = 'APPROVED' AND start_date <= ? AND end_date >= ?`, ...leaveScope.params, today, today), "Approved leave covering today.", "info", "calendar-days", `/leave/calendar?date=${today}`),
         kpi("pending-leave", "Pending Leave Requests", pendingLeave, "Submitted or approval-pending requests.", pendingLeave > 0 ? "warning" : "neutral", "clipboard-list", "/leave/approvals?status=PENDING_APPROVAL"),
@@ -324,9 +321,7 @@ async function buildCommandCenterSummary(c: Context<AppBindings>) {
       const currentPeriod = await db.prepare("SELECT period_month, period_year, status FROM payroll_periods ORDER BY period_year DESC, period_month DESC LIMIT 1").first<Record<string, unknown>>();
       const holds = await count(db, `SELECT COUNT(*) AS value FROM payroll_employee_results WHERE employee_id IN (${scopedEmployeeIds(payrollScope)}) AND status = 'HELD'`, ...payrollScope.params);
       const draftRuns = await countPayrollRuns(db, payrollScope, "DRAFT");
-      priorityActions.push(...[
-        priority("payroll-holds", "Process payroll holds", "Open held payroll employee results and warnings.", holds, "warning", "pause-circle", "/payroll/runs?status=HELD")
-      ].filter(Boolean) as PriorityAction[]);
+      priorityActions.push(priority("payroll-holds", "Process payroll holds", "Open held payroll employee results and warnings.", holds, "warning", "pause-circle", "/payroll/runs?status=HELD"));
       const cards = [
         kpi("current-period", "Current Payroll Period", currentPeriod ? `${currentPeriod.period_month}/${currentPeriod.period_year}` : "Not set", "Latest configured payroll period.", currentPeriod ? "info" : "neutral", "banknote", "/payroll/periods", String(currentPeriod?.status ?? "No period")),
         kpi("draft-runs", "Draft Payroll Runs", draftRuns, "Payroll runs still in draft.", draftRuns > 0 ? "warning" : "neutral", "clock", "/payroll/runs?status=DRAFT"),
@@ -357,9 +352,7 @@ async function buildCommandCenterSummary(c: Context<AppBindings>) {
         ...documentScope.params
       );
       const expiring = await count(db, `SELECT COUNT(*) AS value FROM employee_documents WHERE employee_id IN (${scopedEmployeeIds(documentScope)}) AND status = 'ACTIVE' AND expiry_date IS NOT NULL AND expiry_date >= ? AND expiry_date <= date(?, '+30 day')`, ...documentScope.params, today, today);
-      priorityActions.push(...[
-        priority("missing-documents", "Review missing documents", "Open employee document compliance gaps.", missing, "warning", "file-warning", "/documents/compliance/missing")
-      ].filter(Boolean) as PriorityAction[]);
+      priorityActions.push(priority("missing-documents", "Review missing documents", "Open employee document compliance gaps.", missing, "warning", "file-warning", "/documents/compliance/missing"));
       return [
         kpi("missing-required", "Missing Required Documents", missing, "Required documents missing in your scope.", missing > 0 ? "warning" : "success", "file-warning", "/documents/compliance/missing"),
         kpi("expiring-soon", "Documents Expiring Soon", expiring, "Active documents expiring in the next 30 days.", expiring > 0 ? "warning" : "neutral", "calendar-clock", "/documents/compliance/expiring"),
@@ -370,9 +363,7 @@ async function buildCommandCenterSummary(c: Context<AppBindings>) {
     }),
     contracts: await safeDashboardSummaryGroup("contracts", "Contracts", enabledModules.contracts && hasAny(c, ["contracts.view", "employees.contracts.view"]), async () => {
       const renewals = await count(db, `SELECT COUNT(*) AS value FROM employee_contracts ec WHERE ec.employee_id IN (${scopedEmployeeIds(employeeScope)}) AND ec.renewal_status IN ('DUE_SOON','PENDING_RENEWAL')`, ...employeeScope.params);
-      priorityActions.push(...[
-        priority("contract-renewals", "Review contract renewals", "Open contracts that are due for renewal.", renewals, "warning", "file-signature", "/contracts/renewals")
-      ].filter(Boolean) as PriorityAction[]);
+      priorityActions.push(priority("contract-renewals", "Review contract renewals", "Open contracts that are due for renewal.", renewals, "warning", "file-signature", "/contracts/renewals"));
       return [
         kpi("active-contracts", "Active Contracts", await count(db, `SELECT COUNT(*) AS value FROM employee_contracts ec WHERE ec.employee_id IN (${scopedEmployeeIds(employeeScope)}) AND ec.status IN ('ACTIVE','EXPIRING_SOON')`, ...employeeScope.params), "Active and expiring-soon contracts.", "success", "file-signature", "/contracts?status=ACTIVE"),
         kpi("expiring-contracts", "Contracts Expiring Soon", await count(db, `SELECT COUNT(*) AS value FROM employee_contracts ec WHERE ec.employee_id IN (${scopedEmployeeIds(employeeScope)}) AND ec.contract_end_date IS NOT NULL AND ec.contract_end_date >= ? AND ec.contract_end_date <= date(?, '+30 day') AND ec.status IN ('ACTIVE','EXPIRING_SOON')`, ...employeeScope.params, today, today), "Contracts ending within 30 days.", "warning", "calendar-clock", "/contracts/alerts?type=EXPIRING"),
@@ -383,9 +374,7 @@ async function buildCommandCenterSummary(c: Context<AppBindings>) {
     }),
     approvals: await safeDashboardSummaryGroup("approvals", "Approvals", enabledModules.approvals && hasAny(c, ["approvals.view", "approvals.inbox.view", "dashboard.view"]), async () => {
       const myPending = await count(db, "SELECT COUNT(DISTINCT aisa.approval_instance_id) AS value FROM approval_step_assignees aisa WHERE aisa.assigned_user_id = ? AND aisa.status = 'PENDING'", currentUser.id);
-      priorityActions.push(...[
-        priority("pending-approvals", "Review pending approvals", "Open your approval inbox.", myPending, "warning", "git-branch", "/approvals?status=PENDING")
-      ].filter(Boolean) as PriorityAction[]);
+      priorityActions.push(priority("pending-approvals", "Review pending approvals", "Open your approval inbox.", myPending, "warning", "git-branch", "/approvals?status=PENDING"));
       return [
         kpi("my-pending", "My Pending Approvals", myPending, "Approval steps assigned to you.", myPending > 0 ? "warning" : "neutral", "git-branch", "/approvals?status=PENDING"),
         kpi("overdue-approvals", "Overdue Approvals", await count(db, "SELECT COUNT(*) AS value FROM approval_instance_steps WHERE status IN ('PENDING','WAITING') AND due_at IS NOT NULL AND due_at < ?", today), "Approval steps past due.", "danger", "alarm-clock", "/approvals/overdue"),
@@ -395,9 +384,7 @@ async function buildCommandCenterSummary(c: Context<AppBindings>) {
     }),
     assets: await safeDashboardSummaryGroup("assets", "Assets & Uniforms", (enabledModules.assets || enabledModules.uniforms) && hasAny(c, ["assets.view"]), async () => {
       const returns = await count(db, `SELECT COUNT(*) AS value FROM employee_asset_assignments WHERE employee_id IN (${scopedEmployeeIds(assetScope)}) AND status = 'ISSUED' AND expected_return_date IS NOT NULL AND expected_return_date < ?`, ...assetScope.params, today);
-      priorityActions.push(...[
-        priority("asset-returns", "Check asset/uniform returns", "Open overdue issue and return queues.", returns, "warning", "shirt", "/assets/assignments?status=pending_return")
-      ].filter(Boolean) as PriorityAction[]);
+      priorityActions.push(priority("asset-returns", "Check asset/uniform returns", "Open overdue issue and return queues.", returns, "warning", "shirt", "/assets/assignments?status=pending_return"));
       return [
         kpi("assets-issued", "Assets Issued", enabledModules.assets ? await count(db, `SELECT COUNT(*) AS value FROM employee_asset_assignments WHERE employee_id IN (${scopedEmployeeIds(assetScope)}) AND status = 'ISSUED'`, ...assetScope.params) : 0, "Currently issued asset assignments.", "info", "briefcase", "/assets/assignments?status=ISSUED"),
         kpi("pending-returns", "Pending Returns", returns, "Issued assets past expected return date.", returns > 0 ? "warning" : "neutral", "rotate-ccw", "/assets/assignments?status=pending_return"),
