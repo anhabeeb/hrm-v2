@@ -30,6 +30,7 @@ function before(file, first, second, message) {
 const appShell = "frontend/src/layouts/AppShell.tsx";
 const dashboardPage = "frontend/src/pages/DashboardPage.tsx";
 const dashboardRoute = "worker/src/routes/dashboard.ts";
+const tooltipComponent = "frontend/src/components/ui/tooltip.tsx";
 const api = "frontend/src/lib/api.ts";
 const appRoutes = "frontend/src/routes/AppRoutes.tsx";
 const loginPage = "frontend/src/pages/LoginPage.tsx";
@@ -90,6 +91,12 @@ has(dashboardPage, "<PriorityKpiIconStrip actions={priorityActions} />", "Priori
 before(dashboardPage, "<PriorityKpiIconStrip actions={priorityActions} />", '<Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>', "Priority KPI icon strip must appear immediately before Refresh.");
 has(dashboardPage, "PriorityKpiIcon", "Priority KPI icon component is missing.");
 has(dashboardPage, "Tooltip", "Priority KPI icons must use tooltip/hover detail behavior.");
+has(tooltipComponent, "createPortal", "Tooltip content must render through a portal to avoid header clipping.");
+has(tooltipComponent, "document.body", "Tooltip portal must render outside clipped header containers.");
+has(tooltipComponent, "fixed z-[100]", "Tooltip content must use a fixed high-z layer.");
+has(tooltipComponent, "onMouseEnter", "Tooltip must open on hover.");
+has(tooltipComponent, "onFocus", "Tooltip must open on keyboard focus.");
+has(tooltipComponent, "aria-describedby", "Tooltip trigger must preserve accessible description behavior.");
 has(dashboardPage, "action.count.toLocaleString()", "Priority KPI icons must show their count/value.");
 has(dashboardPage, "to={action.route}", "Priority KPI icons must click through to their related route.");
 has(dashboardPage, "priorityIconToneClass", "Priority KPI icon tone/glow helper is missing.");
@@ -98,6 +105,16 @@ has(dashboardPage, "shadow-none", "Priority KPI zero-count icon state must remov
 has(dashboardPage, "shadow-[0_0_0_3px", "Priority KPI icons with count > 0 must use a visible glow/color state.");
 has(dashboardPage, "text-slate-500", "Priority KPI zero-count icon state must be neutral/grey.");
 has(dashboardPage, "hasCount ? \"text-current\" : \"text-slate-500\"", "Priority KPI count text must use a neutral style for zero counts.");
+has(dashboardPage, "No pending items in this queue.", "Priority KPI hover content must include a useful zero-state message.");
+has(dashboardPage, "Click to open related queue.", "Priority KPI hover content must include action guidance.");
+has(dashboardPage, "PriorityKpiIconStrip flex min-w-0 flex-wrap items-center justify-end gap-1.5", "Priority KPI strip must render as a compact non-scroll flex group.");
+has(dashboardPage, "overflowActions = actions.slice(4)", "Priority KPI strip must collapse extra mobile icons instead of scrolling.");
+has(dashboardPage, "aria-haspopup=\"menu\"", "Priority KPI mobile overflow control must be an accessible menu trigger.");
+has(dashboardPage, "PriorityMenuItem", "Priority KPI mobile overflow menu items are missing.");
+has(dashboardPage, "hidden lg:inline-flex", "Extra priority KPI icons must be hidden behind the mobile Priority menu on small screens.");
+hasNo(dashboardPage, /PriorityKpiIconStrip[\s\S]{0,240}overflow-(?:x-)?(?:auto|scroll)/, "Priority KPI strip must not use visible overflow scroll/auto behavior.");
+hasNo(dashboardPage, /PriorityKpiIconStrip[\s\S]{0,240}(?:max-h-|h-\[|min-h-\[)/, "Priority KPI strip must not be a fixed-height scroll box.");
+hasNo(tooltipComponent, /absolute\s+right-0\s+top-full/, "Tooltip content must not remain absolute inside a potentially clipped parent.");
 has(dashboardPage, "summary?.priority_actions", "Priority actions must come from the summary API.");
 hasNo(dashboardPage, "title=\"Priority Actions\"", "Priority Actions must not remain duplicated as a lower section.");
 has(dashboardPage, "Accordion", "Dashboard KPI groups must use the shadcn Accordion primitive.");
@@ -149,7 +166,7 @@ hasNo(dashboardPage, "PriorityTable", "Table-heavy dashboard priority table must
 hasNo(dashboardPage, "DataTableFrame", "Command Center KPI area must not use table frames.");
 hasNo(dashboardPage, "Table", "Command Center dashboard must not render table-heavy blocks.");
 
-for (const file of [appShell, dashboardPage, dashboardRoute, api, appRoutes, loginPage]) {
+for (const file of [appShell, dashboardPage, dashboardRoute, tooltipComponent, api, appRoutes, loginPage]) {
   hasNo(file, /\b(?:window\.)?(?:alert|confirm|prompt)\s*\(/, `${file} must not use browser alert/confirm/prompt.`);
 }
 

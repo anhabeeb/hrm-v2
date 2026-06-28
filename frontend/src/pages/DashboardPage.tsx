@@ -316,13 +316,42 @@ export function DashboardPage() {
 }
 
 function PriorityKpiIconStrip({ actions }: { actions: PriorityAction[] }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const overflowActions = actions.slice(4);
+
   if (!actions.length) return null;
 
   return (
-    <div className="PriorityKpiIconStrip min-w-0 max-w-[min(48vw,36rem)] overflow-x-auto rounded-md border bg-white px-2 py-1 shadow-panel">
-      <div className="flex min-w-max items-center gap-1.5">
-        {actions.map((action) => <PriorityKpiIcon key={action.id} action={action} />)}
-      </div>
+    <div className="PriorityKpiIconStrip flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+      {actions.map((action, index) => (
+        <span key={action.id} className={cn(index >= 4 && "hidden lg:inline-flex")}>
+          <PriorityKpiIcon action={action} />
+        </span>
+      ))}
+      {overflowActions.length ? (
+        <div className="relative lg:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 whitespace-nowrap px-2 text-xs"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((current) => !current)}
+          >
+            <Bell className="h-4 w-4" />
+            Priority
+          </Button>
+          {menuOpen ? (
+            <div className="absolute right-0 top-full z-[80] mt-2 w-72 rounded-md border bg-white p-2 text-left shadow-xl">
+              <div className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">More priority queues</div>
+              <div className="space-y-1">
+                {overflowActions.map((action) => <PriorityMenuItem key={action.id} action={action} onSelect={() => setMenuOpen(false)} />)}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -337,10 +366,10 @@ function PriorityKpiIcon({ action }: { action: PriorityAction }) {
         <div className="space-y-1">
           <p className="font-semibold text-slate-950">{action.title}</p>
           <p>
-            <span className="font-medium">Count:</span> {action.count.toLocaleString()}
+            <span className="font-medium">{action.count.toLocaleString()}</span> pending
           </p>
-          <p className="text-muted-foreground">{action.description}</p>
-          <p className="font-medium text-primary">Open related queue</p>
+          <p className="text-muted-foreground">{hasCount ? action.description : "No pending items in this queue."}</p>
+          <p className="font-medium text-primary">Click to open related queue.</p>
         </div>
       }
     >
@@ -356,6 +385,27 @@ function PriorityKpiIcon({ action }: { action: PriorityAction }) {
         <span className={cn("tabular-nums", hasCount ? "text-current" : "text-slate-500")}>{action.count.toLocaleString()}</span>
       </Link>
     </Tooltip>
+  );
+}
+
+function PriorityMenuItem({ action, onSelect }: { action: PriorityAction; onSelect: () => void }) {
+  const Icon = iconMap[action.icon_key] ?? Bell;
+  return (
+    <Link
+      to={action.route}
+      onClick={onSelect}
+      className="flex min-w-0 items-start gap-2 rounded-md px-2 py-2 text-xs transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+    >
+      <span className={cn("mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border", priorityIconToneClass(action.tone, action.count))}>
+        <Icon className="h-3.5 w-3.5" />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate font-semibold text-slate-950">{action.title}</span>
+        <span className="mt-0.5 block text-muted-foreground">
+          <span className={cn("font-semibold tabular-nums", action.count > 0 ? "text-slate-900" : "text-slate-500")}>{action.count.toLocaleString()}</span> pending
+        </span>
+      </span>
+    </Link>
   );
 }
 
