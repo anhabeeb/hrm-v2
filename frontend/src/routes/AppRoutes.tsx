@@ -113,9 +113,16 @@ function LoginGate() {
     return <Navigate to="/setup" replace />;
   }
   if (user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={defaultLandingPath(user)} replace />;
   }
   return <LoginPage />;
+}
+
+function defaultLandingPath(user: { permissions: string[]; employee_id?: string | null; is_owner?: boolean } | null) {
+  if (!user) return "/";
+  if (user.is_owner || user.permissions.includes("dashboard.view")) return "/";
+  if (user.employee_id && (user.permissions.includes("self_service.view") || user.permissions.some((permission) => permission.startsWith("self_service.")))) return "/self-service";
+  return "/";
 }
 
 export function AppRoutes() {
@@ -127,6 +134,8 @@ export function AppRoutes() {
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
             <Route index element={<DashboardPage />} />
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="command-center" element={<Navigate to="/dashboard" replace />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
             <Route path="employees" element={<EmployeesPage />} />

@@ -1,35 +1,149 @@
-import { ArrowRight, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  Activity,
+  Archive,
+  Banknote,
+  Bell,
+  Briefcase,
+  CalendarCheck,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Database,
+  FileText,
+  FileWarning,
+  LayoutDashboard,
+  LogOut,
+  PauseCircle,
+  RefreshCw,
+  RotateCcw,
+  Settings,
+  ShieldAlert,
+  Shirt,
+  TrendingUp,
+  UserCheck,
+  UserPlus,
+  Users,
+  Wallet,
+  type LucideIcon
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { DataTableFrame } from "../components/ui/data-table";
-import { DashboardWidget, MetricGrid, PageHeader, PageShell, QuickActionCard } from "../components/ui/page-shell";
+import { DashboardWidget, MetricGrid, PageHeader, PageShell, QuickActionCard, WarningPanel } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { StatusBadge } from "../components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
-import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
+import { cn } from "../lib/utils";
+import { useAuth } from "../hooks/useAuth";
 
-type DashboardData = Record<string, unknown>;
-type Row = Record<string, unknown>;
+type DashboardTone = "neutral" | "success" | "warning" | "danger" | "info";
 
-function section(data: DashboardData | null, key: string) {
-  const value = data?.[key];
-  return value && typeof value === "object" ? (value as Row) : null;
+interface CommandCenterKpi {
+  id: string;
+  title: string;
+  value: number | string;
+  description: string;
+  tone: DashboardTone;
+  icon_key: string;
+  route: string;
+  secondary_value?: string | number | null;
 }
 
-function list(value: unknown) {
-  return Array.isArray(value) ? (value as Row[]) : [];
+interface CommandCenterGroup {
+  key: string;
+  title: string;
+  enabled: boolean;
+  available: boolean;
+  warning?: string;
+  kpis: CommandCenterKpi[];
 }
 
-function number(value: unknown) {
-  return Number(value ?? 0);
+interface PriorityAction {
+  id: string;
+  title: string;
+  description: string;
+  count: number;
+  tone: DashboardTone;
+  icon_key: string;
+  route: string;
+}
+
+interface CommandCenterSummary {
+  generated_at?: string;
+  enabled_modules?: Record<string, boolean>;
+  groups?: Record<string, CommandCenterGroup>;
+  priority_actions?: PriorityAction[];
+  warnings?: { group: string; message?: string }[];
+}
+
+const iconMap: Record<string, LucideIcon> = {
+  activity: Activity,
+  archive: Archive,
+  banknote: Banknote,
+  bell: Bell,
+  briefcase: Briefcase,
+  "calendar-check": CalendarCheck,
+  "calendar-clock": Clock3,
+  "calendar-days": CalendarDays,
+  "calendar-range": CalendarDays,
+  "calendar-x": CalendarCheck,
+  "check-circle": CheckCircle2,
+  "clipboard-check": CheckCircle2,
+  "clipboard-edit": FileText,
+  "clipboard-list": FileText,
+  clock: Clock3,
+  "database-zap": Database,
+  edit: FileText,
+  "file-signature": FileText,
+  "file-warning": FileWarning,
+  "file-x": FileWarning,
+  "git-branch": TrendingUp,
+  "hand-coins": Banknote,
+  "log-out": LogOut,
+  "pause-circle": PauseCircle,
+  receipt: FileText,
+  "refresh-cw": RotateCcw,
+  "rotate-ccw": RotateCcw,
+  "scan-line": Activity,
+  settings: Settings,
+  "shield-alert": ShieldAlert,
+  shirt: Shirt,
+  "triangle-alert": ShieldAlert,
+  "trending-up": TrendingUp,
+  "undo-2": RotateCcw,
+  "user-check": UserCheck,
+  "user-plus": UserPlus,
+  users: Users,
+  wallet: Wallet
+};
+
+const groupOrder = ["workforce", "attendance", "leave", "payroll", "documents", "contracts", "approvals", "assets", "alerts"];
+
+function asGroups(summary: CommandCenterSummary | null) {
+  const groups = summary?.groups ?? {};
+  return groupOrder
+    .map((key) => groups[key])
+    .filter((group): group is CommandCenterGroup => Boolean(group))
+    .filter((group) => group.enabled && (group.kpis.length > 0 || group.warning));
+}
+
+function formatValue(value: number | string) {
+  return typeof value === "number" ? value.toLocaleString() : value;
+}
+
+function kpiTone(value: DashboardTone) {
+  return {
+    neutral: "border-slate-200 bg-slate-50 text-slate-700",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-700",
+    danger: "border-red-200 bg-red-50 text-red-700",
+    info: "border-cyan-200 bg-cyan-50 text-cyan-700"
+  }[value];
 }
 
 export function DashboardPage() {
-  const { token, user } = useAuth();
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const { token } = useAuth();
+  const [summary, setSummary] = useState<CommandCenterSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,9 +152,9 @@ export function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      setDashboard(await api.getMainDashboard(token));
+      setSummary(await api.getCommandCenterDashboard(token) as CommandCenterSummary);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Dashboard could not be loaded.");
+      setError(err instanceof Error ? err.message : "Command Center could not be loaded.");
     } finally {
       setLoading(false);
     }
@@ -50,105 +164,153 @@ export function DashboardPage() {
     void load();
   }, [token]);
 
-  const employees = section(dashboard, "employees");
-  const documents = section(dashboard, "documents");
-  const attendance = section(dashboard, "attendance");
-  const leave = section(dashboard, "leave");
-  const roster = section(dashboard, "roster");
-  const payroll = section(dashboard, "payroll");
-  const assets = section(dashboard, "assets");
-  const audit = section(dashboard, "audit");
-  const quickLinks = list(dashboard?.quick_links).filter((item) => user?.permissions.includes(String(item.permission)));
+  const groups = useMemo(() => asGroups(summary), [summary]);
+  const priorityActions = useMemo(() => summary?.priority_actions ?? [], [summary]);
 
   return (
     <PageShell>
       <PageHeader
-        title="Dashboard"
+        title="HRM Command Center"
         eyebrow="HRM command center"
-        description="Compact HR operating overview with permission-safe counters, live-workflow shortcuts, and scope-aware activity."
+        description="Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators."
         actions={
-        <Button variant="outline" size="sm" onClick={() => void load()}>
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </Button>
+          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            Refresh
+          </Button>
         }
       />
 
-      <DataTableFrame loading={loading} error={error} empty={!loading && !error && !dashboard}>
-        <MetricGrid className="p-3">
-          {employees ? <MetricGroup title="Employees" to="/employees" rows={[["Total", employees.total_employees], ["Active", employees.active_employees], ["Onboarding", employees.onboarding_employees]]} /> : null}
-          {documents ? <MetricGroup title="Documents" to="/documents" rows={[["Missing", documents.missing_required_documents], ["Expiring", documents.expiring_documents], ["Expired", documents.expired_documents]]} /> : null}
-          {attendance ? <MetricGroup title="Attendance" to="/attendance" rows={[["Present", attendance.today_present], ["Absent", attendance.today_absent], ["Late", attendance.today_late], ["Missed punch", attendance.missed_punches_today]]} /> : null}
-          {leave ? <MetricGroup title="Leave" to="/leave" rows={[["Pending", leave.pending_leave_approvals], ["On leave", leave.employees_currently_on_leave], ["Upcoming", leave.upcoming_leave]]} /> : null}
-          {roster ? <MetricGroup title="Roster" to="/roster" rows={[["Scheduled", roster.employees_scheduled_this_week], ["Unassigned", roster.unassigned_employees_this_week], ["On leave", roster.employees_on_leave_this_week]]} /> : null}
-          {payroll ? <MetricGroup title="Payroll" to="/payroll" rows={[["Draft runs", payroll.draft_payroll_runs], ["Approved", payroll.approved_payroll_runs], ["Holds", payroll.payroll_holds], ["Advances", payroll.pending_advances]]} /> : null}
-          {assets ? <MetricGroup title="Assets" to="/assets" rows={[["Issued", assets.issued_assets], ["Pending returns", assets.pending_returns], ["Damaged", assets.damaged_assets], ["Lost", assets.lost_assets]]} /> : null}
-          {audit ? <MetricGroup title="Audit" to="/audit" rows={[["Sensitive actions", audit.sensitive_actions_count]]} /> : null}
-        </MetricGrid>
-      </DataTableFrame>
+      {error ? <WarningPanel tone="danger">{error}</WarningPanel> : null}
 
-      {quickLinks.length ? (
-        <DashboardWidget title="Priority links" description="Shortcuts into the records that usually need attention first.">
-          <div className="grid gap-2 p-3 md:grid-cols-2 xl:grid-cols-4">
-            {quickLinks.map((link) => (
-              <QuickActionCard
-                key={String(link.to)}
-                title={String(link.label)}
-                description="Open scoped operational queue"
-                action={<Link to={String(link.to)} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Open <ArrowRight className="h-3.5 w-3.5" /></Link>}
-              />
-            ))}
-          </div>
-        </DashboardWidget>
+      {loading ? <CommandCenterSkeleton /> : null}
+
+      {!loading && !error ? (
+        <div className="space-y-5">
+          {summary?.warnings?.length ? (
+            <WarningPanel tone="warning">
+              Some Command Center groups are temporarily unavailable. The remaining KPI groups are still current.
+            </WarningPanel>
+          ) : null}
+
+          {groups.length ? (
+            <div className="space-y-5">
+              {groups.map((group) => (
+                <DashboardWidget
+                  key={group.key}
+                  title={group.title}
+                  description={group.available ? "Scope-aware operational indicators for enabled modules." : group.warning}
+                >
+                  {group.available ? (
+                    <MetricGrid className="grid-cols-1 p-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+                      {group.kpis.map((card) => <CommandCenterKpiCard key={card.id} card={card} />)}
+                    </MetricGrid>
+                  ) : (
+                    <div className="p-4">
+                      <WarningPanel tone="warning">{group.warning ?? "This KPI group is temporarily unavailable."}</WarningPanel>
+                    </div>
+                  )}
+                </DashboardWidget>
+              ))}
+            </div>
+          ) : (
+            <Panel className="p-6">
+              <div className="flex items-start gap-3">
+                <LayoutDashboard className="mt-1 h-5 w-5 text-muted-foreground" />
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-950">No operational KPI groups available</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Enabled modules and permission-allowed summaries will appear here when available.
+                  </p>
+                </div>
+              </div>
+            </Panel>
+          )}
+
+          <DashboardWidget title="Priority Actions" description="Permission-safe shortcuts into queues that need attention first.">
+            {priorityActions.length ? (
+              <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
+                {priorityActions.map((action) => <PriorityActionCard key={action.id} action={action} />)}
+              </div>
+            ) : (
+              <div className="p-4">
+                <QuickActionCard title="No urgent actions" description="Enabled modules do not currently have high-priority queues in your scope." />
+              </div>
+            )}
+          </DashboardWidget>
+        </div>
       ) : null}
-
-      {documents ? <PriorityTable title="Recent document uploads" rows={list(documents.recent_document_uploads)} columns={["employee_no", "employee_name", "document_type_name", "created_at"]} /> : null}
-      {audit ? <PriorityTable title="Recent audit activity" rows={list(audit.recent_audit_activity)} columns={["created_at", "actor_name", "module", "action", "entity_type"]} statusColumn="module" /> : null}
     </PageShell>
   );
 }
 
-function MetricGroup({ title, to, rows }: { title: string; to: string; rows: [string, unknown][] }) {
+function CommandCenterKpiCard({ card }: { card: CommandCenterKpi }) {
+  const Icon = iconMap[card.icon_key] ?? Activity;
   return (
-    <Panel className="overflow-hidden rounded-md shadow-none">
-      <div className="flex items-center justify-between border-b px-3 py-2">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <Link to={to} className="text-xs text-primary hover:underline">Open</Link>
-      </div>
-      <div className="divide-y">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between px-3 py-2">
-            <span className="text-xs text-muted-foreground">{label}</span>
-            <Badge tone={number(value) > 0 ? "info" : "neutral"}>{number(value)}</Badge>
+    <Link
+      to={card.route}
+      className="CommandCenterKpiCard group block h-full min-w-0 rounded-lg border bg-white p-4 shadow-panel transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/20"
+    >
+      <div className="flex h-full min-h-[148px] min-w-0 flex-col justify-between gap-4">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-950" title={card.title}>{card.title}</p>
+            <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{card.description}</p>
           </div>
-        ))}
+          <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-md border", kpiTone(card.tone))}>
+            <Icon className="h-4 w-4" />
+          </span>
+        </div>
+        <div className="flex min-w-0 items-end justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-2xl font-semibold tracking-tight text-slate-950" title={String(card.value)}>
+              {formatValue(card.value)}
+            </div>
+            {card.secondary_value ? <p className="mt-1 truncate text-xs text-muted-foreground" title={String(card.secondary_value)}>{card.secondary_value}</p> : null}
+          </div>
+          <Badge tone={card.tone} className="shrink-0">{card.tone}</Badge>
+        </div>
       </div>
-    </Panel>
+    </Link>
   );
 }
 
-function PriorityTable({ title, rows, columns, statusColumn }: { title: string; rows: Row[]; columns: string[]; statusColumn?: string }) {
+function PriorityActionCard({ action }: { action: PriorityAction }) {
+  const Icon = iconMap[action.icon_key] ?? Activity;
   return (
-    <Panel className="overflow-hidden">
-      <div className="border-b px-4 py-3">
-        <h2 className="text-sm font-semibold">{title}</h2>
+    <Link to={action.route} className="block min-w-0 rounded-lg border bg-white p-4 shadow-panel transition hover:border-primary/40 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary/20">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className={cn("mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md border", kpiTone(action.tone))}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <h3 className="truncate text-sm font-semibold text-slate-950">{action.title}</h3>
+            <Badge tone={action.tone} className="shrink-0">{action.count.toLocaleString()}</Badge>
+          </div>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{action.description}</p>
+        </div>
       </div>
-      <DataTableFrame empty={!rows.length}>
-        <Table>
-          <TableHeader className="sticky top-0">
-            <TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}</TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={String(row.id ?? index)}>
-                {columns.map((column) => (
-                  <TableCell key={column}>{column === statusColumn ? <StatusBadge value={row[column]} /> : String(row[column] ?? "-")}</TableCell>
-                ))}
-              </TableRow>
+    </Link>
+  );
+}
+
+function CommandCenterSkeleton() {
+  return (
+    <div className="space-y-5">
+      {["Workforce", "Attendance", "Payroll"].map((group) => (
+        <DashboardWidget key={group} title={group} description="Loading live KPI cards.">
+          <MetricGrid className="grid-cols-1 p-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Panel key={index} className="min-h-[148px] animate-pulse p-4">
+                <div className="h-4 w-32 rounded bg-slate-100" />
+                <div className="mt-3 h-3 w-full rounded bg-slate-100" />
+                <div className="mt-8 h-8 w-20 rounded bg-slate-100" />
+              </Panel>
             ))}
-          </TableBody>
-        </Table>
-      </DataTableFrame>
-    </Panel>
+          </MetricGrid>
+        </DashboardWidget>
+      ))}
+    </div>
   );
 }

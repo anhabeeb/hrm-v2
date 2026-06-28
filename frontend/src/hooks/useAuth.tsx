@@ -13,7 +13,7 @@ interface AuthContextValue {
   bootstrap: BootstrapStatus | null;
   loading: boolean;
   refreshBootstrap: () => Promise<BootstrapStatus>;
-  login: (input: { email: string; password: string }) => Promise<void>;
+  login: (input: { email: string; password: string }) => Promise<AuthUser>;
   setupOwner: (input: { name: string; email: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -96,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (input: { email: string; password: string }) => {
       const result = await api.login(input);
       persistSession(result.token, result.user);
+      return result.user;
     },
     [persistSession]
   );

@@ -326,6 +326,9 @@ export const api = {
   getMainDashboard(token: string) {
     return request<Record<string, unknown>>("/api/v1/dashboard", {}, token);
   },
+  getCommandCenterDashboard(token: string) {
+    return request<Record<string, unknown>>("/api/v1/dashboard/command-center-summary", {}, token);
+  },
   globalSearch(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<GlobalSearchResponse>(`/api/v1/search/global${query(filters)}`, {}, token);
   },

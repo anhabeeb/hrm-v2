@@ -46,11 +46,11 @@ type NavGroup = {
 
 const SIDEBAR_GROUP_STATE_KEY = "hrm-v2-sidebar-groups";
 
+const topLevelNavItems: NavItem[] = [
+  { label: "HRM Command Center", to: "/", icon: LayoutDashboard, permission: "dashboard.view" }
+];
+
 const navGroups: NavGroup[] = [
-  {
-    label: "Dashboard",
-    items: [{ label: "Dashboard", to: "/", icon: LayoutDashboard, permission: "dashboard.view" }]
-  },
   {
     label: "Employees",
     items: [
@@ -109,7 +109,7 @@ function canShow(item: NavItem, permissions: Set<string>) {
 }
 
 function routeTitle(pathname: string) {
-  if (pathname === "/") return "Dashboard";
+  if (pathname === "/" || pathname === "/dashboard" || pathname === "/command-center") return "HRM Command Center";
   const segments = pathname.split("/").filter(Boolean);
   const segment = segments[0] ?? "Dashboard";
   return segment.split("-").map((part: string) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
@@ -154,6 +154,7 @@ export function AppShell() {
   const visibleGroups = useMemo(() => navGroups
     .map((group) => ({ ...group, items: group.items.filter((item) => canShow(item, permissions)) }))
     .filter((group) => group.items.length), [permissions]);
+  const visibleTopLevelItems = useMemo(() => topLevelNavItems.filter((item) => canShow(item, permissions)), [permissions]);
   const selfServiceVisible = Boolean(user?.employee_id);
   const sidebarGroups = useMemo<NavGroup[]>(() => {
     if (!selfServiceVisible) return visibleGroups;
@@ -209,6 +210,32 @@ export function AppShell() {
 
             <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 [scrollbar-color:#94a3b8_transparent] [scrollbar-width:thin]">
               <div className={cn("space-y-1.5", collapsed && "space-y-2")}>
+                {visibleTopLevelItems.length ? (
+                  <div className="mb-3 border-b border-slate-100 pb-3">
+                    {visibleTopLevelItems.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          end={item.to === "/"}
+                          onClick={() => setMobileOpen(false)}
+                          title={collapsed ? item.label : undefined}
+                          className={({ isActive }) =>
+                            cn(
+                              "group flex h-10 items-center rounded-md px-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+                              collapsed ? "justify-center" : "gap-3",
+                              isActive && "bg-primary/10 text-primary ring-1 ring-primary/10"
+                            )
+                          }
+                        >
+                          <Icon className="h-4 w-4 shrink-0" />
+                          {!collapsed ? <span className="truncate">{item.label}</span> : null}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 {sidebarGroups.map((group) => {
                   const expanded = collapsed || activeGroupLabels.has(group.label) || (expandedGroups[group.label] ?? true);
                   const groupContent = (

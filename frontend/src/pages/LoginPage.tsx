@@ -29,8 +29,8 @@ export function LoginPage() {
     setSubmitting(true);
     setError("");
     try {
-      await login({ email, password });
-      navigate("/", { replace: true });
+      const user = await login({ email, password });
+      navigate(defaultLandingPath(user), { replace: true });
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Login failed.");
     } finally {
@@ -73,4 +73,11 @@ export function LoginPage() {
       </div>
     </div>
   );
+}
+
+function defaultLandingPath(user: { permissions: string[]; employee_id?: string | null; is_owner?: boolean } | null | undefined) {
+  if (!user) return "/";
+  if (user.is_owner || user.permissions.includes("dashboard.view")) return "/";
+  if (user.employee_id && (user.permissions.includes("self_service.view") || user.permissions.some((permission) => permission.startsWith("self_service.")))) return "/self-service";
+  return "/";
 }
