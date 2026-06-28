@@ -82,11 +82,14 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
   const pensionEnabled = featureStatus.pension_enabled ?? true;
   const customDeductionsEnabled = featureStatus.custom_deductions_enabled ?? true;
   const canManagePayment = paymentMethodsEnabled && (permissions.has("employees.payment_methods.manage") || permissions.has("payroll.payment_methods.manage"));
+  const canViewPaymentInstitutions = paymentInstitutionsEnabled && (canManagePayment || permissions.has("payroll.payment_institutions.view") || permissions.has("payroll.payment_institutions.manage") || permissions.has("payroll.view"));
   const canVerifyPayment = permissions.has("employees.payment_methods.verify") || canManagePayment;
   const canManageLoans = bankLoansEnabled && (permissions.has("payroll.bank_loans.manage") || permissions.has("payroll.bank_loans.create") || permissions.has("payroll.bank_loans.update"));
   const canApproveLoans = bankLoansEnabled && (permissions.has("payroll.bank_loans.approve") || permissions.has("payroll.bank_loans.manage"));
   const canManagePension = pensionEnabled && (permissions.has("employees.pension_profiles.manage") || permissions.has("employees.pension_profiles.update"));
+  const canViewPensionSchemes = pensionEnabled && (canManagePension || permissions.has("payroll.pension_schemes.view") || permissions.has("payroll.pension_schemes.manage") || permissions.has("payroll.view"));
   const canManageCustomDeductions = customDeductionsEnabled && (permissions.has("employees.custom_deductions.manage") || permissions.has("payroll.employee_custom_deductions.manage") || permissions.has("payroll.employee_custom_deductions.create"));
+  const canViewCustomDeductionTemplates = customDeductionsEnabled && (canManageCustomDeductions || permissions.has("payroll.custom_deduction_templates.view") || permissions.has("payroll.custom_deduction_templates.manage") || permissions.has("payroll.view"));
   const canApproveCustomDeductions = customDeductionsEnabled && (permissions.has("payroll.employee_custom_deductions.approve") || permissions.has("payroll.employee_custom_deductions.manage"));
   const [institutions, setInstitutions] = useState<PaymentInstitution[]>([]);
   const [schemes, setSchemes] = useState<PensionScheme[]>([]);
@@ -102,11 +105,11 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
   useEffect(() => {
     if (!token) return;
     void Promise.all([
-      paymentInstitutionsEnabled ? api.listPaymentInstitutions(token).then((res) => setInstitutions(res.institutions)).catch(() => setInstitutions([])) : Promise.resolve(setInstitutions([])),
-      pensionEnabled ? api.listPensionSchemes(token).then((res) => setSchemes(res.schemes)).catch(() => setSchemes([])) : Promise.resolve(setSchemes([])),
-      customDeductionsEnabled ? api.listCustomDeductionTemplates(token).then((res) => setCustomTemplates(res.templates)).catch(() => setCustomTemplates([])) : Promise.resolve(setCustomTemplates([]))
+      canViewPaymentInstitutions ? api.listPaymentInstitutions(token).then((res) => setInstitutions(res.institutions)).catch(() => setInstitutions([])) : Promise.resolve(setInstitutions([])),
+      canViewPensionSchemes ? api.listPensionSchemes(token).then((res) => setSchemes(res.schemes)).catch(() => setSchemes([])) : Promise.resolve(setSchemes([])),
+      canViewCustomDeductionTemplates ? api.listCustomDeductionTemplates(token).then((res) => setCustomTemplates(res.templates)).catch(() => setCustomTemplates([])) : Promise.resolve(setCustomTemplates([]))
     ]);
-  }, [token, paymentInstitutionsEnabled, pensionEnabled, customDeductionsEnabled]);
+  }, [token, canViewPaymentInstitutions, canViewPensionSchemes, canViewCustomDeductionTemplates]);
 
   const activeInstitutions = useMemo(() => institutions.filter((institution) => institution.status !== "ARCHIVED"), [institutions]);
   const paymentMethods = summary.payment_methods ?? [];

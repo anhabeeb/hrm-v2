@@ -69,15 +69,28 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
   const canCreate = permissions.has("contracts.create") || canManage;
   const canTypeManage = permissions.has("contracts.types.manage") || permissions.has("contracts.types.create") || permissions.has("contracts.types.update");
   const canSettings = permissions.has("contracts.settings.manage") || permissions.has("contracts.settings.update");
+  const canLoadContracts = canView || canManage || canCreate;
+  const canLoadContractReferences = canLoadContracts || canTypeManage || canSettings;
 
   async function load() {
     if (!token) return;
     setLoading(true);
     setError(null);
     setMessage(null);
+    if (!canLoadContractReferences) {
+      setContracts([]);
+      setTypes([]);
+      setSettings(null);
+      setProbation([]);
+      setRenewals([]);
+      setAlerts([]);
+      setEmployees([]);
+      setLoading(false);
+      return;
+    }
     try {
       const [contractResult, typeResult, settingsResult, employeeResult] = await Promise.all([
-        api.listContracts(token, filters).catch(() => ({ contracts: [] })),
+        canLoadContracts ? api.listContracts(token, filters).catch(() => ({ contracts: [] })) : Promise.resolve({ contracts: [] }),
         api.listContractTypes(token, { include_archived: true }).catch(() => ({ types: [] })),
         api.getContractSettings(token).catch(() => ({ settings: null })),
         api.listEmployees(token).catch(() => ({ employees: [] }))
@@ -86,9 +99,9 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
       setTypes(typeResult.types);
       setSettings(settingsResult.settings);
       setEmployees(employeeResult.employees);
-      if (tab === "probation") setProbation((await api.listProbationDue(token)).contracts);
-      if (tab === "renewals") setRenewals((await api.listContractRenewals(token)).renewals);
-      if (tab === "alerts") setAlerts((await api.listContractAlerts(token)).alerts);
+      if (tab === "probation") setProbation(canLoadContracts ? (await api.listProbationDue(token).catch(() => ({ contracts: [] }))).contracts : []);
+      if (tab === "renewals") setRenewals(canLoadContracts ? (await api.listContractRenewals(token).catch(() => ({ renewals: [] }))).renewals : []);
+      if (tab === "alerts") setAlerts(canLoadContracts ? (await api.listContractAlerts(token).catch(() => ({ alerts: [] }))).alerts : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Contracts could not be loaded.");
     } finally {
@@ -98,7 +111,7 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
 
   useEffect(() => {
     void load();
-  }, [token, tab]);
+  }, [token, tab, canLoadContracts, canLoadContractReferences]);
 
   const activeTypes = useMemo(() => types.filter((type) => bool(type.is_active) && type.status !== "ARCHIVED" && !type.archived_at), [types]);
 

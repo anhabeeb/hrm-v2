@@ -28,9 +28,10 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { DashboardWidget, MetricGrid, PageHeader, PageShell, QuickActionCard, WarningPanel } from "../components/ui/page-shell";
+import { DashboardWidget, PageHeader, PageShell, QuickActionCard, WarningPanel } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -141,11 +142,21 @@ function kpiTone(value: DashboardTone) {
   }[value];
 }
 
+function getPreferredOpenGroup(groups: CommandCenterGroup[]) {
+  return groups.find((group) => group.key === "workforce" && group.available)?.key
+    ?? groups.find((group) => group.available)?.key
+    ?? groups[0]?.key
+    ?? "";
+}
+
+const commandCenterKpiCardClass = "w-full sm:w-[18rem] xl:w-[16.75rem]";
+
 export function DashboardPage() {
   const { token } = useAuth();
   const [summary, setSummary] = useState<CommandCenterSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openGroup, setOpenGroup] = useState<string | undefined>(undefined);
 
   async function load() {
     if (!token) return;
@@ -166,6 +177,15 @@ export function DashboardPage() {
 
   const groups = useMemo(() => asGroups(summary), [summary]);
   const priorityActions = useMemo(() => summary?.priority_actions ?? [], [summary]);
+
+  useEffect(() => {
+    setOpenGroup((current) => {
+      if (!groups.length) return undefined;
+      if (current === "") return current;
+      if (current && groups.some((group) => group.key === current)) return current;
+      return getPreferredOpenGroup(groups);
+    });
+  }, [groups]);
 
   return (
     <PageShell>
@@ -194,25 +214,44 @@ export function DashboardPage() {
           ) : null}
 
           {groups.length ? (
-            <div className="space-y-5">
+            <Accordion
+              type="single"
+              collapsible
+              value={openGroup}
+              onValueChange={setOpenGroup}
+              className="space-y-4"
+            >
               {groups.map((group) => (
-                <DashboardWidget
+                <AccordionItem
                   key={group.key}
-                  title={group.title}
-                  description={group.available ? "Scope-aware operational indicators for enabled modules." : group.warning}
+                  value={group.key}
+                  className="overflow-hidden rounded-lg border bg-white shadow-panel"
                 >
+                  <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-slate-950">{group.title}</span>
+                        <Badge tone={group.available ? "success" : "warning"}>{group.available ? `${group.kpis.length} KPIs` : "Warning"}</Badge>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs font-normal leading-5 text-muted-foreground">
+                        {group.available ? "Scope-aware operational indicators for enabled modules." : group.warning}
+                      </p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="border-t p-0">
                   {group.available ? (
-                    <MetricGrid className="grid-cols-1 p-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+                    <CommandCenterKpiGrid>
                       {group.kpis.map((card) => <CommandCenterKpiCard key={card.id} card={card} />)}
-                    </MetricGrid>
+                    </CommandCenterKpiGrid>
                   ) : (
                     <div className="p-4">
                       <WarningPanel tone="warning">{group.warning ?? "This KPI group is temporarily unavailable."}</WarningPanel>
                     </div>
                   )}
-                </DashboardWidget>
+                  </AccordionContent>
+                </AccordionItem>
               ))}
-            </div>
+            </Accordion>
           ) : (
             <Panel className="p-6">
               <div className="flex items-start gap-3">
@@ -244,12 +283,20 @@ export function DashboardPage() {
   );
 }
 
+function CommandCenterKpiGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mx-auto flex max-w-[89rem] flex-wrap justify-center gap-4 p-4">
+      {children}
+    </div>
+  );
+}
+
 function CommandCenterKpiCard({ card }: { card: CommandCenterKpi }) {
   const Icon = iconMap[card.icon_key] ?? Activity;
   return (
     <Link
       to={card.route}
-      className="CommandCenterKpiCard group block h-full min-w-0 rounded-lg border bg-white p-4 shadow-panel transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/20"
+      className={cn("CommandCenterKpiCard group block h-full min-w-0 rounded-lg border bg-white p-4 shadow-panel transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/20", commandCenterKpiCardClass)}
     >
       <div className="flex h-full min-h-[148px] min-w-0 flex-col justify-between gap-4">
         <div className="flex min-w-0 items-start justify-between gap-3">
@@ -300,15 +347,15 @@ function CommandCenterSkeleton() {
     <div className="space-y-5">
       {["Workforce", "Attendance", "Payroll"].map((group) => (
         <DashboardWidget key={group} title={group} description="Loading live KPI cards.">
-          <MetricGrid className="grid-cols-1 p-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+          <CommandCenterKpiGrid>
             {Array.from({ length: 4 }).map((_, index) => (
-              <Panel key={index} className="min-h-[148px] animate-pulse p-4">
+              <Panel key={index} className={cn("min-h-[148px] animate-pulse p-4", commandCenterKpiCardClass)}>
                 <div className="h-4 w-32 rounded bg-slate-100" />
                 <div className="mt-3 h-3 w-full rounded bg-slate-100" />
                 <div className="mt-8 h-8 w-20 rounded bg-slate-100" />
               </Panel>
             ))}
-          </MetricGrid>
+          </CommandCenterKpiGrid>
         </DashboardWidget>
       ))}
     </div>

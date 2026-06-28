@@ -51,7 +51,7 @@ function pageName(relativePath) {
 }
 
 function isAllowedNarrowContext(line) {
-  return /fixed|inset-0|modal|Modal|Dialog|drawer|Drawer|popover|Popover|tooltip|Tooltip|shadow-xl|max-h-\[|auth|login|SetupPage|setup/i.test(line);
+  return /fixed|inset-0|modal|Modal|Dialog|drawer|Drawer|popover|Popover|tooltip|Tooltip|shadow-xl|max-h-\[|auth|login|SetupPage|setup|CommandCenterKpiGrid|max-w-\[89rem\]/i.test(line);
 }
 
 const pkg = JSON.parse(read("package.json"));
@@ -149,7 +149,8 @@ hasNo(appShell, /mx-auto\s+w-full\s+max-w|max-w-\[(?:1480|1680)px\]|max-w-screen
 has("frontend/src/pages/DashboardPage.tsx", "HRM command center", "HRM Command Center header reference marker missing");
 has("frontend/src/pages/DashboardPage.tsx", "PageHeader", "Dashboard must use shared PageHeader");
 has("frontend/src/pages/DashboardPage.tsx", "PageShell", "Dashboard must use shared PageShell");
-hasNo("frontend/src/pages/DashboardPage.tsx", /max-w-(?:3xl|4xl|5xl|6xl|7xl|screen-xl)|\bmx-auto\b|\bcontainer\b|\bw-fit\b|\binline-block\b|justify-center|centered|commandCenterContainer|dashboardContentClassName|PageShell\b[^>]*(?:variant|size)=["'](?:centered|narrow)/i, "Dashboard/HRM Command Center must not use a centered or narrow page wrapper");
+hasNo("frontend/src/pages/DashboardPage.tsx", /max-w-(?:3xl|4xl|5xl|6xl|7xl|screen-xl)|\bcontainer\b|\bw-fit\b|\binline-block\b|centered|commandCenterContainer|dashboardContentClassName|PageShell\b[^>]*(?:variant|size)=["'](?:centered|narrow)/i, "Dashboard/HRM Command Center must not use a centered or narrow page wrapper");
+has("frontend/src/pages/DashboardPage.tsx", "CommandCenterKpiGrid", "Dashboard KPI cards must use the dedicated centered KPI grid wrapper");
 has("frontend/src/pages/EmployeeProfilePage.tsx", "ResponsiveTabs", "Employee 360 tabs must use shared Employee-style ResponsiveTabs");
 has("frontend/src/pages/EmployeeProfilePage.tsx", "Contacts", "Employee Contact tab reference marker missing");
 

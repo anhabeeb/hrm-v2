@@ -86,7 +86,8 @@ const exportPlaceholderMessages = {
 } as const;
 
 export function ReportsPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const permissions = new Set(user?.permissions ?? []);
   const [tab, setTab] = useState<Tab>("reports");
   const [selected, setSelected] = useState("");
   const [filters, setFilters] = useState<FilterState>(initialFilters);
@@ -113,6 +114,9 @@ export function ReportsPage() {
 
   const selectedMeta = available.find((item) => item.key === selected);
   const canExport = Boolean(selectedMeta?.can_export);
+  const canLoadPaymentInstitutions = permissions.has("payroll.payment_institutions.view") || permissions.has("payroll.payment_institutions.manage") || permissions.has("payroll.view") || permissions.has("payroll.reports.view") || permissions.has("reports.view");
+  const canLoadCustomDeductionTemplates = permissions.has("payroll.custom_deduction_templates.view") || permissions.has("payroll.custom_deduction_templates.manage") || permissions.has("payroll.view") || permissions.has("payroll.reports.view") || permissions.has("reports.view");
+  const canLoadPensionSchemes = permissions.has("payroll.pension_schemes.view") || permissions.has("payroll.pension_schemes.manage") || permissions.has("payroll.pension_contributions.view") || permissions.has("payroll.view") || permissions.has("payroll.reports.view") || permissions.has("reports.view");
 
   const activeFilters = useMemo(() => {
     const output: Record<string, string> = {};
@@ -183,9 +187,9 @@ export function ReportsPage() {
       api.listShiftTemplates(token),
       api.listAssetCategories(token),
       api.listUsers(token),
-      api.listPaymentInstitutions(token),
-      api.listCustomDeductionTemplates(token),
-      api.listPensionSchemes(token)
+      canLoadPaymentInstitutions ? api.listPaymentInstitutions(token) : Promise.resolve({ institutions: [] }),
+      canLoadCustomDeductionTemplates ? api.listCustomDeductionTemplates(token) : Promise.resolve({ templates: [] }),
+      canLoadPensionSchemes ? api.listPensionSchemes(token) : Promise.resolve({ schemes: [] })
     ]).then((results) => {
       const [departmentResult, positionResult, locationResult, documentTypeResult, documentCategoryResult, leaveTypeResult, payrollPeriodResult, shiftTemplateResult, assetCategoryResult, userResult, institutionResult, templateResult, pensionResult] = results;
       if (departmentResult.status === "fulfilled") setDepartments(departmentResult.value.departments);
@@ -202,7 +206,7 @@ export function ReportsPage() {
       if (templateResult.status === "fulfilled") setDeductionTemplates(templateResult.value.templates.map((item) => ({ id: item.id, label: item.name })));
       if (pensionResult.status === "fulfilled") setPensionSchemes(pensionResult.value.schemes.map((item) => ({ id: item.id, label: item.scheme_name })));
     });
-  }, [token]);
+  }, [token, canLoadPaymentInstitutions, canLoadCustomDeductionTemplates, canLoadPensionSchemes]);
 
   useEffect(() => {
     if (selected) void load();

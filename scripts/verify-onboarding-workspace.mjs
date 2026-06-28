@@ -30,6 +30,10 @@ const employeesRoute = read("worker/src/routes/employees.ts");
 const lifecyclePage = read("frontend/src/pages/LifecyclePage.tsx");
 const employeeProfilePage = read("frontend/src/pages/EmployeeProfilePage.tsx");
 const employeesPage = read("frontend/src/pages/EmployeesPage.tsx");
+const reportsPage = read("frontend/src/pages/ReportsPage.tsx");
+const contractsPage = read("frontend/src/pages/ContractsPage.tsx");
+const payrollFoundationPage = read("frontend/src/pages/PayrollFoundationPages.tsx");
+const employeePayrollPanels = read("frontend/src/components/payroll/EmployeePayrollFoundationPanels.tsx");
 const api = read("frontend/src/lib/api.ts");
 const permissions = read("worker/src/db/permissions.ts");
 const seed = read("database/seed.sql");
@@ -39,6 +43,7 @@ const remoteAudit = read("scripts/audit-remote-d1-schema.mjs");
 const remoteGenerator = read("scripts/generate-remote-d1-repair.mjs");
 const remoteReady = read("scripts/verify-remote-d1-schema-ready.mjs");
 const wrangler = read("worker/wrangler.toml");
+const pagesHeaders = read("frontend/public/_headers");
 
 [
   '"/cases/:caseId/workspace"',
@@ -84,6 +89,12 @@ assert(remoteAudit.includes("codeRequiredColumns") && remoteAudit.includes("Refe
 assert(remoteGenerator.includes("ALTER TABLE") && remoteGenerator.includes("ADD COLUMN"), "remote schema generator can emit missing-column repairs");
 assert(remoteReady.includes("codeRequiredColumns") && remoteReady.includes("${tableName}.${column} is missing"), "remote schema readiness checks code-required columns");
 assert(lifecycle.includes("COALESCE(allowed_mime_types") && lifecycle.includes("Document upload configuration is incomplete"), "workspace document section has defensive metadata fallback");
+assert(pagesHeaders.includes("/index.html") && pagesHeaders.includes("Cache-Control: no-cache"), "Cloudflare Pages headers keep index.html fresh");
+assert(pagesHeaders.includes("/") && pagesHeaders.includes("Cache-Control: no-cache"), "Cloudflare Pages headers keep root document fresh");
+assert(pagesHeaders.includes("/assets/*") && pagesHeaders.includes("max-age=31536000") && pagesHeaders.includes("immutable"), "Cloudflare Pages headers cache hashed assets immutably");
+assert(lifecycle.includes("WorkspaceOptionalSectionStatus") && lifecycle.includes("loadOptionalOnboardingWorkspaceSection"), "onboarding workspace has optional section loader");
+assert(lifecycle.includes("NO_PERMISSION") && lifecycle.includes("DISABLED") && lifecycle.includes("Optional onboarding workspace section unavailable"), "optional workspace sections handle no-permission, disabled, and warning states");
+assert(lifecycle.includes("payment_institutions") && lifecycle.includes("pension_schemes") && lifecycle.includes("final_settlement"), "onboarding workspace optional payroll/final-settlement sections are represented");
 
 assert(lifecycle.includes("uploadEmployeeDocument(c") && documents.includes("DOCUMENTS_BUCKET") && documents.includes("r2_key"), "onboarding document upload delegates to existing document/R2 flow");
 assert(documents.includes("employee_documents") && documents.includes("employee_document_versions"), "existing document module writes employee document source tables");
@@ -107,6 +118,10 @@ assert(documents.includes("employee_documents") && documents.includes("employee_
 [
   "OnboardingWorkspace",
   "WorkspaceNoticePopup",
+  "OptionalSectionStatePanel",
+  "OptionalSectionNotice",
+  "optionalSectionUnavailable",
+  "No permission",
   "Onboarding setup sections",
   "completedOnboardingTaskStatuses",
   "sectionStatus(tab)",
@@ -130,6 +145,12 @@ assert(documents.includes("employee_documents") && documents.includes("employee_
 ].forEach((marker) => assert(lifecyclePage.includes(marker), `onboarding case page includes workspace UI marker: ${marker}`));
 
 assert(!lifecyclePage.includes("setMessage(success)") && !lifecyclePage.includes("Unable to save onboarding workspace section.</div>"), "onboarding workspace uses popup notices instead of inline save alerts");
+assert(reportsPage.includes("canLoadPaymentInstitutions") && reportsPage.includes("Promise.resolve({ institutions: [] })"), "reports page skips payment institution reference API without permission");
+assert(reportsPage.includes("canLoadPensionSchemes") && reportsPage.includes("Promise.resolve({ schemes: [] })"), "reports page skips pension scheme reference API without permission");
+assert(contractsPage.includes("canLoadContracts") && contractsPage.includes("canLoadContractReferences"), "contracts page skips contract APIs when contracts are unavailable to the user");
+assert(payrollFoundationPage.includes("canView") && payrollFoundationPage.includes("You do not have permission to view payment institutions"), "payment institutions page handles no-permission state");
+assert(payrollFoundationPage.includes("You do not have permission to view pension setup"), "pension page handles no-permission state");
+assert(employeePayrollPanels.includes("canViewPaymentInstitutions") && employeePayrollPanels.includes("canViewPensionSchemes"), "Employee 360 payroll panels skip optional reference APIs without permission");
 
 assert(employeeProfilePage.includes("employees.360.view_during_onboarding"), "Employee 360 override permission is checked");
 assert(employeeProfilePage.includes("Employee 360 is locked during onboarding"), "Employee 360 locked message exists");

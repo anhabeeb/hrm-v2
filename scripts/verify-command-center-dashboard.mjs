@@ -66,7 +66,13 @@ has(dashboardPage, "HRM Command Center", "Command Center header title is missing
 has(dashboardPage, "Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators.", "Command Center subtitle must match the required copy.");
 has(dashboardPage, "CommandCenterKpiCard", "KPI card component marker is missing.");
 has(dashboardPage, "Priority Actions", "Priority Actions section is missing.");
-has(dashboardPage, "MetricGrid", "Dashboard KPI grid must use the standardized metric grid.");
+has(dashboardPage, "Accordion", "Dashboard KPI groups must use the shadcn Accordion primitive.");
+has(dashboardPage, 'type="single"', "Dashboard KPI accordion must use single-open behavior.");
+has(dashboardPage, "collapsible", "Dashboard KPI accordion must allow the open group to be collapsed.");
+has(dashboardPage, "getPreferredOpenGroup", "Dashboard KPI accordion must choose Workforce or first available group by default.");
+has(dashboardPage, "CommandCenterKpiGrid", "Dashboard KPI grid wrapper marker is missing.");
+has(dashboardPage, "max-w-[89rem]", "Dashboard KPI grid must cap wide rows to five cards.");
+has(dashboardPage, "flex-wrap justify-center", "Dashboard KPI rows must wrap and center incomplete rows.");
 has(dashboardPage, "DashboardWidget", "Dashboard groups must use standardized dashboard widgets.");
 has(dashboardPage, "to={card.route}", "KPI cards must be clickable and route-aware.");
 has(dashboardPage, "summary?.priority_actions", "Priority actions must come from the summary API.");

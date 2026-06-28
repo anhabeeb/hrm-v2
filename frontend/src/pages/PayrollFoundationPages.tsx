@@ -22,6 +22,7 @@ import { CheckboxField, PageHeader, PageShell, SelectField } from "../components
 export function PayrollPaymentInstitutionsPage() {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
+  const canView = permissions.has("payroll.payment_institutions.view") || permissions.has("payroll.payment_institutions.manage") || permissions.has("payroll.view");
   const canManage = permissions.has("payroll.payment_institutions.manage") || permissions.has("payroll.payment_institutions.create") || permissions.has("payroll.payment_institutions.update");
   const [rows, setRows] = useState<PaymentInstitution[]>([]);
   const [form, setForm] = useState<{ code: string; name: string; type: "BANK" | "WALLET_PROVIDER" | "CASH_LOCATION" | "OTHER"; swift_code: string } | null>(null);
@@ -29,6 +30,11 @@ export function PayrollPaymentInstitutionsPage() {
 
   async function load() {
     if (!token) return;
+    if (!canView) {
+      setRows([]);
+      setError(null);
+      return;
+    }
     try {
       setRows((await api.listPaymentInstitutions(token, true)).institutions);
       setError(null);
@@ -37,7 +43,7 @@ export function PayrollPaymentInstitutionsPage() {
     }
   }
 
-  useEffect(() => { void load(); }, [token]);
+  useEffect(() => { void load(); }, [token, canView]);
 
   async function save() {
     if (!token || !form) return;
@@ -52,6 +58,7 @@ export function PayrollPaymentInstitutionsPage() {
 
   return <PayrollPageShell title="Payment Institutions" description="Configurable banks, cash locations, wallet providers, and other payment institutions.">
     {error ? <ErrorText message={error} /> : null}
+    {!canView ? <Panel className="p-4"><EmptyState title="No permission" description="You do not have permission to view payment institutions." /></Panel> : null}
     <Panel className="overflow-hidden">
       <Header icon={<WalletCards className="h-4 w-4" />} title="Banks and payment institutions" action={canManage ? <Button size="sm" onClick={() => setForm({ code: "", name: "", type: "BANK", swift_code: "" })}><Plus className="h-4 w-4" /> Add institution</Button> : null} />
       <DataTable rows={rows} columns={["code", "name", "type", "swift_code", "status", "display_order"]} actions={canManage ? (row) => row.status !== "ARCHIVED" ? <Button size="sm" variant="outline" onClick={() => token && api.archivePaymentInstitution(token, String(row.id)).then(load)}><Archive className="h-4 w-4" /> Archive</Button> : null : undefined} empty="No payment institutions configured." />
@@ -331,6 +338,7 @@ export function PayrollCustomDeductionsPage() {
 export function PayrollPensionPage() {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
+  const canView = permissions.has("payroll.pension_schemes.view") || permissions.has("payroll.pension_schemes.manage") || permissions.has("payroll.pension_contributions.view") || permissions.has("payroll.pension_remittance.view") || permissions.has("payroll.view");
   const canManage = permissions.has("payroll.pension_schemes.manage") || permissions.has("payroll.pension_schemes.create");
   const [schemes, setSchemes] = useState<PensionScheme[]>([]);
   const [contributions, setContributions] = useState<PayrollPensionContribution[]>([]);
@@ -341,6 +349,14 @@ export function PayrollPensionPage() {
 
   async function load() {
     if (!token) return;
+    if (!canView) {
+      setSchemes([]);
+      setContributions([]);
+      setBatches([]);
+      setReports([]);
+      setError(null);
+      return;
+    }
     try {
       const [schemeRes, contributionRes, batchRes, reportRes] = await Promise.all([
         api.listPensionSchemes(token),
@@ -358,7 +374,7 @@ export function PayrollPensionPage() {
     }
   }
 
-  useEffect(() => { void load(); }, [token]);
+  useEffect(() => { void load(); }, [token, canView]);
 
   async function saveScheme() {
     if (!token || !form) return;
@@ -373,6 +389,7 @@ export function PayrollPensionPage() {
 
   return <PayrollPageShell title="Pension" description="Effective-dated pension schemes, employee/employer contributions, and manual remittance tracking.">
     {error ? <ErrorText message={error} /> : null}
+    {!canView ? <Panel className="p-4"><EmptyState title="No permission" description="You do not have permission to view pension setup." /></Panel> : null}
     <Panel className="overflow-hidden"><Header icon={<PiggyBank className="h-4 w-4" />} title="Pension schemes" action={canManage ? <Button size="sm" onClick={() => setForm({ scheme_code: "", scheme_name: "", employee_contribution_percent: "7", employer_contribution_percent: "7", effective_from: new Date().toISOString().slice(0, 10) })}><Plus className="h-4 w-4" /> Add scheme</Button> : null} /><DataTable rows={schemes} columns={["scheme_code", "scheme_name", "employee_contribution_percent", "employer_contribution_percent", "contribution_basis", "foreign_employee_default_required", "status"]} empty="No pension schemes configured." /></Panel>
     <Panel className="overflow-hidden"><Header icon={<PiggyBank className="h-4 w-4" />} title="Contribution history" /><DataTable rows={contributions} columns={["employee_no", "employee_name", "scheme_name", "pensionable_wage", "employee_contribution_amount", "employer_contribution_amount", "total_contribution_amount", "contribution_status"]} empty="No pension contributions calculated yet." /></Panel>
     <div className="grid gap-4 xl:grid-cols-2">

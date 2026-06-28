@@ -586,6 +586,65 @@ function isDisabledModule(workspace: Row, key: string) {
   return statuses[key] === false;
 }
 
+function getOptionalSectionState(workspace: Row, key: string) {
+  return asRow(asRow(workspace.sections).optional_section_states)[key] as Row | undefined;
+}
+
+function optionalSectionStatus(workspace: Row, key: string) {
+  return String(getOptionalSectionState(workspace, key)?.status ?? "");
+}
+
+function optionalSectionUnavailable(workspace: Row, key: string) {
+  return ["DISABLED", "NO_PERMISSION", "WARNING"].includes(optionalSectionStatus(workspace, key));
+}
+
+function optionalSectionTitle(state: Row | undefined) {
+  const status = String(state?.status ?? "");
+  if (status === "DISABLED") return "Disabled";
+  if (status === "NO_PERMISSION") return "No permission";
+  if (status === "NOT_REQUIRED") return "Not required";
+  if (status === "WARNING") return "Warning";
+  if (status === "COMPLETE") return "Complete";
+  return "Missing";
+}
+
+function optionalSectionTone(state: Row | undefined): "neutral" | "success" | "warning" | "danger" | "info" {
+  const status = String(state?.status ?? "");
+  if (status === "COMPLETE") return "success";
+  if (status === "WARNING") return "warning";
+  if (status === "NO_PERMISSION") return "danger";
+  if (status === "DISABLED" || status === "NOT_REQUIRED") return "neutral";
+  return "info";
+}
+
+function OptionalSectionStatePanel({ workspace, sectionKey, fallbackTitle }: { workspace: Row; sectionKey: string; fallbackTitle: string }) {
+  const state = getOptionalSectionState(workspace, sectionKey);
+  return (
+    <Panel className="p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">{String(state?.label ?? fallbackTitle)}</h3>
+        <Badge tone={optionalSectionTone(state)}>{optionalSectionTitle(state)}</Badge>
+      </div>
+      <EmptyState
+        className="mt-3 min-h-32 rounded-md border bg-slate-50"
+        title={optionalSectionTitle(state)}
+        description={String(state?.message ?? `${fallbackTitle} is not available for this onboarding workspace.`)}
+      />
+    </Panel>
+  );
+}
+
+function OptionalSectionNotice({ workspace, sectionKey, fallbackTitle }: { workspace: Row; sectionKey: string; fallbackTitle: string }) {
+  const state = getOptionalSectionState(workspace, sectionKey);
+  if (!state || String(state.status ?? "") === "COMPLETE" || String(state.status ?? "") === "MISSING") return null;
+  return (
+    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+      <span className="font-semibold">{String(state.label ?? fallbackTitle)}: </span>
+      <span>{String(state.message ?? `${fallbackTitle} is not available.`)}</span>
+    </div>
+  );
+}
+
 function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { workspace: Row; caseId: string; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void }) {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
@@ -754,6 +813,18 @@ function OnboardingWorkspaceOverview({ readiness, blockers, warnings, tasks, wor
             </div>
           ))}
         </div>
+        <h4 className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Optional sections</h4>
+        <div className="mt-2 space-y-2 text-sm">
+          {Object.entries(asRow(asRow(workspace.sections).optional_section_states)).map(([key, stateValue]) => {
+            const state = asRow(stateValue);
+            return (
+              <div key={key} className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate">{String(state.label ?? title(key))}</span>
+                <Badge tone={optionalSectionTone(state)}>{optionalSectionTitle(state)}</Badge>
+              </div>
+            );
+          })}
+        </div>
       </Panel>
     </div>
   );
@@ -868,6 +939,7 @@ function JobAssignmentWorkspaceForm({ workspace, onSave }: { workspace: Row; onS
 }
 
 function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (form: FormData) => void }) {
+  if (optionalSectionUnavailable(workspace, "documents")) return <OptionalSectionStatePanel workspace={workspace} sectionKey="documents" fallbackTitle="Documents" />;
   const refs = asRow(workspace.refs);
   const sections = asRow(workspace.sections);
   const documentTypes = asRows(refs.document_types);
@@ -894,6 +966,7 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     <div className="grid gap-3 lg:grid-cols-[1fr_1.2fr]">
       <Panel className="p-4">
         <h3 className="text-sm font-semibold">Upload official document</h3>
+        <OptionalSectionNotice workspace={workspace} sectionKey="document_types" fallbackTitle="Document upload types" />
         {documentWarning ? <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{documentWarning}</p> : null}
         <div className="mt-3 grid gap-3">
           <SelectField label="Document type" required value={documentTypeId} onValueChange={setDocumentTypeId}><option value="">Select document type</option>{documentTypes.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}{type.is_sensitive ? " (Sensitive)" : ""}</option>)}</SelectField>
@@ -920,6 +993,7 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
 }
 
 function ContractWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  if (optionalSectionUnavailable(workspace, "contracts")) return <OptionalSectionStatePanel workspace={workspace} sectionKey="contracts" fallbackTitle="Contract setup" />;
   if (isDisabledModule(workspace, "contracts")) return <Panel className="p-4"><EmptyState title="Contract not required" description="The Contracts module is disabled, so onboarding will not block on contract setup." /></Panel>;
   const refs = asRow(workspace.refs);
   const types = asRows(refs.contract_types);
@@ -930,6 +1004,8 @@ function ContractWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: 
   return (
     <Panel className="p-4">
       <h3 className="text-sm font-semibold">Contract setup</h3>
+      <OptionalSectionNotice workspace={workspace} sectionKey="contract_types" fallbackTitle="Contract types" />
+      <OptionalSectionNotice workspace={workspace} sectionKey="contract_settings" fallbackTitle="Contract settings" />
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         <SelectField required label="Contract type" value={form.contract_type_id} onValueChange={(contract_type_id) => setForm({ ...form, contract_type_id })}><option value="">Select type</option>{types.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}</option>)}</SelectField>
         <Field label="Contract number"><Input value={form.contract_number} onChange={(event) => setForm({ ...form, contract_number: event.target.value })} placeholder="Auto if blank" /></Field>
@@ -947,6 +1023,7 @@ function ContractWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: 
 }
 
 function PayrollWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  if (optionalSectionUnavailable(workspace, "payroll_profile")) return <OptionalSectionStatePanel workspace={workspace} sectionKey="payroll_profile" fallbackTitle="Payroll profile" />;
   if (isDisabledModule(workspace, "payroll")) return <Panel className="p-4"><EmptyState title="Payroll not required" description="Payroll module is disabled, so onboarding will not block on payroll setup." /></Panel>;
   const profile = asRow(asRow(workspace.sections).payroll_profile);
   const [form, setForm] = useState({
@@ -991,8 +1068,9 @@ function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }
     <div className="grid gap-3 lg:grid-cols-2">
       <Panel className="p-4">
         <h3 className="text-sm font-semibold">Payment method</h3>
-        {isDisabledModule(workspace, "payment_methods") ? <EmptyState title="Payment method not required" description="Payment methods are disabled." /> : (
+        {optionalSectionUnavailable(workspace, "payment_methods") ? <EmptyState title={optionalSectionTitle(getOptionalSectionState(workspace, "payment_methods"))} description={String(getOptionalSectionState(workspace, "payment_methods")?.message ?? "Payment methods are not available.")} /> : isDisabledModule(workspace, "payment_methods") ? <EmptyState title="Payment method not required" description="Payment methods are disabled." /> : (
           <>
+            <OptionalSectionNotice workspace={workspace} sectionKey="payment_institutions" fallbackTitle="Payroll payment institutions" />
             <div className="mt-3 grid gap-3">
               <SelectField label="Method" value={payment.payment_method_type} onValueChange={(payment_method_type) => setPayment({ ...payment, payment_method_type })}>{["CASH", "BANK_TRANSFER", "CHEQUE_PLACEHOLDER", "MOBILE_WALLET_PLACEHOLDER", "OTHER"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField>
               <SelectField label="Payment institution" value={payment.payment_institution_id} onValueChange={(payment_institution_id) => setPayment({ ...payment, payment_institution_id })}><option value="">None</option>{asRows(refs.payment_institutions).map((institution) => <option key={String(institution.id)} value={String(institution.id)}>{text(institution.name)}</option>)}</SelectField>
@@ -1006,8 +1084,9 @@ function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }
       </Panel>
       <Panel className="p-4">
         <h3 className="text-sm font-semibold">Pension profile</h3>
-        {isDisabledModule(workspace, "pension") ? <EmptyState title="Pension not required" description="Pension module is disabled." /> : (
+        {optionalSectionUnavailable(workspace, "pension_profile") ? <EmptyState title={optionalSectionTitle(getOptionalSectionState(workspace, "pension_profile"))} description={String(getOptionalSectionState(workspace, "pension_profile")?.message ?? "Pension profile is not available.")} /> : isDisabledModule(workspace, "pension") ? <EmptyState title="Pension not required" description="Pension module is disabled." /> : (
           <>
+            <OptionalSectionNotice workspace={workspace} sectionKey="pension_schemes" fallbackTitle="Pension schemes" />
             <div className="mt-3 grid gap-3">
               <SelectField label="Pension scheme" value={pension.pension_scheme_id} onValueChange={(pension_scheme_id) => setPension({ ...pension, pension_scheme_id })}><option value="">None / exempted</option>{asRows(refs.pension_schemes).map((scheme) => <option key={String(scheme.id)} value={String(scheme.id)}>{text(scheme.scheme_name)}</option>)}</SelectField>
               <SelectField label="Enrollment status" value={pension.enrollment_status} onValueChange={(enrollment_status) => setPension({ ...pension, enrollment_status })}>{["ENROLLED", "EXEMPTED", "VOLUNTARY", "NOT_ENROLLED", "SUSPENDED"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField>
@@ -1030,7 +1109,7 @@ function AttendanceRosterWorkspaceForm({ workspace, onSave }: { workspace: Row; 
     <div className="grid gap-3 lg:grid-cols-2">
       <Panel className="p-4">
         <h3 className="text-sm font-semibold">Attendance / biometric</h3>
-        {isDisabledModule(workspace, "attendance") ? <EmptyState title="Attendance not required" description="Attendance module is disabled." /> : (
+        {optionalSectionUnavailable(workspace, "biometric_mappings") ? <EmptyState title={optionalSectionTitle(getOptionalSectionState(workspace, "biometric_mappings"))} description={String(getOptionalSectionState(workspace, "biometric_mappings")?.message ?? "Biometric attendance setup is not available.")} /> : isDisabledModule(workspace, "attendance") ? <EmptyState title="Attendance not required" description="Attendance module is disabled." /> : (
           <div className="mt-3 grid gap-3">
             <Field label="Biometric user ID"><Input value={form.biometric_user_id} onChange={(event) => setForm({ ...form, biometric_user_id: event.target.value })} /></Field>
             <Field label="Biometric user name"><Input value={form.biometric_user_name} onChange={(event) => setForm({ ...form, biometric_user_name: event.target.value })} /></Field>
@@ -1054,12 +1133,14 @@ function AttendanceRosterWorkspaceForm({ workspace, onSave }: { workspace: Row; 
 }
 
 function AssetsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
+  if (optionalSectionUnavailable(workspace, "asset_assignments")) return <OptionalSectionStatePanel workspace={workspace} sectionKey="asset_assignments" fallbackTitle="Assets and uniforms" />;
   const refs = asRow(workspace.refs);
   const [form, setForm] = useState({ asset_item_id: "", issued_date: new Date().toISOString().slice(0, 10), expected_return_date: "", notes: "", not_required: false, waived: false, reason: "" });
   if (isDisabledModule(workspace, "assets_uniforms")) return <Panel className="p-4"><EmptyState title="Assets/uniforms not required" description="Assets and uniforms module is disabled." /></Panel>;
   return (
     <Panel className="p-4">
       <h3 className="text-sm font-semibold">Assets and uniforms</h3>
+      <OptionalSectionNotice workspace={workspace} sectionKey="available_assets" fallbackTitle="Available assets and uniforms" />
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         <SelectField label="Available asset/uniform" value={form.asset_item_id} onValueChange={(asset_item_id) => setForm({ ...form, asset_item_id })}><option value="">Select asset or mark not required</option>{asRows(refs.available_assets).map((asset) => <option key={String(asset.id)} value={String(asset.id)}>{text(asset.name)} ({text(asset.code)})</option>)}</SelectField>
         <Field label="Issued date"><Input type="date" value={form.issued_date} onChange={(event) => setForm({ ...form, issued_date: event.target.value })} /></Field>

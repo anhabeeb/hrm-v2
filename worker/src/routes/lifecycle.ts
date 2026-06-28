@@ -160,6 +160,15 @@ function oldTaskStatus(status: TaskStatus) {
 const onboardingWorkspaceViewPermissions = ["onboarding.workspace.view", "onboarding.cases.view", "onboarding.cases.manage", "employees.lifecycle.view", "employees.view"];
 const onboardingWorkspaceUpdatePermissions = ["onboarding.workspace.update", "onboarding.cases.update", "onboarding.cases.manage", "employees.lifecycle.manage"];
 
+type WorkspaceOptionalSectionStatus = "COMPLETE" | "MISSING" | "NOT_REQUIRED" | "DISABLED" | "NO_PERMISSION" | "WARNING";
+type WorkspaceOptionalSectionState = {
+  status: WorkspaceOptionalSectionStatus;
+  label: string;
+  message: string;
+  module_key?: string | null;
+  permission_keys?: string[];
+};
+
 const onboardingTaskModuleKeys: Record<string, string | null> = {
   personal_info: "employees",
   contact_info: "employees",
@@ -179,6 +188,115 @@ async function isModuleEnabled(db: D1Database, moduleKey: string | null | undefi
   if (!moduleKey) return true;
   const row = await db.prepare("SELECT is_enabled FROM module_control_settings WHERE module_key = ?").bind(moduleKey).first<{ is_enabled: number }>();
   return !row || row.is_enabled === 1;
+}
+
+async function optionalSettingEnabled(db: D1Database, sql: string, fallback = true) {
+  try {
+    const row = await db.prepare(sql).first<{ enabled: number | null }>();
+    return Number(row?.enabled ?? (fallback ? 1 : 0)) === 1;
+  } catch {
+    return fallback;
+  }
+}
+
+async function getOnboardingWorkspaceModuleStatuses(c: Context<AppBindings>) {
+  const moduleKeys = [
+    "contracts",
+    "documents",
+    "document_compliance",
+    "payroll",
+    "payment_methods",
+    "payment_institutions",
+    "bank_loans",
+    "custom_deductions",
+    "pension",
+    "attendance",
+    "zkteco_attendance",
+    "roster",
+    "assets_uniforms",
+    "final_settlement",
+    "self_service",
+    "approvals"
+  ];
+  const moduleStatuses: Record<string, boolean> = {};
+  for (const key of moduleKeys) moduleStatuses[key] = await isModuleEnabled(c.env.DB, key);
+
+  const payrollEnabled = moduleStatuses.payroll && await optionalSettingEnabled(c.env.DB, "SELECT module_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
+  moduleStatuses.payroll = payrollEnabled;
+  moduleStatuses.payment_methods = moduleStatuses.payment_methods && payrollEnabled && await optionalSettingEnabled(c.env.DB, "SELECT payment_methods_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
+  moduleStatuses.payment_institutions = moduleStatuses.payment_institutions && payrollEnabled && await optionalSettingEnabled(c.env.DB, "SELECT payment_institutions_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
+  moduleStatuses.bank_loans = moduleStatuses.bank_loans && payrollEnabled && await optionalSettingEnabled(c.env.DB, "SELECT bank_loan_deductions_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
+  moduleStatuses.custom_deductions = moduleStatuses.custom_deductions && payrollEnabled && await optionalSettingEnabled(c.env.DB, "SELECT custom_deductions_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
+  moduleStatuses.pension = moduleStatuses.pension && payrollEnabled && await optionalSettingEnabled(c.env.DB, "SELECT pension_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
+  moduleStatuses.contracts = moduleStatuses.contracts && await optionalSettingEnabled(c.env.DB, "SELECT contracts_enabled AS enabled FROM contract_settings ORDER BY created_at LIMIT 1");
+  moduleStatuses.final_settlement = moduleStatuses.final_settlement && await optionalSettingEnabled(c.env.DB, "SELECT COALESCE(final_settlement_enabled, module_enabled, 1) AS enabled FROM final_settlement_settings WHERE id = 'final_settlement_settings_default'");
+
+  return moduleStatuses;
+}
+
+function workspaceSectionState(status: WorkspaceOptionalSectionStatus, label: string, message: string, moduleKey?: string | null, permissionKeys?: string[]): WorkspaceOptionalSectionState {
+  return {
+    status,
+    label,
+    message,
+    module_key: moduleKey ?? null,
+    permission_keys: permissionKeys
+  };
+}
+
+function emptyD1Result<T = Record<string, unknown>>() {
+  return { results: [] as T[], success: true, meta: {} } as D1Result<T>;
+}
+
+function emptyOnboardingDocumentChecklist(status: string, message: string) {
+  return {
+    rows: [],
+    required_documents: [],
+    missing_documents: [],
+    status,
+    compliance_status: status,
+    message,
+    warnings: []
+  } as Awaited<ReturnType<typeof getOnboardingDocumentChecklist>>;
+}
+
+async function loadOptionalOnboardingWorkspaceSection<T>(
+  c: Context<AppBindings>,
+  options: {
+    key: string;
+    label: string;
+    moduleKey?: string | null;
+    moduleStatuses: Record<string, boolean>;
+    permissions?: string[];
+    fallback: T;
+    run: () => Promise<T>;
+  }
+) {
+  const permissions = options.permissions ?? [];
+  if (options.moduleKey && options.moduleStatuses[options.moduleKey] === false) {
+    return {
+      value: options.fallback,
+      state: workspaceSectionState("DISABLED", options.label, `${options.label} is disabled or not required for this onboarding workspace.`, options.moduleKey, permissions)
+    };
+  }
+  if (permissions.length > 0 && !hasAny(c, permissions)) {
+    return {
+      value: options.fallback,
+      state: workspaceSectionState("NO_PERMISSION", options.label, `No permission to load ${options.label.toLowerCase()} for this onboarding workspace.`, options.moduleKey, permissions)
+    };
+  }
+  try {
+    return {
+      value: await options.run(),
+      state: workspaceSectionState("COMPLETE", options.label, `${options.label} is available.`, options.moduleKey, permissions)
+    };
+  } catch (error) {
+    console.warn("Optional onboarding workspace section unavailable", { section: options.key, error: error instanceof Error ? error.message : String(error) });
+    return {
+      value: options.fallback,
+      state: workspaceSectionState("WARNING", options.label, `${options.label} is temporarily unavailable. Other onboarding workspace sections remain available.`, options.moduleKey, permissions)
+    };
+  }
 }
 
 async function ensureOnboardingModuleEnabled(c: Context<AppBindings>, taskKey: string, moduleKey: string | null | undefined) {
@@ -383,6 +501,7 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return null;
   const employeeId = String(gate.row.employee_id);
+  const moduleStatuses = await getOnboardingWorkspaceModuleStatuses(c);
   const [
     checklist,
     readiness,
@@ -413,19 +532,19 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     getEmployeeOnboardingReadiness(c, caseId),
     c.env.DB.prepare("SELECT * FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY is_primary DESC, contact_type").bind(employeeId).all<Record<string, unknown>>(),
     c.env.DB.prepare("SELECT * FROM employee_addresses WHERE employee_id = ? ORDER BY is_primary DESC, address_type").bind(employeeId).all<Record<string, unknown>>(),
-    getOnboardingDocumentChecklist(c, caseId),
-    getOnboardingWorkspaceDocumentTypes(c),
-    c.env.DB.prepare("SELECT ec.*, ct.name AS contract_type_name, ct.requires_end_date, ct.requires_probation FROM employee_contracts ec LEFT JOIN contract_types ct ON ct.id = ec.contract_type_id WHERE ec.employee_id = ? ORDER BY ec.created_at DESC").bind(employeeId).all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT * FROM contract_types WHERE is_active = 1 AND status = 'ACTIVE' ORDER BY display_order, name").all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT * FROM contract_settings ORDER BY created_at LIMIT 1").first<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT * FROM employee_payroll_profiles WHERE employee_id = ?").bind(employeeId).first<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT * FROM employee_payment_methods WHERE employee_id = ? AND status != 'ARCHIVED' ORDER BY is_primary DESC, created_at DESC").bind(employeeId).all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT id, code, name, type, is_active, status FROM payment_institutions WHERE is_active = 1 AND status = 'ACTIVE' ORDER BY display_order, name").all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT epp.*, ps.scheme_name, ps.scheme_code FROM employee_pension_profiles epp LEFT JOIN pension_schemes ps ON ps.id = epp.pension_scheme_id WHERE epp.employee_id = ? AND epp.status != 'ARCHIVED' ORDER BY epp.effective_date DESC LIMIT 1").bind(employeeId).first<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT * FROM pension_schemes WHERE status = 'ACTIVE' ORDER BY scheme_name").all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT * FROM employee_biometric_mappings WHERE employee_id = ? AND status != 'ARCHIVED' ORDER BY is_primary DESC, created_at DESC").bind(employeeId).all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT ea.*, ai.code AS asset_code, ai.name AS asset_name FROM employee_asset_assignments ea LEFT JOIN asset_items ai ON ai.id = ea.asset_item_id WHERE ea.employee_id = ? ORDER BY ea.created_at DESC").bind(employeeId).all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT id, code, name, status, lifecycle_status FROM asset_items WHERE status = 'AVAILABLE' ORDER BY name LIMIT 200").all<Record<string, unknown>>(),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "documents", label: "Documents", moduleKey: "documents", moduleStatuses, permissions: ["documents.view", "documents.checklist.view", "documents.upload", "onboarding.workspace.documents.upload", "onboarding.cases.manage"], fallback: emptyOnboardingDocumentChecklist("NO_PERMISSION", "No permission to load documents."), run: () => getOnboardingDocumentChecklist(c, caseId) }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "document_types", label: "Document upload types", moduleKey: "documents", moduleStatuses, permissions: ["documents.view", "documents.upload", "onboarding.workspace.documents.upload", "onboarding.cases.manage"], fallback: { ...emptyD1Result<Record<string, unknown>>(), warning: "No permission to load document upload types." }, run: () => getOnboardingWorkspaceDocumentTypes(c) }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "contracts", label: "Contracts", moduleKey: "contracts", moduleStatuses, permissions: ["contracts.view", "employees.contracts.view", "onboarding.workspace.contracts.create", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT ec.*, ct.name AS contract_type_name, ct.requires_end_date, ct.requires_probation FROM employee_contracts ec LEFT JOIN contract_types ct ON ct.id = ec.contract_type_id WHERE ec.employee_id = ? ORDER BY ec.created_at DESC").bind(employeeId).all<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "contract_types", label: "Contract types", moduleKey: "contracts", moduleStatuses, permissions: ["contracts.types.view", "contracts.view", "onboarding.workspace.contracts.create", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT * FROM contract_types WHERE is_active = 1 AND status = 'ACTIVE' ORDER BY display_order, name").all<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "contract_settings", label: "Contract settings", moduleKey: "contracts", moduleStatuses, permissions: ["contracts.settings.view", "contracts.view", "onboarding.workspace.contracts.create", "onboarding.cases.manage"], fallback: null as Record<string, unknown> | null, run: () => c.env.DB.prepare("SELECT * FROM contract_settings ORDER BY created_at LIMIT 1").first<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "payroll_profile", label: "Payroll profile", moduleKey: "payroll", moduleStatuses, permissions: ["employees.payroll.view", "employees.payroll.update", "onboarding.workspace.payroll.update", "payroll.view", "payroll.manage", "onboarding.cases.manage"], fallback: null as Record<string, unknown> | null, run: () => c.env.DB.prepare("SELECT * FROM employee_payroll_profiles WHERE employee_id = ?").bind(employeeId).first<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "payment_methods", label: "Payment methods", moduleKey: "payment_methods", moduleStatuses, permissions: ["employees.payment_methods.view", "employees.payment_methods.manage", "onboarding.workspace.payment_methods.update", "payroll.payment_methods.view", "payroll.payment_methods.manage", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT * FROM employee_payment_methods WHERE employee_id = ? AND status != 'ARCHIVED' ORDER BY is_primary DESC, created_at DESC").bind(employeeId).all<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "payment_institutions", label: "Payroll payment institutions", moduleKey: "payment_institutions", moduleStatuses, permissions: ["payroll.payment_institutions.view", "payroll.payment_institutions.manage", "onboarding.workspace.payment_methods.update", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT id, code, name, type, is_active, status FROM payment_institutions WHERE is_active = 1 AND status = 'ACTIVE' ORDER BY display_order, name").all<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "pension_profile", label: "Pension profile", moduleKey: "pension", moduleStatuses, permissions: ["employees.pension_profiles.view", "employees.pension_profiles.update", "employees.pension_profiles.manage", "onboarding.workspace.pension.update", "onboarding.cases.manage"], fallback: null as Record<string, unknown> | null, run: () => c.env.DB.prepare("SELECT epp.*, ps.scheme_name, ps.scheme_code FROM employee_pension_profiles epp LEFT JOIN pension_schemes ps ON ps.id = epp.pension_scheme_id WHERE epp.employee_id = ? AND epp.status != 'ARCHIVED' ORDER BY epp.effective_date DESC LIMIT 1").bind(employeeId).first<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "pension_schemes", label: "Pension schemes", moduleKey: "pension", moduleStatuses, permissions: ["payroll.pension_schemes.view", "payroll.pension_schemes.manage", "onboarding.workspace.pension.update", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT * FROM pension_schemes WHERE status = 'ACTIVE' ORDER BY scheme_name").all<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "biometric_mappings", label: "ZKTeco / biometric attendance", moduleKey: "zkteco_attendance", moduleStatuses, permissions: ["attendance.devices.view", "attendance.devices.manage", "attendance.manage", "onboarding.workspace.attendance.update", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT * FROM employee_biometric_mappings WHERE employee_id = ? AND status != 'ARCHIVED' ORDER BY is_primary DESC, created_at DESC").bind(employeeId).all<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "asset_assignments", label: "Assets and uniforms", moduleKey: "assets_uniforms", moduleStatuses, permissions: ["assets.view", "employees.assets_uniforms.view", "employees.assets.view", "assets.issue", "assets.manage", "onboarding.workspace.assets.update", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT ea.*, ai.code AS asset_code, ai.name AS asset_name FROM employee_asset_assignments ea LEFT JOIN asset_items ai ON ai.id = ea.asset_item_id WHERE ea.employee_id = ? ORDER BY ea.created_at DESC").bind(employeeId).all<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "available_assets", label: "Available assets and uniforms", moduleKey: "assets_uniforms", moduleStatuses, permissions: ["assets.view", "assets.issue", "assets.manage", "onboarding.workspace.assets.update", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT id, code, name, status, lifecycle_status FROM asset_items WHERE status = 'AVAILABLE' ORDER BY name LIMIT 200").all<Record<string, unknown>>() }),
     gate.employee.user_id ? c.env.DB.prepare("SELECT id, email, name, status, last_login_at FROM users WHERE id = ?").bind(String(gate.employee.user_id)).first<Record<string, unknown>>() : Promise.resolve(null),
     c.env.DB.prepare("SELECT * FROM employee_lifecycle_events WHERE case_type = 'ONBOARDING' AND case_id = ? ORDER BY created_at DESC LIMIT 50").bind(caseId).all<Record<string, unknown>>(),
     c.env.DB.prepare("SELECT id, code, name, parent_department_id, is_active FROM departments WHERE is_active = 1 ORDER BY name").all<Record<string, unknown>>(),
@@ -434,9 +553,24 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     c.env.DB.prepare("SELECT id, code, name, rank_order, is_active FROM job_levels WHERE is_active = 1 ORDER BY rank_order, name").all<Record<string, unknown>>(),
     c.env.DB.prepare("SELECT id, employee_no, full_name, primary_department_id, primary_location_id, primary_position_id FROM employees WHERE archived_at IS NULL AND id != ? ORDER BY full_name").bind(employeeId).all<Record<string, unknown>>()
   ]);
-  const moduleKeys = ["contracts", "document_compliance", "payroll", "payment_methods", "pension", "attendance", "zkteco_attendance", "roster", "assets_uniforms", "self_service", "approvals"];
-  const moduleStatuses: Record<string, boolean> = {};
-  for (const key of moduleKeys) moduleStatuses[key] = await isModuleEnabled(c.env.DB, key);
+  const optionalSectionStates = {
+    documents: documents.state,
+    document_types: documentTypes.state,
+    contracts: contracts.state,
+    contract_types: contractTypes.state,
+    contract_settings: contractSettings.state,
+    payroll_profile: payrollProfile.state,
+    payment_methods: paymentMethods.state,
+    payment_institutions: paymentInstitutions.state,
+    pension_profile: pensionProfile.state,
+    pension_schemes: pensionSchemes.state,
+    biometric_mappings: biometricMappings.state,
+    asset_assignments: assetAssignments.state,
+    available_assets: availableAssets.state,
+    bank_loans: workspaceSectionState(moduleStatuses.bank_loans ? "MISSING" : "DISABLED", "Bank loans", moduleStatuses.bank_loans ? "Bank loan setup is handled by payroll after onboarding." : "Bank loans are disabled or not required for onboarding.", "bank_loans"),
+    custom_deductions: workspaceSectionState(moduleStatuses.custom_deductions ? "MISSING" : "DISABLED", "Custom deductions", moduleStatuses.custom_deductions ? "Custom deductions are handled by payroll after onboarding." : "Custom deductions are disabled or not required for onboarding.", "custom_deductions"),
+    final_settlement: workspaceSectionState(moduleStatuses.final_settlement ? "NOT_REQUIRED" : "DISABLED", "Final settlement", moduleStatuses.final_settlement ? "Final settlement is an offboarding-only section and is not required for onboarding." : "Final settlement is disabled or not required for onboarding.", "final_settlement")
+  };
   return {
     case: gate.row,
     employee: gate.employee,
@@ -449,24 +583,25 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
       positions: positions.results,
       job_levels: jobLevels.results,
       reporting_managers: reportingManagers.results,
-      document_types: documentTypes.results,
-      contract_types: contractTypes.results,
-      payment_institutions: paymentInstitutions.results,
-      pension_schemes: pensionSchemes.results,
-      available_assets: availableAssets.results
+      document_types: documentTypes.value.results,
+      contract_types: contractTypes.value.results,
+      payment_institutions: paymentInstitutions.value.results,
+      pension_schemes: pensionSchemes.value.results,
+      available_assets: availableAssets.value.results
     },
     sections: {
       contacts: contacts.results,
       addresses: addresses.results,
-      documents,
-      document_type_warning: documentTypes.warning,
-      contracts: contracts.results,
-      contract_settings: contractSettings,
-      payroll_profile: payrollProfile,
-      payment_methods: paymentMethods.results,
-      pension_profile: pensionProfile,
-      biometric_mappings: biometricMappings.results,
-      asset_assignments: assetAssignments.results,
+      documents: documents.value,
+      document_type_warning: documentTypes.value.warning,
+      optional_section_states: optionalSectionStates,
+      contracts: contracts.value.results,
+      contract_settings: contractSettings.value,
+      payroll_profile: payrollProfile.value,
+      payment_methods: paymentMethods.value.results,
+      pension_profile: pensionProfile.value,
+      biometric_mappings: biometricMappings.value.results,
+      asset_assignments: assetAssignments.value.results,
       linked_user: linkedUser
     },
     events: events.results
