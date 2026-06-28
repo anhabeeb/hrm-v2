@@ -149,7 +149,36 @@ function getPreferredOpenGroup(groups: CommandCenterGroup[]) {
     ?? "";
 }
 
+const KPI_SUMMARY_LIMIT = 5;
+const KPI_ROW_SIZE = 5;
 const commandCenterKpiCardClass = "w-full sm:w-[18rem] xl:w-[16.75rem]";
+
+function getKpiGroupSummary(group: CommandCenterGroup) {
+  if (!group.available) return group.warning ?? "This KPI group is temporarily unavailable.";
+  if (!group.kpis.length) return "No KPI cards available.";
+
+  const visibleSummary = group.kpis
+    .slice(0, KPI_SUMMARY_LIMIT)
+    .map((kpi) => `${kpi.title} ${formatValue(kpi.value)}`);
+  const hiddenCount = Math.max(group.kpis.length - visibleSummary.length, 0);
+
+  return hiddenCount > 0
+    ? `${visibleSummary.join(" · ")} · +${hiddenCount} more`
+    : visibleSummary.join(" · ");
+}
+
+function getKpiGroupFullSummary(group: CommandCenterGroup) {
+  if (!group.available) return group.warning ?? "This KPI group is temporarily unavailable.";
+  return group.kpis.map((kpi) => `${kpi.title} ${formatValue(kpi.value)}`).join(" · ");
+}
+
+function chunkKpis<T>(items: T[], size = KPI_ROW_SIZE) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
 
 export function DashboardPage() {
   const { token } = useAuth();
@@ -228,21 +257,22 @@ export function DashboardPage() {
                   className="overflow-hidden rounded-lg border bg-white shadow-panel"
                 >
                   <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <div className="flex w-full min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex min-w-0 shrink-0 items-center gap-2 lg:max-w-[16rem]">
                         <span className="truncate text-sm font-semibold text-slate-950">{group.title}</span>
-                        <Badge tone={group.available ? "success" : "warning"}>{group.available ? `${group.kpis.length} KPIs` : "Warning"}</Badge>
+                        <Badge tone={group.available ? "success" : "warning"}>{group.available ? "Live" : "Warning"}</Badge>
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs font-normal leading-5 text-muted-foreground">
-                        {group.available ? "Scope-aware operational indicators for enabled modules." : group.warning}
+                      <p
+                        className="kpi-summary-region min-w-0 flex-1 text-left text-xs font-normal leading-5 text-muted-foreground lg:text-right"
+                        title={getKpiGroupFullSummary(group)}
+                      >
+                        {getKpiGroupSummary(group)}
                       </p>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="border-t p-0">
                   {group.available ? (
-                    <CommandCenterKpiGrid>
-                      {group.kpis.map((card) => <CommandCenterKpiCard key={card.id} card={card} />)}
-                    </CommandCenterKpiGrid>
+                    <CommandCenterKpiGrid kpis={group.kpis} />
                   ) : (
                     <div className="p-4">
                       <WarningPanel tone="warning">{group.warning ?? "This KPI group is temporarily unavailable."}</WarningPanel>
@@ -283,10 +313,14 @@ export function DashboardPage() {
   );
 }
 
-function CommandCenterKpiGrid({ children }: { children: React.ReactNode }) {
+function CommandCenterKpiGrid({ kpis }: { kpis: CommandCenterKpi[] }) {
   return (
-    <div className="mx-auto flex max-w-[89rem] flex-wrap justify-center gap-4 p-4">
-      {children}
+    <div className="mx-auto flex max-w-[89rem] flex-col items-center gap-4 p-4">
+      {chunkKpis(kpis, KPI_ROW_SIZE).map((row, rowIndex) => (
+        <div key={rowIndex} className="flex w-full flex-wrap justify-center gap-4">
+          {row.map((card) => <CommandCenterKpiCard key={card.id} card={card} />)}
+        </div>
+      ))}
     </div>
   );
 }
@@ -343,19 +377,25 @@ function PriorityActionCard({ action }: { action: PriorityAction }) {
 }
 
 function CommandCenterSkeleton() {
+  const skeletonCards = Array.from({ length: 4 }).map((_, index) => ({ id: `skeleton-${index}` }));
+
   return (
     <div className="space-y-5">
       {["Workforce", "Attendance", "Payroll"].map((group) => (
         <DashboardWidget key={group} title={group} description="Loading live KPI cards.">
-          <CommandCenterKpiGrid>
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Panel key={index} className={cn("min-h-[148px] animate-pulse p-4", commandCenterKpiCardClass)}>
-                <div className="h-4 w-32 rounded bg-slate-100" />
-                <div className="mt-3 h-3 w-full rounded bg-slate-100" />
-                <div className="mt-8 h-8 w-20 rounded bg-slate-100" />
-              </Panel>
+          <div className="mx-auto flex max-w-[89rem] flex-col items-center gap-4 p-4">
+            {chunkKpis(skeletonCards, KPI_ROW_SIZE).map((row, rowIndex) => (
+              <div key={rowIndex} className="flex w-full flex-wrap justify-center gap-4">
+                {row.map((card) => (
+                  <Panel key={card.id} className={cn("min-h-[148px] animate-pulse p-4", commandCenterKpiCardClass)}>
+                    <div className="h-4 w-32 rounded bg-slate-100" />
+                    <div className="mt-3 h-3 w-full rounded bg-slate-100" />
+                    <div className="mt-8 h-8 w-20 rounded bg-slate-100" />
+                  </Panel>
+                ))}
+              </div>
             ))}
-          </CommandCenterKpiGrid>
+          </div>
         </DashboardWidget>
       ))}
     </div>
