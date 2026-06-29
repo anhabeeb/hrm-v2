@@ -4,6 +4,7 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
+import { TableSkeleton } from "../components/loading";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
@@ -139,7 +140,7 @@ export function AttendanceCalendarPage() {
             <TableBody>{records.map((record) => <TableRow key={record.id}><TableCell>{record.attendance_date}</TableCell><TableCell><EmployeeIdentityCell employeeId={record.employee_id} employeeName={record.employee_name ?? "-"} employeeNumber={record.employee_no ?? ""} departmentName={record.department_name} locationName={record.location_name} size="sm" /></TableCell><TableCell>{record.department_name ?? "-"}</TableCell><TableCell>{record.location_name ?? "-"}</TableCell><TableCell><Badge tone={tone(record.status)}>{record.status}</Badge></TableCell><TableCell>{record.first_clock_in ? new Date(record.first_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {record.last_clock_out ? new Date(record.last_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</TableCell><TableCell>{record.total_work_minutes ?? 0}</TableCell><TableCell>{record.missed_punch ? <Badge tone="warning">Missed punch</Badge> : "-"}</TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading calendar" description="Fetching attendance calendar records." /> : records.length === 0 ? <EmptyState title="No calendar records found" description="Create attendance records or adjust filters." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={8} label="Loading attendance calendar" /> : records.length === 0 ? <EmptyState title="No calendar records found" description="Create attendance records or adjust filters." /> : null}
       </Panel>
     </PageShell>
   );

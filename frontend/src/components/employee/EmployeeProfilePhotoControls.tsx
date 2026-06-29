@@ -121,7 +121,7 @@ function ProfilePhotoModal({ employee, token, onClose, onSaved }: { employee: Em
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <ActionTextButton intent="upload" size="sm" disabled={saving} onClick={() => void submit()}>{saving ? "Saving..." : "Save photo"}</ActionTextButton>
+          <ActionTextButton intent="upload" size="sm" loading={saving} loadingLabel="Saving photo" onClick={() => void submit()}>Save photo</ActionTextButton>
         </div>
       </div>
     </div>

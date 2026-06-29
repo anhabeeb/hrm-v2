@@ -3,6 +3,7 @@ import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput } from "../components/filters";
 import { EmptyState } from "../components/ui/empty-state";
+import { TableSkeleton } from "../components/loading";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
@@ -143,7 +144,7 @@ export function AttendanceReportsPage() {
             <TableBody>{reports.map((row, index) => <TableRow key={String(row.employee_id ?? index)}><TableCell><div className="font-medium">{String(row.employee_name ?? "-")}</div><div className="font-mono text-xs text-muted-foreground">{String(row.employee_no ?? "")}</div></TableCell><TableCell>{String(row.department_name ?? "-")}</TableCell><TableCell>{String(row.location_name ?? "-")}</TableCell><TableCell>{String(row.present_days ?? 0)}</TableCell><TableCell>{String(row.absent_days ?? 0)}</TableCell><TableCell>{String(row.late_days ?? 0)}</TableCell><TableCell>{String(row.missed_punch_days ?? 0)}</TableCell><TableCell>{String(row.total_work_minutes ?? 0)}</TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading reports" description="Building attendance report data." /> : reports.length === 0 ? <EmptyState title="No report rows found" description="Create attendance records or adjust filters." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={6} label="Loading attendance reports" /> : reports.length === 0 ? <EmptyState title="No report rows found" description="Create attendance records or adjust filters." /> : null}
       </Panel>
     </PageShell>
   );

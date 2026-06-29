@@ -5,6 +5,7 @@ import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { FormSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
@@ -81,7 +82,7 @@ export function AttendanceSettingsPage() {
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
       <Panel className="p-4">
-        {loading || !settings ? <EmptyState title="Loading settings" description="Fetching attendance settings." /> : (
+        {loading || !settings ? <FormSkeleton fields={9} label="Loading attendance settings" /> : (
           <ModuleSettingsBody disabled={!moduleEnabled}>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field label="Standard work minutes per day"><Input type="number" min="0" disabled={controlsDisabled} value={settings.standard_work_minutes_per_day} onChange={(event) => update("standard_work_minutes_per_day", Number(event.target.value))} /></Field>
@@ -120,7 +121,7 @@ export function AttendanceSettingsPage() {
             <Toggle label="Payroll impact enabled" checked={Boolean(settings.payroll_impact_enabled)} disabled={controlsDisabled} onChange={(checked) => update("payroll_impact_enabled", checked)} />
             <Toggle label="Lock after payroll finalized" checked={Boolean(settings.lock_after_payroll_finalized)} disabled={controlsDisabled} onChange={(checked) => update("lock_after_payroll_finalized", checked)} />
             <Toggle label="Payroll deduction enabled" checked={Boolean(settings.payroll_deduction_enabled)} disabled={controlsDisabled} onChange={(checked) => update("payroll_deduction_enabled", checked)} />
-            <div className="md:col-span-2 xl:col-span-3 flex justify-end">{canManage ? <Button onClick={() => void save()} disabled={saving || !moduleEnabled}><Save className="h-4 w-4" /> {saving ? "Saving..." : "Save settings"}</Button> : null}</div>
+            <div className="md:col-span-2 xl:col-span-3 flex justify-end">{canManage ? <Button onClick={() => void save()} loading={saving} loadingLabel="Saving attendance settings" disabled={!moduleEnabled}><Save className="h-4 w-4" /> Save settings</Button> : null}</div>
           </div>
           </ModuleSettingsBody>
         )}

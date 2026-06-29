@@ -7,6 +7,7 @@ import { PayrollNav } from "../components/payroll/PayrollNav";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { TableSkeleton } from "../components/loading";
 import { Panel } from "../components/ui/panel";
 import { InputField, PageHeader, PageShell } from "../components/ui/page-shell";
 import { StatusBadge } from "../components/ui/status-badge";
@@ -179,7 +180,7 @@ export function PayrollRunDetailPage() {
         </div>
       </Panel> : null}
       <div className="grid gap-4 xl:grid-cols-2">
-        <Panel className="overflow-hidden"><div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Approval timeline</h2></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Time</TableHead><TableHead>Action</TableHead><TableHead>Actor</TableHead><TableHead>Status</TableHead><TableHead>Reason / note</TableHead></TableRow></TableHeader><TableBody>{approvals.map((event) => <TableRow key={event.id}><TableCell>{event.created_at}</TableCell><TableCell>{event.action}</TableCell><TableCell>{event.actor_name_snapshot ?? "-"}</TableCell><TableCell>{event.previous_status ?? "-"} {"->"} {event.new_status ?? "-"}</TableCell><TableCell>{event.reason ?? event.note ?? "-"}</TableCell></TableRow>)}</TableBody></Table></div>{approvals.length === 0 ? <EmptyState title="No approval events" description="Submit, approval, rejection, and finalization events will appear here." /> : null}</Panel>
+        <Panel className="overflow-hidden"><div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Approval timeline</h2></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Time</TableHead><TableHead>Action</TableHead><TableHead>Actor</TableHead><TableHead>Status</TableHead><TableHead>Reason / note</TableHead></TableRow></TableHeader><TableBody>{approvals.map((event) => <TableRow key={event.id}><TableCell>{event.created_at}</TableCell><TableCell>{event.action}</TableCell><TableCell>{event.actor_name_snapshot ?? "-"}</TableCell><TableCell>{event.previous_status ?? "-"} {"->"} {event.new_status ?? "-"}</TableCell><TableCell>{event.reason ?? event.note ?? "-"}</TableCell></TableRow>)}</TableBody></Table></div>{loading ? <TableSkeleton rows={3} columns={5} label="Loading payroll approval timeline" /> : approvals.length === 0 ? <EmptyState title="No approval events" description="Submit, approval, rejection, and finalization events will appear here." /> : null}</Panel>
         <Panel className="overflow-hidden"><div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Payslips and payment register</h2><p className="text-xs text-muted-foreground">Payment register is manual confirmation only. No bank export is included.</p></div><div className="grid gap-3 p-4 md:grid-cols-2"><div><div className="text-xs text-muted-foreground">Payslips generated</div><div className="text-lg font-semibold">{payslips.length}</div></div><div><div className="text-xs text-muted-foreground">Payment rows prepared</div><div className="text-lg font-semibold">{payments.length}</div></div></div></Panel>
       </div>
       <Panel className="overflow-hidden">
@@ -193,7 +194,7 @@ export function PayrollRunDetailPage() {
             })}</TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading payroll review rows" description="Fetching payroll run employees." /> : employees.length === 0 ? <EmptyState title="No employee rows" description="Recalculate or generate the run to create employee snapshots." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={10} label="Loading payroll review rows" /> : employees.length === 0 ? <EmptyState title="No employee rows" description="Recalculate or generate the run to create employee snapshots." /> : null}
       </Panel>
       {selected ? <LinesModal employee={selected} lines={lines} onClose={() => { setSelected(null); setLines(null); }} /> : null}
       {holdModal ? <HoldModal modal={holdModal} reason={holdReason} onReason={setHoldReason} onClose={() => { setHoldModal(null); setHoldReason(""); }} onConfirm={() => void confirmHoldAction()} /> : null}
@@ -242,7 +243,7 @@ function LinesModal({ employee, lines, onClose }: { employee: PayrollRunEmployee
             <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Category</TableHead><TableHead>Description</TableHead><TableHead>Source</TableHead><TableHead>Amount</TableHead></TableRow></TableHeader>
             <TableBody>{(lines ?? []).map((line) => <TableRow key={line.id}><TableCell>{line.line_type}</TableCell><TableCell>{line.category ?? "-"}</TableCell><TableCell>{line.description}</TableCell><TableCell>{line.source}</TableCell><TableCell>{money(line.amount)}</TableCell></TableRow>)}</TableBody>
           </Table>
-          {!lines ? <EmptyState title="Loading line details" description="Fetching payroll run lines." /> : lines.length === 0 ? <EmptyState title="No payroll lines" description="This row does not have line items yet." /> : null}
+          {!lines ? <TableSkeleton rows={5} columns={5} label="Loading payroll line details" /> : lines.length === 0 ? <EmptyState title="No payroll lines" description="This row does not have line items yet." /> : null}
         </div>
       </div>
     </div>

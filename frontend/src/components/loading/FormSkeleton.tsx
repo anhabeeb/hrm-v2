@@ -1,8 +1,8 @@
 import { cn } from "../../lib/utils";
 
-export function FormSkeleton({ fields = 6, className }: { fields?: number; className?: string }) {
+export function FormSkeleton({ fields = 6, className, label = "Loading form" }: { fields?: number; className?: string; label?: string }) {
   return (
-    <div className={cn("rounded-lg border bg-white p-4 shadow-panel", className)} aria-busy="true" aria-label="Loading form">
+    <div className={cn("rounded-lg border bg-white p-4 shadow-panel", className)} aria-busy="true" aria-label={label}>
       <div className="grid gap-4 md:grid-cols-2">
         {Array.from({ length: fields }).map((_, index) => (
           <div key={index} className="space-y-2">

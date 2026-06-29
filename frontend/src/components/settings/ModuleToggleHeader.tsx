@@ -72,7 +72,7 @@ export function ModuleToggleHeader({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          <span className="text-xs font-medium text-muted-foreground">{busy ? "Saving..." : enabled ? "On" : "Off"}</span>
+          <span className="text-xs font-medium text-muted-foreground">{busy ? "Saving" : enabled ? "On" : "Off"}</span>
           <Switch checked={enabled} disabled={!permissionCanUpdate || busy} aria-label={`${enabled ? "Disable" : "Enable"} ${moduleName} module`} onCheckedChange={requestToggle} />
         </div>
       </div>

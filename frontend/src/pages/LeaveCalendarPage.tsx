@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { TableSkeleton } from "../components/loading";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
@@ -114,7 +115,7 @@ export function LeaveCalendarPage() {
             <TableBody>{requests.map((request) => <TableRow key={request.id}><TableCell><EmployeeIdentityCell employeeId={request.employee_id} employeeName={request.employee_name ?? "-"} employeeNumber={request.employee_no ?? ""} departmentName={request.department_name} locationName={request.location_name} size="sm" /></TableCell><TableCell>{request.department_name ?? "-"}</TableCell><TableCell>{request.location_name ?? "-"}</TableCell><TableCell>{request.leave_type_name}</TableCell><TableCell>{request.start_date}</TableCell><TableCell>{request.end_date}</TableCell><TableCell>{request.requested_days}</TableCell><TableCell><Badge tone={request.status === "APPROVED" ? "success" : "warning"}>{request.status}</Badge></TableCell><TableCell className="text-xs text-muted-foreground">{request.public_holiday_handling_json ?? "-"}</TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading leave calendar" description="Fetching calendar blocks." /> : requests.length === 0 ? <EmptyState title="No leave blocks" description="Approved and pending leave requests will appear here." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={8} label="Loading leave calendar" /> : requests.length === 0 ? <EmptyState title="No leave blocks" description="Approved and pending leave requests will appear here." /> : null}
       </Panel>
     </PageShell>
   );

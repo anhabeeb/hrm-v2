@@ -102,7 +102,7 @@ export function AttendanceRecordModal(props: {
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" onClick={props.onClose}>Cancel</Button>
-          <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save record"}</Button>
+          <Button type="submit" loading={saving} loadingLabel="Saving attendance record">Save record</Button>
         </div>
       </form>
     </div>

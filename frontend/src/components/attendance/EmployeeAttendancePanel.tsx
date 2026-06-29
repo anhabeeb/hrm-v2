@@ -5,6 +5,7 @@ import { ApiError, api } from "../../lib/api";
 import type { AttendanceCorrection, AttendanceRawLog, AttendanceRecord, EmployeeBiometricMapping } from "../../types/attendance";
 import type { Employee } from "../../types/employees";
 import { AttendanceCorrectionModal } from "./AttendanceCorrectionModal";
+import { TableSkeleton } from "../loading";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
@@ -142,7 +143,7 @@ export function EmployeeAttendancePanel({ token, employee, permissions }: { toke
             <TableBody>{records.map((record) => <TableRow key={record.id}><TableCell>{record.attendance_date}</TableCell><TableCell><Badge tone={tone(record.status)}>{record.status}</Badge>{record.missed_punch ? <Badge tone="warning" className="ml-1">Missed punch</Badge> : null}</TableCell><TableCell>{record.first_clock_in ? new Date(record.first_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {record.last_clock_out ? new Date(record.last_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</TableCell><TableCell>{record.total_work_minutes ?? 0} min</TableCell><TableCell>{record.late_minutes ?? 0} / {record.early_checkout_minutes ?? 0}</TableCell><TableCell>{record.source}</TableCell><TableCell className="max-w-72 truncate">{record.payroll_impact_json ?? "None"}</TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading attendance" description="Fetching attendance records." /> : records.length === 0 ? <EmptyState title="No attendance records" description="Attendance records will appear here after import or manual entry." /> : null}
+        {loading ? <TableSkeleton rows={5} columns={7} label="Loading employee attendance" /> : records.length === 0 ? <EmptyState title="No attendance records" description="Attendance records will appear here after import or manual entry." /> : null}
       </Panel>
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel className="overflow-hidden">

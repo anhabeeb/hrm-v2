@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { ExportMenu } from "../components/export/ExportMenu";
+import { TableSkeleton } from "../components/loading";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterNav } from "../components/roster/RosterNav";
 import { EmptyState } from "../components/ui/empty-state";
@@ -153,7 +154,7 @@ export function RosterReportsPage() {
             <TableBody>{filtered.map((row, index) => <TableRow key={String(row.employee_id ?? index)}><TableCell><div className="font-medium">{String(row.employee_name ?? "-")}</div><div className="font-mono text-xs text-muted-foreground">{String(row.employee_no ?? "")}</div></TableCell><TableCell>{String(row.department_name ?? "-")}</TableCell><TableCell>{String(row.location_name ?? "-")}</TableCell><TableCell>{String(row.scheduled_days ?? 0)}</TableCell><TableCell>{String(row.off_days ?? 0)}</TableCell><TableCell>{String(row.leave_days ?? 0)}</TableCell><TableCell>{String(row.unassigned_days ?? 0)}</TableCell><TableCell>{String(row.scheduled_minutes ?? 0)}</TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading roster reports" description="Building roster summary rows." /> : filtered.length === 0 ? <EmptyState title="No roster report rows" description="Create assignments or adjust filters." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={9} label="Loading roster reports" /> : filtered.length === 0 ? <EmptyState title="No roster report rows" description="Create assignments or adjust filters." /> : null}
       </Panel>
     </PageShell>
   );

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ActionTextButton } from "../ui/action-button";
 import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
+import { FormSkeleton } from "../loading";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { CheckboxField, SelectField } from "../ui/page-shell";
@@ -142,7 +143,7 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
   }
 
   if (!canView) return <Panel><EmptyState title="Payroll unavailable" description="Your account needs employees.payroll.view or payroll.view permission." /></Panel>;
-  if (loading) return <Panel><EmptyState title="Loading payroll profile" description="Fetching payroll profile and history." /></Panel>;
+  if (loading) return <Panel><FormSkeleton fields={8} label="Loading payroll profile" /></Panel>;
   if (!summary || !form) return <Panel><EmptyState title="No payroll profile" description="Payroll defaults could not be loaded for this employee." /></Panel>;
 
   return (

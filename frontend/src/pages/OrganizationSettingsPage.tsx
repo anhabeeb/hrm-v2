@@ -2,6 +2,7 @@ import { Building2, Eye, Pencil, Plus, RotateCcw, Save, ToggleLeft, ToggleRight 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput, StandardSelectFilter, type ActiveFilterChip } from "../components/filters";
+import { FormSkeleton } from "../components/loading";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -286,7 +287,7 @@ export function OrganizationSettingsPage() {
       <Panel className="overflow-hidden">
 
         {loading ? (
-          <EmptyState title="Loading organization settings" description="Fetching company, locations, departments, positions, and levels." />
+          <FormSkeleton fields={10} label="Loading organization settings" />
         ) : (
           <div className="p-4">
             {activeTab === "company" ? (

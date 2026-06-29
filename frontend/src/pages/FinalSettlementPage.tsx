@@ -9,6 +9,7 @@ import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { TableSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
@@ -413,7 +414,7 @@ export function FinalSettlementPage() {
                 ))}</TableBody>
               </Table>
             </div>
-            {loading ? <EmptyState title="Loading exit payroll cases" description="Fetching settlement cases." /> : filteredCases.length === 0 ? <EmptyState title="No settlement cases" description="Create a case when an employee leaves or requires exit payroll." /> : null}
+            {loading ? <TableSkeleton rows={6} columns={7} label="Loading exit payroll cases" /> : filteredCases.length === 0 ? <EmptyState title="No settlement cases" description="Create a case when an employee leaves or requires exit payroll." /> : null}
           </Panel>
           <CaseDetails
             selected={selected}

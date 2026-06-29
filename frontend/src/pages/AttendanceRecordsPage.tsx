@@ -11,6 +11,7 @@ import { Badge } from "../components/ui/badge";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { TableSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import {
   ActiveFilterChips,
@@ -279,7 +280,7 @@ export function AttendanceRecordsPage() {
             </TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading attendance records" description="Fetching attendance data." /> : records.length === 0 ? <EmptyState title="No attendance records found" description="Create records, import raw logs, or adjust filters." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={10} label="Loading attendance records" /> : records.length === 0 ? <EmptyState title="No attendance records found" description="Create records, import raw logs, or adjust filters." /> : null}
       </Panel>
       <Panel className="overflow-hidden">
         <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">Recent Attendance Logs</h2></div>
@@ -289,7 +290,7 @@ export function AttendanceRecordsPage() {
             <TableBody>{logs.slice(0, 12).map((log) => <TableRow key={log.id}><TableCell>{log.employee_name ?? log.external_employee_code ?? "-"}</TableCell><TableCell>{new Date(log.log_time).toLocaleString()}</TableCell><TableCell>{log.log_type}</TableCell><TableCell>{log.source}</TableCell><TableCell className="max-w-64 truncate">{log.notes ?? "-"}</TableCell><TableCell><div className="flex justify-end">{canManageLogs ? <RowActionButton intent="edit" title="Edit log" onClick={() => setEditingLog(log)}><Edit className="h-4 w-4" /></RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
-        {!loading && logs.length === 0 ? <EmptyState title="No attendance logs found" description="Manual and device-normalized logs will appear here." /> : null}
+        {loading ? <TableSkeleton rows={4} columns={6} label="Loading attendance logs" /> : logs.length === 0 ? <EmptyState title="No attendance logs found" description="Manual and device-normalized logs will appear here." /> : null}
       </Panel>
       <Panel className="overflow-hidden">
         <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">Recent Raw Device Logs</h2></div>
@@ -299,7 +300,7 @@ export function AttendanceRecordsPage() {
             <TableBody>{rawLogs.slice(0, 12).map((log) => <TableRow key={log.id}><TableCell>{log.employee_name ?? log.external_employee_code ?? "-"}</TableCell><TableCell>{log.device_name ?? log.device_code ?? "-"}</TableCell><TableCell>{new Date(log.punch_time).toLocaleString()}</TableCell><TableCell>{log.punch_type ?? "UNKNOWN"}</TableCell><TableCell>{log.source}</TableCell><TableCell>{new Date(log.imported_at).toLocaleString()}</TableCell></TableRow>)}</TableBody>
           </Table>
         </div>
-        {!loading && rawLogs.length === 0 ? <EmptyState title="No raw logs found" description="Raw device and import logs will appear here." /> : null}
+        {loading ? <TableSkeleton rows={4} columns={6} label="Loading raw attendance logs" /> : rawLogs.length === 0 ? <EmptyState title="No raw logs found" description="Raw device and import logs will appear here." /> : null}
       </Panel>
       {editing !== undefined && token ? <AttendanceRecordModal token={token} employees={employees} record={editing} onClose={() => setEditing(undefined)} onSaved={load} /> : null}
       {editingLog !== undefined && token ? <AttendanceManualLogModal token={token} employees={employees} log={editingLog} onClose={() => setEditingLog(undefined)} onSaved={load} /> : null}

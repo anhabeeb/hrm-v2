@@ -2,6 +2,7 @@ import { CalendarPlus, Edit, PlayCircle, Search, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { TableSkeleton } from "../components/loading";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -140,7 +141,7 @@ export function PayrollPeriodsPage() {
             })}</TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading payroll periods" description="Fetching period rows." /> : periods.length === 0 ? <EmptyState title="No payroll periods" description="Create a period before generating payroll runs." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={8} label="Loading payroll periods" /> : periods.length === 0 ? <EmptyState title="No payroll periods" description="Create a period before generating payroll runs." /> : null}
       </Panel>
       {modal ? <PeriodModal modal={modal} form={form} setForm={setForm} onClose={() => { setModal(null); setForm({}); }} onSubmit={() => void submitModal()} /> : null}
     </PageShell>

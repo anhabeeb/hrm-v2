@@ -15,6 +15,7 @@ import { EmployeeFinalSettlementPanel } from "../components/payroll/EmployeeFina
 import { EmployeeNotesPanel } from "../components/notes/EmployeeNotesPanel";
 import { EmployeePayrollPanel } from "../components/payroll/EmployeePayrollPanel";
 import { EmployeeRosterPanel } from "../components/roster/EmployeeRosterPanel";
+import { PageLoader } from "../components/loading";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -219,7 +220,7 @@ export function EmployeeProfilePage() {
     return <Panel><EmptyState title="Employee profile unavailable" description="Your account needs employees.view permission." /></Panel>;
   }
   if (!employee) {
-    return <Panel><EmptyState title="Loading Employee 360" description={error ?? "Fetching employee profile."} /></Panel>;
+    return <PageLoader title="Loading Employee 360" description={error ?? "Fetching employee profile."} />;
   }
 
   const activeOnboardingCase = lifecycle?.onboarding && lifecycle.onboarding.activation_status !== "ACTIVATED" && lifecycle.onboarding.onboarding_status !== "CANCELLED" ? lifecycle.onboarding : null;

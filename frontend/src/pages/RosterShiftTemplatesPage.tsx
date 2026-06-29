@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput } from "../components/filters";
+import { TableSkeleton } from "../components/loading";
 import { RosterNav } from "../components/roster/RosterNav";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -138,7 +139,7 @@ export function RosterShiftTemplatesPage() {
             </TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading shift templates" description="Fetching reusable shifts." /> : filtered.length === 0 ? <EmptyState title="No shift templates found" description="Add a shift template or adjust search." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={8} label="Loading shift templates" /> : filtered.length === 0 ? <EmptyState title="No shift templates found" description="Add a shift template or adjust search." /> : null}
       </Panel>
       {editing !== undefined ? <ShiftTemplateModal template={editing ?? undefined} onClose={() => setEditing(undefined)} onSave={(input) => void save(input)} /> : null}
     </PageShell>

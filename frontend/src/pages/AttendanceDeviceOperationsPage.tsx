@@ -10,6 +10,7 @@ import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { FormSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
@@ -124,7 +125,7 @@ function DeviceSettings({ token, canManage }: { token: string; canManage: boolea
     }
   }
 
-  if (!settings) return <Panel><EmptyState title="Loading settings" description="Fetching device integration settings." /></Panel>;
+  if (!settings) return <Panel><FormSkeleton fields={8} label="Loading device integration settings" /></Panel>;
   const moduleEnabled = Boolean(settings.zkteco_csv_import_enabled || settings.zkteco_local_bridge_enabled || settings.zkteco_push_adms_enabled);
   return (
     <Panel className="p-4">

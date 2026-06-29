@@ -20,6 +20,7 @@ import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton, type RowActionIntent } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { EmptyState } from "../components/ui/empty-state";
+import { TableSkeleton } from "../components/loading";
 import { FormBlockingAlert } from "../components/forms/FormBlockingAlert";
 import { FormWarningAlert } from "../components/forms/FormWarningAlert";
 import { ValidationSummary } from "../components/forms/ValidationSummary";
@@ -591,7 +592,7 @@ function UsersTable(props: UsersTableProps) {
         </MoreFiltersSheet>
         <FilterResetButton onReset={() => { props.onQueryChange(""); props.onStatusFilterChange("ALL"); props.onRoleFilterChange("ALL"); props.onLinkFilterChange("ALL"); }} />
       </UsersAccessFilterBar>
-      {props.loading ? <LoadingRow text="Loading users" /> : null}
+      {props.loading ? <TableSkeleton rows={6} columns={9} label="Loading users" /> : null}
       {!props.loading && props.users.length === 0 ? <EmptyState title="No users found" description="Adjust filters or create a user." /> : null}
       {!props.loading && props.users.length > 0 ? (
         <div className="overflow-x-auto">
@@ -701,7 +702,7 @@ function RolesTable(props: RolesTableProps) {
         <UsersAccessSearchInput value={props.query} onChange={props.onQueryChange} placeholder="Search roles" />
         <FilterResetButton onReset={() => props.onQueryChange("")} />
       </UsersAccessFilterBar>
-      {props.loading ? <LoadingRow text="Loading roles" /> : null}
+      {props.loading ? <TableSkeleton rows={5} columns={7} label="Loading roles" /> : null}
       {!props.loading && props.roles.length === 0 ? <EmptyState title="No roles found" description="Create a role template to assign permissions." /> : null}
       {!props.loading && props.roles.length > 0 ? (
         <div className="overflow-x-auto">
@@ -806,7 +807,7 @@ function PermissionsTable(props: PermissionsTableProps) {
         </MoreFiltersSheet>
         <FilterResetButton onReset={() => { props.onQueryChange(""); props.onModuleFilterChange("ALL"); props.onCriticalFilterChange("ALL"); }} />
       </UsersAccessFilterBar>
-      {props.loading ? <LoadingRow text="Loading permissions" /> : null}
+      {props.loading ? <TableSkeleton rows={6} columns={4} label="Loading permissions" /> : null}
       {!props.loading && props.permissions.length === 0 ? <EmptyState title="No permissions found" description="Adjust filters to view the registry." /> : null}
       {!props.loading && props.permissions.length > 0 ? (
         <div className="overflow-x-auto">
@@ -856,7 +857,7 @@ function RoleMappingsTable(props: {
         <div className="font-medium">Roles decide what the user can do. Scopes decide which employees, departments, and locations the user can access.</div>
         <div className="mt-1 text-xs">Examples: Employee Self-Service + SELF_ONLY, Store Manager + OWN_LOCATION, Finance Payroll Manager + SELECTED_LOCATIONS, HR Manager + WHOLE_COMPANY, HR Head + WHOLE_COMPANY. Higher priority rules win when multiple mappings match.</div>
       </div>
-      {props.loading ? <LoadingRow text="Loading role mappings" /> : null}
+      {props.loading ? <TableSkeleton rows={5} columns={7} label="Loading role mappings" /> : null}
       {!props.loading && props.mappings.length === 0 ? <EmptyState title="No role mappings found" description="Create access templates that suggest roles and data scopes for employee-linked users." /> : null}
       {!props.loading && props.mappings.length > 0 ? (
         <div className="overflow-x-auto">
@@ -934,7 +935,7 @@ function AccessScopesTable(props: {
         <div className="font-medium">Roles control what a user can do. Scopes control which employees, departments, and locations the user can access.</div>
         <div className="mt-1 text-xs">Role mapping scopes are templates. When a mapping is applied, HRM v2 copies those templates to the linked user and updates the existing mapped scope on later applies.</div>
       </div>
-      {props.loading ? <LoadingRow text="Loading access scopes" /> : null}
+      {props.loading ? <TableSkeleton rows={5} columns={8} label="Loading access scopes" /> : null}
       {!props.loading && props.scopes.length === 0 ? <EmptyState title="No access scopes found" description="Create role or user scopes to limit employee data by department, location, team, or company." /> : null}
       {!props.loading && props.scopes.length > 0 ? (
         <div className="overflow-x-auto">
@@ -1435,8 +1436,4 @@ function IconAction(props: { title: string; icon: React.ReactNode; onClick: () =
       {props.icon}
     </RowActionButton>
   );
-}
-
-function LoadingRow(props: { text: string }) {
-  return <div className="border-b bg-white px-4 py-6 text-sm text-muted-foreground">{props.text}</div>;
 }

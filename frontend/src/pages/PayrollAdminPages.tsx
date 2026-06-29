@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { ExportMenu } from "../components/export/ExportMenu";
+import { FormSkeleton, TableSkeleton } from "../components/loading";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PayrollNav } from "../components/payroll/PayrollNav";
@@ -156,7 +157,7 @@ function PeriodSelect({ periods, value, onChange }: { periods: PayrollPeriod[]; 
 }
 
 function PayrollTablePageLayout({ title, description, error, loading, empty, emptyTitle, filters, onReset, action, chips = [], exportRows, exportColumns, children }: { title: string; description: string; error: string | null; loading: boolean; empty: boolean; emptyTitle: string; filters: React.ReactNode; onReset?: () => void; action?: React.ReactNode; chips?: ActiveFilterChip[]; exportRows?: Record<string, unknown>[]; exportColumns?: string[]; children: React.ReactNode }) {
-  return <div className="space-y-4"><PayrollPageHeader title={title} description={description}>{exportRows && exportColumns ? <ExportMenu moduleName={title} rows={exportRows} columns={exportColumns} filterSummary={chips.map((chip) => `${chip.label}: ${chip.value}`)} /> : null}{action}</PayrollPageHeader><ErrorMessage error={error} /><Panel className="overflow-hidden"><div className="border-b p-3"><StandardFilterBar className="border-0 shadow-none">{filters}{onReset ? <FilterResetButton onReset={onReset} /> : null}</StandardFilterBar><ActiveFilterChips chips={chips} className="mt-2" /></div><div className="overflow-x-auto"><Table>{children}</Table></div>{loading ? <EmptyState title={`Loading ${title.toLowerCase()}`} description="Fetching payroll rows." /> : empty ? <EmptyState title={emptyTitle} description="Use the available actions or adjust filters." /> : null}</Panel></div>;
+  return <div className="space-y-4"><PayrollPageHeader title={title} description={description}>{exportRows && exportColumns ? <ExportMenu moduleName={title} rows={exportRows} columns={exportColumns} filterSummary={chips.map((chip) => `${chip.label}: ${chip.value}`)} /> : null}{action}</PayrollPageHeader><ErrorMessage error={error} /><Panel className="overflow-hidden"><div className="border-b p-3"><StandardFilterBar className="border-0 shadow-none">{filters}{onReset ? <FilterResetButton onReset={onReset} /> : null}</StandardFilterBar><ActiveFilterChips chips={chips} className="mt-2" /></div><div className="overflow-x-auto"><Table>{children}</Table></div>{loading ? <TableSkeleton rows={6} columns={8} label={`Loading ${title.toLowerCase()}`} /> : empty ? <EmptyState title={emptyTitle} description="Use the available actions or adjust filters." /> : null}</Panel></div>;
 }
 
 async function loadReferenceData(token: string) {
@@ -464,7 +465,7 @@ export function PayrollSettingsPage() {
       </section>
     ) : null}
     <Panel className="p-4">
-      {!settings ? <EmptyState title="Loading payroll settings" description="Fetching payroll configuration." /> : <ModuleSettingsBody disabled={!moduleEnabled}><div className="space-y-5">
+      {!settings ? <FormSkeleton fields={12} label="Loading payroll settings" /> : <ModuleSettingsBody disabled={!moduleEnabled}><div className="space-y-5">
         <SettingsSection title="General Payroll" description="Base calculation and module switches.">
           <Field label="Default currency"><Input disabled={!canManageSettings} value={settings.default_currency} onChange={(event) => update("default_currency", event.target.value)} /></Field>
           <Field label="Daily rate mode"><SelectField disabled={!canManageSettings} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_daily_rate_mode} onChange={(event) => update("default_daily_rate_mode", event.target.value as PayrollSettings["default_daily_rate_mode"])}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></SelectField></Field>

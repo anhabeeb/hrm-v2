@@ -8,6 +8,7 @@ import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFilters
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { TableSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
@@ -196,7 +197,7 @@ export function AttendanceCorrectionsPage() {
             })}</TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading corrections" description="Fetching correction requests." /> : corrections.length === 0 ? <EmptyState title="No correction requests found" description="Submit a correction request or adjust filters." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={8} label="Loading attendance corrections" /> : corrections.length === 0 ? <EmptyState title="No correction requests found" description="Submit a correction request or adjust filters." /> : null}
       </Panel>
       {modalOpen && token ? <AttendanceCorrectionModal token={token} employees={employees} onClose={() => setModalOpen(false)} onSaved={load} /> : null}
       {reviewAction ? (

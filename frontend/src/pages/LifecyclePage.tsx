@@ -5,6 +5,7 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
+import { FormSkeleton } from "../components/loading";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -499,7 +500,7 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
   return (
     <Modal title={`${title(kind)} case`} onClose={onClose} wide>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {!detail ? <p className="text-sm text-muted-foreground">Loading case detail...</p> : (
+      {!detail ? <FormSkeleton fields={6} label="Loading lifecycle case detail" /> : (
         kind === "onboarding" && workspace ? (
           <OnboardingWorkspace
             workspace={workspace}

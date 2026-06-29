@@ -109,7 +109,7 @@ export function RosterAssignmentModal({
         {error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={saving || (requireReason && !form.reason)} onClick={() => void submit()}>{saving ? "Saving..." : "Save assignment"}</Button>
+          <Button size="sm" loading={saving} disabled={requireReason && !form.reason} loadingLabel="Saving roster assignment" onClick={() => void submit()}>Save assignment</Button>
         </div>
       </div>
     </div>

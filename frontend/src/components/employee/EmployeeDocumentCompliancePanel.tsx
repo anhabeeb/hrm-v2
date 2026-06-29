@@ -6,6 +6,7 @@ import type { Employee } from "../../types/employees";
 import { ActionTextButton } from "../ui/action-button";
 import { Badge } from "../ui/badge";
 import { EmptyState } from "../ui/empty-state";
+import { TableSkeleton } from "../loading";
 import { Panel } from "../ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 
@@ -91,7 +92,7 @@ export function EmployeeDocumentCompliancePanel({ employee, token, permissions }
             {compliance.required_documents.length === 0 ? <EmptyState title="No required documents" description="No active required rules matched this employee." /> : null}
           </div>
         </div>
-      ) : loading ? <EmptyState title="Loading compliance" description="Checking required documents and expiry status." /> : <EmptyState title="No compliance snapshot" description="Refresh compliance to calculate this employee's document status." />}
+      ) : loading ? <TableSkeleton rows={4} columns={5} label="Loading document compliance" /> : <EmptyState title="No compliance snapshot" description="Refresh compliance to calculate this employee's document status." />}
     </Panel>
   );
 }

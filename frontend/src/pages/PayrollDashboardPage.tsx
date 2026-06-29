@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { AlertCircle, Banknote, CalendarDays, CheckCircle2, Clock3, FileWarning, PauseCircle, WalletCards } from "lucide-react";
 import { useEffect, useState } from "react";
+import { CardSkeleton } from "../components/loading";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -61,7 +62,7 @@ export function PayrollDashboardPage() {
       />
       <PayrollNav />
       {error ? <WarningPanel tone="danger">{error}</WarningPanel> : null}
-      {loading ? <Panel><EmptyState title="Loading payroll dashboard" description="Fetching payroll counters and current period status." /></Panel> : null}
+      {loading ? <Panel><CardSkeleton cards={6} label="Loading payroll dashboard" /></Panel> : null}
       {!loading && dashboard ? (
         <>
           <MetricGrid>

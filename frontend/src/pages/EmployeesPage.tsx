@@ -562,7 +562,7 @@ function EmployeeFormModal(props: {
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" size="sm" disabled={saving} onClick={props.onClose}>Cancel</Button>
-          <Button size="sm" disabled={saving} onClick={() => void submit()}>{saving ? "Saving..." : "Save"}</Button>
+          <Button size="sm" loading={saving} loadingLabel="Saving employee" onClick={() => void submit()}>Save</Button>
         </div>
       </div>
     </div>

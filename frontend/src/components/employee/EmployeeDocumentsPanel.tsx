@@ -11,6 +11,7 @@ import { ActionTextButton } from "../ui/action-button";
 import { Badge } from "../ui/badge";
 import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
+import { TableSkeleton } from "../loading";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { EmployeeDocumentCompliancePanel } from "./EmployeeDocumentCompliancePanel";
 
@@ -214,7 +215,7 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
           </TableBody>
         </Table>
         {!loading && documents.length === 0 ? <EmptyState title="No documents uploaded" description="Required and uploaded documents will appear here." /> : null}
-        {loading ? <EmptyState title="Loading documents" description="Fetching employee document records." /> : null}
+        {loading ? <TableSkeleton rows={5} columns={8} label="Loading employee documents" /> : null}
       </div>
 
       {uploadModal ? <DocumentUploadModal employee={employee} token={token} types={types} state={uploadModal} onClose={() => setUploadModal(null)} onSaved={afterChange} /> : null}
@@ -357,7 +358,7 @@ function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }
         {error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={saving} onClick={() => void submit()}>{saving ? "Saving..." : "Save"}</Button>
+          <Button size="sm" loading={saving} loadingLabel="Saving document" onClick={() => void submit()}>Save</Button>
         </div>
       </div>
     </div>

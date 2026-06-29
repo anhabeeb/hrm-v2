@@ -16,6 +16,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, useSearchParams } from "react-router-dom";
 import { ActionTextButton } from "../components/ui/action-button";
+import { CardSkeleton } from "../components/loading";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
@@ -390,7 +391,7 @@ export function AdminSettingsPage() {
         label="Admin settings section tabs"
       />
 
-      {loading ? <Panel className="p-6 text-sm text-muted-foreground">Loading admin controls...</Panel> : null}
+      {loading ? <Panel className="p-6"><CardSkeleton cards={6} label="Loading admin controls" /></Panel> : null}
 
       {active === "hub" ? (
         <div className="space-y-4">

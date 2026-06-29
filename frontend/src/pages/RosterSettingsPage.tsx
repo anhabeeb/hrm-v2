@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterNav } from "../components/roster/RosterNav";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
+import { FormSkeleton } from "../components/loading";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -112,7 +113,7 @@ export function RosterSettingsPage() {
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
       <Panel className="p-4">
-        {loading || !settings ? <EmptyState title="Loading roster settings" description="Fetching roster configuration." /> : (
+        {loading || !settings ? <FormSkeleton fields={9} label="Loading roster settings" /> : (
           <ModuleSettingsBody disabled={!moduleEnabled}>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field label="Default week start day">

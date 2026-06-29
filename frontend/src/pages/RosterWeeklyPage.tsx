@@ -6,6 +6,7 @@ import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFilters
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
 import { RosterNav } from "../components/roster/RosterNav";
+import { TableSkeleton } from "../components/loading";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -381,7 +382,7 @@ export function RosterWeeklyPage() {
           <Badge tone={weekly?.period?.status === "PUBLISHED" ? "success" : weekly?.period?.status === "ARCHIVED" ? "neutral" : "warning"}>{weekly?.period?.status ?? "NO PERIOD"}</Badge>
           <span>{dirty.size} unsaved cell(s)</span>
         </div>
-        {loading ? <EmptyState title="Loading weekly roster" description="Fetching roster employees, assignments, leave, and attendance indicators." /> : visibleEmployees.length === 0 ? <EmptyState title="No roster employees found" description="Adjust filters or mark employees as roster eligible." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={8} label="Loading weekly roster" /> : visibleEmployees.length === 0 ? <EmptyState title="No roster employees found" description="Adjust filters or mark employees as roster eligible." /> : null}
       </Panel>
       {editing ? (
         <RosterAssignmentModal

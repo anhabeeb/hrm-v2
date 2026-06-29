@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ApiError, api } from "../../lib/api";
 import type { Employee } from "../../types/employees";
 import type { RosterAssignment, ShiftTemplate } from "../../types/roster";
+import { TableSkeleton } from "../loading";
 import { Badge } from "../ui/badge";
 import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
@@ -119,7 +120,7 @@ function AssignmentSection({ title, description, rows, loading, canManage, empty
           <TableBody>{rows.map((assignment) => <AssignmentRow key={assignment.id ?? `${assignment.employee_id}-${assignment.roster_date}`} assignment={assignment} canManage={canManage} onEdit={onEdit} />)}</TableBody>
         </Table>
       </div>
-      {loading ? <EmptyState title="Loading roster" description="Fetching employee roster assignments." /> : rows.length === 0 ? <EmptyState title={emptyTitle} description="Roster assignments will appear here after weekly planning." /> : null}
+      {loading ? <TableSkeleton rows={5} columns={7} label="Loading employee roster" /> : rows.length === 0 ? <EmptyState title={emptyTitle} description="Roster assignments will appear here after weekly planning." /> : null}
     </Panel>
   );
 }

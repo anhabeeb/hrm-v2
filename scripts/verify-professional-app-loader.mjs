@@ -31,6 +31,12 @@ function hasAll(file, markers, message) {
   check(markers.every((marker) => source.includes(marker)), message);
 }
 
+function hasNone(file, patterns, message) {
+  const source = read(file);
+  const offenders = patterns.filter((pattern) => (pattern instanceof RegExp ? pattern.test(source) : source.includes(pattern)));
+  check(offenders.length === 0, `${message}${offenders.length ? ` (${offenders.map(String).join(", ")})` : ""}`);
+}
+
 function walk(dir, predicate = () => true) {
   const absolute = path.join(root, dir);
   if (!fs.existsSync(absolute)) return [];
@@ -88,12 +94,16 @@ hasAll("frontend/src/components/loading/CardSkeleton.tsx", [
   "CardSkeleton",
   "sm:grid-cols-2",
   "xl:grid-cols-4",
+  "label = \"Loading summary cards\"",
+  "aria-label={label}",
   "aria-busy"
 ], "CardSkeleton supports dashboard/KPI style loading");
 
 hasAll("frontend/src/components/loading/FormSkeleton.tsx", [
   "FormSkeleton",
   "md:grid-cols-2",
+  "label = \"Loading form\"",
+  "aria-label={label}",
   "aria-busy"
 ], "FormSkeleton supports form/dialog loading states");
 
@@ -184,6 +194,77 @@ hasAll("frontend/src/pages/DashboardPage.tsx", [
   "KPI_ROW_SIZE = 5",
   "CommandCenterSkeleton"
 ], "Command Center loading state keeps accepted KPI behavior");
+
+const realPageLoadingCoverage = [
+  ["frontend/src/pages/AttendanceRecordsPage.tsx", ["TableSkeleton", "Loading attendance records", "Loading attendance logs", "Loading raw attendance logs"]],
+  ["frontend/src/pages/AttendanceCalendarPage.tsx", ["TableSkeleton", "Loading attendance calendar"]],
+  ["frontend/src/pages/AttendanceCorrectionsPage.tsx", ["TableSkeleton", "Loading attendance corrections"]],
+  ["frontend/src/pages/AttendanceDevicesPage.tsx", ["TableSkeleton", "Loading attendance devices"]],
+  ["frontend/src/pages/AttendanceReportsPage.tsx", ["TableSkeleton", "Loading attendance reports"]],
+  ["frontend/src/pages/AttendanceSettingsPage.tsx", ["FormSkeleton", "Loading attendance settings"]],
+  ["frontend/src/pages/AttendanceDeviceOperationsPage.tsx", ["FormSkeleton", "Loading device integration settings"]],
+  ["frontend/src/pages/FinalSettlementPage.tsx", ["TableSkeleton", "Loading exit payroll cases"]],
+  ["frontend/src/pages/PayrollPrompt11Pages.tsx", ["TableSkeleton", "Loading payslips", "Loading payment register", "Loading payroll history"]],
+  ["frontend/src/pages/PayrollRunDetailPage.tsx", ["TableSkeleton", "Loading payroll approval timeline", "Loading payroll review rows", "Loading payroll line details"]],
+  ["frontend/src/pages/PayrollDashboardPage.tsx", ["CardSkeleton", "Loading payroll dashboard"]],
+  ["frontend/src/pages/PayrollPeriodsPage.tsx", ["TableSkeleton", "Loading payroll periods"]],
+  ["frontend/src/pages/PayrollAdminPages.tsx", ["TableSkeleton", "FormSkeleton", "Loading payroll settings"]],
+  ["frontend/src/pages/ApprovalsPage.tsx", ["TableSkeleton", "Loading approvals", "Loading workflows", "Loading delegations", "Loading approval templates", "Loading approval report"]],
+  ["frontend/src/pages/UsersAccessPage.tsx", ["TableSkeleton", "Loading users", "Loading roles", "Loading permissions", "Loading role mappings", "Loading access scopes"]],
+  ["frontend/src/pages/MissingDocumentsPage.tsx", ["TableSkeleton", "Loading missing documents", "loading={saving}", "loadingLabel=\"Uploading document\""]],
+  ["frontend/src/pages/LeaveCalendarPage.tsx", ["TableSkeleton", "Loading leave calendar"]],
+  ["frontend/src/pages/LeaveRequestsPage.tsx", ["TableSkeleton", "Loading leave requests"]],
+  ["frontend/src/pages/LeaveSettingsPage.tsx", ["TableSkeleton", "Loading leave types", "Loading leave policies", "Loading workflows"]],
+  ["frontend/src/pages/RosterWeeklyPage.tsx", ["TableSkeleton", "Loading weekly roster"]],
+  ["frontend/src/pages/RosterShiftTemplatesPage.tsx", ["TableSkeleton", "Loading shift templates"]],
+  ["frontend/src/pages/RosterReportsPage.tsx", ["TableSkeleton", "Loading roster reports"]],
+  ["frontend/src/pages/RosterSettingsPage.tsx", ["FormSkeleton", "Loading roster settings"]],
+  ["frontend/src/pages/OrganizationSettingsPage.tsx", ["FormSkeleton", "Loading organization settings"]],
+  ["frontend/src/pages/AdminSettingsPage.tsx", ["CardSkeleton", "Loading admin controls"]],
+  ["frontend/src/pages/EmployeeProfilePage.tsx", ["PageLoader", "Loading Employee 360"]],
+  ["frontend/src/pages/DocumentRegistryPage.tsx", ["TableSkeleton", "Loading document registry"]],
+  ["frontend/src/pages/DocumentSettingsPage.tsx", ["TableSkeleton", "Loading document categories", "Loading document types", "Loading document required rules"]],
+  ["frontend/src/pages/DocumentCompliancePage.tsx", ["CardSkeleton", "TableSkeleton", "Loading compliance dashboard", "Loading document expiry alerts", "Loading renewal cases", "Loading requirement waivers"]],
+  ["frontend/src/components/attendance/EmployeeAttendancePanel.tsx", ["TableSkeleton", "Loading employee attendance"]],
+  ["frontend/src/components/employee/EmployeeDocumentsPanel.tsx", ["TableSkeleton", "Loading employee documents", "loading={saving}", "loadingLabel=\"Saving document\""]],
+  ["frontend/src/components/employee/EmployeeDocumentCompliancePanel.tsx", ["TableSkeleton", "Loading document compliance"]],
+  ["frontend/src/components/payroll/EmployeePayrollPanel.tsx", ["FormSkeleton", "Loading payroll profile"]],
+  ["frontend/src/components/roster/EmployeeRosterPanel.tsx", ["TableSkeleton", "Loading employee roster"]]
+];
+
+for (const [file, markers] of realPageLoadingCoverage) {
+  hasAll(file, markers, `${file} uses shared professional skeleton/loading components`);
+  hasNone(file, [/EmptyState\s+title=\{?["'`]Loading/i], `${file} does not use EmptyState as a loading placeholder`);
+}
+
+const loadingButtonCoverage = [
+  "frontend/src/components/attendance/AttendanceDeviceModal.tsx",
+  "frontend/src/components/attendance/AttendanceManualLogModal.tsx",
+  "frontend/src/components/attendance/AttendanceRecordModal.tsx",
+  "frontend/src/components/employee/EmployeeDocumentsPanel.tsx",
+  "frontend/src/components/employee/EmployeeProfilePhotoControls.tsx",
+  "frontend/src/components/leave/LeaveRequestModal.tsx",
+  "frontend/src/components/notes/EmployeeNotesPanel.tsx",
+  "frontend/src/components/roster/RosterAssignmentModal.tsx",
+  "frontend/src/pages/AttendanceSettingsPage.tsx",
+  "frontend/src/pages/EmployeesPage.tsx",
+  "frontend/src/pages/MissingDocumentsPage.tsx"
+];
+for (const file of loadingButtonCoverage) {
+  hasAll(file, ["loading={saving}"], `${file} uses shared Button loading state for save/upload actions`);
+}
+
+const pageAndComponentFiles = walk("frontend/src", (file) =>
+  /\.(ts|tsx)$/.test(file) &&
+  !file.startsWith("frontend/src/components/loading/") &&
+  !file.startsWith("frontend/src/components/filters/")
+);
+for (const file of pageAndComponentFiles) {
+  const source = read(file);
+  check(!/EmptyState\s+title=\{?["'`]Loading/i.test(source), `${file} has no EmptyState loading placeholder`);
+  check(!/LoadingRow\b/.test(source), `${file} has no local LoadingRow placeholder`);
+  check(!/(Uploading|Saving|Processing|Importing)\.\.\./.test(source), `${file} has no raw ellipsis loading action text`);
+}
 
 const frontendFiles = walk("frontend/src", (file) => /\.(ts|tsx)$/.test(file));
 for (const file of frontendFiles) {

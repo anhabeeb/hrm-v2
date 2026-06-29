@@ -142,7 +142,7 @@ export function LeaveRequestModal({
         {error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={saving} onClick={() => void submit()}>{saving ? "Saving..." : "Create draft"}</Button>
+          <Button size="sm" loading={saving} loadingLabel="Creating leave draft" onClick={() => void submit()}>Create draft</Button>
         </div>
       </div>
     </div>

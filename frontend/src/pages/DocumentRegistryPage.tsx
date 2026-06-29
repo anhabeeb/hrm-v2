@@ -6,6 +6,7 @@ import { ExportMenu } from "../components/export/ExportMenu";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { TableSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
@@ -275,7 +276,7 @@ export function DocumentRegistryPage() {
             </TableBody>
           </Table>
         </div>
-        {loading ? <EmptyState title="Loading registry" description="Fetching document records." /> : documents.length === 0 ? <EmptyState title="No documents found" description="Upload employee documents from Employee 360 or adjust filters." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={9} label="Loading document registry" /> : documents.length === 0 ? <EmptyState title="No documents found" description="Upload employee documents from Employee 360 or adjust filters." /> : null}
       </Panel>
       {versions ? <VersionsModal versions={versions} onClose={() => setVersions(null)} /> : null}
       {documentAction ? (
