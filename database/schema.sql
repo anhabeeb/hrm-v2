@@ -19,6 +19,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique ON users(username) W
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 CREATE INDEX IF NOT EXISTS idx_users_owner_active ON users(is_owner, status);
 CREATE INDEX IF NOT EXISTS idx_users_employee_id ON users(employee_id) WHERE employee_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_employee_unique ON users(employee_id) WHERE employee_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS roles (
   id TEXT PRIMARY KEY,

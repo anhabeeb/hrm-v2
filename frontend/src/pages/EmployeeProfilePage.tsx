@@ -1,5 +1,5 @@
 import { Archive, ArrowLeft, CheckCircle2, Pencil } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeAttendancePanel } from "../components/attendance/EmployeeAttendancePanel";
@@ -25,7 +25,7 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
-import type { EmployeeUserAccessPreview } from "../types/auth";
+import type { EmployeeUserAccessPreview, EmployeeUserAccount, Role, UserStatus } from "../types/auth";
 import type { Employee, EmployeeContact, EmployeeContactInput, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
 import type { LifecycleSummary, LifecycleTask } from "../types/lifecycle";
 
@@ -52,6 +52,8 @@ export function EmployeeProfilePage() {
   const [audit, setAudit] = useState<Record<string, unknown>[]>([]);
   const [profileRequests, setProfileRequests] = useState<Record<string, unknown>[]>([]);
   const [userAccess, setUserAccess] = useState<EmployeeUserAccessPreview | null>(null);
+  const [userAccount, setUserAccount] = useState<EmployeeUserAccount | null>(null);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [lifecycle, setLifecycle] = useState<LifecycleSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contactModal, setContactModal] = useState<{ mode: "create" | "edit"; contact?: EmployeeContact } | null>(null);
@@ -77,7 +79,8 @@ export function EmployeeProfilePage() {
   const canAssets = permissions.has("employees.assets.view") || permissions.has("assets.view");
   const canNotes = permissions.has("employee_notes.view");
   const canAudit = permissions.has("employees.audit.view") || permissions.has("audit.view");
-  const canViewUserAccess = permissions.has("role_mappings.view");
+  const canViewUserAccess = permissions.has("employee.user_account.view") || permissions.has("users.view") || permissions.has("role_mappings.view");
+  const canManageUserAccess = permissions.has("employee.user_account.manage") || permissions.has("users.link_employee") || permissions.has("users.update") || permissions.has("self_service.manage_access");
   const canApplyUserAccess = permissions.has("role_mappings.apply");
   const canViewLifecycle = permissions.has("employees.lifecycle.view") || permissions.has("onboarding.cases.view") || permissions.has("offboarding.cases.view");
   const canUploadPhoto = permissions.has("documents.upload");
@@ -101,9 +104,19 @@ export function EmployeeProfilePage() {
       }
       if (canViewUserAccess) {
         try {
+          const account = (await api.getEmployeeUserAccount(token, id)).user_account;
+          setUserAccount(account);
           setUserAccess((await api.getEmployeeUserAccess(token, id)).preview);
         } catch {
+          setUserAccount(null);
           setUserAccess(null);
+        }
+      }
+      if (canManageUserAccess || canApplyUserAccess) {
+        try {
+          setRoles((await api.listRoles(token)).roles);
+        } catch {
+          setRoles([]);
         }
       }
       if (canViewLifecycle) {
@@ -302,7 +315,19 @@ export function EmployeeProfilePage() {
           {activeTab === "Job Info" ? <JobInfo employee={employee} jobHistory={jobHistory} /> : null}
           {activeTab === "Contracts" ? canContracts ? <EmployeeContractsPanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Contracts unavailable" description="Your account needs employee contract access." /> : null}
           {activeTab === "Contacts" ? <Contacts contacts={contacts} canManage={canContacts} onAdd={() => setContactModal({ mode: "create" })} onEdit={(contact) => setContactModal({ mode: "edit", contact })} onArchive={(contact) => setContactArchiveTarget(contact)} /> : null}
-          {activeTab === "User Access" ? canViewUserAccess ? <UserAccessPanel preview={userAccess} canApply={canApplyUserAccess} onApply={(mappingId) => void applyUserAccessMapping(mappingId)} /> : <EmptyState title="User access unavailable" description="Your account needs role_mappings.view permission." /> : null}
+          {activeTab === "User Access" ? canViewUserAccess ? (
+            <UserAccessPanel
+              employee={employee}
+              token={token}
+              account={userAccount}
+              preview={userAccess}
+              roles={roles}
+              canManage={canManageUserAccess}
+              canApply={canApplyUserAccess}
+              onRefresh={() => void load()}
+              onApply={(mappingId) => void applyUserAccessMapping(mappingId)}
+            />
+          ) : <EmptyState title="User access unavailable" description="Your account needs employee.user_account.view or users.view permission." /> : null}
           {activeTab === "Lifecycle" ? canViewLifecycle ? <LifecyclePanel summary={lifecycle} /> : <EmptyState title="Lifecycle unavailable" description="Your account needs employee lifecycle access." /> : null}
           {activeTab === "Payroll" ? (canPayroll ? <EmployeePayrollPanel employee={employee} /> : <Panel><EmptyState title="Payroll unavailable" description="Your account needs employee payroll access." /></Panel>) : null}
           {activeTab === "Final Settlement" ? (canFinalSettlement ? <EmployeeFinalSettlementPanel employee={employee} /> : <Panel><EmptyState title="Final settlement unavailable" description="Your account needs employee final settlement access." /></Panel>) : null}
@@ -395,45 +420,236 @@ function Overview({
   );
 }
 
-function UserAccessPanel({ preview, canApply, onApply }: { preview: EmployeeUserAccessPreview | null; canApply: boolean; onApply: (mappingId?: string | null) => void }) {
-  if (!preview) return <EmptyState title="User access loading" description="Fetching linked user roles and access scopes." />;
-  const mapping = preview.suggested_role_mapping;
+function UserAccessPanel({
+  employee,
+  token,
+  account,
+  preview,
+  roles,
+  canManage,
+  canApply,
+  onRefresh,
+  onApply
+}: {
+  employee: Employee;
+  token: string | null;
+  account: EmployeeUserAccount | null;
+  preview: EmployeeUserAccessPreview | null;
+  roles: Role[];
+  canManage: boolean;
+  canApply: boolean;
+  onRefresh: () => void;
+  onApply: (mappingId?: string | null) => void;
+}) {
+  const linked = account?.linked_user ?? null;
+  const suggested = account?.suggested ?? (preview ? { suggested_role_mapping: preview.suggested_role_mapping, suggested_role: preview.suggested_role, suggested_scope: preview.suggested_scope } : null);
+  const mapping = suggested?.suggested_role_mapping ?? null;
+  const [linkUserId, setLinkUserId] = useState("");
+  const [provision, setProvision] = useState({
+    name: employee.display_name || employee.full_name,
+    email: employee.linked_user_email || "",
+    username: "",
+    password: "",
+    self_service_enabled: true
+  });
+  const [update, setUpdate] = useState({
+    name: linked?.name ?? "",
+    email: linked?.email ?? "",
+    username: linked?.username ?? "",
+    status: (linked?.status ?? "ACTIVE") as UserStatus,
+    self_service_enabled: account?.self_service_enabled ?? false,
+    role_ids: account?.role_ids ?? []
+  });
+  const [reason, setReason] = useState("");
+  const [disableOnUnlink, setDisableOnUnlink] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setUpdate({
+      name: linked?.name ?? "",
+      email: linked?.email ?? "",
+      username: linked?.username ?? "",
+      status: (linked?.status ?? "ACTIVE") as UserStatus,
+      self_service_enabled: account?.self_service_enabled ?? false,
+      role_ids: account?.role_ids ?? []
+    });
+  }, [account?.linked_user?.id, account?.linked_user?.updated_at, account?.self_service_enabled, account?.role_ids.join(",")]);
+
+  if (!account && !preview) return <EmptyState title="User access loading" description="Fetching linked user roles and access scopes." />;
   const listIds = (value?: string[]) => value?.length ? value.join(", ") : "-";
   const scopeSource = (scope: EmployeeUserAccessPreview["assigned_scopes"][number]) => {
     if (scope.scope_owner_type === "ROLE") return "Role";
     if (scope.scope_owner_type === "ROLE_MAPPING_RULE") return "Mapping template";
     return scope.role_mapping_rule_id ? "Applied mapping" : "Manual user scope";
   };
+  async function run(label: string, action: () => Promise<unknown>) {
+    if (!token) return;
+    setBusy(label);
+    setLocalError(null);
+    try {
+      await action();
+      setReason("");
+      onRefresh();
+    } catch (err) {
+      setLocalError(err instanceof ApiError ? err.message : "User account action could not be completed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function toggleRole(roleId: string, checked: boolean) {
+    setUpdate((current) => ({
+      ...current,
+      role_ids: checked ? Array.from(new Set([...current.role_ids, roleId])) : current.role_ids.filter((id) => id !== roleId)
+    }));
+  }
+
+  async function submitProvision(event: FormEvent) {
+    event.preventDefault();
+    await run("provision", () => api.provisionEmployeeUserAccount(token!, employee.id, {
+      ...provision,
+      password: provision.password || undefined,
+      status: "ACTIVE",
+      role_ids: update.role_ids,
+      reason: "Provisioned from Employee 360 User Access"
+    }));
+  }
+
+  async function submitLink(event: FormEvent) {
+    event.preventDefault();
+    if (!linkUserId) {
+      setLocalError("Select an existing user to link.");
+      return;
+    }
+    await run("link", () => api.linkEmployeeExistingUser(token!, employee.id, { user_id: linkUserId, reason: "Linked from Employee 360 User Access" }));
+  }
+
+  async function submitUpdate(event: FormEvent) {
+    event.preventDefault();
+    await run("update", () => api.updateEmployeeUserAccount(token!, employee.id, update));
+  }
+
+  const assignedScopes = account?.scopes ?? preview?.assigned_scopes ?? [];
+  const assignedRoles = account?.roles ?? preview?.assigned_roles ?? [];
+  const availableUsers = account?.available_users ?? [];
   return (
     <div className="space-y-4">
+      {localError ? <AlertBanner tone="danger">{localError}</AlertBanner> : null}
       <div className="grid gap-3 lg:grid-cols-3">
-        <Summary title="Linked user" rows={[["Status", preview.linked_user ? "Linked" : "No linked user"], ["Email", preview.linked_user?.email ?? "-"]]} />
-        <Summary title="Suggested role" rows={[["Role", preview.suggested_role?.name ?? "-"], ["Mapping", mapping?.name ?? "-"], ["Priority", mapping ? String(mapping.priority) : "-"]]} />
-        <Summary title="Suggested scope" rows={[["Scope", preview.suggested_scope?.scope_type ?? "-"], ["Departments", listIds(preview.suggested_scope?.allowed_department_ids)], ["Locations", listIds(preview.suggested_scope?.allowed_location_ids)], ["Manage", preview.suggested_scope?.can_manage ? "Yes" : "No"]]} />
+        <Summary title="Linked user" rows={[["Status", linked ? linked.status : "No linked user"], ["Email", linked?.email ?? "-"], ["Last login", linked?.last_login_at ?? "Never"]]} />
+        <Summary title="Suggested role" rows={[["Role", suggested?.suggested_role?.name ?? "-"], ["Mapping", mapping?.name ?? "-"], ["Priority", mapping ? String(mapping.priority) : "-"]]} />
+        <Summary title="Suggested scope" rows={[["Scope", suggested?.suggested_scope?.scope_type ?? "-"], ["Departments", listIds(suggested?.suggested_scope?.allowed_department_ids)], ["Locations", listIds(suggested?.suggested_scope?.allowed_location_ids)], ["Manage", suggested?.suggested_scope?.can_manage ? "Yes" : "No"]]} />
       </div>
       <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
-        Roles define permissions. Access scopes define the employee, department, and location records those permissions can reach. Role mapping templates are copied to the linked user when applied.
+        Roles define permissions. Access scopes define which employee, department, and location records those permissions can reach. This section links a real login account to the selected employee profile.
       </div>
-      <div className="flex justify-end">
-        {canApply && preview.linked_user && mapping ? <Button size="sm" onClick={() => onApply(mapping.id)}>Apply suggested mapping</Button> : null}
+      <div className="flex flex-wrap justify-end gap-2">
+        {canApply && linked && mapping ? <Button size="sm" onClick={() => onApply(mapping.id)}>Apply suggested role + scope</Button> : null}
       </div>
+      {canManage && !linked ? (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <Panel className="p-4">
+            <form className="space-y-3" onSubmit={(event) => void submitProvision(event)}>
+              <div>
+                <h3 className="text-sm font-semibold">Provision login account</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Creates a real user record and links it to this employee.</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div><Label>Name</Label><Input value={provision.name} onChange={(event) => setProvision({ ...provision, name: event.target.value })} /></div>
+                <div><Label>Email</Label><Input type="email" value={provision.email} onChange={(event) => setProvision({ ...provision, email: event.target.value })} /></div>
+                <div><Label>Username</Label><Input value={provision.username} onChange={(event) => setProvision({ ...provision, username: event.target.value })} /></div>
+                <div><Label>Temporary password</Label><Input type="password" value={provision.password} placeholder="Generated if blank" onChange={(event) => setProvision({ ...provision, password: event.target.value })} /></div>
+              </div>
+              <CheckboxField label="Enable self-service scope" checked={provision.self_service_enabled} onChange={(checked) => setProvision({ ...provision, self_service_enabled: checked })} />
+              <RoleChecklist roles={roles} selected={update.role_ids} onToggle={toggleRole} />
+              <div className="flex justify-end"><Button type="submit" size="sm" disabled={busy === "provision"}>Provision account</Button></div>
+            </form>
+          </Panel>
+          <Panel className="p-4">
+            <form className="space-y-3" onSubmit={(event) => void submitLink(event)}>
+              <div>
+                <h3 className="text-sm font-semibold">Link existing user</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Only standalone or already-linked-to-this-employee users are available.</p>
+              </div>
+              <SelectField label="Existing user" value={linkUserId} onValueChange={setLinkUserId}>
+                <option value="">Select user</option>
+                {availableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} - {user.email}</option>)}
+              </SelectField>
+              <div className="flex justify-end"><Button type="submit" size="sm" disabled={busy === "link" || !linkUserId}>Link user</Button></div>
+            </form>
+          </Panel>
+        </div>
+      ) : null}
+      {canManage && linked ? (
+        <Panel className="p-4">
+          <form className="space-y-4" onSubmit={(event) => void submitUpdate(event)}>
+            <div>
+              <h3 className="text-sm font-semibold">Linked account settings</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Update identity, login status, assigned roles, and self-only scope setup.</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-4">
+              <div><Label>Name</Label><Input value={update.name} onChange={(event) => setUpdate({ ...update, name: event.target.value })} /></div>
+              <div><Label>Email</Label><Input type="email" value={update.email} onChange={(event) => setUpdate({ ...update, email: event.target.value })} /></div>
+              <div><Label>Username</Label><Input value={update.username} onChange={(event) => setUpdate({ ...update, username: event.target.value })} /></div>
+              <SelectField label="Status" value={update.status} onValueChange={(status) => setUpdate({ ...update, status: status as UserStatus })}>
+                <option value="ACTIVE">Active</option>
+                <option value="LOCKED">Locked</option>
+                <option value="DISABLED">Disabled</option>
+              </SelectField>
+            </div>
+            <CheckboxField label="Ensure self-service SELF_ONLY scope" checked={update.self_service_enabled} onChange={(checked) => setUpdate({ ...update, self_service_enabled: checked })} />
+            <RoleChecklist roles={roles} selected={update.role_ids} onToggle={toggleRole} />
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="submit" size="sm" disabled={busy === "update"}>Save account access</Button>
+            </div>
+          </form>
+          <div className="mt-4 grid gap-3 border-t pt-4 md:grid-cols-[1fr_auto_auto]">
+            <div><Label>Reason for unlink/deactivation</Label><Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Required for unlink or exit deactivation" /></div>
+            <CheckboxField label="Disable on unlink" checked={disableOnUnlink} onChange={setDisableOnUnlink} />
+            <div className="flex items-end gap-2">
+              <Button variant="outline" size="sm" disabled={!reason.trim() || busy === "unlink"} onClick={() => void run("unlink", () => api.unlinkEmployeeUserAccount(token!, employee.id, { reason, disable_user: disableOnUnlink }))}>Unlink</Button>
+              <Button variant="danger" size="sm" disabled={!reason.trim() || busy === "deactivate"} onClick={() => void run("deactivate", () => api.deactivateEmployeeUserForExit(token!, employee.id, { reason }))}>Deactivate for exit</Button>
+            </div>
+          </div>
+        </Panel>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-2">
         <div className="rounded-md border">
           <div className="border-b px-3 py-2 text-sm font-semibold">Assigned roles</div>
-          <div className="divide-y">{preview.assigned_roles.length ? preview.assigned_roles.map((role) => <div key={role.id} className="px-3 py-2 text-sm">{role.name}</div>) : <div className="px-3 py-4 text-sm text-muted-foreground">No roles assigned.</div>}</div>
+          <div className="divide-y">{assignedRoles.length ? assignedRoles.map((role) => <div key={role.id} className="px-3 py-2 text-sm">{role.name}</div>) : <div className="px-3 py-4 text-sm text-muted-foreground">No roles assigned.</div>}</div>
         </div>
         <div className="rounded-md border">
           <div className="border-b px-3 py-2 text-sm font-semibold">Assigned scopes</div>
           <div className="overflow-x-auto">
             <Table className="min-w-[760px]">
               <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Source</TableHead><TableHead>Scope</TableHead><TableHead>Module</TableHead><TableHead>Departments</TableHead><TableHead>Locations</TableHead><TableHead>Rights</TableHead></TableRow></TableHeader>
-              <TableBody>{preview.assigned_scopes.map((scope) => <TableRow key={scope.id}><TableCell>{scope.name}</TableCell><TableCell>{scopeSource(scope)}</TableCell><TableCell>{scope.scope_type}</TableCell><TableCell>{scope.module_key ?? "All"}</TableCell><TableCell>{listIds(scope.allowed_department_ids)}</TableCell><TableCell>{listIds(scope.allowed_location_ids)}</TableCell><TableCell>{scope.can_manage ? "Manage" : scope.can_view ? "View" : "-"}</TableCell></TableRow>)}</TableBody>
+              <TableBody>{assignedScopes.map((scope) => <TableRow key={scope.id}><TableCell>{scope.name}</TableCell><TableCell>{scopeSource(scope)}</TableCell><TableCell>{scope.scope_type}</TableCell><TableCell>{scope.module_key ?? "All"}</TableCell><TableCell>{listIds(scope.allowed_department_ids)}</TableCell><TableCell>{listIds(scope.allowed_location_ids)}</TableCell><TableCell>{scope.can_manage ? "Manage" : scope.can_view ? "View" : "-"}</TableCell></TableRow>)}</TableBody>
             </Table>
-            {!preview.assigned_scopes.length ? <div className="px-3 py-4 text-sm text-muted-foreground">No user-specific scopes assigned.</div> : null}
+            {!assignedScopes.length ? <div className="px-3 py-4 text-sm text-muted-foreground">No user-specific scopes assigned.</div> : null}
           </div>
         </div>
       </div>
-      {!preview.linked_user ? <EmptyState title="No linked system user" description="Role mapping can be applied after this employee is linked to a user account." /> : null}
+      {!linked ? <EmptyState title="No linked system user" description="Provision a login account or link an existing user before applying suggested role mapping." /> : null}
+    </div>
+  );
+}
+
+function RoleChecklist({ roles, selected, onToggle }: { roles: Role[]; selected: string[]; onToggle: (roleId: string, checked: boolean) => void }) {
+  if (!roles.length) return <p className="text-xs text-muted-foreground">Role options are unavailable or require roles.view permission.</p>;
+  return (
+    <div className="rounded-md border">
+      <div className="border-b px-3 py-2 text-sm font-semibold">Assigned roles</div>
+      <div className="grid max-h-56 gap-2 overflow-y-auto p-3 md:grid-cols-2">
+        {roles.filter((role) => role.is_active).map((role) => (
+          <CheckboxField
+            key={role.id}
+            label={<span className="flex items-center gap-2">{role.name}{role.is_protected ? <Badge tone="warning">Protected</Badge> : null}</span>}
+            checked={selected.includes(role.id)}
+            onChange={(checked) => onToggle(role.id, checked)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

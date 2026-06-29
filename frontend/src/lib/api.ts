@@ -1,4 +1,4 @@
-import type { AccessScopeRule, AccessUser, ApiEnvelope, AuthUser, BootstrapStatus, EmployeeUserAccessPreview, Permission, Role, RoleMappingRule, UserStatus } from "../types/auth";
+import type { AccessScopeRule, AccessUser, ApiEnvelope, AuthUser, BootstrapStatus, EmployeeUserAccessPreview, EmployeeUserAccount, Permission, Role, RoleMappingRule, UserStatus } from "../types/auth";
 import type {
   ApprovalAction,
   ApprovalDelegationRule,
@@ -743,6 +743,44 @@ export const api = {
     return request<{ applied: boolean; preview: EmployeeUserAccessPreview }>(
       `/api/v1/employees/${employeeId}/user-access/apply`,
       { method: "POST", body: JSON.stringify({ role_mapping_rule_id: role_mapping_rule_id ?? null }) },
+      token
+    );
+  },
+  getEmployeeUserAccount(token: string, employeeId: string) {
+    return request<{ user_account: EmployeeUserAccount }>(`/api/v1/employees/${employeeId}/user-account`, {}, token);
+  },
+  linkEmployeeExistingUser(token: string, employeeId: string, input: { user_id: string; replace_existing?: boolean; reason?: string | null }) {
+    return request<{ user_account: EmployeeUserAccount }>(
+      `/api/v1/employees/${employeeId}/user-account/link-existing`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    );
+  },
+  provisionEmployeeUserAccount(token: string, employeeId: string, input: { name?: string; email: string; username?: string | null; password?: string; status?: UserStatus; role_ids?: string[]; self_service_enabled?: boolean; replace_existing?: boolean; reason?: string | null }) {
+    return request<{ user_account: EmployeeUserAccount }>(
+      `/api/v1/employees/${employeeId}/user-account/provision`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    );
+  },
+  updateEmployeeUserAccount(token: string, employeeId: string, input: { name?: string; email?: string; username?: string | null; status?: UserStatus; role_ids?: string[]; self_service_enabled?: boolean; reason?: string | null }) {
+    return request<{ user_account: EmployeeUserAccount }>(
+      `/api/v1/employees/${employeeId}/user-account`,
+      { method: "PATCH", body: JSON.stringify(input) },
+      token
+    );
+  },
+  unlinkEmployeeUserAccount(token: string, employeeId: string, input: { reason: string; disable_user?: boolean }) {
+    return request<{ user_account: EmployeeUserAccount }>(
+      `/api/v1/employees/${employeeId}/user-account/unlink`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    );
+  },
+  deactivateEmployeeUserForExit(token: string, employeeId: string, input: { reason: string }) {
+    return request<{ user_account: EmployeeUserAccount }>(
+      `/api/v1/employees/${employeeId}/user-account/deactivate-for-exit`,
+      { method: "POST", body: JSON.stringify(input) },
       token
     );
   },

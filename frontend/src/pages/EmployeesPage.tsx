@@ -263,7 +263,7 @@ export function EmployeesPage() {
             </Link>
           ) : null}
           {canImport ? <Link to="/settings/admin/imports"><ActionTextButton intent="import" size="sm">Import employees</ActionTextButton></Link> : null}
-          {canExport ? <ExportMenu moduleName="Employees" rows={filtered as unknown as Record<string, unknown>[]} columns={["employee_no", "full_name", "employee_type", "employment_type", "status_key", "joining_date"]} filterSummary={activeChips.map((chip) => `${chip.label}: ${String(chip.value)}`)} /> : null}
+          {canExport ? <ExportMenu moduleName="Employees" rows={filtered as unknown as Record<string, unknown>[]} columns={["employee_no", "full_name", "employee_type", "employment_type", "status_key", "joining_date", "user_linked", "linked_user_email"]} filterSummary={activeChips.map((chip) => `${chip.label}: ${String(chip.value)}`)} /> : null}
           {canCreate ? <Button size="sm" onClick={() => setModal({ mode: "create" })}><Plus className="h-4 w-4" /> New Employee</Button> : null}
           </>
         }

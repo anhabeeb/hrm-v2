@@ -5,6 +5,8 @@ export type AccessRealtimeEvent =
   | "roles.changed"
   | "permissions.changed"
   | "access.changed"
+  | "employee.access.changed"
+  | "users.roles.changed"
   | "organization.changed"
   | "locations.changed"
   | "departments.changed"
@@ -110,6 +112,8 @@ export type AccessRealtimeEvent =
 
 export interface AccessRealtimePayload {
   actor_user_id?: string;
+  employee_id?: string | null;
+  user_id?: string | null;
   entity_type:
     | "user"
     | "role"

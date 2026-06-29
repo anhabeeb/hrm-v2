@@ -1,23 +1,25 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { buildEmployeeScopeWhereClause, canAccessEmployee } from "../auth/access-scopes";
+import { accessScopeToApi, buildEmployeeScopeWhereClause, canAccessEmployee, type AccessScopeRuleRow } from "../auth/access-scopes";
+import { hashPassword } from "../auth/password";
 import { recordAudit } from "../db/audit";
-import { getUserById } from "../db/users";
+import { getActiveOwnerCount, getUserByEmail, getUserById } from "../db/users";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { hasValidationErrors, validateOrganizationCascadeWithScope, validationResponse } from "../lib/moduleValidation";
 import { publishAccessEvent } from "../realtime/publisher";
 import { autoCreateOnboardingCaseAfterEmployeeCreate } from "./lifecycle";
 import { applyRoleMappingToEmployee, roleMappingPreviewForEmployee } from "./role-mappings";
-import type { AppBindings } from "../types";
+import type { AppBindings, DbUser, UserStatus } from "../types";
 import { fail, getClientIp, ok, okCached } from "../utils/http";
-import { readJsonBody, readString } from "../utils/validation";
+import { isEmail, normalizeEmail, readJsonBody, readString } from "../utils/validation";
 
 type EmployeeType = "LOCAL" | "FOREIGN" | "OTHER";
 type EmploymentType = "FULL_TIME" | "PART_TIME" | "INTERN" | "TEMPORARY" | "CONTRACT";
 type ContactType = "PERSONAL_PHONE" | "WORK_PHONE" | "PERSONAL_EMAIL" | "WORK_EMAIL" | "EMERGENCY" | "GUARDIAN" | "SPOUSE" | "PARENT" | "OTHER";
 type OnboardingStatus = "PENDING" | "COMPLETED" | "SKIPPED" | "BLOCKED";
 type BindValue = string | number | null;
+type EmployeeUserAccountAction = "view" | "manage" | "link" | "unlink" | "roles" | "scopes" | "deactivate";
 
 const EMPLOYEE_TYPES = new Set<EmployeeType>(["LOCAL", "FOREIGN", "OTHER"]);
 const EMPLOYMENT_TYPES = new Set<EmploymentType>(["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]);
@@ -131,6 +133,22 @@ interface ContactRow {
   updated_at: string;
 }
 
+interface EmployeeUserAccountRow extends DbUser {
+  employee_no?: string | null;
+  employee_name?: string | null;
+}
+
+interface RoleAssignmentRow {
+  id: string;
+  name: string;
+  is_active: number;
+  is_protected: number;
+}
+
+interface UserAccountRoleRow extends RoleAssignmentRow {
+  created_at: string;
+}
+
 const onboardingTemplates = [
   ["basic_profile_completed", "Basic profile completed", "employees", "Verify employee identity and core profile fields.", 1],
   ["required_documents_checklist", "Required documents checklist", "documents", "Prepare required employee document tracking.", 1],
@@ -150,6 +168,27 @@ function hasPermission(c: Context<AppBindings>, permission: string) {
   return c.get("currentUser").permissions.includes(permission);
 }
 
+function hasAnyPermission(c: Context<AppBindings>, permissions: string[]) {
+  return permissions.some((permission) => hasPermission(c, permission));
+}
+
+function employeeUserAccountPermissions(action: EmployeeUserAccountAction) {
+  const baseView = ["employee.user_account.view", "employees.view", "users.view"];
+  const baseManage = ["employee.user_account.manage", "users.update", "self_service.manage_access"];
+  if (action === "view") return baseView;
+  if (action === "link") return ["users.link_employee", ...baseManage];
+  if (action === "unlink") return ["users.unlink_employee", ...baseManage];
+  if (action === "roles") return ["users.assign_roles", "users.update", "roles.assign_permissions", ...baseManage];
+  if (action === "scopes") return ["users.assign_scopes", "access_scopes.apply", "access_scopes.manage", ...baseManage];
+  if (action === "deactivate") return ["users.disable", ...baseManage];
+  return baseManage;
+}
+
+function requireEmployeeUserAccountPermission(c: Context<AppBindings>, action: EmployeeUserAccountAction) {
+  if (hasAnyPermission(c, employeeUserAccountPermissions(action))) return null;
+  return fail(c, 403, "FORBIDDEN", "You do not have permission to manage this employee user account.");
+}
+
 function optionalString(value: unknown) {
   const text = readString(value);
   return text || null;
@@ -157,6 +196,14 @@ function optionalString(value: unknown) {
 
 function boolValue(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function arrayOfStrings(value: unknown) {
+  return Array.isArray(value) ? Array.from(new Set(value.filter((item): item is string => typeof item === "string" && item.trim().length > 0))) : [];
+}
+
+function isStrongPassword(password: string) {
+  return password.length >= 12 && /[A-Za-z]/.test(password) && /\d/.test(password);
 }
 
 function numericValue(value: unknown, fallback: number) {
@@ -250,6 +297,250 @@ async function publishEmployee(c: Context<AppBindings>, event: "employees.change
   if (event !== "employees.changed") {
     await publishAccessEvent(c.env, "employees.changed", { actor_user_id: actor.id, entity_type: "employee", entity_id: entityId, action });
   }
+}
+
+async function publishEmployeeUserAccountChanged(c: Context<AppBindings>, employeeId: string, userId: string | null, action: string) {
+  const actor = c.get("currentUser");
+  await publishAccessEvent(c.env, "employee.access.changed", { actor_user_id: actor.id, entity_type: "employee", entity_id: employeeId, user_id: userId, action });
+  if (userId) {
+    await publishAccessEvent(c.env, "users.roles.changed", { actor_user_id: actor.id, entity_type: "user", entity_id: userId, employee_id: employeeId, action });
+  }
+  await publishEmployee(c, "employee.updated", employeeId, action);
+}
+
+async function getEmployeeUserAccountUser(db: AppBindings["Bindings"]["DB"], userId: string | null) {
+  if (!userId) return null;
+  return db
+    .prepare(
+      `SELECT u.*, e.employee_no, e.full_name AS employee_name
+       FROM users u
+       LEFT JOIN employees e ON e.id = u.employee_id
+       WHERE u.id = ?`
+    )
+    .bind(userId)
+    .first<EmployeeUserAccountRow>();
+}
+
+async function getUserRolesForAccount(db: AppBindings["Bindings"]["DB"], userId: string) {
+  const rows = await db
+    .prepare(
+      `SELECT r.id, r.name, r.is_active, r.is_protected, ur.created_at
+       FROM roles r
+       INNER JOIN user_roles ur ON ur.role_id = r.id
+       WHERE ur.user_id = ?
+       ORDER BY r.name`
+    )
+    .bind(userId)
+    .all<UserAccountRoleRow>();
+  return rows.results;
+}
+
+async function getPermissionsForAccount(db: AppBindings["Bindings"]["DB"], userId: string) {
+  const rows = await db
+    .prepare(
+      `SELECT DISTINCT p.key
+       FROM permissions p
+       INNER JOIN role_permissions rp ON rp.permission_id = p.id
+       INNER JOIN roles r ON r.id = rp.role_id AND r.is_active = 1
+       INNER JOIN user_roles ur ON ur.role_id = r.id
+       WHERE ur.user_id = ?
+       ORDER BY p.key`
+    )
+    .bind(userId)
+    .all<{ key: string }>();
+  return rows.results.map((row) => row.key);
+}
+
+async function getUserScopesForAccount(db: AppBindings["Bindings"]["DB"], userId: string) {
+  const scopes = await db
+    .prepare(
+      `SELECT asr.*, r.name AS role_name, u.name AS user_name, u.email AS user_email,
+        rmr.name AS role_mapping_name, rr.name AS role_mapping_role_name
+       FROM access_scope_rules asr
+       LEFT JOIN roles r ON r.id = asr.role_id
+       LEFT JOIN users u ON u.id = asr.user_id
+       LEFT JOIN role_mapping_rules rmr ON rmr.id = asr.role_mapping_rule_id
+       LEFT JOIN roles rr ON rr.id = rmr.default_role_id
+       WHERE asr.user_id = ? AND asr.scope_owner_type = 'USER'
+       ORDER BY COALESCE(asr.module_key, 'all'), asr.name`
+    )
+    .bind(userId)
+    .all<AccessScopeRuleRow>();
+  return scopes.results.map(accessScopeToApi);
+}
+
+async function getAvailableUsersForEmployeeLink(db: AppBindings["Bindings"]["DB"], employeeId: string) {
+  const rows = await db
+    .prepare(
+      `SELECT u.id, u.name, u.email, u.username, u.status, u.employee_id, e.employee_no, e.full_name AS employee_name
+       FROM users u
+       LEFT JOIN employees e ON e.id = u.employee_id
+       WHERE u.status != 'DISABLED' AND (u.employee_id IS NULL OR u.employee_id = ?)
+       ORDER BY u.name`
+    )
+    .bind(employeeId)
+    .all<EmployeeUserAccountRow>();
+  return rows.results.map((row) => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    username: row.username,
+    status: row.status,
+    employee_id: row.employee_id,
+    employee_no: row.employee_no ?? null,
+    employee_name: row.employee_name ?? null
+  }));
+}
+
+async function employeeSelfServiceRoleId(db: AppBindings["Bindings"]["DB"]) {
+  const row = await db.prepare("SELECT id FROM roles WHERE name = 'Employee Self-Service' AND is_active = 1 LIMIT 1").first<{ id: string }>();
+  return row?.id ?? null;
+}
+
+async function ensureSelfOnlyScopeForUser(db: AppBindings["Bindings"]["DB"], userId: string, actorUserId: string) {
+  const existing = await db
+    .prepare(
+      `SELECT id FROM access_scope_rules
+       WHERE scope_owner_type = 'USER' AND user_id = ? AND scope_type = 'SELF_ONLY'
+         AND COALESCE(module_key, '') IN ('', 'self_service')
+       ORDER BY CASE WHEN module_key = 'self_service' THEN 0 ELSE 1 END, created_at
+       LIMIT 1`
+    )
+    .bind(userId)
+    .first<{ id: string }>();
+  if (existing) {
+    await db
+      .prepare(
+        `UPDATE access_scope_rules
+         SET is_active = 1, can_view = 1, can_manage = 0, updated_by_user_id = ?, updated_at = ?
+         WHERE id = ?`
+      )
+      .bind(actorUserId, new Date().toISOString(), existing.id)
+      .run();
+    return existing.id;
+  }
+  const scopeId = crypto.randomUUID();
+  await db
+    .prepare(
+      `INSERT INTO access_scope_rules (
+        id, name, description, scope_owner_type, user_id, module_key, scope_type,
+        include_sub_departments, include_reporting_chain, can_view, can_manage, is_active,
+        created_by_user_id, updated_by_user_id
+      ) VALUES (?, 'Employee Self-Service Scope', 'Self-only scope created during employee user account provisioning.', 'USER', ?, 'self_service', 'SELF_ONLY', 0, 0, 1, 0, 1, ?, ?)`
+    )
+    .bind(scopeId, userId, actorUserId, actorUserId)
+    .run();
+  return scopeId;
+}
+
+async function markUserAccessOnboardingTask(db: AppBindings["Bindings"]["DB"], employeeId: string, actorUserId: string, status: "COMPLETED" | "PENDING", note: string) {
+  const taskStatus = status === "COMPLETED" ? "COMPLETED" : "IN_PROGRESS";
+  await db
+    .prepare(
+      `UPDATE employee_onboarding_tasks
+       SET status = ?, task_status = ?, completed_by_user_id = CASE WHEN ? = 'COMPLETED' THEN ? ELSE completed_by_user_id END,
+         completed_at = CASE WHEN ? = 'COMPLETED' THEN ? ELSE completed_at END,
+         notes = ?, updated_at = ?
+       WHERE employee_id = ? AND task_key IN ('user_access', 'user_access_setup')`
+    )
+    .bind(status, taskStatus, status, actorUserId, status, new Date().toISOString(), note, new Date().toISOString(), employeeId)
+    .run();
+}
+
+async function validateEmployeeUserLink(c: Context<AppBindings>, employee: EmployeeRow, targetUser: DbUser, replaceExisting: boolean) {
+  if (targetUser.employee_id && targetUser.employee_id !== employee.id) {
+    const linked = await getEmployeeById(c.env.DB, targetUser.employee_id);
+    return fail(c, 409, "USER_ALREADY_LINKED", `This user is already linked to ${linked?.full_name ?? "another employee"}.`);
+  }
+  if (employee.user_id && employee.user_id !== targetUser.id && !replaceExisting) {
+    return fail(c, 409, "EMPLOYEE_ALREADY_LINKED", "This employee already has a linked user account.");
+  }
+  const otherEmployee = await c.env.DB.prepare("SELECT id, full_name FROM employees WHERE user_id = ? AND id != ? LIMIT 1").bind(targetUser.id, employee.id).first<{ id: string; full_name: string }>();
+  if (otherEmployee) {
+    return fail(c, 409, "USER_ALREADY_LINKED", `This user is already linked to ${otherEmployee.full_name}.`);
+  }
+  const otherUser = await c.env.DB.prepare("SELECT id, email FROM users WHERE employee_id = ? AND id != ? LIMIT 1").bind(employee.id, targetUser.id).first<{ id: string; email: string }>();
+  if (otherUser) {
+    return fail(c, 409, "EMPLOYEE_ALREADY_LINKED", `This employee is already linked to ${otherUser.email}.`);
+  }
+  return null;
+}
+
+async function assignRolesToEmployeeUserAccount(c: Context<AppBindings>, targetUser: DbUser, roleIds: string[]) {
+  if (!hasAnyPermission(c, employeeUserAccountPermissions("roles"))) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to assign user roles.");
+  }
+  const uniqueRoleIds = Array.from(new Set(roleIds));
+  const roles: RoleAssignmentRow[] = [];
+  for (const roleId of uniqueRoleIds) {
+    const role = await c.env.DB.prepare("SELECT id, name, is_active, is_protected FROM roles WHERE id = ?").bind(roleId).first<RoleAssignmentRow>();
+    if (!role) return fail(c, 400, "UNKNOWN_ROLE", "One or more selected roles do not exist.");
+    if (role.is_active !== 1) return fail(c, 409, "INACTIVE_ROLE", "Inactive roles cannot be assigned to users.");
+    if (role.is_protected === 1 && !hasPermission(c, "roles.assign_permissions")) {
+      return fail(c, 403, "PROTECTED_ROLE_REQUIRES_PERMISSION", "Assigning a protected Owner/Super Admin role requires roles.assign_permissions.");
+    }
+    roles.push(role);
+  }
+  const ownerRole = await c.env.DB.prepare("SELECT id FROM roles WHERE is_protected = 1 AND name = 'Owner/Super Admin' LIMIT 1").first<{ id: string }>();
+  const willOwn = ownerRole ? roles.some((role) => role.id === ownerRole.id) : false;
+  if (targetUser.is_owner === 1 && !willOwn && targetUser.status === "ACTIVE" && (await getActiveOwnerCount(c.env.DB)) <= 1) {
+    return fail(c, 409, "LAST_ACTIVE_OWNER", "The last active Owner user cannot lose the Owner role.");
+  }
+  const oldRoles = await getUserRolesForAccount(c.env.DB, targetUser.id);
+  const writes: D1PreparedStatement[] = [c.env.DB.prepare("DELETE FROM user_roles WHERE user_id = ?").bind(targetUser.id)];
+  for (const role of roles) {
+    writes.push(c.env.DB.prepare("INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)").bind(targetUser.id, role.id));
+  }
+  writes.push(c.env.DB.prepare("UPDATE users SET is_owner = ?, updated_at = ? WHERE id = ?").bind(willOwn ? 1 : 0, new Date().toISOString(), targetUser.id));
+  await c.env.DB.batch(writes);
+  await recordAudit(c.env.DB, {
+    actorUserId: c.get("currentUser").id,
+    action: "employee.user_account.roles_updated",
+    module: "employees",
+    entityType: "user",
+    entityId: targetUser.id,
+    oldValue: { role_ids: oldRoles.map((role) => role.id), roles: oldRoles.map((role) => role.name), is_owner: targetUser.is_owner === 1 },
+    newValue: { role_ids: roles.map((role) => role.id), roles: roles.map((role) => role.name), is_owner: willOwn },
+    ipAddress: getClientIp(c.req.raw),
+    userAgent: c.req.header("User-Agent") ?? null
+  });
+  return null;
+}
+
+async function buildEmployeeUserAccountResponse(c: Context<AppBindings>, employee: EmployeeRow, includeAvailableUsers = false) {
+  const linkedUser = await getEmployeeUserAccountUser(c.env.DB, employee.user_id);
+  const preview = await roleMappingPreviewForEmployee(c, employee.id);
+  const roles = linkedUser ? await getUserRolesForAccount(c.env.DB, linkedUser.id) : [];
+  const permissions = linkedUser ? await getPermissionsForAccount(c.env.DB, linkedUser.id) : [];
+  const scopes = linkedUser ? await getUserScopesForAccount(c.env.DB, linkedUser.id) : [];
+  return {
+    employee: toEmployee(employee, hasPermission(c, "employees.sensitive.view")),
+    linked_user: linkedUser ? {
+      id: linkedUser.id,
+      name: linkedUser.name,
+      email: linkedUser.email,
+      username: linkedUser.username,
+      status: linkedUser.status,
+      is_owner: linkedUser.is_owner === 1,
+      employee_id: linkedUser.employee_id,
+      employee_no: linkedUser.employee_no ?? null,
+      employee_name: linkedUser.employee_name ?? null,
+      last_login_at: linkedUser.last_login_at,
+      created_at: linkedUser.created_at,
+      updated_at: linkedUser.updated_at
+    } : null,
+    roles: roles.map((role) => ({ id: role.id, name: role.name, is_active: role.is_active === 1, is_protected: role.is_protected === 1 })),
+    role_ids: roles.map((role) => role.id),
+    permissions,
+    scopes,
+    self_service_enabled: Boolean(linkedUser && linkedUser.status === "ACTIVE" && permissions.some((permission) => permission === "self_service.view" || permission.startsWith("self_service."))),
+    suggested: preview ? {
+      suggested_role_mapping: preview.suggested_role_mapping,
+      suggested_role: preview.suggested_role,
+      suggested_scope: preview.suggested_scope
+    } : null,
+    available_users: includeAvailableUsers ? await getAvailableUsersForEmployeeLink(c.env.DB, employee.id) : []
+  };
 }
 
 async function getStatusById(db: AppBindings["Bindings"]["DB"], id: string) {
@@ -908,6 +1199,258 @@ employeeRoutes.post("/:id/user-access/apply", requirePermission("role_mappings.a
   }
   const body = await readJsonBody(c.req.raw).catch(() => ({} as Record<string, unknown>));
   return applyRoleMappingToEmployee(c, c.req.param("id"), optionalString(body.role_mapping_rule_id));
+});
+
+employeeRoutes.get("/:id/user-account", async (c) => {
+  const permissionError = requireEmployeeUserAccountPermission(c, "view");
+  if (permissionError) return permissionError;
+  const employeeId = c.req.param("id");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const employee = await getEmployeeById(c.env.DB, employeeId);
+  if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  const includeAvailableUsers = hasAnyPermission(c, employeeUserAccountPermissions("link"));
+  return ok(c, { user_account: await buildEmployeeUserAccountResponse(c, employee, includeAvailableUsers) });
+});
+
+employeeRoutes.post("/:id/user-account/link-existing", async (c) => {
+  const permissionError = requireEmployeeUserAccountPermission(c, "link");
+  if (permissionError) return permissionError;
+  const employeeId = c.req.param("id");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const employee = await getEmployeeById(c.env.DB, employeeId);
+  if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  const body = await readJsonBody(c.req.raw);
+  const userId = readString(body.user_id);
+  if (!userId) return fail(c, 400, "USER_REQUIRED", "Select a user account to link.");
+  const targetUser = await getUserById(c.env.DB, userId);
+  if (!targetUser) return fail(c, 404, "USER_NOT_FOUND", "Selected user account was not found.");
+  const replaceExisting = boolValue(body.replace_existing, false);
+  const linkError = await validateEmployeeUserLink(c, employee, targetUser, replaceExisting);
+  if (linkError) return linkError;
+  const now = new Date().toISOString();
+  const writes: D1PreparedStatement[] = [
+    c.env.DB.prepare("UPDATE employees SET user_id = ?, updated_at = ? WHERE id = ?").bind(targetUser.id, now, employee.id),
+    c.env.DB.prepare("UPDATE users SET employee_id = ?, updated_at = ? WHERE id = ?").bind(employee.id, now, targetUser.id)
+  ];
+  if (employee.user_id && employee.user_id !== targetUser.id) {
+    writes.push(c.env.DB.prepare("UPDATE users SET employee_id = NULL, updated_at = ? WHERE id = ?").bind(now, employee.user_id));
+  }
+  await c.env.DB.batch(writes);
+  await markUserAccessOnboardingTask(c.env.DB, employee.id, c.get("currentUser").id, "COMPLETED", "Linked to an existing user account.");
+  await auditEmployee(c, {
+    action: "employee.user_account.linked",
+    entityType: "employee",
+    entityId: employee.id,
+    oldValue: { user_id: employee.user_id },
+    newValue: { user_id: targetUser.id, email: targetUser.email },
+    reason: optionalString(body.reason)
+  });
+  await publishEmployeeUserAccountChanged(c, employee.id, targetUser.id, "linked");
+  const updated = await getEmployeeById(c.env.DB, employee.id);
+  return ok(c, { user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null });
+});
+
+employeeRoutes.post("/:id/user-account/provision", async (c) => {
+  const permissionError = requireEmployeeUserAccountPermission(c, "manage");
+  if (permissionError) return permissionError;
+  if (!hasAnyPermission(c, ["users.create", "employee.user_account.manage", "self_service.manage_access"])) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to provision user accounts.");
+  }
+  const employeeId = c.req.param("id");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const employee = await getEmployeeById(c.env.DB, employeeId);
+  if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  const body = await readJsonBody(c.req.raw);
+  const name = readString(body.name) || employee.display_name || employee.full_name;
+  const email = normalizeEmail(body.email);
+  const username = readString(body.username);
+  const password = readString(body.password);
+  const generatedPassword = password || `${crypto.randomUUID()}Aa1!`;
+  const status = typeof body.status === "string" && ["ACTIVE", "DISABLED", "LOCKED"].includes(body.status) ? (body.status as UserStatus) : "ACTIVE";
+  const selfServiceEnabled = boolValue(body.self_service_enabled, true);
+  let roleIds = arrayOfStrings(body.role_ids);
+  if (!name) return fail(c, 400, "VALIDATION_ERROR", "User name is required.");
+  if (!isEmail(email)) return fail(c, 400, "VALIDATION_ERROR", "A valid email address is required.");
+  if (!isStrongPassword(generatedPassword)) return fail(c, 400, "VALIDATION_ERROR", "Password must be at least 12 characters and include letters and numbers.");
+  const existingEmail = await getUserByEmail(c.env.DB, email);
+  if (existingEmail) return fail(c, 409, "EMAIL_EXISTS", "A user with this email already exists.");
+  if (username) {
+    const existingUsername = await c.env.DB.prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE").bind(username).first<{ id: string }>();
+    if (existingUsername) return fail(c, 409, "USERNAME_EXISTS", "A user with this username already exists.");
+  }
+  if (employee.user_id && !boolValue(body.replace_existing, false)) {
+    return fail(c, 409, "EMPLOYEE_ALREADY_LINKED", "This employee already has a linked user account.");
+  }
+  if (selfServiceEnabled && roleIds.length === 0) {
+    const selfServiceRole = await employeeSelfServiceRoleId(c.env.DB);
+    if (selfServiceRole) roleIds = [selfServiceRole];
+  }
+  if (roleIds.length > 0) {
+    if (!hasAnyPermission(c, employeeUserAccountPermissions("roles"))) {
+      return fail(c, 403, "FORBIDDEN", "You do not have permission to assign user roles.");
+    }
+    for (const roleId of roleIds) {
+      const role = await c.env.DB.prepare("SELECT id, name, is_active, is_protected FROM roles WHERE id = ?").bind(roleId).first<RoleAssignmentRow>();
+      if (!role) return fail(c, 400, "UNKNOWN_ROLE", "One or more selected roles do not exist.");
+      if (role.is_active !== 1) return fail(c, 409, "INACTIVE_ROLE", "Inactive roles cannot be assigned to users.");
+      if (role.is_protected === 1 && !hasPermission(c, "roles.assign_permissions")) {
+        return fail(c, 403, "PROTECTED_ROLE_REQUIRES_PERMISSION", "Assigning a protected Owner/Super Admin role requires roles.assign_permissions.");
+      }
+    }
+  }
+  const userId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await c.env.DB.batch([
+    c.env.DB
+      .prepare(
+        `INSERT INTO users (id, name, email, username, password_hash, status, is_owner, employee_id)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?)`
+      )
+      .bind(userId, name, email, username || null, await hashPassword(generatedPassword), status, employee.id),
+    c.env.DB.prepare("UPDATE employees SET user_id = ?, updated_at = ? WHERE id = ?").bind(userId, now, employee.id),
+    ...(employee.user_id && employee.user_id !== userId ? [c.env.DB.prepare("UPDATE users SET employee_id = NULL, updated_at = ? WHERE id = ?").bind(now, employee.user_id)] : [])
+  ]);
+  const newUser = await getUserById(c.env.DB, userId);
+  if (newUser && roleIds.length) {
+    const roleError = await assignRolesToEmployeeUserAccount(c, newUser, roleIds);
+    if (roleError) return roleError;
+  }
+  if (selfServiceEnabled) {
+    await ensureSelfOnlyScopeForUser(c.env.DB, userId, c.get("currentUser").id);
+  }
+  await markUserAccessOnboardingTask(c.env.DB, employee.id, c.get("currentUser").id, "COMPLETED", "Provisioned linked user account.");
+  await auditEmployee(c, {
+    action: "employee.user_account.provisioned",
+    entityType: "employee",
+    entityId: employee.id,
+    oldValue: { user_id: employee.user_id },
+    newValue: { user_id: userId, email, username: username || null, status, password_generated: !password, self_service_enabled: selfServiceEnabled },
+    reason: optionalString(body.reason)
+  });
+  await publishEmployeeUserAccountChanged(c, employee.id, userId, "provisioned");
+  const updated = await getEmployeeById(c.env.DB, employee.id);
+  return ok(c, { user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null }, 201);
+});
+
+employeeRoutes.patch("/:id/user-account", async (c) => {
+  const permissionError = requireEmployeeUserAccountPermission(c, "manage");
+  if (permissionError) return permissionError;
+  const employeeId = c.req.param("id");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const employee = await getEmployeeById(c.env.DB, employeeId);
+  if (!employee?.user_id) return fail(c, 404, "NO_LINKED_USER", "This employee does not have a linked user account.");
+  const targetUser = await getUserById(c.env.DB, employee.user_id);
+  if (!targetUser) return fail(c, 404, "USER_NOT_FOUND", "Linked user account was not found.");
+  const body = await readJsonBody(c.req.raw);
+  const name = readString(body.name) || targetUser.name;
+  const email = typeof body.email === "string" ? normalizeEmail(body.email) : targetUser.email;
+  const username = typeof body.username === "string" ? readString(body.username) : targetUser.username;
+  const status = typeof body.status === "string" && ["ACTIVE", "DISABLED", "LOCKED"].includes(body.status) ? (body.status as UserStatus) : targetUser.status;
+  if (!name) return fail(c, 400, "VALIDATION_ERROR", "User name is required.");
+  if (!isEmail(email)) return fail(c, 400, "VALIDATION_ERROR", "A valid email address is required.");
+  const existingEmail = await getUserByEmail(c.env.DB, email);
+  if (existingEmail && existingEmail.id !== targetUser.id) return fail(c, 409, "EMAIL_EXISTS", "A user with this email already exists.");
+  if (username) {
+    const existingUsername = await c.env.DB.prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE").bind(username).first<{ id: string }>();
+    if (existingUsername && existingUsername.id !== targetUser.id) return fail(c, 409, "USERNAME_EXISTS", "A user with this username already exists.");
+  }
+  if (targetUser.is_owner === 1 && targetUser.status === "ACTIVE" && status !== "ACTIVE" && (await getActiveOwnerCount(c.env.DB)) <= 1) {
+    return fail(c, 409, "LAST_ACTIVE_OWNER", "The last active Owner user cannot be disabled or locked.");
+  }
+  await c.env.DB.prepare("UPDATE users SET name = ?, email = ?, username = ?, status = ?, updated_at = ? WHERE id = ?").bind(name, email, username || null, status, new Date().toISOString(), targetUser.id).run();
+  if (Array.isArray(body.role_ids)) {
+    const roleError = await assignRolesToEmployeeUserAccount(c, { ...targetUser, name, email, username: username || null, status }, arrayOfStrings(body.role_ids));
+    if (roleError) return roleError;
+  }
+  if (boolValue(body.self_service_enabled, false)) {
+    await ensureSelfOnlyScopeForUser(c.env.DB, targetUser.id, c.get("currentUser").id);
+  }
+  await auditEmployee(c, {
+    action: "employee.user_account.updated",
+    entityType: "user",
+    entityId: targetUser.id,
+    oldValue: { name: targetUser.name, email: targetUser.email, username: targetUser.username, status: targetUser.status },
+    newValue: { name, email, username: username || null, status, employee_id: employee.id, self_service_scope_ensured: boolValue(body.self_service_enabled, false) },
+    reason: optionalString(body.reason)
+  });
+  await publishEmployeeUserAccountChanged(c, employee.id, targetUser.id, "updated");
+  const updated = await getEmployeeById(c.env.DB, employee.id);
+  return ok(c, { user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null });
+});
+
+employeeRoutes.post("/:id/user-account/unlink", async (c) => {
+  const permissionError = requireEmployeeUserAccountPermission(c, "unlink");
+  if (permissionError) return permissionError;
+  const employeeId = c.req.param("id");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const employee = await getEmployeeById(c.env.DB, employeeId);
+  if (!employee?.user_id) return fail(c, 404, "NO_LINKED_USER", "This employee does not have a linked user account.");
+  const body = await readJsonBody(c.req.raw).catch(() => ({} as Record<string, unknown>));
+  const reason = optionalString(body.reason);
+  if (!reason) return fail(c, 400, "REASON_REQUIRED", "Reason is required to unlink a user account.");
+  const targetUser = await getUserById(c.env.DB, employee.user_id);
+  const disableUser = boolValue(body.disable_user, false);
+  if (targetUser?.is_owner === 1 && disableUser && targetUser.status === "ACTIVE" && (await getActiveOwnerCount(c.env.DB)) <= 1) {
+    return fail(c, 409, "LAST_ACTIVE_OWNER", "The last active Owner user cannot be disabled.");
+  }
+  const now = new Date().toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE employees SET user_id = NULL, updated_at = ? WHERE id = ?").bind(now, employee.id),
+    c.env.DB.prepare("UPDATE users SET employee_id = NULL, status = CASE WHEN ? = 1 THEN 'DISABLED' ELSE status END, updated_at = ? WHERE id = ?").bind(disableUser ? 1 : 0, now, employee.user_id)
+  ]);
+  await markUserAccessOnboardingTask(c.env.DB, employee.id, c.get("currentUser").id, "PENDING", "User account was unlinked. " + reason);
+  await auditEmployee(c, {
+    action: "employee.user_account.unlinked",
+    entityType: "employee",
+    entityId: employee.id,
+    oldValue: { user_id: employee.user_id },
+    newValue: { user_id: null, disabled_user: disableUser },
+    reason
+  });
+  await publishEmployeeUserAccountChanged(c, employee.id, employee.user_id, "unlinked");
+  const updated = await getEmployeeById(c.env.DB, employee.id);
+  return ok(c, { user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null });
+});
+
+employeeRoutes.post("/:id/user-account/deactivate-for-exit", async (c) => {
+  const permissionError = requireEmployeeUserAccountPermission(c, "deactivate");
+  if (permissionError) return permissionError;
+  const employeeId = c.req.param("id");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const employee = await getEmployeeById(c.env.DB, employeeId);
+  if (!employee?.user_id) return fail(c, 404, "NO_LINKED_USER", "This employee does not have a linked user account.");
+  const body = await readJsonBody(c.req.raw).catch(() => ({} as Record<string, unknown>));
+  const reason = optionalString(body.reason);
+  if (!reason) return fail(c, 400, "REASON_REQUIRED", "Exit deactivation reason is required.");
+  const targetUser = await getUserById(c.env.DB, employee.user_id);
+  if (!targetUser) return fail(c, 404, "USER_NOT_FOUND", "Linked user account was not found.");
+  if (targetUser.is_owner === 1 && targetUser.status === "ACTIVE" && (await getActiveOwnerCount(c.env.DB)) <= 1) {
+    return fail(c, 409, "LAST_ACTIVE_OWNER", "The last active Owner user cannot be disabled.");
+  }
+  await c.env.DB.prepare("UPDATE users SET status = 'DISABLED', updated_at = ? WHERE id = ?").bind(new Date().toISOString(), targetUser.id).run();
+  await auditEmployee(c, {
+    action: "employee.user_account.deactivated_for_exit",
+    entityType: "user",
+    entityId: targetUser.id,
+    oldValue: { status: targetUser.status, employee_id: employee.id },
+    newValue: { status: "DISABLED", employee_id: employee.id },
+    reason
+  });
+  await publishEmployeeUserAccountChanged(c, employee.id, targetUser.id, "deactivated_for_exit");
+  const updated = await getEmployeeById(c.env.DB, employee.id);
+  return ok(c, { user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null });
 });
 
 employeeRoutes.get("/:id/contacts", requirePermission("employees.contacts.view"), async (c) => {

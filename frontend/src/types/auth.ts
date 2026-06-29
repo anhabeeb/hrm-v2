@@ -18,6 +18,8 @@ export interface AuthUser {
 
 export interface AccessUser extends Omit<AuthUser, "permissions"> {
   role_ids: string[];
+  employee_no?: string | null;
+  employee_name?: string | null;
 }
 
 export interface Role {
@@ -130,6 +132,44 @@ export interface EmployeeUserAccessPreview {
     can_view: boolean;
     can_manage: boolean;
   } | null;
+}
+
+export interface EmployeeUserAccount {
+  employee: Record<string, unknown>;
+  linked_user: {
+    id: string;
+    name: string;
+    email: string;
+    username: string | null;
+    status: UserStatus;
+    is_owner: boolean;
+    employee_id: string | null;
+    employee_no: string | null;
+    employee_name: string | null;
+    last_login_at: string | null;
+    created_at: string;
+    updated_at: string;
+  } | null;
+  roles: Array<{ id: string; name: string; is_active: boolean; is_protected: boolean }>;
+  role_ids: string[];
+  permissions: string[];
+  scopes: AccessScopeRule[];
+  self_service_enabled: boolean;
+  suggested: {
+    suggested_role_mapping: RoleMappingRule | null;
+    suggested_role: { id: string; name: string } | null;
+    suggested_scope: EmployeeUserAccessPreview["suggested_scope"];
+  } | null;
+  available_users: Array<{
+    id: string;
+    name: string;
+    email: string;
+    username: string | null;
+    status: UserStatus;
+    employee_id: string | null;
+    employee_no: string | null;
+    employee_name: string | null;
+  }>;
 }
 
 export interface BootstrapStatus {

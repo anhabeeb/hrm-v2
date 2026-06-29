@@ -15,6 +15,8 @@ import { isEmail, normalizeEmail, readJsonBody, readString } from "../utils/vali
 interface UserListRow extends Omit<DbUser, "password_hash"> {
   role_names: string | null;
   role_ids: string | null;
+  employee_no: string | null;
+  employee_name: string | null;
 }
 
 interface UserRoleRow {
@@ -47,6 +49,8 @@ function toSafeUserRow(row: UserListRow) {
     status: row.status,
     is_owner: row.is_owner === 1,
     employee_id: row.employee_id,
+    employee_no: row.employee_no,
+    employee_name: row.employee_name,
     last_login_at: row.last_login_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -165,10 +169,12 @@ async function applyRoleAssignments(c: Context<AppBindings>, targetUser: DbUser,
 userRoutes.get("/", requirePermission("users.view"), async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT u.id, u.name, u.email, u.username, u.status, u.is_owner, u.employee_id,
+      e.employee_no, e.full_name AS employee_name,
       u.last_login_at, u.created_at, u.updated_at,
       group_concat(r.name, ', ') AS role_names,
       group_concat(r.id, ',') AS role_ids
      FROM users u
+     LEFT JOIN employees e ON e.id = u.employee_id
      LEFT JOIN user_roles ur ON ur.user_id = u.id
      LEFT JOIN roles r ON r.id = ur.role_id
      GROUP BY u.id

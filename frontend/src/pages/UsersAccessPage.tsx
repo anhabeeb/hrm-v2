@@ -122,6 +122,7 @@ export function UsersAccessPage() {
   const [userQuery, setUserQuery] = useState("");
   const [userStatusFilter, setUserStatusFilter] = useState("ALL");
   const [userRoleFilter, setUserRoleFilter] = useState("ALL");
+  const [userLinkFilter, setUserLinkFilter] = useState("ALL");
   const [roleQuery, setRoleQuery] = useState("");
   const [permissionQuery, setPermissionQuery] = useState("");
   const [permissionModuleFilter, setPermissionModuleFilter] = useState("ALL");
@@ -186,9 +187,10 @@ export function UsersAccessPage() {
       const matchesQuery = !userQuery || includesText(accessUser.name, accessUser.email, accessUser.username)(userQuery);
       const matchesStatus = userStatusFilter === "ALL" || accessUser.status === userStatusFilter;
       const matchesRole = userRoleFilter === "ALL" || accessUser.role_ids.includes(userRoleFilter);
-      return matchesQuery && matchesStatus && matchesRole;
+      const matchesLink = userLinkFilter === "ALL" || (userLinkFilter === "LINKED" ? Boolean(accessUser.employee_id) : !accessUser.employee_id);
+      return matchesQuery && matchesStatus && matchesRole && matchesLink;
     });
-  }, [users, userQuery, userStatusFilter, userRoleFilter]);
+  }, [users, userQuery, userStatusFilter, userRoleFilter, userLinkFilter]);
 
   const filteredRoles = useMemo(() => {
     return roles.filter((role) => !roleQuery || includesText(role.name, role.description)(roleQuery));
@@ -334,10 +336,12 @@ export function UsersAccessPage() {
             query={userQuery}
             statusFilter={userStatusFilter}
             roleFilter={userRoleFilter}
+            linkFilter={userLinkFilter}
             activeOwnerCount={activeOwnerCount}
             onQueryChange={setUserQuery}
             onStatusFilterChange={setUserStatusFilter}
             onRoleFilterChange={setUserRoleFilter}
+            onLinkFilterChange={setUserLinkFilter}
             onView={(accessUser) => setUserModal({ mode: "edit", user: accessUser })}
             onEdit={(accessUser) => setUserModal({ mode: "edit", user: accessUser })}
             onAssign={(accessUser) => setUserModal({ mode: "assign", user: accessUser })}
@@ -532,10 +536,12 @@ interface UsersTableProps {
   query: string;
   statusFilter: string;
   roleFilter: string;
+  linkFilter: string;
   activeOwnerCount: number;
   onQueryChange: (value: string) => void;
   onStatusFilterChange: (value: string) => void;
   onRoleFilterChange: (value: string) => void;
+  onLinkFilterChange: (value: string) => void;
   onView: (user: AccessUser) => void;
   onEdit: (user: AccessUser) => void;
   onAssign: (user: AccessUser) => void;
@@ -547,7 +553,8 @@ function UsersTable(props: UsersTableProps) {
   const activeFilterChips: ActiveFilterChip[] = [
     ...(props.query ? [{ key: "search", label: "Search", value: props.query, onRemove: () => props.onQueryChange("") }] : []),
     ...(props.statusFilter !== "ALL" ? [{ key: "status", label: "Status", value: props.statusFilter.replace(/_/g, " "), title: props.statusFilter, onRemove: () => props.onStatusFilterChange("ALL") }] : []),
-    ...(props.roleFilter !== "ALL" ? [{ key: "role", label: "Role", value: props.roles.find((role) => role.id === props.roleFilter)?.name ?? props.roleFilter, onRemove: () => props.onRoleFilterChange("ALL") }] : [])
+    ...(props.roleFilter !== "ALL" ? [{ key: "role", label: "Role", value: props.roles.find((role) => role.id === props.roleFilter)?.name ?? props.roleFilter, onRemove: () => props.onRoleFilterChange("ALL") }] : []),
+    ...(props.linkFilter !== "ALL" ? [{ key: "link", label: "Employee link", value: props.linkFilter === "LINKED" ? "Linked" : "Standalone", onRemove: () => props.onLinkFilterChange("ALL") }] : [])
   ];
 
   return (
@@ -574,8 +581,16 @@ function UsersTable(props: UsersTableProps) {
               options={[{ value: "ALL", label: "All roles" }, ...props.roles.map((role) => ({ value: role.id, label: role.name }))]}
             />
           </FilterSection>
+          <FilterSection title="Employee link">
+            <StandardSelectFilter
+              value={props.linkFilter}
+              onValueChange={props.onLinkFilterChange}
+              width="employee"
+              options={[{ value: "ALL", label: "All users" }, { value: "LINKED", label: "Linked to employee" }, { value: "STANDALONE", label: "Standalone users" }]}
+            />
+          </FilterSection>
         </MoreFiltersSheet>
-        <FilterResetButton onReset={() => { props.onQueryChange(""); props.onStatusFilterChange("ALL"); props.onRoleFilterChange("ALL"); }} />
+        <FilterResetButton onReset={() => { props.onQueryChange(""); props.onStatusFilterChange("ALL"); props.onRoleFilterChange("ALL"); props.onLinkFilterChange("ALL"); }} />
       </UsersAccessFilterBar>
       {props.loading ? <LoadingRow text="Loading users" /> : null}
       {!props.loading && props.users.length === 0 ? <EmptyState title="No users found" description="Adjust filters or create a user." /> : null}
@@ -616,7 +631,14 @@ function UsersTable(props: UsersTableProps) {
                         {accessUser.roles.length ? accessUser.roles.map((role) => <Badge key={role}>{role}</Badge>) : <span className="text-muted-foreground">No roles</span>}
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{accessUser.employee_id ?? "Standalone"}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {accessUser.employee_id ? (
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-slate-700">{accessUser.employee_name ?? "Linked employee"}</div>
+                          <div className="truncate text-xs">{accessUser.employee_no ?? accessUser.employee_id}</div>
+                        </div>
+                      ) : "Standalone"}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{formatDate(accessUser.last_login_at)}</TableCell>
                     <TableCell className="text-muted-foreground">{compactDate(accessUser.created_at)}</TableCell>
                     <TableCell>
