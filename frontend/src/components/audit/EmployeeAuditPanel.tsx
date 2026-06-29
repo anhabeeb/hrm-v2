@@ -1,5 +1,6 @@
 import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ActionTextButton } from "../ui/action-button";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
@@ -62,7 +63,7 @@ export function EmployeeAuditPanel({ employee, initialAudit = [] }: { employee: 
           <Input className="w-36" type="date" value={filters.date_from} onChange={(event) => setFilters({ ...filters, date_from: event.target.value })} />
           <Input className="w-36" type="date" value={filters.date_to} onChange={(event) => setFilters({ ...filters, date_to: event.target.value })} />
           <Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>
-          {canExport ? <Button variant="outline" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</Button> : null}
+          {canExport ? <ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</ActionTextButton> : null}
         </div>
       </div>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}

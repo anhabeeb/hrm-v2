@@ -5,6 +5,7 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
@@ -223,7 +224,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
       <PageHeader
         title="Employee Lifecycle"
         description="Onboarding, offboarding, lifecycle tasks, activation readiness, and exit readiness."
-        actions={<Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>}
+        actions={<ActionTextButton intent="refresh" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</ActionTextButton>}
       />
 
       <SubNavigationBar label="Employee lifecycle section tabs">
@@ -304,7 +305,7 @@ function CasesSection({ kind, cases, loading, error, onCreate, onSelect }: { kin
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
-        <Button size="sm" onClick={onCreate}>Create {kind} case</Button>
+        <ActionTextButton intent="create" size="sm" onClick={onCreate}>Create {kind} case</ActionTextButton>
       </div>
       <DataTableFrame loading={loading} error={error} empty={!loading && cases.length === 0}>
         <Table>
@@ -357,7 +358,7 @@ function SettingsSection({ settings, kind, canManage, loading, error, onSave }: 
           ))}
         </div>
         <div className="mt-4 flex justify-end">
-          <Button size="sm" disabled={!canManage || !enabled} onClick={() => void onSave(draft)}>Save settings</Button>
+          <ActionTextButton intent="save" size="sm" disabled={!canManage || !enabled} onClick={() => void onSave(draft)}>Save settings</ActionTextButton>
         </div>
       </ModuleSettingsBody>
     </Panel>
@@ -367,7 +368,7 @@ function SettingsSection({ settings, kind, canManage, loading, error, onSave }: 
 function AlertsSection({ alerts, loading, error, onRefresh }: { alerts: Row[]; loading: boolean; error: string | null; onRefresh: () => void }) {
   return (
     <div className="space-y-3">
-      <div className="flex justify-end"><Button size="sm" variant="outline" onClick={onRefresh}><ShieldAlert className="h-4 w-4" /> Refresh alerts</Button></div>
+      <div className="flex justify-end"><ActionTextButton intent="refresh" size="sm" onClick={onRefresh}><ShieldAlert className="h-4 w-4" /> Refresh alerts</ActionTextButton></div>
       <DataTableFrame loading={loading} error={error} empty={!loading && alerts.length === 0}>
         <Table>
           <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Type</TableHead><TableHead>Severity</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead></TableRow></TableHeader>
@@ -389,7 +390,7 @@ function ReportsSection({ reportKey, setReportKey, rows, loading, error, onExpor
             {reportKeys.map((key) => <option key={key} value={key}>{title(key)}</option>)}
           </SelectField>
         </div>
-        <Button variant="outline" size="sm" onClick={onExport}><FileDown className="h-4 w-4" /> Export CSV</Button>
+        <ActionTextButton intent="export" size="sm" onClick={onExport}><FileDown className="h-4 w-4" /> Export CSV</ActionTextButton>
       </Panel>
       <DataTableFrame loading={loading} error={error} empty={!loading && rows.length === 0}>
         <Table>
@@ -432,7 +433,7 @@ function CreateCaseModal({ kind, employees, organizationRefs, onClose, onCreated
           </>
         ) : null}
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button type="submit">Create</Button></div>
+        <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><ActionTextButton intent="create" type="submit">Create</ActionTextButton></div>
       </form>
     </Modal>
   );
@@ -505,19 +506,19 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
             <Panel className="p-3"><h3 className="text-sm font-semibold">Warnings</h3><List values={warnings} /></Panel>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => void run(() => kind === "onboarding" ? api.refreshOnboardingTasks(token!, caseId) : api.refreshOffboardingTasks(token!, caseId))}>Refresh checklist</Button>
+            <ActionTextButton intent="refresh" size="sm" onClick={() => void run(() => kind === "onboarding" ? api.refreshOnboardingTasks(token!, caseId) : api.refreshOffboardingTasks(token!, caseId))}>Refresh checklist</ActionTextButton>
             {kind === "onboarding" ? (
               <>
-                <Button size="sm" variant="outline" onClick={() => void run(() => api.submitOnboardingActivation(token!, caseId))}>Submit activation</Button>
-                <Button size="sm" variant="outline" onClick={() => void run(() => api.approveOnboardingActivation(token!, caseId))}>Approve activation</Button>
-                <Button size="sm" onClick={() => void run(() => api.activateOnboardingCase(token!, caseId))}><CheckCircle2 className="h-4 w-4" /> Activate</Button>
+                <ActionTextButton intent="submit" size="sm" onClick={() => void run(() => api.submitOnboardingActivation(token!, caseId))}>Submit activation</ActionTextButton>
+                <ActionTextButton intent="approve" size="sm" onClick={() => void run(() => api.approveOnboardingActivation(token!, caseId))}>Approve activation</ActionTextButton>
+                <ActionTextButton intent="confirm" size="sm" onClick={() => void run(() => api.activateOnboardingCase(token!, caseId))}><CheckCircle2 className="h-4 w-4" /> Activate</ActionTextButton>
                 <Button size="sm" variant="danger" onClick={() => askReason("Activate with override", (reason) => run(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason)))}>Override activation</Button>
               </>
             ) : (
               <>
-                <Button size="sm" variant="outline" onClick={() => void run(() => api.submitOffboardingFinalization(token!, caseId))}>Submit finalization</Button>
-                <Button size="sm" variant="outline" onClick={() => void run(() => api.approveOffboardingFinalization(token!, caseId))}>Approve finalization</Button>
-                <Button size="sm" onClick={() => void run(() => api.finalizeOffboardingCase(token!, caseId))}><CheckCircle2 className="h-4 w-4" /> Finalize exit</Button>
+                <ActionTextButton intent="submit" size="sm" onClick={() => void run(() => api.submitOffboardingFinalization(token!, caseId))}>Submit finalization</ActionTextButton>
+                <ActionTextButton intent="approve" size="sm" onClick={() => void run(() => api.approveOffboardingFinalization(token!, caseId))}>Approve finalization</ActionTextButton>
+                <ActionTextButton intent="finalize" size="sm" onClick={() => void run(() => api.finalizeOffboardingCase(token!, caseId))}><CheckCircle2 className="h-4 w-4" /> Finalize exit</ActionTextButton>
                 <Button size="sm" variant="danger" onClick={() => askReason("Finalize with override", (reason) => run(() => api.finalizeOffboardingCaseWithOverride(token!, caseId, reason)))}>Override finalization</Button>
               </>
             )}
@@ -534,8 +535,8 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
                     <TableCell>{task.is_required || task.required ? "Yes" : "No"}</TableCell>
                     <TableCell>{task.due_date ?? "-"}</TableCell>
                     <TableCell className="space-x-2">
-                      <Button size="sm" variant="outline" onClick={() => void run(() => kind === "onboarding" ? api.completeOnboardingTask(token!, task.id) : api.completeOffboardingTask(token!, task.id))}>Complete</Button>
-                      <Button size="sm" variant="outline" onClick={() => askReason("Waive task", (reason) => run(() => kind === "onboarding" ? api.waiveOnboardingTask(token!, task.id, reason) : api.waiveOffboardingTask(token!, task.id, reason)))}>Waive</Button>
+                      <ActionTextButton intent="complete" size="sm" onClick={() => void run(() => kind === "onboarding" ? api.completeOnboardingTask(token!, task.id) : api.completeOffboardingTask(token!, task.id))}>Complete</ActionTextButton>
+                      <ActionTextButton intent="waive" size="sm" onClick={() => askReason("Waive task", (reason) => run(() => kind === "onboarding" ? api.waiveOnboardingTask(token!, task.id, reason) : api.waiveOffboardingTask(token!, task.id, reason)))}>Waive</ActionTextButton>
                       <RowActionButton intent="warning" size="sm" title="Reopen" onClick={() => void run(() => kind === "onboarding" ? api.reopenOnboardingTask(token!, task.id) : api.reopenOffboardingTask(token!, task.id))}>Reopen</RowActionButton>
                     </TableCell>
                   </TableRow>
@@ -710,9 +711,9 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
             <p className="mt-1 text-xs text-muted-foreground">Complete setup here before Employee 360 is unlocked after activation.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Checklist refreshed.")}>Refresh checklist</Button>
-            <Button size="sm" variant="outline" onClick={() => void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.")}>Submit activation</Button>
-            <Button size="sm" variant="outline" onClick={() => void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved.")}>Approve activation</Button>
+            <ActionTextButton intent="refresh" size="sm" onClick={() => void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Checklist refreshed.")}>Refresh checklist</ActionTextButton>
+            <ActionTextButton intent="submit" size="sm" onClick={() => void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.")}>Submit activation</ActionTextButton>
+            <ActionTextButton intent="approve" size="sm" onClick={() => void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved.")}>Approve activation</ActionTextButton>
             <Button
               size="sm"
               disabled={!canActivate}
@@ -857,7 +858,7 @@ function EmployeeInfoWorkspaceForm({ workspace, onSave }: { workspace: Row; onSa
         <CheckboxField label="Roster eligible" checked={form.roster_eligible} onChange={(roster_eligible) => setForm({ ...form, roster_eligible })} />
         <div className="md:col-span-3"><Field label="Notes"><Input value={form.notes_summary} onChange={(event) => setForm({ ...form, notes_summary: event.target.value })} /></Field></div>
       </div>
-      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save employee info</Button></div>
+      <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onSave(form)}>Save employee info</ActionTextButton></div>
     </Panel>
   );
 }
@@ -888,7 +889,7 @@ function ContactWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (
         <Field label="Island / city"><Input value={form.island_city} onChange={(event) => setForm({ ...form, island_city: event.target.value })} /></Field>
         <Field label="Country"><Input value={form.country} onChange={(event) => setForm({ ...form, country: event.target.value })} /></Field>
       </div>
-      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save contacts</Button></div>
+      <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onSave(form)}>Save contacts</ActionTextButton></div>
     </Panel>
   );
 }
@@ -926,7 +927,7 @@ function JobAssignmentWorkspaceForm({ workspace, onSave }: { workspace: Row; onS
         <SelectField label="Employee type" value={form.employee_type} onValueChange={(employee_type) => setForm({ ...form, employee_type })}>{["LOCAL", "FOREIGN", "OTHER"].map((value) => <option key={value} value={value}>{value}</option>)}</SelectField>
         <SelectField label="Employment type" value={form.employment_type} onValueChange={(employment_type) => setForm({ ...form, employment_type })}>{["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"].map((value) => <option key={value} value={value}>{value}</option>)}</SelectField>
       </div>
-      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save job assignment</Button></div>
+      <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onSave(form)}>Save job assignment</ActionTextButton></div>
     </Panel>
   );
 }
@@ -970,7 +971,7 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
           <Field label="Notes"><Input value={metadata.notes} onChange={(event) => setMetadata({ ...metadata, notes: event.target.value })} /></Field>
           <Field label="File"><Input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></Field>
         </div>
-        <div className="mt-4 flex justify-end"><Button size="sm" disabled={!documentTypeId || !file} onClick={submit}>Upload document</Button></div>
+        <div className="mt-4 flex justify-end"><ActionTextButton intent="upload" size="sm" disabled={!documentTypeId || !file} onClick={submit}>Upload document</ActionTextButton></div>
       </Panel>
       <Panel className="p-4">
         <h3 className="text-sm font-semibold">Required document checklist</h3>
@@ -1010,7 +1011,7 @@ function ContractWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: 
         <Field label="Confirmation due"><Input type="date" value={form.confirmation_due_date} onChange={(event) => setForm({ ...form, confirmation_due_date: event.target.value })} /></Field>
         <Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field>
       </div>
-      <div className="mt-4 flex justify-end"><Button size="sm" disabled={!form.contract_type_id || !form.contract_start_date} onClick={() => onSave(form)}>Create contract draft</Button></div>
+      <div className="mt-4 flex justify-end"><ActionTextButton intent="create" size="sm" disabled={!form.contract_type_id || !form.contract_start_date} onClick={() => onSave(form)}>Create contract draft</ActionTextButton></div>
     </Panel>
   );
 }
@@ -1046,7 +1047,7 @@ function PayrollWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (
         <CheckboxField label="Missed-day deduction" checked={form.missed_day_deduction_enabled} onChange={(missed_day_deduction_enabled) => setForm({ ...form, missed_day_deduction_enabled })} />
         <CheckboxField label="Leave deduction" checked={form.leave_deduction_enabled} onChange={(leave_deduction_enabled) => setForm({ ...form, leave_deduction_enabled })} />
       </div>
-      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave({ ...form, basic_salary: Number(form.basic_salary) })}>Save payroll profile</Button></div>
+      <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onSave({ ...form, basic_salary: Number(form.basic_salary) })}>Save payroll profile</ActionTextButton></div>
     </Panel>
   );
 }
@@ -1071,7 +1072,7 @@ function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }
               <Field label="Account number"><Input value={payment.bank_account_number} onChange={(event) => setPayment({ ...payment, bank_account_number: event.target.value })} /></Field>
               <Field label="Currency"><Input value={payment.currency} onChange={(event) => setPayment({ ...payment, currency: event.target.value })} /></Field>
             </div>
-            <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onPaymentSave(payment)}>Save payment method</Button></div>
+            <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onPaymentSave(payment)}>Save payment method</ActionTextButton></div>
           </>
         )}
       </Panel>
@@ -1087,7 +1088,7 @@ function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }
               <Field label="Registration number"><Input value={pension.registration_number} onChange={(event) => setPension({ ...pension, registration_number: event.target.value })} /></Field>
               <Field label="Effective date"><Input type="date" value={pension.effective_date} onChange={(event) => setPension({ ...pension, effective_date: event.target.value })} /></Field>
             </div>
-            <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onPensionSave(pension)}>Save pension profile</Button></div>
+            <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onPensionSave(pension)}>Save pension profile</ActionTextButton></div>
           </>
         )}
       </Panel>
@@ -1109,7 +1110,7 @@ function AttendanceRosterWorkspaceForm({ workspace, onSave }: { workspace: Row; 
             <Field label="External employee code"><Input value={form.external_employee_code} onChange={(event) => setForm({ ...form, external_employee_code: event.target.value })} /></Field>
             <CheckboxField label="Biometric mapping not required" checked={form.not_required} onChange={(not_required) => setForm({ ...form, not_required })} />
             {form.not_required ? <Field label="Reason"><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></Field> : null}
-            <div className="flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save attendance setup</Button></div>
+            <div className="flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onSave(form)}>Save attendance setup</ActionTextButton></div>
           </div>
         )}
       </Panel>
@@ -1143,7 +1144,7 @@ function AssetsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (i
         {(form.not_required || form.waived) ? <Field label="Reason"><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></Field> : null}
         <div className="md:col-span-3"><Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field></div>
       </div>
-      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save assets/uniforms</Button></div>
+      <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onSave(form)}>Save assets/uniforms</ActionTextButton></div>
     </Panel>
   );
 }
@@ -1163,7 +1164,7 @@ function UserAccessWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave
         <Field label="Reason / note"><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></Field>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">Role mapping and access scopes remain the source of truth. Linked account creation can still be completed from the existing Employee User Access tools.</p>
-      <div className="mt-4 flex justify-end"><Button size="sm" onClick={() => onSave(form)}>Save user access status</Button></div>
+      <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onSave(form)}>Save user access status</ActionTextButton></div>
     </Panel>
   );
 }
@@ -1197,7 +1198,7 @@ function ReasonModal({ title: modalTitle, onClose, onSubmit }: { title: string; 
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
         <div><Label>Reason</Label><Input value={reason} onChange={(event) => setReason(event.target.value)} /></div>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button type="submit">Confirm</Button></div>
+        <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><ActionTextButton intent="confirm" type="submit">Confirm</ActionTextButton></div>
       </form>
     </Modal>
   );

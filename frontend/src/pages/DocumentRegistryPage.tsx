@@ -2,6 +2,7 @@ import { Archive, Download, Eye, History, RotateCcw, Trash2 } from "lucide-react
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -197,7 +198,7 @@ export function DocumentRegistryPage() {
           <>
           <Link to="/documents/compliance"><Button variant="outline" size="sm">Compliance</Button></Link>
           <Link to="/documents/missing"><Button variant="outline" size="sm">Missing required</Button></Link>
-          {canExport ? <Button variant="outline" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}
+          {canExport ? <ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</ActionTextButton> : null}
           </>
         }
       />

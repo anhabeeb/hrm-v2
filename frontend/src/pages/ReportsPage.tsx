@@ -2,6 +2,7 @@ import { Download, FileSpreadsheet, FileText, History, RefreshCw } from "lucide-
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { Input } from "../components/ui/input";
@@ -365,9 +366,9 @@ export function ReportsPage() {
           <p className="text-xs text-muted-foreground">CSV export uses the same active filters and is audit logged. Excel/PDF remain future placeholders.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => void exportCsv()} disabled={!canExport || !report?.rows.length}><Download className="h-4 w-4" /> CSV</Button>
-          <Button variant="outline" size="sm" onClick={() => disabledExport("Excel")} disabled={!canExport}><FileSpreadsheet className="h-4 w-4" /> Excel later</Button>
-          <Button variant="outline" size="sm" onClick={() => disabledExport("PDF")} disabled={!canExport}><FileText className="h-4 w-4" /> PDF later</Button>
+          <ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()} disabled={!canExport || !report?.rows.length}><Download className="h-4 w-4" /> CSV</ActionTextButton>
+          <ActionTextButton intent="export" size="sm" onClick={() => disabledExport("Excel")} disabled={!canExport}><FileSpreadsheet className="h-4 w-4" /> Excel later</ActionTextButton>
+          <ActionTextButton intent="export" size="sm" onClick={() => disabledExport("PDF")} disabled={!canExport}><FileText className="h-4 w-4" /> PDF later</ActionTextButton>
         </div>
       </ExportActionBar>
 
@@ -389,7 +390,7 @@ export function ReportsPage() {
               <h2 className="text-sm font-semibold">Export History / Report Audit Logs</h2>
               <p className="text-xs text-muted-foreground">CSV, JSON, Excel/PDF placeholders, sensitive export flags, filters, and requester details.</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => void loadExportLogs()}><RefreshCw className="h-4 w-4" /> Refresh</Button>
+            <ActionTextButton intent="refresh" size="sm" onClick={() => void loadExportLogs()}><RefreshCw className="h-4 w-4" /> Refresh</ActionTextButton>
           </div>
           <ReportTable columns={["requested_at", "report_key", "report_name", "export_format", "row_count", "status", "sensitive_export", "requested_by_name", "file_name"]} rows={exportLogs} loading={logsLoading} error={null} />
         </Panel>

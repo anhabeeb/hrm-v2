@@ -244,6 +244,79 @@ const attendanceRecordsSource = read("frontend/src/pages/AttendanceRecordsPage.t
   ["Import logs", '<ActionTextButton intent="import" onClick={() => void importRawLogs()}']
 ].forEach(([label, marker]) => assert(attendanceRecordsSource.includes(marker), `AttendanceRecordsPage ${label} button must use ActionTextButton.`));
 
+const attendanceDeviceOperationsSource = read("frontend/src/pages/AttendanceDeviceOperationsPage.tsx");
+[
+  ["Save settings", '<ActionTextButton intent="save" disabled={!canManage || !moduleEnabled}'],
+  ["Add mapping", '<ActionTextButton intent="create" size="sm" onClick={() => setEditing(null)}'],
+  ["Upload CSV", '<ActionTextButton intent="import" type="submit"'],
+  ["Resolve unmatched row", '<RowActionButton intent="save" size="sm" title="Resolve unmatched log"'],
+  ["Resolve import error row", '<RowActionButton intent="save" size="sm" title="Resolve import error"'],
+  ["Resolve locked-day warning row", '<RowActionButton intent="save" size="sm" title="Resolve locked-day warning"'],
+  ["Add placeholder", '<ActionTextButton intent="create" size="sm" onClick={() => setCreating(true)}'],
+  ["Test vendor integration", '<RowActionButton intent="neutral" size="sm" title="Test vendor integration"'],
+  ["Device report export", '<ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}'],
+  ["Save mapping", '<ActionTextButton intent="save" type="submit">Save mapping</ActionTextButton>'],
+  ["Resolve modal", '<ActionTextButton intent="complete" type="submit">Resolve</ActionTextButton>'],
+  ["Save placeholder", '<ActionTextButton intent="save" type="submit">Save placeholder</ActionTextButton>']
+].forEach(([label, marker]) => assert(attendanceDeviceOperationsSource.includes(marker), `AttendanceDeviceOperationsPage ${label} action must use a standardized action component.`));
+[
+  'variant="outline" onClick={() => setSelected(row)}>Resolve',
+  'variant="outline" onClick={() => void api.resolveAttendanceImportError',
+  'variant="outline" onClick={() => void api.resolveAttendanceLockedDayWarning',
+  'variant="outline" onClick={() => void api.testAttendanceVendorIntegration',
+  '<Button type="submit">Save mapping</Button>',
+  '<Button type="submit">Resolve</Button>',
+  '<Button type="submit">Save placeholder</Button>'
+].forEach((marker) => assert(!attendanceDeviceOperationsSource.includes(marker), `AttendanceDeviceOperationsPage still has generic action Button: ${marker}`));
+
+const lifecycleSource = read("frontend/src/pages/LifecyclePage.tsx");
+[
+  ["Page refresh", '<ActionTextButton intent="refresh" size="sm" onClick={() => void load()}'],
+  ["Create lifecycle case", '<ActionTextButton intent="create" size="sm" onClick={onCreate}>Create {kind} case</ActionTextButton>'],
+  ["Export CSV", '<ActionTextButton intent="export" size="sm" onClick={onExport}>'],
+  ["Submit activation", '<ActionTextButton intent="submit" size="sm" onClick={() => void run(() => api.submitOnboardingActivation'],
+  ["Approve activation", '<ActionTextButton intent="approve" size="sm" onClick={() => void run(() => api.approveOnboardingActivation'],
+  ["Submit finalization", '<ActionTextButton intent="submit" size="sm" onClick={() => void run(() => api.submitOffboardingFinalization'],
+  ["Approve finalization", '<ActionTextButton intent="approve" size="sm" onClick={() => void run(() => api.approveOffboardingFinalization'],
+  ["Complete task", '<ActionTextButton intent="complete" size="sm" onClick={() => void run(() => kind === "onboarding" ? api.completeOnboardingTask'],
+  ["Waive task", '<ActionTextButton intent="waive" size="sm" onClick={() => askReason("Waive task"'],
+  ["Workspace submit activation", '<ActionTextButton intent="submit" size="sm" onClick={() => void runWorkspaceAction(() => api.completeOnboardingWorkspace'],
+  ["Workspace approve activation", '<ActionTextButton intent="approve" size="sm" onClick={() => void runWorkspaceAction(() => api.approveOnboardingActivation'],
+  ["Reason confirm", '<ActionTextButton intent="confirm" type="submit">Confirm</ActionTextButton>']
+].forEach(([label, marker]) => assert(lifecycleSource.includes(marker), `LifecyclePage ${label} action must use ActionTextButton.`));
+[
+  'variant="outline" onClick={() => void run(() => api.submitOnboardingActivation',
+  'variant="outline" onClick={() => void run(() => api.approveOnboardingActivation',
+  'variant="outline" onClick={() => void run(() => api.submitOffboardingFinalization',
+  'variant="outline" onClick={() => void run(() => api.approveOffboardingFinalization',
+  'variant="outline" onClick={() => void run(() => kind === "onboarding" ? api.completeOnboardingTask',
+  'variant="outline" onClick={() => askReason("Waive task"',
+  'variant="outline" size="sm" onClick={onExport}><FileDown',
+  'variant="outline" onClick={() => void runWorkspaceAction(() => api.completeOnboardingWorkspace',
+  'variant="outline" onClick={() => void runWorkspaceAction(() => api.approveOnboardingActivation'
+].forEach((marker) => assert(!lifecycleSource.includes(marker), `LifecyclePage still has generic workflow/export Button: ${marker}`));
+
+const employeeAuditPanelSource = read("frontend/src/components/audit/EmployeeAuditPanel.tsx");
+assert(employeeAuditPanelSource.includes('<ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}'), "EmployeeAuditPanel export must use ActionTextButton export intent.");
+assert(!employeeAuditPanelSource.includes('variant="outline" size="sm" onClick={() => void exportCsv()}'), "EmployeeAuditPanel export still uses generic outline Button.");
+
+const contractsSource = read("frontend/src/pages/ContractsPage.tsx");
+[
+  ["Submit contract", '<ActionTextButton intent="submit" size="sm" onClick={() => onAction({ row, action: "submit-for-approval"'],
+  ["Approve contract", '<ActionTextButton intent="approve" size="sm" onClick={() => onAction({ row, action: "approve"'],
+  ["Activate contract", '<ActionTextButton intent="confirm" size="sm" onClick={() => onAction({ row, action: "activate"']
+].forEach(([label, marker]) => assert(contractsSource.includes(marker), `ContractsPage ${label} action must use ActionTextButton.`));
+
+const auditLogPageSource = read("frontend/src/pages/AuditLogPage.tsx");
+assert(auditLogPageSource.includes('<ActionTextButton intent="export" className="h-10" onClick={() => void exportCsv()}'), "AuditLogPage export must use ActionTextButton export intent.");
+
+const reportsPageSource = read("frontend/src/pages/ReportsPage.tsx");
+[
+  ["CSV export", '<ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}'],
+  ["Excel export placeholder", '<ActionTextButton intent="export" size="sm" onClick={() => disabledExport("Excel")}'],
+  ["PDF export placeholder", '<ActionTextButton intent="export" size="sm" onClick={() => disabledExport("PDF")}']
+].forEach(([label, marker]) => assert(reportsPageSource.includes(marker), `ReportsPage ${label} action must use ActionTextButton export intent.`));
+
 [
   "frontend/src/components/assets/EmployeeAssetsPanel.tsx",
   "frontend/src/components/employee/EmployeeDocumentsPanel.tsx",
@@ -274,6 +347,28 @@ scanned.forEach(({ file, lines }) => {
     if (allowedChromePattern.test(line) && !rowLikeLine && !rowLikeContext) return;
     if (meaningfulActionWords.test(line) && (rowLikeLine || rowLikeContext)) {
       failures.push(`${file}:${index + 1}: meaningful row/list action still uses raw ghost/outline Button instead of RowActionButton.`);
+    }
+  });
+});
+
+const meaningfulTextActionPattern = /\b(resolve|approve|submit|complete|finalize|export|import|upload|download|test|hold|send back|reject|delete)\b/i;
+const specificMeaningfulTextPattern = /\b(save mapping|save placeholder|submit activation|approve activation|submit finalization|approve finalization|complete task|export csv)\b/i;
+const allowedRawActionPattern = /^\s*(cancel|close|dismiss|back|clear|reset|view|open|details|filter|apply|run|refresh|cancel edit)\s*$/i;
+
+scanned.forEach(({ file, content }) => {
+  const normalizedFile = file.replaceAll("\\", "/");
+  if (normalizedFile.includes("/components/ui/") || normalizedFile.includes("/components/filters/") || normalizedFile.includes("/components/global/")) return;
+  const buttonBlocks = content.match(/<Button\b[\s\S]*?<\/Button>/g) ?? [];
+  buttonBlocks.forEach((block) => {
+    if (!/\bvariant="(?:outline|ghost)"/.test(block)) return;
+    const innerText = block
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\{[^}]*\}/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!innerText || allowedRawActionPattern.test(innerText)) return;
+    if (meaningfulTextActionPattern.test(innerText) || specificMeaningfulTextPattern.test(innerText)) {
+      failures.push(`${file}: meaningful text action "${innerText}" still uses generic outline/ghost Button.`);
     }
   });
 });

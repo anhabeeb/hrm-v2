@@ -5,8 +5,9 @@ import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter, type ActiveFilterChip } from "../components/filters";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
+import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -137,7 +138,7 @@ function DeviceSettings({ token, canManage }: { token: string; canManage: boolea
         <Field label="Allowed CSV extensions"><Input disabled={!canManage || !moduleEnabled} value={settings.csv_allowed_extensions_json ?? ""} onChange={(event) => setSettings({ ...settings, csv_allowed_extensions_json: event.target.value })} /></Field>
         <Field label="Bridge clock skew minutes"><Input disabled={!canManage || !moduleEnabled} type="number" value={settings.bridge_clock_skew_minutes ?? 15} onChange={(event) => setSettings({ ...settings, bridge_clock_skew_minutes: Number(event.target.value) })} /></Field>
       </div>
-      <div className="mt-4 flex justify-end"><Button disabled={!canManage || !moduleEnabled} onClick={() => void save()}><Save className="h-4 w-4" /> Save settings</Button></div>
+      <div className="mt-4 flex justify-end"><ActionTextButton intent="save" disabled={!canManage || !moduleEnabled} onClick={() => void save()}><Save className="h-4 w-4" /> Save settings</ActionTextButton></div>
       </ModuleSettingsBody>
     </Panel>
   );
@@ -166,7 +167,7 @@ function BiometricMappings({ token }: { token: string }) {
 
   return (
     <Panel className="overflow-hidden">
-      <Toolbar chips={chips}><DeviceSearchInput value={search} onChange={setSearch} placeholder="Search employee, biometric ID, or code" /><FilterResetButton onReset={() => setSearch("")} /><Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add mapping</Button></Toolbar>
+      <Toolbar chips={chips}><DeviceSearchInput value={search} onChange={setSearch} placeholder="Search employee, biometric ID, or code" /><FilterResetButton onReset={() => setSearch("")} /><ActionTextButton intent="create" size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add mapping</ActionTextButton></Toolbar>
       <StatusLine error={error} />
       <DataTable rows={mappings} columns={["employee_name", "employee_no", "device_name", "biometric_user_id", "external_employee_code", "mapping_source", "status"]} />
       {mappings.length === 0 ? <EmptyState title="No biometric mappings" description="Map ZKTeco biometric user IDs to employees." /> : null}
@@ -212,7 +213,7 @@ function ImportBatches({ token, canManage }: { token: string; canManage: boolean
         {canManage ? <form onSubmit={(event) => void upload(event)} className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
           <Input type="file" accept=".csv,.txt" onChange={(event) => setFile(event.target.files?.[0] ?? null)} required />
           <SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={deviceId} onChange={(event) => setDeviceId(event.target.value)}><option value="">No device selected</option>{devices.map((device) => <option key={device.id} value={device.id}>{device.name}</option>)}</SelectField>
-          <Button type="submit"><FileUp className="h-4 w-4" /> Upload CSV</Button>
+          <ActionTextButton intent="import" type="submit"><FileUp className="h-4 w-4" /> Upload CSV</ActionTextButton>
         </form> : <p className="text-sm text-muted-foreground">You can view import batches but cannot upload new files.</p>}
       </Panel>
       <Panel className="overflow-hidden"><DataTable rows={batches} columns={["batch_number", "source", "device_name", "file_name", "status", "total_rows", "inserted_rows", "duplicate_rows", "unmatched_rows", "error_rows", "locked_warning_rows", "uploaded_at"]} /></Panel>
@@ -247,7 +248,7 @@ function UnmatchedLogs({ token }: { token: string }) {
     setEmployees(employeeResult.employees);
   }
   useEffect(() => { void load().catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load unmatched logs.")); }, [token]);
-  return <Panel className="overflow-hidden"><StatusLine error={error} /><DataTable rows={rows} columns={["device_name", "biometric_user_id", "external_employee_code", "punch_time", "reason", "status", "created_at"]} action={(row) => <Button size="sm" variant="outline" onClick={() => setSelected(row)}>Resolve</Button>} />{selected ? <ResolveUnmatchedModal token={token} log={selected} employees={employees} onClose={() => setSelected(null)} onSaved={load} /> : null}</Panel>;
+  return <Panel className="overflow-hidden"><StatusLine error={error} /><DataTable rows={rows} columns={["device_name", "biometric_user_id", "external_employee_code", "punch_time", "reason", "status", "created_at"]} action={(row) => <RowActionButton intent="save" size="sm" title="Resolve unmatched log" onClick={() => setSelected(row)}>Resolve</RowActionButton>} />{selected ? <ResolveUnmatchedModal token={token} log={selected} employees={employees} onClose={() => setSelected(null)} onSaved={load} /> : null}</Panel>;
 }
 
 function ImportErrors({ token }: { token: string }) {
@@ -255,7 +256,7 @@ function ImportErrors({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
   async function load() { setRows((await api.listAttendanceImportErrors(token)).errors); }
   useEffect(() => { void load().catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load import errors.")); }, [token]);
-  return <Panel className="overflow-hidden"><StatusLine error={error} /><DataTable rows={rows} columns={["batch_number", "row_number", "error_code", "error_message", "status", "created_at"]} action={(row) => <Button size="sm" variant="outline" onClick={() => void api.resolveAttendanceImportError(token, row.id).then(load)}>Resolve</Button>} /></Panel>;
+  return <Panel className="overflow-hidden"><StatusLine error={error} /><DataTable rows={rows} columns={["batch_number", "row_number", "error_code", "error_message", "status", "created_at"]} action={(row) => <RowActionButton intent="save" size="sm" title="Resolve import error" onClick={() => void api.resolveAttendanceImportError(token, row.id).then(load)}>Resolve</RowActionButton>} /></Panel>;
 }
 
 function LockedWarnings({ token }: { token: string }) {
@@ -263,7 +264,7 @@ function LockedWarnings({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
   async function load() { setRows((await api.listAttendanceLockedDayWarnings(token)).warnings); }
   useEffect(() => { void load().catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load locked-day warnings.")); }, [token]);
-  return <Panel className="overflow-hidden"><StatusLine error={error} /><DataTable rows={rows} columns={["employee_name", "employee_no", "attendance_date", "warning_type", "message", "status", "created_at"]} action={(row) => <Button size="sm" variant="outline" onClick={() => void api.resolveAttendanceLockedDayWarning(token, row.id, "Reviewed").then(load)}><ShieldCheck className="h-4 w-4" /> Resolve</Button>} /></Panel>;
+  return <Panel className="overflow-hidden"><StatusLine error={error} /><DataTable rows={rows} columns={["employee_name", "employee_no", "attendance_date", "warning_type", "message", "status", "created_at"]} action={(row) => <RowActionButton intent="save" size="sm" title="Resolve locked-day warning" onClick={() => void api.resolveAttendanceLockedDayWarning(token, row.id, "Reviewed").then(load)}><ShieldCheck className="h-4 w-4" /> Resolve</RowActionButton>} /></Panel>;
 }
 
 function Diagnostics({ token }: { token: string }) {
@@ -279,7 +280,7 @@ function VendorIntegrations({ token, canManage }: { token: string; canManage: bo
   const [error, setError] = useState<string | null>(null);
   async function load() { setRows((await api.listAttendanceVendorIntegrations(token)).integrations); }
   useEffect(() => { void load().catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load vendor integrations.")); }, [token]);
-  return <Panel className="overflow-hidden"><Toolbar>{canManage ? <Button size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> Add placeholder</Button> : <span />}</Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={["name", "vendor", "integration_type", "status", "last_test_status", "last_test_message"]} action={(row) => <Button size="sm" variant="outline" onClick={() => void api.testAttendanceVendorIntegration(token, row.id).then(load)}><Wrench className="h-4 w-4" /> Test</Button>} />{creating ? <VendorModal token={token} onClose={() => setCreating(false)} onSaved={load} /> : null}</Panel>;
+  return <Panel className="overflow-hidden"><Toolbar>{canManage ? <ActionTextButton intent="create" size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> Add placeholder</ActionTextButton> : <span />}</Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={["name", "vendor", "integration_type", "status", "last_test_status", "last_test_message"]} action={(row) => <RowActionButton intent="neutral" size="sm" title="Test vendor integration" onClick={() => void api.testAttendanceVendorIntegration(token, row.id).then(load)}><Wrench className="h-4 w-4" /> Test</RowActionButton>} />{creating ? <VendorModal token={token} onClose={() => setCreating(false)} onSaved={load} /> : null}</Panel>;
 }
 
 function DeviceReports({ token }: { token: string }) {
@@ -303,7 +304,7 @@ function DeviceReports({ token }: { token: string }) {
     URL.revokeObjectURL(url);
   }
   const chips = useMemo<ActiveFilterChip[]>(() => key !== reportKeys[0] ? [{ key: "report", label: "Report", value: key, onRemove: () => setKey(reportKeys[0]) }] : [], [key]);
-  return <Panel className="overflow-hidden"><Toolbar chips={chips}><StandardSelectFilter value={key} onValueChange={setKey} allLabel={reportKeys[0]} width="documentType" options={reportKeys.slice(1).map((item) => ({ value: item, label: item }))} /><FilterResetButton onReset={() => setKey(reportKeys[0])} /><Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={columns} /></Panel>;
+  return <Panel className="overflow-hidden"><Toolbar chips={chips}><StandardSelectFilter value={key} onValueChange={setKey} allLabel={reportKeys[0]} width="documentType" options={reportKeys.slice(1).map((item) => ({ value: item, label: item }))} /><FilterResetButton onReset={() => setKey(reportKeys[0])} /><ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</ActionTextButton></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={columns} /></Panel>;
 }
 
 function MappingModal({ token, mapping, employees, devices, onClose, onSaved }: { token: string; mapping?: EmployeeBiometricMapping | null; employees: Employee[]; devices: AttendanceDevice[]; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -328,7 +329,7 @@ function MappingModal({ token, mapping, employees, devices, onClose, onSaved }: 
       setError(err instanceof ApiError ? err.message : "Unable to save mapping.");
     }
   }
-  return <Modal title={mapping ? "Edit Biometric Mapping" : "Add Biometric Mapping"} onClose={onClose}><form onSubmit={(event) => void submit(event)} className="grid gap-3 md:grid-cols-2"><StatusLine error={error} /><div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employee_id) => setForm({ ...form, employee_id })} /></div><Field label="Device"><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={form.attendance_device_id} onChange={(event) => setForm({ ...form, attendance_device_id: event.target.value })}><option value="">Any device</option>{devices.map((device) => <option key={device.id} value={device.id}>{device.name}</option>)}</SelectField></Field><Field label="Biometric user ID"><Input required value={form.biometric_user_id} onChange={(event) => setForm({ ...form, biometric_user_id: event.target.value })} /></Field><Field label="Biometric user name"><Input value={form.biometric_user_name} onChange={(event) => setForm({ ...form, biometric_user_name: event.target.value })} /></Field><Field label="External employee code"><Input value={form.external_employee_code} onChange={(event) => setForm({ ...form, external_employee_code: event.target.value })} /></Field><Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field><div className="flex justify-end gap-2 md:col-span-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button type="submit">Save mapping</Button></div></form></Modal>;
+  return <Modal title={mapping ? "Edit Biometric Mapping" : "Add Biometric Mapping"} onClose={onClose}><form onSubmit={(event) => void submit(event)} className="grid gap-3 md:grid-cols-2"><StatusLine error={error} /><div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employee_id) => setForm({ ...form, employee_id })} /></div><Field label="Device"><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={form.attendance_device_id} onChange={(event) => setForm({ ...form, attendance_device_id: event.target.value })}><option value="">Any device</option>{devices.map((device) => <option key={device.id} value={device.id}>{device.name}</option>)}</SelectField></Field><Field label="Biometric user ID"><Input required value={form.biometric_user_id} onChange={(event) => setForm({ ...form, biometric_user_id: event.target.value })} /></Field><Field label="Biometric user name"><Input value={form.biometric_user_name} onChange={(event) => setForm({ ...form, biometric_user_name: event.target.value })} /></Field><Field label="External employee code"><Input value={form.external_employee_code} onChange={(event) => setForm({ ...form, external_employee_code: event.target.value })} /></Field><Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field><div className="flex justify-end gap-2 md:col-span-2"><Button variant="outline" onClick={onClose}>Cancel</Button><ActionTextButton intent="save" type="submit">Save mapping</ActionTextButton></div></form></Modal>;
 }
 
 function ResolveUnmatchedModal({ token, log, employees, onClose, onSaved }: { token: string; log: AttendanceUnmatchedLog; employees: Employee[]; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -346,7 +347,7 @@ function ResolveUnmatchedModal({ token, log, employees, onClose, onSaved }: { to
       setError(err instanceof ApiError ? err.message : "Unable to resolve unmatched log.");
     }
   }
-  return <Modal title="Resolve unmatched biometric log" onClose={onClose}><form onSubmit={(event) => void submit(event)} className="space-y-3"><StatusLine error={error} /><p className="text-sm text-muted-foreground">Biometric ID {log.biometric_user_id ?? "-"} at {log.punch_time ?? "-"}.</p><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={employeeId} onChange={setEmployeeId} /><Field label="Resolution note"><Input value={note} onChange={(event) => setNote(event.target.value)} /></Field><div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button type="submit">Resolve</Button></div></form></Modal>;
+  return <Modal title="Resolve unmatched biometric log" onClose={onClose}><form onSubmit={(event) => void submit(event)} className="space-y-3"><StatusLine error={error} /><p className="text-sm text-muted-foreground">Biometric ID {log.biometric_user_id ?? "-"} at {log.punch_time ?? "-"}.</p><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={employeeId} onChange={setEmployeeId} /><Field label="Resolution note"><Input value={note} onChange={(event) => setNote(event.target.value)} /></Field><div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><ActionTextButton intent="complete" type="submit">Resolve</ActionTextButton></div></form></Modal>;
 }
 
 function VendorModal({ token, onClose, onSaved }: { token: string; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -359,7 +360,7 @@ function VendorModal({ token, onClose, onSaved }: { token: string; onClose: () =
     await onSaved();
     onClose();
   }
-  return <Modal title="Add vendor integration placeholder" onClose={onClose}><form onSubmit={(event) => void submit(event)} className="space-y-3"><Field label="Name"><Input required value={name} onChange={(event) => setName(event.target.value)} /></Field><Field label="Vendor"><Input value={vendor} onChange={(event) => setVendor(event.target.value)} /></Field><Field label="Integration type"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={integrationType} onChange={(event) => setIntegrationType(event.target.value)}>{["CSV_IMPORT", "LOCAL_BRIDGE", "PUSH_ADMS", "API_PLACEHOLDER"].map((item) => <option key={item}>{item}</option>)}</SelectField></Field><div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button type="submit">Save placeholder</Button></div></form></Modal>;
+  return <Modal title="Add vendor integration placeholder" onClose={onClose}><form onSubmit={(event) => void submit(event)} className="space-y-3"><Field label="Name"><Input required value={name} onChange={(event) => setName(event.target.value)} /></Field><Field label="Vendor"><Input value={vendor} onChange={(event) => setVendor(event.target.value)} /></Field><Field label="Integration type"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={integrationType} onChange={(event) => setIntegrationType(event.target.value)}>{["CSV_IMPORT", "LOCAL_BRIDGE", "PUSH_ADMS", "API_PLACEHOLDER"].map((item) => <option key={item}>{item}</option>)}</SelectField></Field><div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><ActionTextButton intent="save" type="submit">Save placeholder</ActionTextButton></div></form></Modal>;
 }
 
 function DataTable<T extends object>({ rows, columns, action }: { rows: T[]; columns: string[]; action?: (row: T) => ReactNode }) {

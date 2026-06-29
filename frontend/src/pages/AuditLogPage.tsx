@@ -1,7 +1,7 @@
 import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import {
@@ -89,7 +89,7 @@ export function AuditLogPage() {
             </FilterSection>
           </MoreFiltersSheet>
         }
-        actions={canExport ? <Button variant="outline" className="h-10" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</Button> : null}
+        actions={canExport ? <ActionTextButton intent="export" className="h-10" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</ActionTextButton> : null}
       >
         <StandardDateRangeFilter value={dateRange} onChange={setDateRange} label="Date Range" />
       </StandardFilterBar>

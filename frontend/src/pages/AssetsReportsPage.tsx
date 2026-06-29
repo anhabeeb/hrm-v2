@@ -2,6 +2,7 @@ import { Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AssetsNav } from "../components/assets/AssetsNav";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
@@ -74,7 +75,7 @@ export function AssetsReportsPage() {
         <StandardFilterBar
           search={<StandardSearchInput value={filters.search} onDebouncedChange={(search) => setFilters((current) => ({ ...current, search }))} placeholder="Employee or asset" />}
           reset={<FilterResetButton onReset={resetFilters} />}
-          actions={<><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>{canExport ? <Button variant="outline" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</Button> : null}</>}
+          actions={<><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>{canExport ? <ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</ActionTextButton> : null}</>}
           moreFilters={
             <MoreFiltersSheet onReset={resetFilters} onApply={() => void load()}>
               <FilterSection title="Organization and dates">

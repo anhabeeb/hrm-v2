@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
@@ -272,9 +273,9 @@ function ContractTable({ rows, canManage, onAction }: { rows: Row[]; canManage: 
               <TableCell>
                 {canManage ? (
                   <div className="flex flex-wrap gap-1">
-                    <Button variant="outline" size="sm" onClick={() => onAction({ row, action: "submit-for-approval", title: "Submit for approval" })}>Submit</Button>
-                    <Button variant="outline" size="sm" onClick={() => onAction({ row, action: "approve", title: "Approve" })}>Approve</Button>
-                    <Button variant="outline" size="sm" onClick={() => onAction({ row, action: "activate", title: "Activate" })}>Activate</Button>
+                    <ActionTextButton intent="submit" size="sm" onClick={() => onAction({ row, action: "submit-for-approval", title: "Submit for approval" })}>Submit</ActionTextButton>
+                    <ActionTextButton intent="approve" size="sm" onClick={() => onAction({ row, action: "approve", title: "Approve" })}>Approve</ActionTextButton>
+                    <ActionTextButton intent="confirm" size="sm" onClick={() => onAction({ row, action: "activate", title: "Activate" })}>Activate</ActionTextButton>
                     <Button variant="danger" size="sm" onClick={() => onAction({ row, action: "cancel", title: "Cancel", reasonRequired: true })}>Cancel</Button>
                   </div>
                 ) : "-"}
