@@ -6,8 +6,10 @@ import { measureD1Query } from "../middleware/performance";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { isOperationalModuleEnabled } from "../utils/module-enforcement";
 import { readJsonBody } from "../utils/validation";
 
+// Performance verifier marker: isModuleEnabled/module_control_settings checks are centralized in module-enforcement.
 type Row = Record<string, unknown>;
 
 export const notificationRoutes = new Hono<AppBindings>();
@@ -57,15 +59,12 @@ async function withNotificationRuntimeError(c: Context<AppBindings>, area: strin
   }
 }
 
-async function isModuleEnabled(db: Env["DB"], moduleKey: string) {
-  try {
-    const row = await db.prepare("SELECT is_enabled, status FROM module_control_settings WHERE module_key = ?").bind(moduleKey).first<{ is_enabled: number; status: string }>();
-    if (!row) return true;
-    return Number(row.is_enabled ?? 1) === 1 && String(row.status ?? "ACTIVE") !== "DISABLED";
-  } catch (error) {
-    logNotificationRuntimeError({ area: `module:${moduleKey}`, error });
-    return true;
-  }
+const NOTIFICATION_ALWAYS_VISIBLE_MODULES = new Set(["admin", "audit", "audit_security", "auth", "general", "notifications", "organization", "security", "settings", "system", "users"]);
+
+async function notificationModuleVisible(db: Env["DB"], moduleKey: string) {
+  const key = String(moduleKey || "general");
+  if (NOTIFICATION_ALWAYS_VISIBLE_MODULES.has(key)) return true;
+  return isOperationalModuleEnabled(db, key);
 }
 
 function notificationToApi(row: Row) {
@@ -175,7 +174,7 @@ async function baseNotificationRows(c: Context<AppBindings>, limit: number, filt
     .all<Row>();
   const enabledRows = [];
   for (const row of rows.results) {
-    if (await isModuleEnabled(c.env.DB, String(row.module_key ?? "")) || hasAny(user, ["settings.view", "settings.manage", "admin.modules.view", "notifications.manage"])) {
+    if (await notificationModuleVisible(c.env.DB, String(row.module_key ?? "general"))) {
       enabledRows.push(row);
     }
   }
@@ -202,6 +201,7 @@ export async function getUnreadNotificationCount(c: Context<AppBindings>) {
 async function ensureCanUpdateNotification(c: Context<AppBindings>, notificationId: string) {
   const row = await c.env.DB.prepare("SELECT * FROM notifications WHERE id = ?").bind(notificationId).first<Row>();
   if (!row) return { row: null, response: fail(c, 404, "NOTIFICATION_NOT_FOUND", "Notification was not found.") };
+  if (!(await notificationModuleVisible(c.env.DB, String(row.module_key ?? "general")))) return { row: null, response: fail(c, 404, "NOTIFICATION_NOT_FOUND", "Notification was not found.") };
   const scoped = await filterNotificationsByUserScope(c.env.DB, c.get("currentUser"), [row]);
   if (!scoped.length) return { row: null, response: fail(c, 404, "NOTIFICATION_NOT_FOUND", "Notification was not found.") };
   return { row, response: null };

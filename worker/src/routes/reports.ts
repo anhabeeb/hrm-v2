@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { disabledModuleResponse, isOperationalModuleEnabled } from "../utils/module-enforcement";
 
 type ReportRow = Record<string, unknown>;
 
@@ -683,6 +684,14 @@ function maskSensitiveReportFields(c: Context<AppBindings>, config: ReportConfig
     }
     return masked;
   });
+}
+
+async function reportModuleEnabled(c: Context<AppBindings>, config: ReportConfig) {
+  return isOperationalModuleEnabled(c.env.DB, config.module);
+}
+
+async function requireReportModuleEnabled(c: Context<AppBindings>, config: ReportConfig) {
+  return (await reportModuleEnabled(c, config)) ? null : disabledModuleResponse(c, config.module, config.label);
 }
 
 async function applyReportEmployeeScope(c: Context<AppBindings>, conditions: string[], bindings: unknown[], moduleKey: string, employeeAlias = "e", employeeColumn?: string) {
@@ -2327,15 +2336,20 @@ reportRoutes.get("/dashboard", async (c) => {
   if (!hasAny(c, ["reports.view"])) {
     return fail(c, 403, "FORBIDDEN", "You do not have permission to view reports.");
   }
-  return ok(c, {
-    reports: Object.entries(reportConfigs).map(([key, config]) => ({
+  const reports = [];
+  for (const [key, config] of Object.entries(reportConfigs)) {
+    if (!(await reportModuleEnabled(c, config))) continue;
+    reports.push({
       key,
       label: config.label,
       group: config.group,
       module: config.module,
       can_view: canViewReport(c, config),
       can_export: canExportReport(c, config)
-    }))
+    });
+  }
+  return ok(c, {
+    reports
   });
 });
 
@@ -2374,6 +2388,8 @@ reportRoutes.get("/export-logs/:exportId/download", async (c) => {
 
 Object.entries(reportConfigs).forEach(([reportKey, config]) => {
   reportRoutes.get(`/${reportKey}`, async (c) => {
+    const disabled = await requireReportModuleEnabled(c, config);
+    if (disabled) return disabled;
     const denied = requireReportPermission(c, config);
     if (denied) return denied;
     const result = await runConfiguredReport(c, reportKey, config);
@@ -2382,6 +2398,8 @@ Object.entries(reportConfigs).forEach(([reportKey, config]) => {
   });
 
   reportRoutes.get(`/${reportKey}/export.csv`, async (c) => {
+    const disabled = await requireReportModuleEnabled(c, config);
+    if (disabled) return disabled;
     const denied = requireReportPermission(c, config, "export");
     if (denied) return denied;
     const result = await runConfiguredReport(c, reportKey, config);
@@ -2393,6 +2411,8 @@ Object.entries(reportConfigs).forEach(([reportKey, config]) => {
   });
 
   reportRoutes.post(`/${reportKey}/export`, async (c) => {
+    const disabled = await requireReportModuleEnabled(c, config);
+    if (disabled) return disabled;
     const denied = requireReportPermission(c, config, "export");
     if (denied) return denied;
     const body = await c.req.json().catch(() => ({})) as { export_format?: string };

@@ -127,6 +127,7 @@ async function getEnabledModules(db: D1Database): Promise<ModuleEnablement> {
     onboardingControl,
     offboardingControl,
     assetsControl,
+    zktecoControl,
     attendanceSettings,
     zktecoSettings,
     rosterIgnored,
@@ -146,7 +147,8 @@ async function getEnabledModules(db: D1Database): Promise<ModuleEnablement> {
     moduleControlEnabled(db, "approvals"),
     moduleControlEnabled(db, "onboarding"),
     moduleControlEnabled(db, "offboarding"),
-    moduleControlEnabled(db, "assets"),
+    moduleControlEnabled(db, "assets_uniforms"),
+    moduleControlEnabled(db, "zkteco_attendance"),
     settingEnabled(db, "attendance_settings", "attendance_settings_default", "module_enabled", true),
     settingEnabled(db, "attendance_device_settings", "attendance_device_settings_default", "zkteco_csv_import_enabled", true),
     settingEnabled(db, "roster_settings", "roster_settings_default", "module_enabled", true),
@@ -162,7 +164,7 @@ async function getEnabledModules(db: D1Database): Promise<ModuleEnablement> {
 
   return {
     attendance: attendanceControl && attendanceSettings,
-    attendance_zkteco: attendanceControl && attendanceSettings && zktecoSettings,
+    attendance_zkteco: attendanceControl && zktecoControl && attendanceSettings && zktecoSettings,
     leave: leaveControl,
     payroll: payrollControl && payrollSettings.module_enabled,
     payroll_payslips: payrollControl && payrollSettings.module_enabled && payrollSettings.payslips_enabled,

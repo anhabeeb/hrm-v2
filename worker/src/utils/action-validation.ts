@@ -16,6 +16,7 @@ import {
 } from "../lib/moduleValidation";
 import type { AppBindings } from "../types";
 import { fail } from "./http";
+import { disabledModuleResponse, isOperationalModuleEnabled } from "./module-enforcement";
 
 export {
   hasValidationErrors,
@@ -51,14 +52,9 @@ export function validateIdReference(value: unknown, field: string, label: string
   return validateRequiredField(value, field, label);
 }
 
-async function moduleEnabled(db: AppBindings["Bindings"]["DB"], moduleKey: string) {
-  const row = await db.prepare("SELECT is_enabled, status FROM module_control_settings WHERE module_key = ?").bind(moduleKey).first<{ is_enabled: number; status: string | null }>();
-  return !row || (Number(row.is_enabled ?? 1) === 1 && String(row.status ?? "ENABLED") !== "DISABLED");
-}
-
 export async function validateModuleEnabledForAction(c: Context<AppBindings>, moduleKey: string) {
-  const enabled = await moduleEnabled(c.env.DB, moduleKey);
-  return enabled ? null : fail(c, 403, "MODULE_DISABLED", "This action is unavailable because the module is disabled.");
+  const enabled = await isOperationalModuleEnabled(c.env.DB, moduleKey);
+  return enabled ? null : disabledModuleResponse(c, moduleKey);
 }
 
 export async function validateEmployeeActionScope(c: Context<AppBindings>, employeeId: string, moduleKey: string, action: "view" | "manage" = "manage") {

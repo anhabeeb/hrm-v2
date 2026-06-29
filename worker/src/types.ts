@@ -38,6 +38,7 @@ export interface SafeUser {
 export interface AuthUser extends SafeUser {
   roles: string[];
   permissions: string[];
+  module_visibility?: Record<string, boolean>;
 }
 
 export interface JwtPayload {

@@ -5,6 +5,7 @@ import { getChangesSinceVersion, getCurrentSyncVersion, pullChangedEntitiesForUs
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings } from "../types";
 import { fail, ok } from "../utils/http";
+import { getModuleVisibilityForUser } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 export const syncRoutes = new Hono<AppBindings>();
@@ -13,34 +14,12 @@ syncRoutes.use("*", requireAuth);
 
 const CACHE_SCHEMA_VERSION = 1;
 
-const MODULE_VISIBILITY_PERMISSIONS: Record<string, string[]> = {
-  employees: ["employees.view"],
-  employee_360: ["employees.view"],
-  leave: ["leave.view", "employees.leave.view", "self_service.leave.view"],
-  attendance: ["attendance.view", "employees.attendance.view", "self_service.attendance.view"],
-  roster: ["roster.view", "employees.roster.view", "self_service.roster.view"],
-  payroll: ["payroll.view", "employees.payroll.view", "self_service.payroll.view"],
-  documents: ["documents.view", "self_service.documents.compliance.view"],
-  contracts: ["contracts.view", "employees.contracts.view", "self_service.contracts.view"],
-  assets_uniforms: ["assets.view", "employees.assets.view", "self_service.assets.view"],
-  final_settlement: ["final_settlement.view", "employees.final_settlement.view"],
-  approvals: ["approvals.view", "approvals.inbox.view", "self_service.approvals.view"],
-  reports: ["reports.view"],
-  self_service: ["self_service.view"],
-  admin_settings: ["admin.settings_hub.view", "settings.view"]
-};
-
-function visibleModules(userPermissions: string[], isOwner: boolean) {
-  return Object.fromEntries(
-    Object.entries(MODULE_VISIBILITY_PERMISSIONS).map(([moduleKey, permissions]) => [
-      moduleKey,
-      isOwner || permissions.some((permission) => userPermissions.includes(permission))
-    ])
-  );
+async function visibleModules(db: AppBindings["Bindings"]["DB"], user: AppBindings["Variables"]["currentUser"]) {
+  return getModuleVisibilityForUser(db, user);
 }
 
-function canOpenModule(moduleKey: string, userPermissions: string[], isOwner: boolean) {
-  const visibility = visibleModules(userPermissions, isOwner);
+async function canOpenModule(db: AppBindings["Bindings"]["DB"], moduleKey: string, user: AppBindings["Variables"]["currentUser"]) {
+  const visibility = await visibleModules(db, user);
   return Boolean(visibility[moduleKey]);
 }
 
@@ -51,9 +30,10 @@ function parseModules(value: string | undefined) {
 syncRoutes.get("/bootstrap", async (c) => {
   const user = c.get("currentUser");
   const settings = await getSecuritySessionSettings(c.env.DB);
+  const moduleVisibility = await visibleModules(c.env.DB, user);
   return ok(c, {
-    user,
-    module_visibility: visibleModules(user.permissions, user.is_owner),
+    user: { ...user, module_visibility: moduleVisibility },
+    module_visibility: moduleVisibility,
     settings_summary: {
       idle_timeout_enabled: settings.idle_timeout_enabled,
       idle_timeout_minutes: settings.idle_timeout_minutes,
@@ -69,7 +49,7 @@ syncRoutes.get("/bootstrap", async (c) => {
 syncRoutes.get("/module/:moduleKey", async (c) => {
   const user = c.get("currentUser");
   const moduleKey = c.req.param("moduleKey");
-  if (!canOpenModule(moduleKey, user.permissions, user.is_owner)) {
+  if (!(await canOpenModule(c.env.DB, moduleKey, user))) {
     return fail(c, 404, "SYNC_MODULE_NOT_FOUND", "Module data was not found.");
   }
   return ok(c, {
@@ -110,7 +90,7 @@ syncRoutes.post("/pull", async (c) => {
   const entityType = readString(body.entity_type) || readString(body.entityType);
   const entityId = readString(body.entity_id) || readString(body.entityId);
   if (!moduleKey && !entityType) return fail(c, 400, "SYNC_PULL_INVALID", "Module or entity type is required.");
-  if (moduleKey && !canOpenModule(moduleKey, c.get("currentUser").permissions, c.get("currentUser").is_owner)) {
+  if (moduleKey && !(await canOpenModule(c.env.DB, moduleKey, c.get("currentUser")))) {
     return fail(c, 404, "SYNC_MODULE_NOT_FOUND", "Module data was not found.");
   }
   return ok(c, {

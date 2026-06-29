@@ -45,7 +45,7 @@ function getErrorMessage(error: unknown) {
 
 export function isModuleDisabledError(error: unknown) {
   const code = getErrorCode(error).toUpperCase();
-  return code.includes("MODULE_DISABLED") || code.includes("NOT_AVAILABLE") || /module.+disabled/i.test(getErrorMessage(error));
+  return code.includes("MODULE_DISABLED") || code.includes("SUBMODULE_DISABLED") || code.includes("NOT_AVAILABLE") || /module.+disabled/i.test(getErrorMessage(error));
 }
 
 export function mapApiErrorToAlert(error: unknown, fallbackTitle = "Request failed"): PopupAlertInput {

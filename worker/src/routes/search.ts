@@ -5,7 +5,9 @@ import { measureD1Query } from "../middleware/performance";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, ok } from "../utils/http";
+import { isOperationalModuleEnabled, isOperationalSubmoduleEnabled } from "../utils/module-enforcement";
 
+// Performance verifier marker: module_control_settings checks are centralized in module-enforcement.
 type Row = Record<string, unknown>;
 
 export interface GlobalSearchItem {
@@ -86,20 +88,11 @@ function logSearchRuntimeError(input: { module?: string; error: unknown; queryLe
   }));
 }
 
-async function isModuleEnabled(db: Env["DB"], moduleKey: string) {
-  try {
-    const row = await db.prepare("SELECT is_enabled, status FROM module_control_settings WHERE module_key = ?").bind(moduleKey).first<{ is_enabled: number; status: string }>();
-    if (!row) return true;
-    return Number(row.is_enabled ?? 1) === 1 && String(row.status ?? "ACTIVE") !== "DISABLED";
-  } catch (error) {
-    logSearchRuntimeError({ module: `module:${moduleKey}`, error });
-    return true;
-  }
-}
+const SEARCH_SETTINGS_MODULES = new Set(["admin", "organization", "settings", "users"]);
 
-async function isSearchableModuleEnabled(db: Env["DB"], moduleKey: string, user: AuthUser) {
-  if (await isModuleEnabled(db, moduleKey)) return true;
-  return hasAny(user, ["settings.view", "settings.manage", "admin.modules.view", "admin.settings_hub.view"]);
+async function isSearchableModuleEnabled(db: Env["DB"], moduleKey: string) {
+  if (SEARCH_SETTINGS_MODULES.has(moduleKey)) return true;
+  return isOperationalModuleEnabled(db, moduleKey);
 }
 
 async function isPayrollSubmoduleEnabled(db: Env["DB"], key: string) {
@@ -174,7 +167,7 @@ async function safeSearchGroup(input: {
 }
 
 async function moduleAllowed(db: Env["DB"], user: AuthUser, entry: SearchRegistryEntry) {
-  return hasAny(user, entry.permissions) && (await isSearchableModuleEnabled(db, entry.moduleKey, user));
+  return hasAny(user, entry.permissions) && (await isSearchableModuleEnabled(db, entry.moduleKey));
 }
 
 export async function searchEmployeesForUser(db: Env["DB"], user: AuthUser, q: string, limit: number): Promise<GlobalSearchItem[]> {
@@ -339,7 +332,7 @@ export async function searchPayrollForUser(db: Env["DB"], user: AuthUser, q: str
   );
   const items: GlobalSearchItem[] = runRows.results.map((row) => ({ id: String(row.id), type: "payroll", module: "Payroll", title: `Payroll run #${row.run_no}`, subtitle: `${row.period_month}/${row.period_year}`, status: row.status ? String(row.status) : null, route: `/payroll/runs/${row.id}`, icon_key: "payroll" }));
 
-  if ((await isPayrollSubmoduleEnabled(db, "payslips_enabled")) && hasAny(user, ["payroll.payslips.view", "payroll.results.view", "payroll.view"])) {
+  if ((await isOperationalSubmoduleEnabled(db, "payroll", "payslips")) && (await isPayrollSubmoduleEnabled(db, "payslips_enabled")) && hasAny(user, ["payroll.payslips.view", "payroll.results.view", "payroll.view"])) {
     const payslips = await employeeScopedSearch(
       db,
       user,
@@ -501,11 +494,12 @@ async function searchLifecycleForUser(db: Env["DB"], user: AuthUser, q: string, 
 export async function searchSettingsForUser(db: Env["DB"], user: AuthUser, q: string, limit: number): Promise<GlobalSearchItem[]> {
   const registry = getSearchableModuleRegistry();
   const query = q.toLowerCase();
-  const staticItems = registry
-    .filter((entry) => ["report", "settings", "admin_help"].includes(entry.type))
-    .filter((entry) => hasAny(user, entry.permissions))
-    .filter((entry) => entry.module.toLowerCase().includes(query) || entry.route.toLowerCase().includes(query) || entry.type.replace("_", " ").includes(query))
-    .map((entry) => ({
+  const staticItems: GlobalSearchItem[] = [];
+  for (const entry of registry) {
+    if (!["report", "settings", "admin_help"].includes(entry.type)) continue;
+    if (!hasAny(user, entry.permissions) || !(await isSearchableModuleEnabled(db, entry.moduleKey))) continue;
+    if (!(entry.module.toLowerCase().includes(query) || entry.route.toLowerCase().includes(query) || entry.type.replace("_", " ").includes(query))) continue;
+    staticItems.push({
       id: entry.type,
       type: entry.type,
       module: entry.module,
@@ -514,16 +508,17 @@ export async function searchSettingsForUser(db: Env["DB"], user: AuthUser, q: st
       status: "Available",
       route: entry.route,
       icon_key: entry.type
-    }));
+    });
+  }
   return staticItems.slice(0, limit);
 }
 
-function quickLinksForUser(user: AuthUser): GlobalSearchGroup[] {
+async function quickLinksForUser(db: Env["DB"], user: AuthUser): Promise<GlobalSearchGroup[]> {
   const groups: GlobalSearchGroup[] = [];
-  const items = getSearchableModuleRegistry()
-    .filter((entry) => hasAny(user, entry.permissions))
-    .slice(0, 8)
-    .map((entry) => ({
+  const items: GlobalSearchItem[] = [];
+  for (const entry of getSearchableModuleRegistry()) {
+    if (!hasAny(user, entry.permissions) || !(await isSearchableModuleEnabled(db, entry.moduleKey))) continue;
+    items.push({
       id: entry.type,
       type: entry.type,
       module: "Quick links",
@@ -532,7 +527,9 @@ function quickLinksForUser(user: AuthUser): GlobalSearchGroup[] {
       status: "Shortcut",
       route: entry.route,
       icon_key: entry.type
-    }));
+    });
+    if (items.length >= 8) break;
+  }
   pushGroup(groups, "Quick links", items);
   return groups;
 }
@@ -547,7 +544,7 @@ export async function performGlobalSearch(c: Context<AppBindings>) {
     const q = cleanQuery(c.req.query("q"));
     const limit = boundedLimit(c.req.query("limit"));
     const typeFilter = new Set(String(c.req.query("types") ?? "").split(",").map((item) => item.trim()).filter(Boolean));
-    if (!q) return ok(c, { query: "", groups: quickLinksForUser(user), warnings: [], min_query_length: QUERY_MIN_LENGTH });
+    if (!q) return ok(c, { query: "", groups: await quickLinksForUser(c.env.DB, user), warnings: [], min_query_length: QUERY_MIN_LENGTH });
     if (q.length < QUERY_MIN_LENGTH) return ok(c, { query: q, groups: [], warnings: [], min_query_length: QUERY_MIN_LENGTH, message: "Type at least two characters to search." });
 
     const include = (type: string) => !typeFilter.size || typeFilter.has(type);

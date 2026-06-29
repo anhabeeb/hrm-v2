@@ -493,7 +493,7 @@ async function loadOptionalOnboardingWorkspaceSection<T>(
   if (options.moduleKey && options.moduleStatuses[options.moduleKey] === false) {
     return {
       value: options.fallback,
-      state: workspaceSectionState("DISABLED", options.label, `${options.label} is disabled or not required for this onboarding workspace.`, options.moduleKey, permissions)
+      state: workspaceSectionState("DISABLED", options.label, `This setup is not required because the module is disabled. ${options.label} will not block onboarding activation.`, options.moduleKey, permissions)
     };
   }
   if (permissions.length > 0 && !hasAny(c, permissions)) {

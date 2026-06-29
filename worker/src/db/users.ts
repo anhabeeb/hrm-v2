@@ -1,4 +1,5 @@
 import type { AuthUser, DbUser, Env, SafeUser, UserStatus } from "../types";
+import { getModuleVisibilityForUser } from "../utils/module-enforcement";
 
 interface RoleRow {
   name: string;
@@ -74,10 +75,13 @@ export async function getPermissionsForUser(db: Env["DB"], userId: string) {
 }
 
 export async function toAuthUser(db: Env["DB"], user: DbUser): Promise<AuthUser> {
+  const roles = await getRolesForUser(db, user.id);
+  const permissions = await getPermissionsForUser(db, user.id);
   return {
     ...toSafeUser(user),
-    roles: await getRolesForUser(db, user.id),
-    permissions: await getPermissionsForUser(db, user.id)
+    roles,
+    permissions,
+    module_visibility: await getModuleVisibilityForUser(db, { permissions, is_owner: user.is_owner === 1 })
   };
 }
 

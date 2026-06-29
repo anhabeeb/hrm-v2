@@ -14,6 +14,7 @@ export interface AuthUser {
   roles: string[];
   role_ids?: string[];
   permissions: string[];
+  module_visibility?: Record<string, boolean>;
 }
 
 export interface AccessUser extends Omit<AuthUser, "permissions"> {

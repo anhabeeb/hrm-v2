@@ -10,6 +10,7 @@ import { validationMessageToIssue } from "../utils/import-validation";
 import { buildCsv, buildPdfReport, buildXlsxReport, buildXlsxTemplate, friendlyColumnLabel, type ExcelValidationRule } from "../utils/report-export";
 import { parseXlsxTemplateSheet } from "../utils/xlsx-import";
 import { fail, getClientIp, ok } from "../utils/http";
+import { disabledModuleResponse, disabledSubmoduleResponse, isOperationalModuleEnabled, isOperationalSubmoduleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 type ImportMode = "CREATE_ONLY" | "UPDATE_ONLY" | "UPSERT" | "VALIDATE_ONLY";
@@ -23,6 +24,7 @@ type ImportTypeDefinition = {
   label: string;
   category: string;
   moduleKey: string;
+  submoduleKey?: string;
   description: string;
   duplicateKey: string[];
   requiredColumns: string[];
@@ -39,6 +41,7 @@ type ExportTypeDefinition = {
   label: string;
   category: string;
   moduleKey: string;
+  submoduleKey?: string;
   columns: string[];
   source: "table" | "placeholder" | "report_export_logs";
   table?: string;
@@ -121,10 +124,10 @@ const importTypes: ImportTypeDefinition[] = [
   { key: "roster_assignments", label: "Roster assignments", category: "Roster", moduleKey: "roster", description: "Validate roster rows by employee/date/shift/worksite.", duplicateKey: ["employee_number", "date", "shift_code", "worksite_code"], requiredColumns: ["employee_number", "date", "shift_code", "worksite_code"], sensitiveColumns: [], protectedColumns: [], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "date", required: true, note: "YYYY-MM-DD" }, { key: "shift_code", required: true }, { key: "worksite_code", required: true }]) },
   { key: "payroll_profiles", label: "Payroll profiles", category: "Payroll", moduleKey: "payroll", description: "Create/update payroll profile foundations by employee_number.", duplicateKey: ["employee_number"], requiredColumns: ["employee_number"], sensitiveColumns: ["basic_salary", "bank_account_number"], protectedColumns: ["basic_salary"], createAllowed: true, updateAllowed: true, upsertAllowed: true, columns: cols([{ key: "employee_number", required: true }, { key: "basic_salary", sensitive: true }, "currency", { key: "payment_method", enumKey: "payment_method" }, { key: "payroll_included", enumKey: "boolean" }]) },
   { key: "salary_components", label: "Salary components", category: "Payroll", moduleKey: "payroll", description: "Validate salary component rows for module-specific assignment.", duplicateKey: ["employee_number", "component_code"], requiredColumns: ["employee_number", "component_code", "amount"], sensitiveColumns: ["amount"], protectedColumns: ["amount"], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "component_code", required: true }, { key: "amount", required: true, sensitive: true }, "effective_date"]) },
-  { key: "payment_methods", label: "Payment methods", category: "Payroll", moduleKey: "payroll", description: "Validate employee payment method rows.", duplicateKey: ["employee_number", "payment_method_type", "payment_institution_code"], requiredColumns: ["employee_number", "payment_method_type"], sensitiveColumns: ["account_number"], protectedColumns: ["account_number"], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "payment_method_type", required: true, enumKey: "payment_method_type" }, "payment_institution_code", "account_name", { key: "account_number", sensitive: true }, { key: "is_primary", enumKey: "boolean" }, { key: "allocation_type", enumKey: "allocation_type" }, "allocation_percentage"]) },
-  { key: "bank_loans", label: "Bank loans", category: "Payroll", moduleKey: "payroll", description: "Validate employee bank loans by employee/institution/reference.", duplicateKey: ["employee_number", "payment_institution_code", "loan_reference_number"], requiredColumns: ["employee_number", "payment_institution_code", "loan_reference_number", "monthly_installment_amount"], sensitiveColumns: ["loan_reference_number", "monthly_installment_amount"], protectedColumns: ["loan_reference_number"], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "payment_institution_code", required: true }, { key: "loan_reference_number", required: true, sensitive: true }, { key: "monthly_installment_amount", required: true, sensitive: true }, "status", "approval_status"]) },
-  { key: "pension_profiles", label: "Pension profiles", category: "Payroll", moduleKey: "payroll", description: "Validate pension profile rows.", duplicateKey: ["employee_number", "pension_scheme_code"], requiredColumns: ["employee_number", "pension_scheme_code", "pension_member_id"], sensitiveColumns: ["pension_member_id"], protectedColumns: ["pension_member_id"], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "pension_scheme_code", required: true }, { key: "pension_member_id", required: true, sensitive: true }, "enrollment_status", "effective_date"]) },
-  { key: "custom_deductions", label: "Custom deductions", category: "Payroll", moduleKey: "payroll", description: "Validate custom deduction rows.", duplicateKey: ["employee_number", "template_code", "effective_date"], requiredColumns: ["employee_number", "template_code", "effective_date"], sensitiveColumns: ["amount"], protectedColumns: ["amount"], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "template_code", required: true }, { key: "effective_date", required: true }, { key: "amount", sensitive: true }]) },
+  { key: "payment_methods", label: "Payment methods", category: "Payroll", moduleKey: "payroll", submoduleKey: "payment_methods", description: "Validate employee payment method rows.", duplicateKey: ["employee_number", "payment_method_type", "payment_institution_code"], requiredColumns: ["employee_number", "payment_method_type"], sensitiveColumns: ["account_number"], protectedColumns: ["account_number"], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "payment_method_type", required: true, enumKey: "payment_method_type" }, "payment_institution_code", "account_name", { key: "account_number", sensitive: true }, { key: "is_primary", enumKey: "boolean" }, { key: "allocation_type", enumKey: "allocation_type" }, "allocation_percentage"]) },
+  { key: "bank_loans", label: "Bank loans", category: "Payroll", moduleKey: "payroll", submoduleKey: "bank_loans", description: "Validate employee bank loans by employee/institution/reference.", duplicateKey: ["employee_number", "payment_institution_code", "loan_reference_number"], requiredColumns: ["employee_number", "payment_institution_code", "loan_reference_number", "monthly_installment_amount"], sensitiveColumns: ["loan_reference_number", "monthly_installment_amount"], protectedColumns: ["loan_reference_number"], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "payment_institution_code", required: true }, { key: "loan_reference_number", required: true, sensitive: true }, { key: "monthly_installment_amount", required: true, sensitive: true }, "status", "approval_status"]) },
+  { key: "pension_profiles", label: "Pension profiles", category: "Payroll", moduleKey: "payroll", submoduleKey: "pension", description: "Validate pension profile rows.", duplicateKey: ["employee_number", "pension_scheme_code"], requiredColumns: ["employee_number", "pension_scheme_code", "pension_member_id"], sensitiveColumns: ["pension_member_id"], protectedColumns: ["pension_member_id"], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "pension_scheme_code", required: true }, { key: "pension_member_id", required: true, sensitive: true }, "enrollment_status", "effective_date"]) },
+  { key: "custom_deductions", label: "Custom deductions", category: "Payroll", moduleKey: "payroll", submoduleKey: "custom_deductions", description: "Validate custom deduction rows.", duplicateKey: ["employee_number", "template_code", "effective_date"], requiredColumns: ["employee_number", "template_code", "effective_date"], sensitiveColumns: ["amount"], protectedColumns: ["amount"], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "template_code", required: true }, { key: "effective_date", required: true }, { key: "amount", sensitive: true }]) },
   { key: "assets", label: "Assets", category: "Assets & Uniforms", moduleKey: "assets", description: "Validate asset registry rows by asset_code.", duplicateKey: ["asset_code"], requiredColumns: ["asset_code", "name"], sensitiveColumns: ["purchase_value"], protectedColumns: [], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "asset_code", required: true }, "category_code", { key: "name", required: true }, "serial_number", "purchase_date", { key: "purchase_value", sensitive: true }, "status"]) },
   { key: "uniform_stock", label: "Uniform stock", category: "Assets & Uniforms", moduleKey: "assets", description: "Validate uniform stock rows.", duplicateKey: ["uniform_type_code", "size_label", "worksite_code"], requiredColumns: ["uniform_type_code", "size_label", "total_quantity", "available_quantity"], sensitiveColumns: [], protectedColumns: [], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "uniform_type_code", required: true }, { key: "size_label", required: true }, "worksite_code", { key: "total_quantity", required: true }, { key: "available_quantity", required: true }]) },
   { key: "contracts", label: "Contracts", category: "Contracts", moduleKey: "contracts", description: "Validate contract metadata rows.", duplicateKey: ["employee_number", "contract_number"], requiredColumns: ["employee_number", "contract_number"], sensitiveColumns: ["salary_amount"], protectedColumns: ["salary_amount"], createAllowed: true, updateAllowed: true, upsertAllowed: true, placeholderOnly: true, columns: cols([{ key: "employee_number", required: true }, { key: "contract_number", required: true }, "contract_type_code", "start_date", "end_date", { key: "salary_amount", sensitive: true }]) },
@@ -140,11 +143,11 @@ const exportTypes: ExportTypeDefinition[] = [
   { key: "attendance", label: "Attendance", category: "Attendance", moduleKey: "attendance", columns: ["employee_id", "attendance_date", "status", "payroll_impact_status"], source: "table", table: "attendance_daily_records" },
   { key: "roster", label: "Roster", category: "Roster", moduleKey: "roster", columns: ["employee_id", "assignment_date", "status", "location_id"], source: "table", table: "roster_assignments" },
   { key: "payroll", label: "Payroll", category: "Payroll", moduleKey: "payroll", sensitive: true, columns: ["payroll_run_id", "employee_id", "gross_salary", "total_deductions", "net_salary", "status"], source: "table", table: "payroll_employee_results" },
-  { key: "payslips_metadata", label: "Payslips metadata", category: "Payroll", moduleKey: "payroll", sensitive: true, columns: ["payroll_run_id", "employee_id", "status", "created_at"], source: "table", table: "payroll_payslips" },
-  { key: "payment_methods", label: "Payment methods", category: "Payroll", moduleKey: "payroll", sensitive: true, columns: ["employee_id", "payment_method_type", "payment_institution_id", "bank_account_number_masked", "status"], source: "table", table: "employee_payment_methods" },
-  { key: "bank_loans", label: "Bank loans", category: "Payroll", moduleKey: "payroll", sensitive: true, columns: ["employee_id", "payment_institution_id", "loan_reference_number", "monthly_installment_amount", "status"], source: "table", table: "employee_bank_loans" },
-  { key: "pension", label: "Pension", category: "Payroll", moduleKey: "payroll", sensitive: true, columns: ["employee_id", "pension_scheme_id", "pension_member_id", "status"], source: "table", table: "employee_pension_profiles" },
-  { key: "custom_deductions", label: "Custom deductions", category: "Payroll", moduleKey: "payroll", sensitive: true, columns: ["employee_id", "template_id", "status", "created_at"], source: "table", table: "employee_custom_deductions" },
+  { key: "payslips_metadata", label: "Payslips metadata", category: "Payroll", moduleKey: "payroll", submoduleKey: "payslips", sensitive: true, columns: ["payroll_run_id", "employee_id", "status", "created_at"], source: "table", table: "payroll_payslips" },
+  { key: "payment_methods", label: "Payment methods", category: "Payroll", moduleKey: "payroll", submoduleKey: "payment_methods", sensitive: true, columns: ["employee_id", "payment_method_type", "payment_institution_id", "bank_account_number_masked", "status"], source: "table", table: "employee_payment_methods" },
+  { key: "bank_loans", label: "Bank loans", category: "Payroll", moduleKey: "payroll", submoduleKey: "bank_loans", sensitive: true, columns: ["employee_id", "payment_institution_id", "loan_reference_number", "monthly_installment_amount", "status"], source: "table", table: "employee_bank_loans" },
+  { key: "pension", label: "Pension", category: "Payroll", moduleKey: "payroll", submoduleKey: "pension", sensitive: true, columns: ["employee_id", "pension_scheme_id", "pension_member_id", "status"], source: "table", table: "employee_pension_profiles" },
+  { key: "custom_deductions", label: "Custom deductions", category: "Payroll", moduleKey: "payroll", submoduleKey: "custom_deductions", sensitive: true, columns: ["employee_id", "template_id", "status", "created_at"], source: "table", table: "employee_custom_deductions" },
   { key: "final_settlement", label: "Final settlement", category: "Exit Payroll", moduleKey: "final_settlement", sensitive: true, columns: ["settlement_number", "employee_id", "status", "net_settlement_amount"], source: "table", table: "final_settlement_cases" },
   { key: "contracts", label: "Contracts", category: "Contracts", moduleKey: "contracts", sensitive: true, columns: ["employee_id", "contract_number", "status", "start_date", "end_date"], source: "table", table: "employee_contracts" },
   { key: "document_compliance", label: "Document compliance", category: "Documents", moduleKey: "documents", sensitive: true, columns: ["employee_id", "document_type_id", "status", "expiry_date"], source: "table", table: "employee_documents" },
@@ -313,6 +316,43 @@ function getDataImportTypeDefinition(importType: string) {
 
 function getDataExportTypeDefinition(exportType: string) {
   return exportTypes.find((definition) => definition.key === exportType) ?? null;
+}
+
+async function dataTransferDefinitionEnabled(c: Context<AppBindings>, definition: { moduleKey: string; submoduleKey?: string }) {
+  return definition.submoduleKey
+    ? isOperationalSubmoduleEnabled(c.env.DB, definition.moduleKey, definition.submoduleKey)
+    : isOperationalModuleEnabled(c.env.DB, definition.moduleKey);
+}
+
+function dataTransferDisabledResponse(c: Context<AppBindings>, definition: { moduleKey: string; submoduleKey?: string; label: string }) {
+  return definition.submoduleKey
+    ? disabledSubmoduleResponse(c, definition.moduleKey, definition.submoduleKey, definition.label)
+    : disabledModuleResponse(c, definition.moduleKey, definition.label);
+}
+
+async function enabledImportTypes(c: Context<AppBindings>) {
+  const enabled: ImportTypeDefinition[] = [];
+  for (const definition of importTypes) {
+    if (await dataTransferDefinitionEnabled(c, definition)) enabled.push(definition);
+  }
+  return enabled;
+}
+
+async function enabledExportTypes(c: Context<AppBindings>) {
+  const enabled: ExportTypeDefinition[] = [];
+  for (const definition of exportTypes) {
+    if (await dataTransferDefinitionEnabled(c, definition)) enabled.push(definition);
+  }
+  return enabled;
+}
+
+async function importDefinitionForBatch(c: Context<AppBindings>, batchId: string) {
+  const batch = await c.env.DB.prepare("SELECT import_type FROM data_import_batches WHERE id = ?").bind(batchId).first<{ import_type: string }>();
+  if (!batch) return { missing: true as const };
+  const definition = getDataImportTypeDefinition(batch.import_type);
+  if (!definition) return { missing: true as const };
+  if (!(await dataTransferDefinitionEnabled(c, definition))) return { disabled: dataTransferDisabledResponse(c, definition) };
+  return { definition };
 }
 
 function getImportDuplicateKey(definition: ImportTypeDefinition) {
@@ -541,6 +581,7 @@ async function createDataImportRowResult(db: Env["DB"], batchId: string, rowNumb
 async function createDataImportBatch(c: Context<AppBindings>, input: { importType: string; importMode: ImportMode; csvText?: string | null; file?: File | null; sourceFileName?: string | null; notes?: string | null; reason?: string | null }) {
   const definition = getDataImportTypeDefinition(input.importType);
   if (!definition) return { error: fail(c, 400, "IMPORT_TYPE_UNKNOWN", "Unknown import type.") };
+  if (!(await dataTransferDefinitionEnabled(c, definition))) return { error: dataTransferDisabledResponse(c, definition) };
   const settings = await getDataTransferSettings(c.env.DB);
   if (settings.data_import_enabled !== 1) return { error: fail(c, 403, "DATA_IMPORT_DISABLED", "Data import is disabled.") };
   if (definition.sensitiveColumns.length && settings.sensitive_import_requires_permission === 1 && !enforceDataImportPermission(c, "sensitive")) return { error: fail(c, 403, "SENSITIVE_IMPORT_PERMISSION_REQUIRED", "Sensitive import permission is required.") };
@@ -800,6 +841,7 @@ function applyDataExportSensitiveMasking(definition: ExportTypeDefinition, row: 
 async function runDataExport(c: Context<AppBindings>, exportType: string, input: { reason?: string | null; format?: ExportFormat | string | null }) {
   const definition = getDataExportTypeDefinition(exportType);
   if (!definition) return { error: fail(c, 400, "EXPORT_TYPE_UNKNOWN", "Unknown export type.") };
+  if (!(await dataTransferDefinitionEnabled(c, definition))) return { error: dataTransferDisabledResponse(c, definition) };
   const settings = await getDataTransferSettings(c.env.DB);
   if (settings.data_export_enabled !== 1) return { error: fail(c, 403, "DATA_EXPORT_DISABLED", "Data export is disabled.") };
   const permissionError = validateDataExportPermission(c, definition, input.reason ?? null);
@@ -876,26 +918,42 @@ function actionGuide(command: string, note: string) {
   return { command, note, browser_executable: false };
 }
 
-dataImportRoutes.get("/types", requireAnyPermission(["data_import.view", "data_import.manage"]), (c) => ok(c, { types: importTypes }));
-dataImportRoutes.get("/templates", requireAnyPermission(["data_import.view", "data_import.manage"]), (c) => ok(c, { templates: importTypes.map((definition) => getDataImportTemplate(definition.key)) }));
-dataImportRoutes.get("/templates/:importType", requireAnyPermission(["data_import.view", "data_import.manage"]), (c) => {
-  const template = getDataImportTemplate(c.req.param("importType"));
+dataImportRoutes.get("/types", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => ok(c, { types: await enabledImportTypes(c) }));
+dataImportRoutes.get("/templates", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => ok(c, { templates: (await enabledImportTypes(c)).map((definition) => getDataImportTemplate(definition.key)) }));
+dataImportRoutes.get("/templates/:importType", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
+  const definition = getDataImportTypeDefinition(c.req.param("importType"));
+  if (!definition) return fail(c, 404, "IMPORT_TYPE_NOT_FOUND", "Import template not found.");
+  if (!(await dataTransferDefinitionEnabled(c, definition))) return dataTransferDisabledResponse(c, definition);
+  const template = getDataImportTemplate(definition.key);
   return template ? ok(c, { template }) : fail(c, 404, "IMPORT_TYPE_NOT_FOUND", "Import template not found.");
 });
 dataImportRoutes.get("/templates/:importType/download", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
-  const csv = generateCsvImportTemplate(c.req.param("importType"));
+  const definition = getDataImportTypeDefinition(c.req.param("importType"));
+  if (!definition) return fail(c, 404, "IMPORT_TYPE_NOT_FOUND", "Import template not found.");
+  if (!(await dataTransferDefinitionEnabled(c, definition))) return dataTransferDisabledResponse(c, definition);
+  const csv = generateCsvImportTemplate(definition.key);
   if (!csv) return fail(c, 404, "IMPORT_TYPE_NOT_FOUND", "Import template not found.");
-  await auditDataImportAction(c, "data_import.template_downloaded", c.req.param("importType"));
-  return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="hrm-v2-${c.req.param("importType")}-import-template.csv"` } });
+  await auditDataImportAction(c, "data_import.template_downloaded", definition.key);
+  return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="hrm-v2-${definition.key}-import-template.csv"` } });
 });
 dataImportRoutes.get("/templates/:importType/download.xlsx", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
-  const xlsx = await generateExcelImportTemplate(c.env.DB, c.req.param("importType"));
+  const definition = getDataImportTypeDefinition(c.req.param("importType"));
+  if (!definition) return fail(c, 404, "IMPORT_TYPE_NOT_FOUND", "Import template not found.");
+  if (!(await dataTransferDefinitionEnabled(c, definition))) return dataTransferDisabledResponse(c, definition);
+  const xlsx = await generateExcelImportTemplate(c.env.DB, definition.key);
   if (!xlsx) return fail(c, 404, "IMPORT_TYPE_NOT_FOUND", "Import template not found.");
-  await auditDataImportAction(c, "data_import.excel_template_downloaded", c.req.param("importType"));
-  return new Response(xlsx, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="hrm-v2-${c.req.param("importType")}-import-template.xlsx"` } });
+  await auditDataImportAction(c, "data_import.excel_template_downloaded", definition.key);
+  return new Response(xlsx, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="hrm-v2-${definition.key}-import-template.xlsx"` } });
 });
-dataImportRoutes.get("/batches", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => ok(c, { batches: (await c.env.DB.prepare("SELECT * FROM data_import_batches ORDER BY created_at DESC LIMIT 100").all<ImportBatchRow>()).results }));
+dataImportRoutes.get("/batches", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
+  const enabledTypes = (await enabledImportTypes(c)).map((definition) => definition.key);
+  if (!enabledTypes.length) return ok(c, { batches: [] });
+  const placeholders = enabledTypes.map(() => "?").join(", ");
+  return ok(c, { batches: (await c.env.DB.prepare(`SELECT * FROM data_import_batches WHERE import_type IN (${placeholders}) ORDER BY created_at DESC LIMIT 100`).bind(...enabledTypes).all<ImportBatchRow>()).results });
+});
 dataImportRoutes.get("/batches/:batchId", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
+  const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
+  if ("disabled" in gate) return gate.disabled;
   const batch = await getDataImportBatchSummary(c.env.DB, c.req.param("batchId"));
   if (!batch) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
   const rows = await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? ORDER BY row_number LIMIT 200").bind(c.req.param("batchId")).all<ImportResultRow>();
@@ -910,18 +968,24 @@ dataImportRoutes.post("/batches", requireAnyPermission(["data_import.upload", "d
   return ok(c, { batch: result.batch }, 201);
 });
 dataImportRoutes.post("/batches/:batchId/validate", requireAnyPermission(["data_import.validate", "data_import.manage"]), async (c) => {
+  const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
+  if ("disabled" in gate) return gate.disabled;
   const batch = await validateDataImportBatch(c.env.DB, c.get("currentUser"), c.req.param("batchId"));
   if (!batch) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
   await auditDataImportAction(c, "data_import.validated", c.req.param("batchId"), undefined, batch);
   return ok(c, { batch });
 });
 dataImportRoutes.get("/batches/:batchId/validation-preview", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
+  const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
+  if ("disabled" in gate) return gate.disabled;
   const batch = await c.env.DB.prepare("SELECT * FROM data_import_batches WHERE id = ?").bind(c.req.param("batchId")).first<ImportBatchRow>();
   if (!batch) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
   const rows = await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? ORDER BY row_number LIMIT 300").bind(c.req.param("batchId")).all<ImportResultRow>();
   return ok(c, { preview: buildImportValidationPreview(batch, rows.results) });
 });
 dataImportRoutes.post("/batches/:batchId/apply", requireAnyPermission(["data_import.apply", "data_import.manage"]), async (c) => {
+  const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
+  if ("disabled" in gate) return gate.disabled;
   const body = await readJsonBody(c.req.raw) as { acknowledgement?: string; reason?: string };
   if ((await getDataTransferSettings(c.env.DB)).import_apply_requires_confirmation === 1 && body.acknowledgement !== "APPLY") return fail(c, 400, "IMPORT_APPLY_CONFIRMATION_REQUIRED", "Type APPLY before applying this import batch.");
   try {
@@ -944,16 +1008,26 @@ dataImportRoutes.post("/batches/:batchId/cancel", requireAnyPermission(["data_im
     return fail(c, 400, "IMPORT_CANCEL_FAILED", error instanceof Error ? error.message : "Unable to cancel import batch.");
   }
 });
-dataImportRoutes.get("/batches/:batchId/errors", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => ok(c, { errors: (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? AND validation_status IN ('INVALID','DUPLICATE') ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results.map(rowToApi) }));
-dataImportRoutes.get("/batches/:batchId/results", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => ok(c, { results: (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results.map(rowToApi) }));
+dataImportRoutes.get("/batches/:batchId/errors", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
+  const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
+  if ("disabled" in gate) return gate.disabled;
+  return ok(c, { errors: (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? AND validation_status IN ('INVALID','DUPLICATE') ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results.map(rowToApi) });
+});
+dataImportRoutes.get("/batches/:batchId/results", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
+  const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
+  if ("disabled" in gate) return gate.disabled;
+  return ok(c, { results: (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results.map(rowToApi) });
+});
 dataImportRoutes.get("/batches/:batchId/errors/download", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
+  const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
+  if ("disabled" in gate) return gate.disabled;
   const batch = await c.env.DB.prepare("SELECT * FROM data_import_batches WHERE id = ?").bind(c.req.param("batchId")).first<ImportBatchRow>();
   if (!batch) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
   const rows = (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? AND validation_status IN ('INVALID','DUPLICATE') ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results;
   return new Response(generateImportErrorCsv(batch, rows), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="hrm-v2-import-errors-${c.req.param("batchId")}.csv"` } });
 });
 
-dataExportRoutes.get("/types", requireAnyPermission(["data_export.view", "data_export.manage", "reports.view"]), (c) => ok(c, { types: exportTypes }));
+dataExportRoutes.get("/types", requireAnyPermission(["data_export.view", "data_export.manage", "reports.view"]), async (c) => ok(c, { types: await enabledExportTypes(c) }));
 dataExportRoutes.post("/:exportType/run", requireAnyPermission(["data_export.run", "data_export.manage", "reports.export"]), async (c) => {
   const result = await runDataExport(c, c.req.param("exportType"), await readJsonBody(c.req.raw) as { reason?: string });
   if ("error" in result) return result.error;

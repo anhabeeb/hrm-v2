@@ -38,6 +38,7 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   permission?: string;
   permissionAny?: string[];
+  moduleKey?: string | string[];
 };
 
 type NavGroup = {
@@ -57,40 +58,40 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Employees", to: "/employees", icon: Users, permission: "employees.view" },
       { label: "KYC Requests", to: "/employees/kyc-requests", icon: UserRound, permissionAny: ["employees.update", "employees.sensitive.update"] },
-      { label: "Contracts", to: "/contracts", icon: FileSignature, permissionAny: ["contracts.view", "employees.contracts.view"] }
+      { label: "Contracts", to: "/contracts", icon: FileSignature, permissionAny: ["contracts.view", "employees.contracts.view"], moduleKey: "contracts" }
     ]
   },
   {
     label: "Lifecycle",
     items: [
-      { label: "Onboarding", to: "/onboarding", icon: CheckCircle2, permissionAny: ["onboarding.dashboard.view", "onboarding.cases.view", "employees.lifecycle.view"] },
-      { label: "Offboarding", to: "/offboarding", icon: Archive, permissionAny: ["offboarding.dashboard.view", "offboarding.cases.view", "employees.lifecycle.view"] },
-      { label: "Approvals", to: "/approvals", icon: GitBranch, permissionAny: ["approvals.view", "approvals.inbox.view", "approvals.instances.view"] }
+      { label: "Onboarding", to: "/onboarding", icon: CheckCircle2, permissionAny: ["onboarding.dashboard.view", "onboarding.cases.view", "employees.lifecycle.view"], moduleKey: "onboarding" },
+      { label: "Offboarding", to: "/offboarding", icon: Archive, permissionAny: ["offboarding.dashboard.view", "offboarding.cases.view", "employees.lifecycle.view"], moduleKey: "offboarding" },
+      { label: "Approvals", to: "/approvals", icon: GitBranch, permissionAny: ["approvals.view", "approvals.inbox.view", "approvals.instances.view"], moduleKey: "approvals" }
     ]
   },
   {
     label: "Time & Attendance",
     items: [
-      { label: "Attendance", to: "/attendance", icon: CalendarCheck, permission: "attendance.view" },
-      { label: "Roster", to: "/roster", icon: CalendarDays, permission: "roster.view" },
-      { label: "Leave", to: "/leave", icon: ClipboardList, permission: "leave.view" }
+      { label: "Attendance", to: "/attendance", icon: CalendarCheck, permission: "attendance.view", moduleKey: "attendance" },
+      { label: "Roster", to: "/roster", icon: CalendarDays, permission: "roster.view", moduleKey: "roster" },
+      { label: "Leave", to: "/leave", icon: ClipboardList, permission: "leave.view", moduleKey: "leave" }
     ]
   },
   {
     label: "Payroll",
-    items: [{ label: "Payroll", to: "/payroll", icon: BriefcaseBusiness, permission: "payroll.view" }]
+    items: [{ label: "Payroll", to: "/payroll", icon: BriefcaseBusiness, permission: "payroll.view", moduleKey: "payroll" }]
   },
   {
     label: "Documents",
-    items: [{ label: "Documents", to: "/documents", icon: FileText, permission: "documents.view" }]
+    items: [{ label: "Documents", to: "/documents", icon: FileText, permission: "documents.view", moduleKey: "documents" }]
   },
   {
     label: "Assets",
-    items: [{ label: "Assets & Uniforms", to: "/assets", icon: Shirt, permission: "assets.view" }]
+    items: [{ label: "Assets & Uniforms", to: "/assets", icon: Shirt, permission: "assets.view", moduleKey: "assets_uniforms" }]
   },
   {
     label: "Reports",
-    items: [{ label: "Reports", to: "/reports", icon: BarChart3, permission: "reports.view" }]
+    items: [{ label: "Reports", to: "/reports", icon: BarChart3, permission: "reports.view", moduleKey: ["reports", "reports_exports"] }]
   },
   {
     label: "Settings",
@@ -104,7 +105,14 @@ const navGroups: NavGroup[] = [
   }
 ];
 
-function canShow(item: NavItem, permissions: Set<string>) {
+function moduleIsVisible(item: NavItem, moduleVisibility: Record<string, boolean>) {
+  const keys = Array.isArray(item.moduleKey) ? item.moduleKey : item.moduleKey ? [item.moduleKey] : [];
+  if (!keys.length) return true;
+  return keys.some((key) => moduleVisibility[key] !== false);
+}
+
+function canShow(item: NavItem, permissions: Set<string>, moduleVisibility: Record<string, boolean>) {
+  if (!moduleIsVisible(item, moduleVisibility)) return false;
   if (item.permissionAny?.length) return item.permissionAny.some((permission) => permissions.has(permission));
   return item.permission ? permissions.has(item.permission) : true;
 }
@@ -152,21 +160,25 @@ export function AppShell() {
     if (user?.is_owner) next.add("admin.help.view");
     return next;
   }, [user]);
+  const moduleVisibility = useMemo(() => user?.module_visibility ?? {}, [user?.module_visibility]);
   const visibleGroups = useMemo(() => navGroups
-    .map((group) => ({ ...group, items: group.items.filter((item) => canShow(item, permissions)) }))
-    .filter((group) => group.items.length), [permissions]);
-  const visibleTopLevelItems = useMemo(() => topLevelNavItems.filter((item) => canShow(item, permissions)), [permissions]);
+    .map((group) => ({ ...group, items: group.items.filter((item) => canShow(item, permissions, moduleVisibility)) }))
+    .filter((group) => group.items.length), [permissions, moduleVisibility]);
+  const visibleTopLevelItems = useMemo(() => topLevelNavItems.filter((item) => canShow(item, permissions, moduleVisibility)), [permissions, moduleVisibility]);
   const selfServiceVisible = Boolean(user?.employee_id);
   const sidebarGroups = useMemo<NavGroup[]>(() => {
     if (!selfServiceVisible) return visibleGroups;
+    const selfServiceItems = [{ label: "Self-Service", to: "/self-service", icon: UserRound, moduleKey: "self_service" }]
+      .filter((item) => canShow(item, permissions, moduleVisibility));
+    if (!selfServiceItems.length) return visibleGroups;
     return [
       ...visibleGroups,
       {
         label: "Self-Service",
-        items: [{ label: "Self-Service", to: "/self-service", icon: UserRound }]
+        items: selfServiceItems
       }
     ];
-  }, [selfServiceVisible, visibleGroups]);
+  }, [moduleVisibility, permissions, selfServiceVisible, visibleGroups]);
   const activeGroupLabels = useMemo(() => new Set(
     sidebarGroups
       .filter((group) => group.items.some((item) => routeMatchesItem(location.pathname, item)))
