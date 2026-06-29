@@ -235,5 +235,9 @@ export interface ApiEnvelope<T> {
   error?: {
     code: string;
     message: string;
+    validation_errors?: Array<Record<string, unknown>>;
+    field_errors?: Record<string, string[]>;
+    action_errors?: string[];
+    details?: Record<string, unknown>;
   };
 }

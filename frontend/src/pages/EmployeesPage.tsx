@@ -7,6 +7,8 @@ import { Button, RowActionButton } from "../components/ui/button";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { ExportMenu } from "../components/export/ExportMenu";
+import { FieldError } from "../components/forms/FieldError";
+import { FormErrorSummary } from "../components/forms/FormErrorSummary";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import {
   ActiveFilterChips,
@@ -30,6 +32,7 @@ import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateField, validateDateRange, validateEnumValue, validateMaxLength, validateRequiredFields, type ValidationIssue } from "../lib/form-validation";
 import type { Employee, EmployeeInput, EmployeeStatusSetting, EmployeeType, EmploymentType } from "../types/employees";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 
@@ -216,6 +219,7 @@ export function EmployeesPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to save employee.");
+      throw err;
     }
   }
 
@@ -367,7 +371,7 @@ export function EmployeesPage() {
           employees={reportingManagers}
           canNumber={canNumber}
           onClose={() => setModal(null)}
-          onSave={(input) => void saveEmployee(input)}
+          onSave={saveEmployee}
         />
       ) : null}
       {archiveTarget ? (
@@ -425,6 +429,31 @@ function toInput(employee?: Employee): EmployeeInput {
   };
 }
 
+function validateEmployeeInputForm(form: EmployeeInput): ValidationIssue[] {
+  return [
+    ...validateRequiredFields(form as unknown as Record<string, unknown>, {
+      full_name: "Full name",
+      employee_type: "Employee type",
+      employment_type: "Employment type"
+    }),
+    ...validateEnumValue(form.employee_type, "employee_type", "Employee type", employeeTypes),
+    ...validateEnumValue(form.employment_type, "employment_type", "Employment type", employmentTypes),
+    ...validateMaxLength(form.employee_no, "employee_no", "Employee number", 64),
+    ...validateMaxLength(form.full_name, "full_name", "Full name", 200),
+    ...validateMaxLength(form.display_name, "display_name", "Display name", 200),
+    ...validateMaxLength(form.notes_summary, "notes_summary", "Notes summary", 1000),
+    ...validateDateField(form.date_of_birth, "date_of_birth", "Date of birth", { allowFuture: false }),
+    ...validateDateField(form.joining_date, "joining_date", "Joining date"),
+    ...validateDateField(form.confirmation_date, "confirmation_date", "Confirmation date"),
+    ...validateDateField(form.contract_start_date, "contract_start_date", "Contract start date"),
+    ...validateDateField(form.contract_end_date, "contract_end_date", "Contract end date"),
+    ...validateDateField(form.probation_end_date, "probation_end_date", "Probation end date"),
+    ...validateDateRange({ start: form.contract_start_date, end: form.contract_end_date, startField: "contract_start_date", endField: "contract_end_date", label: "Contract end date" }),
+    ...validateDateRange({ start: form.joining_date, end: form.probation_end_date, startField: "joining_date", endField: "probation_end_date", label: "Probation end date" }),
+    ...validateDateRange({ start: form.joining_date, end: form.confirmation_date, startField: "joining_date", endField: "confirmation_date", label: "Confirmation date" })
+  ];
+}
+
 function EmployeeFormModal(props: {
   mode: "create" | "edit";
   employee?: Employee;
@@ -436,9 +465,11 @@ function EmployeeFormModal(props: {
   employees: Employee[];
   canNumber: boolean;
   onClose: () => void;
-  onSave: (input: EmployeeInput) => void;
+  onSave: (input: EmployeeInput) => Promise<void>;
 }) {
   const [form, setForm] = useState<EmployeeInput>(() => toInput(props.employee));
+  const validation = useFormValidation();
+  const [saving, setSaving] = useState(false);
   const update = (key: keyof EmployeeInput, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
   const updateCascade = (next: { locationId?: string; departmentId?: string; jobLevelId?: string; positionId?: string }) => {
     setForm((current) => ({
@@ -449,6 +480,26 @@ function EmployeeFormModal(props: {
       primary_position_id: next.positionId ?? ""
     }));
   };
+  async function submit() {
+    const issues = validateEmployeeInputForm(form);
+    validation.setIssues(issues);
+    if (issues.some((issue) => issue.severity === "error")) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    setSaving(true);
+    try {
+      await props.onSave(form);
+    } catch (err) {
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
       <div className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-lg border bg-white shadow-xl">
@@ -457,15 +508,16 @@ function EmployeeFormModal(props: {
           <Button variant="ghost" size="sm" onClick={props.onClose}>Close</Button>
         </div>
         <div className="max-h-[70vh] overflow-y-auto p-4">
+          <FormErrorSummary issues={validation.issues} />
           <div className="grid gap-3 md:grid-cols-3">
-            <Field label="Full name" value={form.full_name} onChange={(v) => update("full_name", v)} />
-            <Field label="Display name" value={form.display_name ?? ""} onChange={(v) => update("display_name", v)} />
-            <Field label="Employee No" value={form.employee_no ?? ""} disabled={!props.canNumber} placeholder={props.canNumber ? "Manual or blank for auto" : "Auto-generated"} onChange={(v) => update("employee_no", v)} />
+            <Field field="full_name" label="Full name" value={form.full_name} issues={validation.fieldIssues("full_name")} onChange={(v) => update("full_name", v)} />
+            <Field field="display_name" label="Display name" value={form.display_name ?? ""} issues={validation.fieldIssues("display_name")} onChange={(v) => update("display_name", v)} />
+            <Field field="employee_no" label="Employee No" value={form.employee_no ?? ""} disabled={!props.canNumber} placeholder={props.canNumber ? "Manual or blank for auto" : "Auto-generated"} issues={validation.fieldIssues("employee_no")} onChange={(v) => update("employee_no", v)} />
             <Field label="Gender" value={form.gender ?? ""} onChange={(v) => update("gender", v)} />
-            <Field label="Date of birth" type="date" value={form.date_of_birth ?? ""} onChange={(v) => update("date_of_birth", v)} />
+            <Field field="date_of_birth" label="Date of birth" type="date" value={form.date_of_birth ?? ""} issues={validation.fieldIssues("date_of_birth")} onChange={(v) => update("date_of_birth", v)} />
             <Field label="Nationality" value={form.nationality ?? ""} onChange={(v) => update("nationality", v)} />
-            <UiSelectField label="Employee type" value={form.employee_type} onValueChange={(v) => update("employee_type", v)}>{employeeTypes.map((t) => <option key={t} value={t}>{t}</option>)}</UiSelectField>
-            <UiSelectField label="Employment type" value={form.employment_type} onValueChange={(v) => update("employment_type", v)}>{employmentTypes.map((t) => <option key={t} value={t}>{t}</option>)}</UiSelectField>
+            <div className="space-y-1.5"><UiSelectField label="Employee type" value={form.employee_type} onValueChange={(v) => update("employee_type", v)}>{employeeTypes.map((t) => <option key={t} value={t}>{t}</option>)}</UiSelectField><FieldError issues={validation.fieldIssues("employee_type")} /></div>
+            <div className="space-y-1.5"><UiSelectField label="Employment type" value={form.employment_type} onValueChange={(v) => update("employment_type", v)}>{employmentTypes.map((t) => <option key={t} value={t}>{t}</option>)}</UiSelectField><FieldError issues={validation.fieldIssues("employment_type")} /></div>
             <UiSelectField label="Status" value={form.status_id ?? ""} onValueChange={(v) => update("status_id", v)}><option value="">Draft / Onboarding default</option>{props.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</UiSelectField>
             <div className="md:col-span-3">
               <OrganizationCascadeSelector
@@ -485,25 +537,26 @@ function EmployeeFormModal(props: {
               />
             </div>
             <UiSelectField label="Reporting manager" value={form.reporting_manager_employee_id ?? ""} onValueChange={(v) => update("reporting_manager_employee_id", v)}><option value="">None</option>{props.employees.filter((e) => e.id !== props.employee?.id).map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}</UiSelectField>
-            <Field label="Joining date" type="date" value={form.joining_date ?? ""} onChange={(v) => update("joining_date", v)} />
-            <Field label="Confirmation date" type="date" value={form.confirmation_date ?? ""} onChange={(v) => update("confirmation_date", v)} />
-            <Field label="Contract start" type="date" value={form.contract_start_date ?? ""} onChange={(v) => update("contract_start_date", v)} />
-            <Field label="Contract end" type="date" value={form.contract_end_date ?? ""} onChange={(v) => update("contract_end_date", v)} />
-            <Field label="Probation end" type="date" value={form.probation_end_date ?? ""} onChange={(v) => update("probation_end_date", v)} />
+            <Field field="joining_date" label="Joining date" type="date" value={form.joining_date ?? ""} issues={validation.fieldIssues("joining_date")} onChange={(v) => update("joining_date", v)} />
+            <Field field="confirmation_date" label="Confirmation date" type="date" value={form.confirmation_date ?? ""} issues={validation.fieldIssues("confirmation_date")} onChange={(v) => update("confirmation_date", v)} />
+            <Field field="contract_start_date" label="Contract start" type="date" value={form.contract_start_date ?? ""} issues={validation.fieldIssues("contract_start_date")} onChange={(v) => update("contract_start_date", v)} />
+            <Field field="contract_end_date" label="Contract end" type="date" value={form.contract_end_date ?? ""} issues={validation.fieldIssues("contract_end_date")} onChange={(v) => update("contract_end_date", v)} />
+            <Field field="probation_end_date" label="Probation end" type="date" value={form.probation_end_date ?? ""} issues={validation.fieldIssues("probation_end_date")} onChange={(v) => update("probation_end_date", v)} />
             <CheckboxField label="Payroll included" checked={form.payroll_included} onChange={(value) => update("payroll_included", value)} className="self-end" />
             <CheckboxField label="Roster eligible" checked={form.roster_eligible} onChange={(value) => update("roster_eligible", value)} className="self-end" />
-            <div className="md:col-span-3"><Field label="Notes summary" value={form.notes_summary ?? ""} onChange={(v) => update("notes_summary", v)} /></div>
+            <div className="md:col-span-3"><Field field="notes_summary" label="Notes summary" value={form.notes_summary ?? ""} issues={validation.fieldIssues("notes_summary")} onChange={(v) => update("notes_summary", v)} /></div>
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
-          <Button variant="outline" size="sm" onClick={props.onClose}>Cancel</Button>
-          <Button size="sm" onClick={() => props.onSave(form)}>Save</Button>
+          <Button variant="outline" size="sm" disabled={saving} onClick={props.onClose}>Cancel</Button>
+          <Button size="sm" disabled={saving} onClick={() => void submit()}>{saving ? "Saving..." : "Save"}</Button>
         </div>
       </div>
     </div>
   );
 }
 
-function Field({ label, value, onChange, type = "text", disabled, placeholder }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled?: boolean; placeholder?: string }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><Input type={type} value={value} disabled={disabled} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></div>;
+function Field({ field, label, value, onChange, type = "text", disabled, placeholder, issues }: { field?: string; label: string; value: string; onChange: (value: string) => void; type?: string; disabled?: boolean; placeholder?: string; issues?: ValidationIssue[] }) {
+  const hasError = Boolean(issues?.some((issue) => issue.severity === "error"));
+  return <div className="space-y-1.5"><Label>{label}</Label><Input name={field} data-validation-field={field} aria-invalid={hasError || undefined} type={type} value={value} disabled={disabled} placeholder={placeholder} className={hasError ? "border-red-300 focus-visible:ring-red-500" : undefined} onChange={(event) => onChange(event.target.value)} /><FieldError issues={issues} /></div>;
 }

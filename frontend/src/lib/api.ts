@@ -140,13 +140,30 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 export class ApiError extends Error {
   code: string;
   status: number;
+  validationErrors: Array<Record<string, unknown>>;
+  fieldErrors: Record<string, string[]>;
+  actionErrors: string[];
+  details?: Record<string, unknown>;
 
-  constructor(message: string, code: string, status: number) {
+  constructor(message: string, code: string, status: number, options: { validationErrors?: Array<Record<string, unknown>>; fieldErrors?: Record<string, string[]>; actionErrors?: string[]; details?: Record<string, unknown> } = {}) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.validationErrors = options.validationErrors ?? [];
+    this.fieldErrors = options.fieldErrors ?? {};
+    this.actionErrors = options.actionErrors ?? [];
+    this.details = options.details;
   }
+}
+
+function apiErrorFromEnvelope(envelope: ApiEnvelope<unknown>, status: number, fallback = "Request failed.") {
+  return new ApiError(envelope.error?.message ?? fallback, envelope.error?.code ?? "REQUEST_FAILED", status, {
+    validationErrors: envelope.error?.validation_errors ?? [],
+    fieldErrors: envelope.error?.field_errors ?? {},
+    actionErrors: envelope.error?.action_errors ?? [],
+    details: envelope.error?.details
+  });
 }
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string | null) {
@@ -164,7 +181,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     if (response.status === 401 && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code: envelope.error?.code ?? "UNAUTHENTICATED" } }));
     }
-    throw new ApiError(envelope.error?.message ?? "Request failed.", envelope.error?.code ?? "REQUEST_FAILED", response.status);
+    throw apiErrorFromEnvelope(envelope as ApiEnvelope<unknown>, response.status);
   }
 
   return envelope.data;
@@ -184,7 +201,7 @@ async function multipartRequest<T>(path: string, body: FormData, token?: string 
     if (response.status === 401 && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code: envelope.error?.code ?? "UNAUTHENTICATED" } }));
     }
-    throw new ApiError(envelope.error?.message ?? "Request failed.", envelope.error?.code ?? "REQUEST_FAILED", response.status);
+    throw apiErrorFromEnvelope(envelope as ApiEnvelope<unknown>, response.status);
   }
 
   return envelope.data;
@@ -198,16 +215,21 @@ async function blobRequest(path: string, token: string, init: RequestInit = {}) 
   if (!response.ok) {
     let message = "Download failed.";
     let code = "REQUEST_FAILED";
+    let structuredError: ApiError | null = null;
     try {
       const envelope = (await response.json()) as ApiEnvelope<unknown>;
       message = envelope.error?.message ?? message;
       code = envelope.error?.code ?? code;
+      if (envelope.error) {
+        structuredError = apiErrorFromEnvelope(envelope, response.status, message);
+      }
     } catch {
       // The endpoint may return a plain response when the failure is not API-shaped.
     }
     if (response.status === 401 && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code } }));
     }
+    if (structuredError) throw structuredError;
     throw new ApiError(message, code, response.status);
   }
   return {

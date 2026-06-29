@@ -6,7 +6,7 @@ import { recordAudit } from "../db/audit";
 import { getActiveOwnerCount, getUserByEmail, getUserById } from "../db/users";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
-import { hasValidationErrors, validateAccessScope, validateOrganizationCascadeWithScope, validationResponse } from "../lib/moduleValidation";
+import { hasValidationErrors, validateAccessScope, validateDateField, validateDateRange, validateEnumValue, validateOrganizationCascadeWithScope, validateRequiredFields, validateStringLength, validationResponse } from "../lib/moduleValidation";
 import { publishAccessEvent } from "../realtime/publisher";
 import { autoCreateOnboardingCaseAfterEmployeeCreate } from "./lifecycle";
 import { applyRoleMappingToEmployee, roleMappingPreviewForEmployee } from "./role-mappings";
@@ -1187,6 +1187,31 @@ function hasJobAssignment(input: ReturnType<typeof readEmployeeInput>) {
   return Boolean(input.primary_department_id || input.primary_position_id || input.primary_location_id || input.job_level_id || input.reporting_manager_employee_id);
 }
 
+function validateEmployeeInput(input: ReturnType<typeof readEmployeeInput>) {
+  return [
+    ...validateRequiredFields(input as Record<string, unknown>, {
+      full_name: "Full name",
+      employee_type: "Employee type",
+      employment_type: "Employment type"
+    }),
+    ...validateEnumValue(input.employee_type, "employee_type", "Employee type", Array.from(EMPLOYEE_TYPES)),
+    ...validateEnumValue(input.employment_type, "employment_type", "Employment type", Array.from(EMPLOYMENT_TYPES)),
+    ...validateStringLength(input.employee_no, "employee_no", "Employee number", { max: 64 }),
+    ...validateStringLength(input.full_name, "full_name", "Full name", { max: 200 }),
+    ...validateStringLength(input.display_name, "display_name", "Display name", { max: 200 }),
+    ...validateStringLength(input.notes_summary, "notes_summary", "Notes summary", { max: 1000 }),
+    ...validateDateField(input.date_of_birth, "date_of_birth", "Date of birth", { allowFuture: false }),
+    ...validateDateField(input.joining_date, "joining_date", "Joining date"),
+    ...validateDateField(input.confirmation_date, "confirmation_date", "Confirmation date"),
+    ...validateDateField(input.contract_start_date, "contract_start_date", "Contract start date"),
+    ...validateDateField(input.contract_end_date, "contract_end_date", "Contract end date"),
+    ...validateDateField(input.probation_end_date, "probation_end_date", "Probation end date"),
+    ...validateDateRange({ start: input.contract_start_date, end: input.contract_end_date, startField: "contract_start_date", endField: "contract_end_date", label: "Contract end date" }),
+    ...validateDateRange({ start: input.joining_date, end: input.confirmation_date, startField: "joining_date", endField: "confirmation_date", label: "Confirmation date" }),
+    ...validateDateRange({ start: input.joining_date, end: input.probation_end_date, startField: "joining_date", endField: "probation_end_date", label: "Probation end date" })
+  ];
+}
+
 async function createJobHistory(c: Context<AppBindings>, input: { employeeId: string; previous?: Partial<EmployeeRow>; next: ReturnType<typeof readEmployeeInput>; effectiveDate?: string | null; reason?: string | null }) {
   await c.env.DB
     .prepare(
@@ -1407,9 +1432,8 @@ employeeRoutes.get("/assignment-options", requirePermission("employees.view"), a
 employeeRoutes.post("/", requirePermission("employees.create"), async (c) => {
   const body = await readJsonBody(c.req.raw);
   const input = readEmployeeInput(body);
-  if (!input.full_name || !input.employee_type || !input.employment_type) {
-    return fail(c, 400, "VALIDATION_ERROR", "Full name, employee type, and employment type are required.");
-  }
+  const inputIssues = validateEmployeeInput(input);
+  if (hasValidationErrors(inputIssues)) return validationResponse(c, inputIssues);
   const settings = await getNumberSettings(c.env.DB);
   let employeeNo = input.employee_no;
   if (employeeNo) {
@@ -1478,9 +1502,8 @@ employeeRoutes.patch("/:id", requirePermission("employees.update"), async (c) =>
   }
   const body = await readJsonBody(c.req.raw);
   const input = readEmployeeInput(body);
-  if (!input.full_name || !input.employee_type || !input.employment_type) {
-    return fail(c, 400, "VALIDATION_ERROR", "Full name, employee type, and employment type are required.");
-  }
+  const inputIssues = validateEmployeeInput(input);
+  if (hasValidationErrors(inputIssues)) return validationResponse(c, inputIssues);
   if (input.status_id && input.status_id !== existing.status_id) {
     return fail(c, 400, "STATUS_ENDPOINT_REQUIRED", "Use the employee status endpoint to change employee status.");
   }

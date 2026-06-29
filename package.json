@@ -42,6 +42,7 @@
     "verify:settings-toggles-tabs-layout": "node scripts/verify-settings-toggles-tabs-layout.mjs",
     "verify:command-center-dashboard": "node scripts/verify-command-center-dashboard.mjs",
     "verify:global-validation": "node scripts/verify-global-form-validation.mjs",
+    "verify:form-action-validation-hardening": "node scripts/verify-form-action-validation-hardening.mjs",
     "verify:nav-tabs": "node scripts/verify-nav-tab-layout.mjs",
     "verify:navigation-tabs": "node scripts/verify-navigation-tab-consistency.mjs",
     "verify:shadcn-navigation-tabs": "node scripts/verify-shadcn-navigation-tabs.mjs",

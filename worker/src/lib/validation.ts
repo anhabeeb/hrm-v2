@@ -17,12 +17,28 @@ export function validationIssue(code: string, field: string | undefined, message
 }
 
 export function validationResponse(c: Context<AppBindings>, issues: ValidationIssue[], status: 400 | 409 | 423 = 400) {
+  const fieldErrors = issues
+    .filter((issue) => issue.severity === "error" && issue.field)
+    .reduce<Record<string, string[]>>((acc, issue) => {
+      const field = issue.field!;
+      acc[field] = [...(acc[field] ?? []), issue.message];
+      return acc;
+    }, {});
+  const actionErrors = issues
+    .filter((issue) => issue.severity === "error" && !issue.field)
+    .map((issue) => issue.message);
+  const safeDetails = issues.some((issue) => issue.details)
+    ? { issues_with_details: issues.filter((issue) => issue.details).map((issue) => ({ code: issue.code, field: issue.field, details: issue.details })) }
+    : undefined;
   return c.json({
     ok: false,
     error: {
       code: "VALIDATION_ERROR",
       message: issues.find((issue) => issue.severity === "error")?.message ?? "Please review the highlighted validation messages.",
-      validation_errors: issues
+      validation_errors: issues,
+      field_errors: fieldErrors,
+      action_errors: actionErrors,
+      details: safeDetails
     }
   }, status);
 }
@@ -36,6 +52,49 @@ export function validateDateRange(input: { start?: string | null; end?: string |
     return [validationIssue("INVALID_DATE_RANGE", input.endField ?? "end_date", `${input.label ?? "End date"} cannot be before the start date.`, "error", input as Record<string, unknown>)];
   }
   return [];
+}
+
+export function validateRequiredField(value: unknown, field: string, label: string) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return [validationIssue("REQUIRED_FIELD", field, `${label} is required.`)];
+  }
+  return [];
+}
+
+export function validateRequiredFields(input: Record<string, unknown>, labels: Record<string, string>) {
+  return Object.entries(labels).flatMap(([field, label]) => validateRequiredField(input[field], field, label));
+}
+
+export function validateStringLength(value: unknown, field: string, label: string, options: { min?: number; max?: number }) {
+  const text = value === null || value === undefined ? "" : String(value);
+  const issues: ValidationIssue[] = [];
+  if (options.min !== undefined && text.trim().length > 0 && text.trim().length < options.min) issues.push(validationIssue("STRING_TOO_SHORT", field, `${label} must be at least ${options.min} characters.`, "error", { min: options.min }));
+  if (options.max !== undefined && text.length > options.max) issues.push(validationIssue("STRING_TOO_LONG", field, `${label} must be ${options.max} characters or fewer.`, "error", { max: options.max }));
+  return issues;
+}
+
+export function validateEmailField(value: unknown, field: string, label = "Email") {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return [];
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) ? [] : [validationIssue("INVALID_EMAIL", field, `${label} must be a valid email address.`)];
+}
+
+export function validatePhoneField(value: unknown, field: string, label = "Phone") {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return [];
+  return /^[+()0-9\s.-]{6,30}$/.test(text) ? [] : [validationIssue("INVALID_PHONE", field, `${label} must be a valid phone number.`)];
+}
+
+export function validateDateField(value: unknown, field: string, label: string, options: { required?: boolean; allowFuture?: boolean } = {}) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return options.required ? [validationIssue("REQUIRED_FIELD", field, `${label} is required.`)] : [];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(`${text}T00:00:00Z`))) return [validationIssue("INVALID_DATE", field, `${label} must be a valid date.`)];
+  if (options.allowFuture === false && text > new Date().toISOString().slice(0, 10)) return [validationIssue("DATE_IN_FUTURE", field, `${label} cannot be in the future.`)];
+  return [];
+}
+
+export function validateEnumValue(value: unknown, field: string, label: string, allowed: readonly string[]) {
+  return allowed.includes(String(value ?? "")) ? [] : [validationIssue("INVALID_ENUM", field, `${label} is not a valid option.`, "error", { allowed })];
 }
 
 export function validateDuplicateConflict(existing: unknown, field: string, message: string) {
