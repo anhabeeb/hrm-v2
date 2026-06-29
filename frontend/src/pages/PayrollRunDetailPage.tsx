@@ -2,6 +2,7 @@ import { CheckCircle2, Eye, FileText, LockKeyhole, PauseCircle, PlayCircle, Refr
 import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -136,7 +137,18 @@ export function PayrollRunDetailPage() {
 
   return (
     <PageShell>
-      <PageHeader title="Payroll Run Detail" description={run ? `Run #${run.run_no} for ${run.period_month ?? "-"} / ${run.period_year ?? "-"}` : "Monthly payroll review table."} />
+      <PageHeader
+        title="Payroll Run Detail"
+        description={run ? `Run #${run.run_no} for ${run.period_month ?? "-"} / ${run.period_year ?? "-"}` : "Monthly payroll review table."}
+        actions={
+          <ExportMenu
+            moduleName="Payroll run detail"
+            rows={employees as unknown as Record<string, unknown>[]}
+            columns={["employee_no_snapshot", "employee_name_snapshot", "department_name", "location_name", "basic_salary", "days_in_period", "scheduled_work_days", "days_worked", "absent_days", "leave_days", "unpaid_leave_days", "total_earnings", "total_deductions", "advance_deductions", "attendance_deductions", "leave_deductions", "net_salary", "status"]}
+            filterSummary={run ? [`Run: ${run.run_no}`, `Period: ${run.period_month ?? "-"}/${run.period_year ?? "-"}`] : []}
+          />
+        }
+      />
       <PayrollNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {run ? <Panel className="p-4">

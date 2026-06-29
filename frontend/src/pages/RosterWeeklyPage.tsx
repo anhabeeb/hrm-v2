@@ -1,6 +1,7 @@
 import { ClipboardCopy, Edit, Eraser, Lock, Megaphone, Save, Undo2, Unlock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
@@ -136,6 +137,22 @@ export function RosterWeeklyPage() {
       return true;
     });
   }, [weekly, positionId, positions, jobLevelId, jobLevels, statusFilter, draft]);
+  const rosterExportRows = useMemo(() => visibleEmployees.flatMap((employee) => (weekly?.days ?? []).map((day) => {
+    const assignment = draft[cellKey(employee.employee_id, day.date)] ?? { status: "UNASSIGNED" };
+    return {
+      employee_no: employee.employee_no,
+      employee_name: employee.full_name,
+      department_name: employee.department_name,
+      location_name: employee.location_name,
+      roster_date: day.date,
+      day_label: day.label,
+      status: assignment.status ?? "UNASSIGNED",
+      shift_code: assignment.shift_code ?? "",
+      shift_start_time: assignment.custom_start_time ?? assignment.shift_start_time ?? "",
+      shift_end_time: assignment.custom_end_time ?? assignment.shift_end_time ?? "",
+      notes: assignment.notes ?? ""
+    };
+  })), [draft, visibleEmployees, weekly?.days]);
 
   function updateCell(employee: RosterEmployeeRow, date: string, value: string) {
     const key = cellKey(employee.employee_id, date);
@@ -262,6 +279,12 @@ export function RosterWeeklyPage() {
         description="Table-first weekly planning with leave, attendance, payroll, and audit hooks prepared."
         actions={
           <>
+          <ExportMenu
+            moduleName="Weekly roster"
+            rows={rosterExportRows}
+            columns={["employee_no", "employee_name", "department_name", "location_name", "roster_date", "day_label", "status", "shift_code", "shift_start_time", "shift_end_time", "notes"]}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
           {canManage ? <ActionTextButton intent="create" size="sm" onClick={() => { setAction("copy-previous"); setActionReason(""); setOverwrite(false); }}><ClipboardCopy className="h-4 w-4" /> Copy previous</ActionTextButton> : null}
           {canManage ? <ActionTextButton intent="warning" size="sm" onClick={() => { setAction("clear-week"); setActionReason(""); }}><Eraser className="h-4 w-4" /> Clear</ActionTextButton> : null}
           {canManage ? <ActionTextButton intent="save" size="sm" onClick={() => void save()}><Save className="h-4 w-4" /> Save</ActionTextButton> : null}

@@ -33,6 +33,8 @@ export function ImportWizard({
   const [importType, setImportType] = useState(defaultImportType);
   const [importMode, setImportMode] = useState("VALIDATE_ONLY");
   const [csvText, setCsvText] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFileType, setSelectedFileType] = useState<"csv" | "xlsx" | null>(null);
   const [fileName, setFileName] = useState("");
   const [reason, setReason] = useState("");
   const [batch, setBatch] = useState<Record<string, unknown> | null>(null);
@@ -43,6 +45,7 @@ export function ImportWizard({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const template = useMemo(() => templates.find((item) => item.key === importType) ?? templates[0], [importType, templates]);
+  const placeholderOnly = Boolean(template?.placeholderOnly);
 
   useEffect(() => {
     if (open) {
@@ -50,8 +53,16 @@ export function ImportWizard({
       setMessage(null);
       setError(null);
       setAck("");
+      setCsvText("");
+      setSelectedFile(null);
+      setSelectedFileType(null);
+      setFileName("");
     }
   }, [open]);
+
+  useEffect(() => {
+    if (placeholderOnly && importMode !== "VALIDATE_ONLY") setImportMode("VALIDATE_ONLY");
+  }, [placeholderOnly, importMode]);
 
   async function downloadTemplate(format: "csv" | "xlsx") {
     if (!token || !template) return;
@@ -70,18 +81,29 @@ export function ImportWizard({
     setBusy(true);
     setError(null);
     try {
-      const result = await api.createDataImportBatch(token, {
-        import_type: template.key,
-        import_mode: importMode,
-        source_file_name: fileName,
-        reason,
-        csv_text: csvText
-      });
+      const effectiveMode = placeholderOnly ? "VALIDATE_ONLY" : importMode;
+      const result = selectedFile
+        ? await api.createDataImportBatchFromFile(token, (() => {
+          const form = new FormData();
+          form.append("import_type", template.key);
+          form.append("import_mode", effectiveMode);
+          form.append("reason", reason);
+          form.append("source_file_name", selectedFile.name);
+          form.append("file", selectedFile);
+          return form;
+        })())
+        : await api.createDataImportBatch(token, {
+          import_type: template.key,
+          import_mode: effectiveMode,
+          source_file_name: fileName,
+          reason,
+          csv_text: csvText
+        });
       setBatch(result.batch);
       const detail = await api.getDataImportBatch(token, String(result.batch.id));
       setRows(detail.rows);
       setStep("preview");
-      setMessage("Import batch uploaded. Run validation preview before applying.");
+      setMessage(placeholderOnly ? "Validation-only batch uploaded. Run validation preview; no records will be created or updated." : "Import batch uploaded. Run validation preview before applying.");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to upload import batch.");
     } finally {
@@ -101,7 +123,7 @@ export function ImportWizard({
       setPreview(previewData.preview as ImportPreviewSummary);
       setRows(detail.rows);
       setStep("confirm");
-      setMessage("Validation preview completed.");
+      setMessage(placeholderOnly ? "Validation preview completed. This import type is validation-only." : "Validation preview completed.");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to validate import batch.");
     } finally {
@@ -132,12 +154,31 @@ export function ImportWizard({
     downloadBlob(result.blob, result.filename);
   }
 
+  function selectImportFile(file: File | undefined) {
+    setError(null);
+    setSelectedFile(null);
+    setSelectedFileType(null);
+    setFileName("");
+    if (!file) return;
+    const name = file.name.toLowerCase();
+    const mime = file.type.toLowerCase();
+    const type = name.endsWith(".xlsx") || mime.includes("spreadsheetml.sheet") ? "xlsx" : name.endsWith(".csv") || mime === "text/csv" || mime === "text/plain" ? "csv" : null;
+    if (!type) {
+      setError("Unsupported import file. Upload a CSV file or an Excel .xlsx template.");
+      return;
+    }
+    setSelectedFile(file);
+    setSelectedFileType(type);
+    setFileName(file.name);
+    setCsvText("");
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="max-w-5xl">
         <SheetHeader>
           <SheetTitle>Import wizard</SheetTitle>
-          <SheetDescription>Download a template, upload CSV/Excel-ready data, validate rows, then apply only after confirmation.</SheetDescription>
+          <SheetDescription>Download a template, upload CSV or Excel .xlsx data, validate rows, then apply only after confirmation.</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           <div className="grid gap-2 md:grid-cols-5">
@@ -157,7 +198,7 @@ export function ImportWizard({
               </label>
               <label className="grid gap-1 text-xs font-medium text-muted-foreground">
                 Mode
-                <SelectField value={importMode} onChange={(event) => setImportMode(event.target.value)}>
+                <SelectField value={placeholderOnly ? "VALIDATE_ONLY" : importMode} disabled={placeholderOnly} onChange={(event) => setImportMode(event.target.value)}>
                   {["VALIDATE_ONLY", "CREATE_ONLY", "UPDATE_ONLY", "UPSERT"].map((mode) => <option key={mode} value={mode}>{mode}</option>)}
                 </SelectField>
               </label>
@@ -166,12 +207,19 @@ export function ImportWizard({
                 <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Required for sensitive imports" />
               </label>
             </div>
-            {template ? <p className="text-sm text-muted-foreground">{template.description}</p> : null}
+            {template ? <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm text-muted-foreground">{template.description}</p>
+                {placeholderOnly ? <Badge tone="warning">Validation only</Badge> : <Badge tone="success">Apply handler available</Badge>}
+              </div>
+              {placeholderOnly ? <p className="text-xs text-amber-700">Apply handler not available yet. You can download templates, upload files, and preview validation; no records will be created or updated.</p> : null}
+            </div> : null}
           </Panel>
           {step === "template" ? (
             <Panel className="space-y-3 p-4">
               <h3 className="text-sm font-semibold">1. Download template</h3>
               <p className="text-sm text-muted-foreground">Excel templates include Instructions, Template, and hidden Lookups sheets with dropdown, date, number, required-field, and text guidance where applicable.</p>
+              {placeholderOnly ? <Panel className="border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Validation-only import. Upload and preview are supported, but Confirm Import is hidden because this import type has no apply handler yet.</Panel> : null}
               <div className="flex flex-wrap gap-2">
                 <ActionTextButton intent="download" size="sm" onClick={() => void downloadTemplate("xlsx")}><FileSpreadsheet className="h-4 w-4" /> Download Excel template</ActionTextButton>
                 <ActionTextButton intent="download" size="sm" onClick={() => void downloadTemplate("csv")}><Download className="h-4 w-4" /> Download CSV template</ActionTextButton>
@@ -180,20 +228,20 @@ export function ImportWizard({
           ) : null}
           {step === "upload" ? (
             <Panel className="space-y-3 p-4">
-              <h3 className="text-sm font-semibold">2. Upload CSV/Excel data</h3>
+              <h3 className="text-sm font-semibold">2. Upload CSV or Excel data</h3>
               <FileUploadField
                 label="Import file"
-                helper="CSV is parsed directly. Excel templates provide validation guidance; save as CSV before upload if your browser cannot provide CSV text."
+                helper="CSV files are parsed as comma-separated text. Excel .xlsx files are parsed from the Template sheet or first worksheet."
                 accept=".csv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  setFileName(file.name);
-                  void file.text().then((text) => setCsvText(text));
-                }}
+                onChange={(event) => selectImportFile(event.target.files?.[0])}
               />
-              <TextareaField className="min-h-40 w-full rounded-md border p-2 text-xs" value={csvText} onChange={(event) => setCsvText(event.target.value)} placeholder="Paste CSV text here" />
-              <ActionTextButton intent="upload" size="sm" onClick={() => void uploadBatch()} disabled={busy || !csvText.trim()}><Upload className="h-4 w-4" /> Upload batch</ActionTextButton>
+              {selectedFile ? <Panel className="border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+                Selected {selectedFileType === "xlsx" ? "Excel .xlsx" : "CSV"} file: <span className="font-medium">{fileName}</span>
+                {selectedFileType === "xlsx" ? <span className="block text-xs">Excel file will be parsed from the Template sheet.</span> : null}
+              </Panel> : null}
+              <TextareaField className="min-h-32 w-full rounded-md border p-2 text-xs" value={csvText} disabled={Boolean(selectedFile)} onChange={(event) => { setCsvText(event.target.value); setSelectedFile(null); setSelectedFileType(null); setFileName("pasted-csv.csv"); }} placeholder="Optional fallback: paste CSV text here" />
+              {placeholderOnly ? <Panel className="border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Validation-only import; no records will be created or updated after validation.</Panel> : null}
+              <ActionTextButton intent="upload" size="sm" onClick={() => void uploadBatch()} disabled={busy || (!selectedFile && !csvText.trim())}><Upload className="h-4 w-4" /> Upload batch</ActionTextButton>
             </Panel>
           ) : null}
           {(step === "preview" || step === "confirm" || step === "done") ? (
@@ -214,10 +262,16 @@ export function ImportWizard({
           ) : null}
           {step === "confirm" ? (
             <Panel className="space-y-3 p-4">
-              <h3 className="text-sm font-semibold">Confirm import</h3>
-              <p className="text-sm text-muted-foreground">Type APPLY to commit valid rows. Invalid rows are not silently ignored. Rollback is recorded as a safe placeholder unless a module-specific rollback is implemented.</p>
-              <Input className="max-w-44" value={ack} onChange={(event) => setAck(event.target.value)} placeholder="Type APPLY" />
-              <ActionTextButton intent="confirm" size="sm" onClick={() => void applyBatch()} disabled={busy || ack !== "APPLY"}>Confirm import</ActionTextButton>
+              {placeholderOnly ? <>
+                <h3 className="text-sm font-semibold">Validation-only result</h3>
+                <p className="text-sm text-muted-foreground">Apply handler not available yet. This batch can be reviewed and exported as an error report, but it will not create or update records.</p>
+                <Badge tone="warning">No commit action available</Badge>
+              </> : <>
+                <h3 className="text-sm font-semibold">Confirm import</h3>
+                <p className="text-sm text-muted-foreground">Type APPLY to commit valid rows. Invalid rows are not silently ignored. Rollback is recorded as a safe placeholder unless a module-specific rollback is implemented.</p>
+                <Input className="max-w-44" value={ack} onChange={(event) => setAck(event.target.value)} placeholder="Type APPLY" />
+                <ActionTextButton intent="confirm" size="sm" onClick={() => void applyBatch()} disabled={busy || ack !== "APPLY"}>Confirm import</ActionTextButton>
+              </>}
             </Panel>
           ) : null}
         </div>

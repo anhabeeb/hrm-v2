@@ -1,6 +1,7 @@
 import { Edit, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput } from "../components/filters";
 import { RosterNav } from "../components/roster/RosterNav";
 import { Badge } from "../components/ui/badge";
@@ -95,7 +96,17 @@ export function RosterShiftTemplatesPage() {
       <PageHeader
         title="Shift Templates"
         description="Reusable roster shifts for weekly planning and future attendance/payroll calculations."
-        actions={canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> New shift</Button> : null}
+        actions={
+          <>
+          <ExportMenu
+            moduleName="Roster shift templates"
+            rows={filtered as unknown as Record<string, unknown>[]}
+            columns={["code", "name", "description", "start_time", "end_time", "break_minutes", "total_work_minutes", "is_overnight", "is_active", "sort_order"]}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
+          {canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> New shift</Button> : null}
+          </>
+        }
       />
       <RosterNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}

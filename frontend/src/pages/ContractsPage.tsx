@@ -2,6 +2,7 @@ import { FileText, Plus, RefreshCw, Settings, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
@@ -124,6 +125,20 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
   }, [token, tab, canLoadContracts, canLoadContractReferences]);
 
   const activeTypes = useMemo(() => types.filter((type) => bool(type.is_active) && type.status !== "ARCHIVED" && !type.archived_at), [types]);
+  const exportRows = useMemo(() => {
+    if (tab === "types") return types;
+    if (tab === "probation") return probation;
+    if (tab === "renewals") return renewals;
+    if (tab === "alerts") return alerts;
+    return contracts;
+  }, [alerts, contracts, probation, renewals, tab, types]);
+  const exportColumns = useMemo(() => {
+    if (tab === "types") return ["code", "name", "category", "default_duration_months", "default_probation_months", "requires_end_date", "requires_probation", "allows_renewal", "status"];
+    if (tab === "probation") return ["employee_number_snapshot", "employee_name_snapshot", "contract_number", "probation_status", "probation_end_date", "confirmation_due_date", "status"];
+    if (tab === "renewals") return ["employee_no", "full_name", "original_contract_number", "renewal_contract_number", "renewal_status", "previous_end_date", "proposed_start_date", "proposed_end_date"];
+    if (tab === "alerts") return ["alert_type", "severity", "status", "employee_no", "full_name", "contract_number", "due_date", "notes"];
+    return ["employee_no", "employee_name", "contract_number", "contract_type_name", "status", "approval_status", "contract_start_date", "contract_end_date", "probation_status", "renewal_status"];
+  }, [tab]);
   const activeFilterChips = [
     filters.search.trim() ? { key: "search", label: "Search", value: filters.search.trim(), onRemove: () => setFilters((current) => ({ ...current, search: "" })) } : null,
     filters.status ? { key: "status", label: "Contract Status", value: filters.status, onRemove: () => setFilters((current) => ({ ...current, status: "" })) } : null,
@@ -176,6 +191,13 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
         description="Manage contracts, probation, renewals, expiry alerts, and contract history without legal automation."
         actions={
           <>
+          <ExportMenu
+            moduleName={`Contracts ${tab}`}
+            rows={exportRows}
+            columns={exportColumns}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+            disabled={tab === "settings"}
+          />
           <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>
           {canCreate ? <Button size="sm" onClick={() => setContractModal(true)}><Plus className="h-4 w-4" /> New contract</Button> : null}
           </>

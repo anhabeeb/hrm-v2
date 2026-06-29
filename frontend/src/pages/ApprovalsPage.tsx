@@ -1,6 +1,7 @@
 import { Bell, CheckCircle2, Clock, Eye, FileText, GitBranch, RefreshCw, Send, Settings, ShieldCheck, UserCheck, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
@@ -125,6 +126,20 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
     search.trim() ? { key: "search", label: "Search", value: search.trim(), onRemove: () => setSearch("") } : null,
     status ? { key: "status", label: "Approval Status", value: status, onRemove: () => setStatus("") } : null
   ].filter(Boolean) as Array<{ key: string; label: string; value: string; onRemove: () => void }>;
+  const exportRows = useMemo(() => {
+    if (mode === "workflows") return workflows as unknown as Record<string, unknown>[];
+    if (mode === "delegations") return delegations as unknown as Record<string, unknown>[];
+    if (mode === "templates") return templates as unknown as Record<string, unknown>[];
+    if (mode === "reports") return reportRows;
+    return approvals as unknown as Record<string, unknown>[];
+  }, [approvals, delegations, mode, reportRows, templates, workflows]);
+  const exportColumns = useMemo(() => {
+    if (mode === "workflows") return ["workflow_code", "workflow_name", "module_key", "action_key", "status", "priority_number"];
+    if (mode === "delegations") return ["delegator_name", "delegate_user_name", "module_key", "action_key", "start_at", "end_at", "status"];
+    if (mode === "templates") return ["template_key", "template_name", "channel", "status", "module_key", "action_key"];
+    if (mode === "reports") return Object.keys(reportRows[0] ?? { report: "", value: "" });
+    return ["request_title", "module_key", "action_key", "entity_type", "entity_id", "status", "current_step_number", "submitted_at", "fallback_used"];
+  }, [mode, reportRows]);
 
   async function openInstance(instance: ApprovalInstance) {
     if (!token) return;
@@ -206,6 +221,13 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
         actions={
           <>
           <AdminHelpLink target="approvals" label="View Approval Guide" />
+          <ExportMenu
+            moduleName={`Approvals ${mode}`}
+            rows={exportRows}
+            columns={exportColumns}
+            filterSummary={activeChips.map((chip) => `${chip.label}: ${chip.value}`)}
+            disabled={mode === "settings"}
+          />
           {can(permissions, ["approvals.escalations.manage", "approvals.manage"]) ? <ActionTextButton intent="refresh" size="sm" onClick={async () => { if (token) { await api.refreshApprovalReminders(token); await api.refreshApprovalEscalations(token); await load(); } }}><RefreshCw className="h-4 w-4" /> Refresh reminders</ActionTextButton> : null}
           <Link to="/reports"><ActionTextButton intent="view" size="sm"><FileText className="h-4 w-4" /> Report Center</ActionTextButton></Link>
           </>

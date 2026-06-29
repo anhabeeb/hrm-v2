@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AttendanceCorrectionModal } from "../components/attendance/AttendanceCorrectionModal";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -124,7 +125,17 @@ export function AttendanceCorrectionsPage() {
       <PageHeader
         title="Attendance Corrections"
         description="Missed punch and status correction approval workflow foundation."
-        actions={canCorrect ? <Button size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New correction</Button> : null}
+        actions={
+          <>
+          <ExportMenu
+            moduleName="Attendance corrections"
+            rows={corrections as unknown as Record<string, unknown>[]}
+            columns={["employee_no", "employee_name", "department_name", "location_name", "attendance_date", "requested_status", "status", "reason", "requested_by_name", "reviewed_by_name"]}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
+          {canCorrect ? <Button size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New correction</Button> : null}
+          </>
+        }
       />
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}

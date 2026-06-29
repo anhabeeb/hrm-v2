@@ -2,6 +2,7 @@ import { Archive, Edit, Plus, Power, PowerOff, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceDeviceModal } from "../components/attendance/AttendanceDeviceModal";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -115,7 +116,17 @@ export function AttendanceDevicesPage() {
       <PageHeader
         title="Attendance Devices"
         description="Biometric, bridge, API, and manual import device registry."
-        actions={canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add device</Button> : null}
+        actions={
+          <>
+          <ExportMenu
+            moduleName="Attendance devices"
+            rows={filtered as unknown as Record<string, unknown>[]}
+            columns={["name", "device_code", "vendor", "device_mode", "type", "location_name", "status", "health_status", "last_sync_at", "ip_address", "port", "serial_number"]}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
+          {canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add device</Button> : null}
+          </>
+        }
       />
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}

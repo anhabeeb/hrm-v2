@@ -1,10 +1,12 @@
 ﻿import { Edit, FileClock, Plus, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { AttendanceCorrectionModal } from "../components/attendance/AttendanceCorrectionModal";
 import { AttendanceManualLogModal } from "../components/attendance/AttendanceManualLogModal";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { AttendanceRecordModal } from "../components/attendance/AttendanceRecordModal";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { Badge } from "../components/ui/badge";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -207,6 +209,13 @@ export function AttendanceRecordsPage() {
         description="Daily attendance, raw punches, correction requests, and payroll impact foundation."
         actions={
           <>
+          <ExportMenu
+            moduleName="Attendance records"
+            rows={records as unknown as Record<string, unknown>[]}
+            columns={["employee_no", "employee_name", "department_name", "location_name", "attendance_date", "status", "first_clock_in", "last_clock_out", "total_work_minutes", "late_minutes", "early_checkout_minutes", "source", "payroll_impact_json", "notes"]}
+            filterSummary={activeChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
+          <Link to="/settings/admin/imports"><ActionTextButton intent="import" size="sm">Validate attendance import</ActionTextButton></Link>
           {canManageLogs ? <ActionTextButton intent="create" size="sm" onClick={() => setEditingLog(null)}><Plus className="h-4 w-4" /> Manual log</ActionTextButton> : null}
           {canDevices ? <ActionTextButton intent="import" size="sm" onClick={() => setRawImportOpen(true)}><FileClock className="h-4 w-4" /> Import raw logs</ActionTextButton> : null}
           {canCorrect ? <ActionTextButton intent="create" size="sm" onClick={() => setCorrectionOpen(true)}>Request correction</ActionTextButton> : null}

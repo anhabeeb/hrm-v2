@@ -2,6 +2,7 @@ import { Bell, CheckCircle2, ClipboardList, FileWarning, RefreshCw, Settings, XC
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
 import { ActionTextButton } from "../components/ui/action-button";
@@ -72,6 +73,22 @@ export function DocumentCompliancePage({ mode = "dashboard" }: { mode?: Mode }) 
     ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
     ...(status ? [{ key: "status", label: "Status", value: status.replace(/_/g, " "), title: status, onRemove: () => setStatus("") }] : [])
   ], [search, status]);
+  const exportRows = useMemo(() => {
+    if (mode === "dashboard") return Object.entries(dashboard?.summary ?? {}).map(([metric, value]) => ({ metric, value }));
+    if (mode === "alerts") return alerts as unknown as Record<string, unknown>[];
+    if (mode === "renewal-cases") return cases as unknown as Record<string, unknown>[];
+    if (mode === "waivers") return waivers as unknown as Record<string, unknown>[];
+    if (mode === "type-settings") return types as unknown as Record<string, unknown>[];
+    return rows;
+  }, [alerts, cases, dashboard, mode, rows, types, waivers]);
+  const exportColumns = useMemo(() => {
+    if (mode === "dashboard") return ["metric", "value"];
+    if (mode === "alerts") return ["employee_no", "employee_name", "document_type_name", "alert_type", "severity", "status", "due_date", "expiry_date", "notes"];
+    if (mode === "renewal-cases") return ["renewal_case_number", "employee_no", "employee_name", "document_type_name", "case_type", "status", "priority", "due_date", "assigned_to_name"];
+    if (mode === "waivers") return ["employee_no", "employee_name", "document_type_name", "waiver_reason", "waiver_start_date", "waiver_end_date", "status"];
+    if (mode === "type-settings") return ["code", "name", "category_name", "requires_expiry_date", "expiry_warning_days", "compliance_tracking_enabled"];
+    return ["employee_name", "employee_no", "department_name", "location_name", "position_title", "document_type_name", "document_number", "expiry_date", "days_until_expiry", "status", "reason"];
+  }, [mode]);
   const resetFilters = () => {
     setSearch("");
     setStatus("");
@@ -147,6 +164,13 @@ export function DocumentCompliancePage({ mode = "dashboard" }: { mode?: Mode }) 
         actions={
           <>
           <Link to="/documents/registry"><ActionTextButton intent="view" size="sm">Registry</ActionTextButton></Link>
+          <ExportMenu
+            moduleName={`Document compliance ${mode}`}
+            rows={exportRows}
+            columns={exportColumns}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+            disabled={mode === "settings"}
+          />
           {canManage ? <ActionTextButton intent="refresh" size="sm" onClick={() => void refreshAll()}><RefreshCw className="h-4 w-4" /> Refresh compliance</ActionTextButton> : null}
           </>
         }

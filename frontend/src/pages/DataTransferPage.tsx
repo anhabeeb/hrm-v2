@@ -116,15 +116,38 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
   const [settings, setSettings] = useState<Row>({});
   const [wizardOpen, setWizardOpen] = useState(false);
   const [importForm, setImportForm] = useState({ import_type: "employees", import_mode: "VALIDATE_ONLY", source_file_name: "", reason: "", notes: "", csv_text: "" });
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importFileType, setImportFileType] = useState<"csv" | "xlsx" | null>(null);
   const [applyAck, setApplyAck] = useState("");
   const [exportForm, setExportForm] = useState({ export_type: "employees", reason: "", format: "csv" });
 
   const permissions = useMemo(() => new Set(user?.permissions ?? []), [user]);
   const canView = Boolean(user?.is_owner || permissions.has("data_import.view") || permissions.has("data_export.view") || permissions.has("deployment.readiness.view"));
+  const selectedImportType = useMemo(() => importTypes.find((item) => String(item.key) === importForm.import_type), [importForm.import_type, importTypes]);
+  const selectedImportIsValidationOnly = Boolean(selectedImportType?.placeholderOnly);
+  const selectedBatchImportType = useMemo(() => importTypes.find((item) => String(item.key) === String(selectedBatch?.import_type)), [importTypes, selectedBatch]);
+  const selectedBatchIsValidationOnly = Boolean(selectedBatchImportType?.placeholderOnly);
 
   function choose(tab: Mode) {
     setActive(tab);
     setSearchParams({ section: tab });
+  }
+
+  function selectImportFile(file: File | undefined) {
+    setError(null);
+    setImportFile(null);
+    setImportFileType(null);
+    if (!file) return;
+    const name = file.name.toLowerCase();
+    const mime = file.type.toLowerCase();
+    const type = name.endsWith(".xlsx") || mime.includes("spreadsheetml.sheet") ? "xlsx" : name.endsWith(".csv") || mime === "text/csv" || mime === "text/plain" ? "csv" : null;
+    if (!type) {
+      setError("Unsupported import file. Upload a CSV file or an Excel .xlsx template.");
+      return;
+    }
+    setImportFile(file);
+    setImportFileType(type);
+    setImportForm((current) => ({ ...current, source_file_name: file.name, csv_text: "" }));
   }
 
   async function load() {
@@ -194,8 +217,22 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
     setError(null);
     setMessage(null);
     try {
-      const result = await api.createDataImportBatch(token, importForm);
-      setMessage("Import batch uploaded. Run validation before apply.");
+      const importMode = selectedImportIsValidationOnly ? "VALIDATE_ONLY" : importForm.import_mode;
+      const result = importFile
+        ? await api.createDataImportBatchFromFile(token, (() => {
+          const form = new FormData();
+          form.append("import_type", importForm.import_type);
+          form.append("import_mode", importMode);
+          form.append("source_file_name", importFile.name);
+          form.append("reason", importForm.reason);
+          form.append("notes", importForm.notes);
+          form.append("file", importFile);
+          return form;
+        })())
+        : await api.createDataImportBatch(token, { ...importForm, import_mode: importMode });
+      setMessage(selectedImportIsValidationOnly ? "Validation-only batch uploaded. Run validation preview; no records will be created or updated." : "Import batch uploaded. Run validation before apply.");
+      setImportFile(null);
+      setImportFileType(null);
       await load();
       await openBatch(String(result.batch.id));
     } catch (err) {
@@ -317,7 +354,7 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
         <PageHeader
           title="Data Import / Export & Deployment Readiness"
           eyebrow="Data transfer"
-          description="Controlled CSV import, export history, backup guidance, migration readiness, QA, smoke, and deployment status."
+          description="Controlled CSV and Excel import, export history, backup guidance, migration readiness, QA, smoke, and deployment status."
         />
         <EmptyState title="Data transfer controls unavailable" description="You do not have permission to view the Prompt 22 data transfer center." />
       </PageShell>
@@ -329,7 +366,7 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
       <PageHeader
         title="Data Import / Export & Deployment Readiness"
         eyebrow="Data transfer"
-        description="Controlled CSV import, export history, backup guidance, migration readiness, QA, smoke, and deployment status."
+        description="Controlled CSV and Excel import, export history, backup guidance, migration readiness, QA, smoke, and deployment status."
         actions={
           <>
           <AdminHelpLink target={active === "deployment" || active === "remote-d1" || active === "qa" || active === "smoke" ? "deployment" : "dataImport"} label="View Operations Guide" />
@@ -360,25 +397,30 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
         <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
           <Panel className="space-y-3 p-4">
             <h2 className="text-sm font-semibold">Create import batch</h2>
-            <SelectField className="h-9 w-full rounded-md border px-2 text-sm" value={importForm.import_type} onChange={(event) => setImportForm({ ...importForm, import_type: event.target.value })}>
+            <SelectField className="h-9 w-full rounded-md border px-2 text-sm" value={importForm.import_type} onChange={(event) => {
+              const nextType = event.target.value;
+              const nextImportType = importTypes.find((type) => String(type.key) === nextType);
+              setImportForm({ ...importForm, import_type: nextType, import_mode: nextImportType?.placeholderOnly ? "VALIDATE_ONLY" : importForm.import_mode });
+            }}>
               {importTypes.map((type) => <option key={String(type.key)} value={String(type.key)}>{text(type.label)}</option>)}
             </SelectField>
-            <SelectField className="h-9 w-full rounded-md border px-2 text-sm" value={importForm.import_mode} onChange={(event) => setImportForm({ ...importForm, import_mode: event.target.value })}>
+            <SelectField className="h-9 w-full rounded-md border px-2 text-sm" value={selectedImportIsValidationOnly ? "VALIDATE_ONLY" : importForm.import_mode} disabled={selectedImportIsValidationOnly} onChange={(event) => setImportForm({ ...importForm, import_mode: event.target.value })}>
               {["VALIDATE_ONLY", "CREATE_ONLY", "UPDATE_ONLY", "UPSERT"].map((option) => <option key={option} value={option}>{option}</option>)}
             </SelectField>
+            {selectedImportIsValidationOnly ? <Panel className="border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><Badge tone="warning">Validation only</Badge><p className="mt-1">Apply handler not available yet. Upload and validation preview are supported; no records will be created or updated.</p></Panel> : null}
             <Input placeholder="Reason for sensitive imports" value={importForm.reason} onChange={(event) => setImportForm({ ...importForm, reason: event.target.value })} />
             <FileUploadField
-              label="CSV file"
-              helper="Accepted formats: .csv, text/csv, text/plain."
-              accept=".csv,text/csv,text/plain"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                void file.text().then((csv_text) => setImportForm((current) => ({ ...current, csv_text, source_file_name: file.name })));
-              }}
+              label="CSV or Excel file"
+              helper="CSV files are parsed as comma-separated text. Excel .xlsx files are parsed from the Template sheet or first worksheet."
+              accept=".csv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(event) => selectImportFile(event.target.files?.[0])}
             />
-            <TextareaField className="min-h-36 w-full rounded-md border p-2 text-xs" placeholder="Paste CSV text here" value={importForm.csv_text} onChange={(event) => setImportForm({ ...importForm, csv_text: event.target.value })} />
-            <ActionTextButton intent="upload" size="sm" onClick={() => void createBatch()} disabled={loading || !importForm.csv_text}><Upload className="h-4 w-4" /> Upload batch</ActionTextButton>
+            {importFile ? <Panel className="border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+              Selected {importFileType === "xlsx" ? "Excel .xlsx" : "CSV"} file: <span className="font-medium">{importFile.name}</span>
+              {importFileType === "xlsx" ? <span className="block text-xs">Excel file will be parsed from the Template sheet.</span> : null}
+            </Panel> : null}
+            <TextareaField className="min-h-36 w-full rounded-md border p-2 text-xs" placeholder="Optional fallback: paste CSV text here" value={importForm.csv_text} disabled={Boolean(importFile)} onChange={(event) => { setImportFile(null); setImportFileType(null); setImportForm({ ...importForm, csv_text: event.target.value, source_file_name: "pasted-csv.csv" }); }} />
+            <ActionTextButton intent="upload" size="sm" onClick={() => void createBatch()} disabled={loading || (!importFile && !importForm.csv_text.trim())}><Upload className="h-4 w-4" /> Upload batch</ActionTextButton>
           </Panel>
           <div className="space-y-4">
             <RowTable data={batches} columns={["batch_number", "import_type", "import_mode", "row_count", "valid_row_count", "invalid_row_count", "warning_count", "status", "created_at"]} empty="No import batches" />
@@ -393,7 +435,7 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
               <div className="flex flex-wrap gap-2">
                 <ActionTextButton intent="create" size="sm" onClick={() => void validateBatch()}>Validate</ActionTextButton>
                 <Input className="max-w-40" placeholder="Type APPLY" value={applyAck} onChange={(event) => setApplyAck(event.target.value)} />
-                <ActionTextButton intent="confirm" size="sm" onClick={() => void applyBatch()} disabled={applyAck !== "APPLY"}>Apply valid rows</ActionTextButton>
+                {selectedBatchIsValidationOnly ? <Badge tone="warning">Validation-only batch; apply handler not available</Badge> : <ActionTextButton intent="confirm" size="sm" onClick={() => void applyBatch()} disabled={applyAck !== "APPLY"}>Apply valid rows</ActionTextButton>}
                 <Button size="sm" variant="outline" onClick={() => void cancelBatch()}>Cancel</Button>
                 <ActionTextButton intent="download" size="sm" onClick={() => void downloadErrors()}><Download className="h-4 w-4" /> Errors CSV</ActionTextButton>
               </div>

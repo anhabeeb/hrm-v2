@@ -21,6 +21,10 @@ function has(file, marker, message) {
   assert(marker instanceof RegExp ? marker.test(content) : content.includes(marker), `${file}: ${message}`);
 }
 
+function hasAll(file, markers, message) {
+  markers.forEach((marker) => has(file, marker, `${message} Missing marker: ${marker}`));
+}
+
 function files(dir) {
   const absolute = path.join(root, dir);
   if (!fs.existsSync(absolute)) return [];
@@ -40,54 +44,105 @@ assert(pkg.scripts?.["verify:import-export-standardization"] === "node scripts/v
   "frontend/src/lib/export-utils.ts",
   "frontend/src/lib/import-utils.ts",
   "worker/src/utils/report-export.ts",
-  "worker/src/utils/import-validation.ts"
+  "worker/src/utils/import-validation.ts",
+  "worker/src/utils/xlsx-import.ts"
 ].forEach((file) => assert(exists(file), `${file} is missing.`));
 
-has("frontend/src/components/export/ExportMenu.tsx", "CSV", "Export menu must offer CSV.");
-has("frontend/src/components/export/ExportMenu.tsx", "Excel .xlsx", "Export menu must offer Excel .xlsx.");
-has("frontend/src/components/export/ExportMenu.tsx", "PDF", "Export menu must offer PDF.");
-has("frontend/src/components/export/ExportMenu.tsx", "ActionTextButton", "Export menu must use standardized action buttons.");
-has("frontend/src/lib/export-utils.ts", "rowsToCsv", "CSV export utility is missing.");
-has("frontend/src/lib/export-utils.ts", "createXlsxBlob", "Excel .xlsx export support is missing.");
-has("frontend/src/lib/export-utils.ts", "createPdfBlob", "PDF export support is missing.");
-has("frontend/src/lib/export-utils.ts", "createTemplateXlsxBlob", "Excel template generator is missing.");
-has("frontend/src/lib/export-utils.ts", "Instructions", "Excel templates must include an Instructions sheet.");
-has("frontend/src/lib/export-utils.ts", "Lookups", "Excel templates must include a Lookups/Allowed Values sheet.");
-has("frontend/src/lib/export-utils.ts", "dataValidations", "Excel data validation XML is missing.");
-has("frontend/src/lib/export-utils.ts", 'type="list"', "Dropdown/list validation is missing.");
-has("frontend/src/lib/export-utils.ts", 'type="date"', "Date validation is missing.");
-has("frontend/src/lib/export-utils.ts", '"decimal"', "Decimal number validation is missing.");
-has("frontend/src/lib/export-utils.ts", '"whole"', "Whole-number validation is missing.");
-has("frontend/src/lib/export-utils.ts", "Required field", "Required-field input message is missing.");
-has("frontend/src/lib/export-utils.ts", "state=\"hidden\"", "Lookup sheet hiding/protection foundation is missing.");
+hasAll("frontend/src/components/export/ExportMenu.tsx", ["CSV", "Excel .xlsx", "PDF", "ActionTextButton"], "Export menu must expose the shared CSV/XLSX/PDF actions.");
+hasAll("frontend/src/lib/export-utils.ts", [
+  "rowsToCsv",
+  "createXlsxBlob",
+  "createPdfBlob",
+  "createTemplateXlsxBlob",
+  "Instructions",
+  "Lookups",
+  "dataValidations",
+  'type="list"',
+  'type="date"',
+  '"decimal"',
+  '"whole"',
+  "Required field",
+  "state=\"hidden\""
+], "Excel/PDF/CSV export and template validation support regressed.");
 
-has("frontend/src/components/import/ImportWizard.tsx", "Download Excel template", "Import wizard must download Excel templates.");
-has("frontend/src/components/import/ImportWizard.tsx", "Download CSV template", "Import wizard must download CSV templates.");
-has("frontend/src/components/import/ImportWizard.tsx", "Validate preview", "Import wizard must include validation preview.");
-has("frontend/src/components/import/ImportWizard.tsx", "Type APPLY", "Import wizard must require confirmation before apply.");
-has("frontend/src/components/import/ImportWizard.tsx", "Download error report", "Import wizard must support error report download.");
-has("frontend/src/components/import/ImportWizard.tsx", "Sheet", "Import wizard must use shadcn/Radix sheet dialog, not browser confirm.");
+hasAll("worker/src/utils/xlsx-import.ts", [
+  "parseXlsxTemplateSheet",
+  "xl/workbook.xml",
+  "xl/sharedStrings.xml",
+  "Template",
+  "DecompressionStream",
+  "rowIndex",
+  "readWorksheetRows"
+], "Real XLSX parsing support is missing.");
+
+hasAll("frontend/src/components/import/ImportWizard.tsx", [
+  "Download Excel template",
+  "Download CSV template",
+  "createDataImportBatchFromFile",
+  "FormData",
+  "selectedFile",
+  "selectedFileType",
+  "Excel file will be parsed from the Template sheet",
+  "Validate preview",
+  "Type APPLY",
+  "Download error report",
+  "Validation only",
+  "Apply handler not available yet",
+  "No commit action available",
+  "placeholderOnly",
+  "Sheet"
+], "Shared ImportWizard must support real files, validation-only imports, preview, and apply confirmation.");
+assert(!read("frontend/src/components/import/ImportWizard.tsx").includes(".text()"), "ImportWizard must not read uploaded files with file.text(); real files must be sent as multipart.");
+assert(!/save\s+Excel\s+as\s+CSV/i.test(read("frontend/src/components/import/ImportWizard.tsx")), "ImportWizard still tells users to save Excel as CSV.");
 has("frontend/src/components/import/ImportPreviewTable.tsx", "row_number", "Import preview table must show row numbers.");
 has("frontend/src/components/import/ImportPreviewTable.tsx", "suggested_correction", "Import preview table must show suggested corrections.");
-has("frontend/src/lib/import-utils.ts", "buildExcelValidationsForTemplate", "Template validation builder is missing.");
-has("frontend/src/lib/import-utils.ts", /valid[- ]combination|valid combinations/i, "Department/Job Level/Position valid-combination guidance is missing.");
 
-has("worker/src/routes/data-transfer.ts", "/templates/:importType/download.xlsx", "Backend Excel template download route is missing.");
-has("worker/src/routes/data-transfer.ts", "/:exportType/download", "Backend binary export download route is missing.");
-has("worker/src/routes/data-transfer.ts", "requireAnyPermission", "Backend import/export permission enforcement is missing.");
-has("worker/src/routes/data-transfer.ts", "DATA_IMPORT_DISABLED", "Disabled data import enforcement is missing.");
-has("worker/src/routes/data-transfer.ts", "DATA_EXPORT_DISABLED", "Disabled data export enforcement is missing.");
-has("worker/src/routes/data-transfer.ts", "canAccessEmployee", "Import validation must enforce employee access scope.");
-has("worker/src/routes/data-transfer.ts", "data_import.uploaded", "Import audit logging is missing.");
-has("worker/src/routes/data-transfer.ts", "data_export.run", "Export audit logging is missing.");
-has("worker/src/routes/data-transfer.ts", "rollback_placeholder", "Rollback placeholder must be explicit.");
-has("worker/src/routes/data-transfer.ts", "generateExcelImportTemplate", "Backend Excel template generator is missing.");
-has("worker/src/routes/data-transfer.ts", "getImportLookupValues", "Lookup sheet values must be generated from reference data where possible.");
-has("worker/src/routes/data-transfer.ts", "valid_department_job_level_position_combinations", "Department/Job Level/Position validation guidance is missing.");
-has("worker/src/routes/data-transfer.ts", "buildPdfReport", "Backend PDF export support is missing.");
-has("worker/src/routes/data-transfer.ts", "buildXlsxReport", "Backend Excel export support is missing.");
-has("worker/src/routes/data-transfer.ts", "buildCsv", "Backend CSV export utility is missing.");
-has("worker/src/routes/data-transfer.ts", "validationMessageToIssue", "Error report must use row-level validation issue model.");
+hasAll("frontend/src/pages/DataTransferPage.tsx", [
+  "createDataImportBatchFromFile",
+  "FormData",
+  "selectedImportIsValidationOnly",
+  "selectedBatchIsValidationOnly",
+  "Excel .xlsx files are parsed from the Template sheet",
+  "Validation-only batch",
+  "Apply handler not available"
+], "Data Transfer Center legacy import panel must use real multipart uploads and label placeholder-only imports.");
+assert(!read("frontend/src/pages/DataTransferPage.tsx").includes(".text()"), "Data Transfer Center must not convert uploaded CSV/XLSX files with file.text(); use multipart uploads.");
+
+hasAll("frontend/src/lib/import-utils.ts", ["buildExcelValidationsForTemplate", "placeholderOnly"], "Import utilities must keep template validation and placeholder metadata.");
+has("frontend/src/lib/import-utils.ts", /valid[- ]combination|valid combinations/i, "Department/Job Level/Position valid-combination guidance is missing.");
+hasAll("frontend/src/lib/api.ts", ["download.xlsx", "downloadDataExport", "createDataImportBatchFromFile", "multipartRequest"], "API wrapper must support XLSX templates, binary export, and multipart import upload.");
+
+hasAll("worker/src/routes/data-transfer.ts", [
+  "/templates/:importType/download.xlsx",
+  "/:exportType/download",
+  "parseXlsxTemplateSheet",
+  "parseImportUpload",
+  "inferImportFileType",
+  "importFileTypeAllowed",
+  "allowed_import_file_types_json",
+  "matrixToImportRows",
+  "parseCsvImportRows",
+  "source_file_name",
+  "file_type",
+  "parsed_sheet_name",
+  "row_count",
+  "generateImportErrorCsv(batch",
+  "requireAnyPermission",
+  "DATA_IMPORT_DISABLED",
+  "DATA_EXPORT_DISABLED",
+  "canAccessEmployee",
+  "data_import.uploaded",
+  "data_export.run",
+  "rollback_placeholder",
+  "generateExcelImportTemplate",
+  "getImportLookupValues",
+  "valid_department_job_level_position_combinations",
+  "buildPdfReport",
+  "buildXlsxReport",
+  "buildCsv",
+  "validationMessageToIssue"
+], "Backend import/export routes must keep real XLSX parsing, metadata, permissions, validation, audit, and binary export support.");
+assert(!/fileType\s*===\s*["']xlsx["'][\s\S]{0,240}file\.text\s*\(/.test(read("worker/src/routes/data-transfer.ts")), "Backend XLSX branch must not read Excel files with file.text().");
 has("worker/src/utils/report-export.ts", "dataValidationsXml", "Worker Excel data-validation generation is missing.");
 has("worker/src/utils/import-validation.ts", "ImportValidationIssue", "Row-level import validation error model is missing.");
 
@@ -99,22 +154,56 @@ has("worker/src/utils/import-validation.ts", "ImportValidationIssue", "Row-level
   "frontend/src/pages/RosterReportsPage.tsx",
   "frontend/src/pages/PayrollRunsPage.tsx",
   "frontend/src/pages/AssetsReportsPage.tsx",
-  "frontend/src/pages/DocumentRegistryPage.tsx"
+  "frontend/src/pages/DocumentRegistryPage.tsx",
+  "frontend/src/pages/KycRequestsPage.tsx",
+  "frontend/src/pages/MissingDocumentsPage.tsx",
+  "frontend/src/pages/DocumentCompliancePage.tsx",
+  "frontend/src/pages/LeaveRequestsPage.tsx",
+  "frontend/src/pages/LeaveCalendarPage.tsx",
+  "frontend/src/pages/ContractsPage.tsx",
+  "frontend/src/pages/ApprovalsPage.tsx",
+  "frontend/src/pages/PayrollRunDetailPage.tsx",
+  "frontend/src/pages/PayrollAdminPages.tsx",
+  "frontend/src/pages/PayrollFoundationPages.tsx",
+  "frontend/src/pages/PayrollPrompt11Pages.tsx",
+  "frontend/src/pages/FinalSettlementPage.tsx",
+  "frontend/src/pages/AttendanceRecordsPage.tsx",
+  "frontend/src/pages/AttendanceCorrectionsPage.tsx",
+  "frontend/src/pages/AttendanceDevicesPage.tsx",
+  "frontend/src/pages/AttendanceDeviceOperationsPage.tsx",
+  "frontend/src/pages/RosterWeeklyPage.tsx",
+  "frontend/src/pages/RosterShiftTemplatesPage.tsx",
+  "frontend/src/pages/AssetsItemsPage.tsx",
+  "frontend/src/pages/AssetAssignmentsPage.tsx",
+  "frontend/src/pages/AssetUniformAdvancedPages.tsx",
+  "frontend/src/pages/UsersAccessPage.tsx"
 ].forEach((file) => {
-  has(file, "ExportMenu", "Major page must use shared ExportMenu where relevant.");
+  has(file, "ExportMenu", "Relevant table/list/report page must use shared ExportMenu.");
 });
+
+[
+  ["frontend/src/pages/EmployeesPage.tsx", "Import employees"],
+  ["frontend/src/pages/AttendanceRecordsPage.tsx", "Validate attendance import"],
+  ["frontend/src/pages/AssetsItemsPage.tsx", "Asset import validation"],
+  ["frontend/src/pages/AssetAssignmentsPage.tsx", "Assignment import validation"],
+  ["frontend/src/pages/MissingDocumentsPage.tsx", "Validate document import"],
+  ["frontend/src/pages/PayrollAdminPages.tsx", "Import payroll profiles"],
+  ["frontend/src/pages/PayrollFoundationPages.tsx", "Payroll import validation"]
+].forEach(([file, label]) => has(file, label, "Contextual import entry point is missing or mislabeled."));
 
 has("frontend/src/pages/DataTransferPage.tsx", "ImportWizard", "Data transfer page must expose shared ImportWizard.");
 has("frontend/src/pages/DataTransferPage.tsx", "downloadDataImportTemplate(token, importType, format)", "Template format download support is missing.");
 has("frontend/src/pages/DataTransferPage.tsx", "downloadDataExport", "Data export center must use backend binary export download.");
-has("frontend/src/lib/api.ts", "download.xlsx", "API wrapper must support Excel template download.");
-has("frontend/src/lib/api.ts", "downloadDataExport", "API wrapper must support binary data export download.");
 has("database/seed.sql", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Seed must allow Excel import template MIME type.");
 
 const source = files("frontend/src").concat(files("worker/src")).map((file) => read(file)).join("\n");
 assert(!/\b(window\.)?(alert|confirm|prompt)\s*\(/.test(source), "Browser alert(), confirm(), or prompt() was introduced.");
 assert(!/darkMode\s*[:=]/i.test(source), "Dark mode configuration was introduced.");
 assert(!read("frontend/src/pages/ReportsPage.tsx").includes("Excel later") && !read("frontend/src/pages/ReportsPage.tsx").includes("PDF later"), "Reports page still exposes fake Excel/PDF buttons.");
+
+const headers = read("frontend/public/_headers");
+assert(headers.includes("/index.html") && /Cache-Control:[^\n]*no-cache/.test(headers), "CSS/static asset fix regressed: index.html no-cache header missing.");
+assert(headers.includes("/assets/*") && headers.includes("max-age=31536000") && headers.includes("immutable"), "CSS/static asset fix regressed: immutable asset header missing.");
 
 const wrangler = read("worker/wrangler.toml");
 assert(wrangler.includes('database_name = "hrm-v2"'), "D1 database_name changed.");

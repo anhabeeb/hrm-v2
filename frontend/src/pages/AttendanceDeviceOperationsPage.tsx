@@ -2,6 +2,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter, type ActiveFilterChip } from "../components/filters";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
@@ -364,10 +365,10 @@ function VendorModal({ token, onClose, onSaved }: { token: string; onClose: () =
 }
 
 function DataTable<T extends object>({ rows, columns, action }: { rows: T[]; columns: string[]; action?: (row: T) => ReactNode }) {
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}{action ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader><TableBody>{rows.map((row, index) => {
+  return <><div className="flex justify-end border-b px-3 py-2"><ExportMenu moduleName="Attendance device operations" rows={rows as unknown as Record<string, unknown>[]} columns={columns} /></div><div className="overflow-x-auto"><Table><TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}{action ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader><TableBody>{rows.map((row, index) => {
     const record = row as Record<string, unknown>;
     return <TableRow key={String(record.id ?? index)}>{columns.map((column) => <TableCell key={column}>{renderValue(record[column])}</TableCell>)}{action ? <TableCell><div className="flex justify-end">{action(row)}</div></TableCell> : null}</TableRow>;
-  })}</TableBody></Table></div>;
+  })}</TableBody></Table></div></>;
 }
 
 function renderValue(value: unknown) {

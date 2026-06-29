@@ -1,7 +1,10 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { AssetsNav } from "../components/assets/AssetsNav";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
@@ -61,7 +64,21 @@ export function AssetsItemsPage() {
 
   return (
     <PageShell>
-      <PageHeader title="Asset Items" description="Inventory register for uniforms, devices, cards, keys, and other controlled items." />
+      <PageHeader
+        title="Asset Items"
+        description="Inventory register for uniforms, devices, cards, keys, and other controlled items."
+        actions={
+          <>
+          <Link to="/settings/admin/imports"><ActionTextButton intent="import" size="sm">Asset import validation</ActionTextButton></Link>
+          <ExportMenu
+            moduleName="Asset items"
+            rows={items as unknown as Record<string, unknown>[]}
+            columns={["code", "name", "category_name", "variant", "size", "serial_no", "serial_number", "condition_status", "status", "replacement_cost", "notes"]}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
+          </>
+        }
+      />
       <AssetsNav />
       <Panel className="p-4">
         <StandardFilterBar

@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { AssetsNav } from "../components/assets/AssetsNav";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -94,7 +96,21 @@ export function AssetAssignmentsPage() {
 
   return (
     <PageShell>
-      <PageHeader title="Asset Assignments" description="Issue, return, replace, damage/lost, recovery, attachment, and event tracking." />
+      <PageHeader
+        title="Asset Assignments"
+        description="Issue, return, replace, damage/lost, recovery, attachment, and event tracking."
+        actions={
+          <>
+          <Link to="/settings/admin/imports"><ActionTextButton intent="import" size="sm">Assignment import validation</ActionTextButton></Link>
+          <ExportMenu
+            moduleName="Asset assignments"
+            rows={rows as unknown as Record<string, unknown>[]}
+            columns={["employee_no", "employee_name", "department_name", "location_name", "asset_code", "asset_name", "category_name", "status", "issued_date", "expected_return_date", "returned_date", "deduction_amount"]}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
+          </>
+        }
+      />
       <AssetsNav />
       <Panel className="p-0">
         <div className="p-4">

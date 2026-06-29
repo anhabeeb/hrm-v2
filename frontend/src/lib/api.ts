@@ -2523,6 +2523,9 @@ export const api = {
   createDataImportBatch(token: string, input: Record<string, unknown>) {
     return request<{ batch: Record<string, unknown> }>("/api/v1/data-import/batches", { method: "POST", body: JSON.stringify(input) }, token);
   },
+  createDataImportBatchFromFile(token: string, form: FormData) {
+    return multipartRequest<{ batch: Record<string, unknown> }>("/api/v1/data-import/batches", form, token);
+  },
   validateDataImportBatch(token: string, batchId: string) {
     return request<{ batch: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/validate`, { method: "POST" }, token);
   },

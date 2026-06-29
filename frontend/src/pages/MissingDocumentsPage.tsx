@@ -1,7 +1,9 @@
 import { FileUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -83,7 +85,18 @@ export function MissingDocumentsPage() {
       <PageHeader
         title="Missing Required Documents"
         description="Required-rule gaps prepared for compliance follow-up."
-        actions={<Link to="/documents"><Button variant="outline" size="sm">Back to registry</Button></Link>}
+        actions={
+          <>
+          <Link to="/settings/admin/imports"><ActionTextButton intent="import" size="sm">Validate document import</ActionTextButton></Link>
+          <ExportMenu
+            moduleName="Missing documents"
+            rows={rows as unknown as Record<string, unknown>[]}
+            columns={["employee_no", "employee_name", "department_name", "position_title", "location_name", "employee_type", "employment_type", "document_type_name", "category_name", "reason"]}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
+          <Link to="/documents"><Button variant="outline" size="sm">Back to registry</Button></Link>
+          </>
+        }
       />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">

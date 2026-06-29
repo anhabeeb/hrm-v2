@@ -2,6 +2,7 @@ import { Check, Eye, Plus, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { LeaveRequestDetailModal } from "../components/leave/LeaveRequestDetailModal";
 import { LeaveRequestModal } from "../components/leave/LeaveRequestModal";
 import { Badge } from "../components/ui/badge";
@@ -192,6 +193,12 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
         description="Leave requests, approval status, document status, and salary impact foundation."
         actions={
           <>
+          <ExportMenu
+            moduleName={approvalsOnly ? "Pending leave approvals" : "Leave requests"}
+            rows={requests as unknown as Record<string, unknown>[]}
+            columns={["employee_no", "employee_name", "department_name", "leave_type_name", "start_date", "end_date", "requested_days", "status", "document_status", "salary_deduction_mode", "current_approval_step", "submitted_at"]}
+            filterSummary={activeChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
           <Link to="/leave/calendar"><Button variant="outline" size="sm">Calendar</Button></Link>
           <Link to="/leave/settings"><Button variant="outline" size="sm">Settings</Button></Link>
           {canCreate ? <Button size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New request</Button> : null}

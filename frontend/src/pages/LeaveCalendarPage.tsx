@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
@@ -76,7 +77,18 @@ export function LeaveCalendarPage() {
 
   return (
     <PageShell>
-      <PageHeader title="Leave Calendar" description="Compact calendar/list foundation for approved and pending leave blocks." />
+      <PageHeader
+        title="Leave Calendar"
+        description="Compact calendar/list foundation for approved and pending leave blocks."
+        actions={
+          <ExportMenu
+            moduleName="Leave calendar"
+            rows={requests as unknown as Record<string, unknown>[]}
+            columns={["employee_no", "employee_name", "department_name", "location_name", "leave_type_name", "start_date", "end_date", "requested_days", "status", "public_holiday_handling_json"]}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
+        }
+      />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <Panel className="overflow-hidden">
         <div className="border-b p-3">

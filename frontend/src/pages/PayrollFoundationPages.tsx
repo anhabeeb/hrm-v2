@@ -1,8 +1,11 @@
 import { Archive, Check, Landmark, PiggyBank, Plus, RefreshCw, ReceiptText, WalletCards } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { ResponsiveTableWrapper } from "../components/ui/data-table-shell";
 import { EmptyState } from "../components/ui/empty-state";
@@ -407,10 +410,12 @@ export function PayrollPensionPage() {
 }
 
 function PayrollPageShell({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  const { user } = useAuth();
   const helpTarget = title.includes("Bank") ? "bankLoans" : title.includes("Pension") ? "pension" : "payroll";
+  const canImport = Boolean(user?.permissions.includes("data_import.upload") || user?.permissions.includes("data_import.manage"));
   return (
     <PageShell>
-      <PageHeader title={title} description={description} actions={<AdminHelpLink target={helpTarget} label="View Payroll Guide" />} />
+      <PageHeader title={title} description={description} actions={<><AdminHelpLink target={helpTarget} label="View Payroll Guide" />{canImport ? <Link to="/settings/admin/imports"><ActionTextButton intent="import" size="sm">Payroll import validation</ActionTextButton></Link> : null}</>} />
       <PayrollNav />
       {children}
     </PageShell>
@@ -424,10 +429,10 @@ function Header({ icon, title, action }: { icon: React.ReactNode; title: string;
 function DataTable({ rows, columns, actions, empty }: { rows: unknown[]; columns: string[]; actions?: (row: Record<string, unknown>) => React.ReactNode; empty: string }) {
   const hasEmployeeIdentity = columns.includes("employee_name") || columns.includes("employee_name_snapshot");
   const visibleColumns = hasEmployeeIdentity ? ["__employee", ...columns.filter((column) => !["employee_no", "employee_name", "employee_name_snapshot", "employee_number_snapshot"].includes(column))] : columns;
-  return <ResponsiveTableWrapper><Table><TableHeader><TableRow>{visibleColumns.map((column) => <TableHead key={column}>{column === "__employee" ? "Employee" : column.split("_").join(" ")}</TableHead>)}{actions ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader><TableBody>{rows.map((item, index) => {
+  return <><div className="flex justify-end border-b px-3 py-2"><ExportMenu moduleName="Payroll foundation" rows={rows as Record<string, unknown>[]} columns={columns} /></div><ResponsiveTableWrapper><Table><TableHeader><TableRow>{visibleColumns.map((column) => <TableHead key={column}>{column === "__employee" ? "Employee" : column.split("_").join(" ")}</TableHead>)}{actions ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader><TableBody>{rows.map((item, index) => {
     const row = item as Record<string, unknown>;
     return <TableRow key={String(row.id ?? index)}>{visibleColumns.map((column) => <TableCell key={column}>{column === "__employee" ? <EmployeeIdentityCell employeeId={String(row.employee_id ?? "")} employeeName={String(row.employee_name ?? row.employee_name_snapshot ?? "-")} employeeNumber={String(row.employee_no ?? row.employee_number_snapshot ?? "")} departmentName={String(row.department_name ?? "")} locationName={String(row.location_name ?? "")} size="sm" /> : renderValue(column, row[column])}</TableCell>)}{actions ? <TableCell className="text-right">{actions(row)}</TableCell> : null}</TableRow>;
-  })}</TableBody></Table>{rows.length === 0 ? <EmptyState title="No records" description={empty} /> : null}</ResponsiveTableWrapper>;
+  })}</TableBody></Table>{rows.length === 0 ? <EmptyState title="No records" description={empty} /> : null}</ResponsiveTableWrapper></>;
 }
 
 function renderValue(column: string, value: unknown) {

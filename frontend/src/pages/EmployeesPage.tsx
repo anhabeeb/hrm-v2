@@ -2,6 +2,7 @@ import { Archive, Eye, Pencil, Plus, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
@@ -110,6 +111,7 @@ export function EmployeesPage() {
   const canUpdate = permissions.has("employees.update");
   const canArchive = permissions.has("employees.archive");
   const canExport = permissions.has("reports.export") || permissions.has("employees.view");
+  const canImport = permissions.has("data_import.upload") || permissions.has("data_import.manage");
   const canNumber = permissions.has("employees.numbering.manage");
   const canStatus = permissions.has("employees.status.manage");
   const { activeDepartments, filteredJobLevels, filteredPositions } = useCascadingOrganizationFilters({
@@ -260,6 +262,7 @@ export function EmployeesPage() {
               <Button variant="outline" size="sm"><Settings2 className="h-4 w-4" /> Settings</Button>
             </Link>
           ) : null}
+          {canImport ? <Link to="/settings/admin/imports"><ActionTextButton intent="import" size="sm">Import employees</ActionTextButton></Link> : null}
           {canExport ? <ExportMenu moduleName="Employees" rows={filtered as unknown as Record<string, unknown>[]} columns={["employee_no", "full_name", "employee_type", "employment_type", "status_key", "joining_date"]} filterSummary={activeChips.map((chip) => `${chip.label}: ${String(chip.value)}`)} /> : null}
           {canCreate ? <Button size="sm" onClick={() => setModal({ mode: "create" })}><Plus className="h-4 w-4" /> New Employee</Button> : null}
           </>

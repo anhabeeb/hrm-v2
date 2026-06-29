@@ -1,6 +1,7 @@
 import { Calculator, CheckCircle2, FileText, Lock, Plus, RefreshCw, Send, Settings, Wallet, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
@@ -125,6 +126,16 @@ export function FinalSettlementPage() {
       && (!exitType || row.exit_type === exitType)
       && (!departmentFilter || rowDepartment === departmentFilter);
   }), [cases, departmentFilter, exitType, search, status]);
+  const exportRows = useMemo(() => {
+    if (tab === "payments") return payments as unknown as Record<string, unknown>[];
+    if (tab === "reports") return Object.entries(reports ?? {}).map(([metric, value]) => ({ metric, value: typeof value === "object" ? JSON.stringify(value) : value }));
+    return filteredCases as unknown as Record<string, unknown>[];
+  }, [filteredCases, payments, reports, tab]);
+  const exportColumns = useMemo(() => {
+    if (tab === "payments") return ["employee_no_snapshot", "employee_name_snapshot", "payment_reference", "net_payable_amount", "payment_status", "payment_method", "paid_at", "confirmation_reference"];
+    if (tab === "reports") return ["metric", "value"];
+    return ["case_number", "employee_no", "employee_name", "department_snapshot", "location_snapshot", "exit_type", "exit_date", "last_working_day", "status", "net_payable_amount"];
+  }, [tab]);
 
   async function load() {
     if (!token || !canView) return;
@@ -304,7 +315,7 @@ export function FinalSettlementPage() {
       <PageHeader
         title="Exit Payroll / Final Settlement"
         description="Manage Final Settlement cases, clearance, approval, finalization, and manual payment register rows."
-        actions={<><AdminHelpLink target="finalSettlement" label="View Exit Payroll Guide" />{canCreate ? <Button size="sm" disabled={!finalSettlementEnabled} onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New case</Button> : null}</>}
+        actions={<><AdminHelpLink target="finalSettlement" label="View Exit Payroll Guide" /><ExportMenu moduleName={`Final settlement ${tab}`} rows={exportRows} columns={exportColumns} filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)} />{canCreate ? <Button size="sm" disabled={!finalSettlementEnabled} onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New case</Button> : null}</>}
       />
       <PayrollNav />
 

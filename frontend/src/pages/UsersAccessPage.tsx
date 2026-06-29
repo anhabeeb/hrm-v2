@@ -15,6 +15,7 @@ import {
   XCircle
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton, type RowActionIntent } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
@@ -234,6 +235,20 @@ export function UsersAccessPage() {
       return matchesQuery && matchesModule && matchesOwner;
     });
   }, [accessScopes, scopeQuery, scopeModuleFilter, scopeOwnerFilter]);
+  const exportRows = useMemo(() => {
+    if (activeTab === "roles") return filteredRoles as unknown as Record<string, unknown>[];
+    if (activeTab === "permissions") return filteredPermissions as unknown as Record<string, unknown>[];
+    if (activeTab === "role_mappings") return filteredRoleMappings as unknown as Record<string, unknown>[];
+    if (activeTab === "access_scopes") return filteredAccessScopes as unknown as Record<string, unknown>[];
+    return filteredUsers as unknown as Record<string, unknown>[];
+  }, [activeTab, filteredAccessScopes, filteredPermissions, filteredRoleMappings, filteredRoles, filteredUsers]);
+  const exportColumns = useMemo(() => {
+    if (activeTab === "roles") return ["name", "description", "is_system", "is_owner_role", "is_active", "permission_count"];
+    if (activeTab === "permissions") return ["key", "module", "description", "is_critical"];
+    if (activeTab === "role_mappings") return ["name", "role_name", "department_name", "position_title", "job_level_name", "location_name", "employee_type", "employment_type", "default_scope_type", "priority", "is_active"];
+    if (activeTab === "access_scopes") return ["name", "scope_owner_type", "role_name", "user_name", "module_key", "scope_type", "can_view", "can_manage", "is_active"];
+    return ["name", "email", "username", "status", "employee_no", "employee_name", "role_names", "last_login_at", "is_owner"];
+  }, [activeTab]);
 
   async function runAction(action: () => Promise<unknown>, successMessage: string) {
     if (!token) return;
@@ -266,6 +281,11 @@ export function UsersAccessPage() {
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
+          <ExportMenu
+            moduleName={`Users access ${activeTab}`}
+            rows={exportRows}
+            columns={exportColumns}
+          />
           {activeTab === "users" ? (
             <Button size="sm" onClick={() => setUserModal({ mode: "create" })}>
               <Plus className="h-4 w-4" />

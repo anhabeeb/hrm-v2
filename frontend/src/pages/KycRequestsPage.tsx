@@ -1,6 +1,7 @@
 import { Check, RefreshCw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { Button, RowActionButton } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { ConfirmDialog } from "../components/ui/dialogs";
@@ -80,10 +81,18 @@ export function KycRequestsPage() {
         eyebrow="Self-service"
         description="Review employee-submitted profile update requests. Approval is review-only in this foundation."
         actions={
+          <>
           <Button variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="h-4 w-4" />
           Refresh
           </Button>
+          <ExportMenu
+            moduleName="KYC requests"
+            rows={requests}
+            columns={["employee_no", "employee_name", "section", "field_key", "status", "requested_by_name", "created_at", "reviewed_at", "review_note"]}
+            filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)}
+          />
+          </>
         }
       />
 

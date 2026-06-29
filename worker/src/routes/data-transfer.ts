@@ -8,6 +8,7 @@ import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { validationMessageToIssue } from "../utils/import-validation";
 import { buildCsv, buildPdfReport, buildXlsxReport, buildXlsxTemplate, friendlyColumnLabel, type ExcelValidationRule } from "../utils/report-export";
+import { parseXlsxTemplateSheet } from "../utils/xlsx-import";
 import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
 
@@ -83,6 +84,13 @@ type ImportResultRow = {
   before_snapshot_json: string | null;
   after_snapshot_json: string | null;
   metadata_json: string | null;
+};
+type ParsedImportUpload = {
+  rows: Array<{ rowNumber: number; row: Record<string, string> }>;
+  fileType: "csv" | "xlsx";
+  sourceFileName: string | null;
+  parsedSheetName: string | null;
+  headers: string[];
 };
 
 const now = () => new Date().toISOString();
@@ -225,18 +233,60 @@ function parseCsvLine(line: string) {
   return output;
 }
 
-function parseDataImportFile(input: string) {
-  const lines = input.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
-  if (!lines.length) return [];
-  const headers = parseCsvLine(lines[0]).map((header) => header.trim().toLowerCase().replace(/\s+/g, "_"));
-  return lines.slice(1).map((line, index) => {
+function normalizeImportHeader(header: string, definition: ImportTypeDefinition) {
+  const normalized = header.trim().replace(/\s*\*$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const headerMap = new Map<string, string>();
+  for (const column of definition.columns) {
+    headerMap.set(column.key.toLowerCase(), column.key);
+    headerMap.set(friendlyColumnLabel(column.key).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""), column.key);
+  }
+  return headerMap.get(normalized) ?? normalized;
+}
+
+function excelSerialDateToIso(value: string) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1 || numeric > 60000) return value;
+  const epoch = Date.UTC(1899, 11, 30);
+  return new Date(epoch + numeric * 86400000).toISOString().slice(0, 10);
+}
+
+function matrixToImportRows(matrix: string[][], definition: ImportTypeDefinition) {
+  const headerRow = matrix[0] ?? [];
+  const headers = headerRow.map((header) => normalizeImportHeader(String(header ?? ""), definition));
+  const rows: Array<{ rowNumber: number; row: Record<string, string> }> = [];
+  matrix.slice(1).forEach((values, index) => {
+    if (!values.some((value) => String(value ?? "").trim())) return;
+    const row: Record<string, string> = {};
+    headers.forEach((header, i) => {
+      if (!header) return;
+      const rawValue = String(values[i] ?? "").trim();
+      row[header] = /(date|joined|effective|expiry|start|end|due|period)/i.test(header) ? excelSerialDateToIso(rawValue) : rawValue;
+    });
+    rows.push({ rowNumber: index + 2, row });
+  });
+  return { headers, rows };
+}
+
+function parseCsvImportRows(input: string, definition: ImportTypeDefinition) {
+  const lines = input.replace(/^\uFEFF/, "").split(/\r?\n/);
+  const headerIndex = lines.findIndex((line) => line.trim());
+  if (headerIndex < 0) return { headers: [], rows: [] };
+  const headers = parseCsvLine(lines[headerIndex]).map((header) => normalizeImportHeader(header, definition));
+  const rows: Array<{ rowNumber: number; row: Record<string, string> }> = [];
+  lines.slice(headerIndex + 1).forEach((line, index) => {
+    if (!line.trim()) return;
     const values = parseCsvLine(line);
     const row: Record<string, string> = {};
     headers.forEach((header, i) => {
-      row[header] = values[i]?.trim() ?? "";
+      if (header) row[header] = values[i]?.trim() ?? "";
     });
-    return { rowNumber: index + 2, row };
+    rows.push({ rowNumber: headerIndex + index + 2, row });
   });
+  return { headers, rows };
+}
+
+function parseDataImportFile(input: string, definition: ImportTypeDefinition) {
+  return parseCsvImportRows(input, definition);
 }
 
 function boolish(value: unknown) {
@@ -450,13 +500,45 @@ async function getDataTransferSettings(db: Env["DB"]) {
   };
 }
 
+function inferImportFileType(fileName: string | null | undefined, mimeType: string | null | undefined): "csv" | "xlsx" | null {
+  const name = String(fileName ?? "").toLowerCase();
+  const mime = String(mimeType ?? "").toLowerCase();
+  if (name.endsWith(".xlsx") || mime.includes("spreadsheetml.sheet")) return "xlsx";
+  if (name.endsWith(".csv") || mime.includes("text/csv") || mime === "text/plain") return "csv";
+  return null;
+}
+
+function importFileTypeAllowed(settings: Record<string, unknown>, fileType: "csv" | "xlsx", mimeType: string | null | undefined) {
+  const allowed = parseJson<string[]>(settings.allowed_import_file_types_json as string | null, ["csv", "xlsx", "text/csv", "text/plain", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]).map((value) => String(value).toLowerCase());
+  const mime = String(mimeType ?? "").toLowerCase();
+  if (fileType === "csv") return allowed.some((value) => ["csv", ".csv", "text/csv", "text/plain"].includes(value)) || allowed.includes(mime);
+  return allowed.some((value) => ["xlsx", ".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"].includes(value)) || allowed.includes(mime);
+}
+
+async function parseImportUpload(input: { definition: ImportTypeDefinition; settings: Record<string, unknown>; file?: File | null; csvText?: string | null; sourceFileName?: string | null }): Promise<ParsedImportUpload> {
+  if (input.file) {
+    const fileType = inferImportFileType(input.file.name, input.file.type);
+    if (!fileType) throw new Error("UNSUPPORTED_IMPORT_FILE_TYPE");
+    if (!importFileTypeAllowed(input.settings, fileType, input.file.type)) throw new Error("IMPORT_FILE_TYPE_NOT_ALLOWED");
+    if (fileType === "xlsx") {
+      const parsed = await parseXlsxTemplateSheet(input.file);
+      const { headers, rows } = matrixToImportRows(parsed.rows, input.definition);
+      return { rows, headers, fileType, sourceFileName: input.file.name, parsedSheetName: parsed.sheetName };
+    }
+    const { headers, rows } = parseCsvImportRows(await input.file.text(), input.definition);
+    return { rows, headers, fileType, sourceFileName: input.file.name, parsedSheetName: null };
+  }
+  const { headers, rows } = parseCsvImportRows(String(input.csvText ?? ""), input.definition);
+  return { rows, headers, fileType: "csv", sourceFileName: input.sourceFileName ?? null, parsedSheetName: null };
+}
+
 async function createDataImportRowResult(db: Env["DB"], batchId: string, rowNumber: number, rawRow: Record<string, unknown>) {
   const id = crypto.randomUUID();
   await db.prepare("INSERT INTO data_import_rows (id, import_batch_id, row_number, raw_row_json) VALUES (?, ?, ?, ?)").bind(id, batchId, rowNumber, JSON.stringify(rawRow)).run();
   return id;
 }
 
-async function createDataImportBatch(c: Context<AppBindings>, input: { importType: string; importMode: ImportMode; csvText: string; sourceFileName?: string | null; notes?: string | null; reason?: string | null }) {
+async function createDataImportBatch(c: Context<AppBindings>, input: { importType: string; importMode: ImportMode; csvText?: string | null; file?: File | null; sourceFileName?: string | null; notes?: string | null; reason?: string | null }) {
   const definition = getDataImportTypeDefinition(input.importType);
   if (!definition) return { error: fail(c, 400, "IMPORT_TYPE_UNKNOWN", "Unknown import type.") };
   const settings = await getDataTransferSettings(c.env.DB);
@@ -464,16 +546,25 @@ async function createDataImportBatch(c: Context<AppBindings>, input: { importTyp
   if (definition.sensitiveColumns.length && settings.sensitive_import_requires_permission === 1 && !enforceDataImportPermission(c, "sensitive")) return { error: fail(c, 403, "SENSITIVE_IMPORT_PERMISSION_REQUIRED", "Sensitive import permission is required.") };
   const reasonError = enforceSensitiveImportExportReason(settings, definition.sensitiveColumns.length > 0, input.reason ?? null, "import");
   if (reasonError) return { error: fail(c, 400, "SENSITIVE_IMPORT_REASON_REQUIRED", reasonError) };
-  const rows = parseDataImportFile(input.csvText);
-  if (!rows.length) return { error: fail(c, 400, "IMPORT_FILE_EMPTY", "No CSV rows were found.") };
+  let parsed: ParsedImportUpload;
+  try {
+    parsed = await parseImportUpload({ definition, settings, file: input.file, csvText: input.csvText, sourceFileName: input.sourceFileName });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "IMPORT_PARSE_FAILED";
+    if (message === "UNSUPPORTED_IMPORT_FILE_TYPE") return { error: fail(c, 400, "UNSUPPORTED_IMPORT_FILE_TYPE", "Upload a CSV or Excel .xlsx file.") };
+    if (message === "IMPORT_FILE_TYPE_NOT_ALLOWED") return { error: fail(c, 400, "IMPORT_FILE_TYPE_NOT_ALLOWED", "This import file type is not enabled in Data Transfer settings.") };
+    return { error: fail(c, 400, "IMPORT_FILE_PARSE_FAILED", "Unable to parse the import file. For Excel, use the Template sheet from the downloaded .xlsx template.") };
+  }
+  const rows = parsed.rows;
+  if (!rows.length) return { error: fail(c, 400, "IMPORT_FILE_EMPTY", "No import rows were found.") };
   if (rows.length > Number(settings.max_import_rows ?? 5000)) return { error: fail(c, 400, "IMPORT_ROW_LIMIT_EXCEEDED", "The import exceeds the configured row limit.") };
   const id = crypto.randomUUID();
   const batchNumber = `IMP-${Date.now()}`;
   await c.env.DB.prepare("INSERT INTO data_import_batches (id, batch_number, import_type, import_mode, source_file_name, uploaded_by_user_id, row_count, notes, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(id, batchNumber, definition.key, input.importMode, input.sourceFileName ?? null, c.get("currentUser").id, rows.length, input.notes ?? null, JSON.stringify({ prompt: "22", reason: input.reason ?? null }))
+    .bind(id, batchNumber, definition.key, input.importMode, parsed.sourceFileName ?? input.sourceFileName ?? null, c.get("currentUser").id, rows.length, input.notes ?? null, JSON.stringify({ prompt: "22", reason: input.reason ?? null, source_file_name: parsed.sourceFileName ?? input.sourceFileName ?? null, file_type: parsed.fileType, parsed_sheet_name: parsed.parsedSheetName, row_count: rows.length, headers: parsed.headers }))
     .run();
   for (const row of rows) await createDataImportRowResult(c.env.DB, id, row.rowNumber, row.row);
-  await auditDataImportAction(c, "data_import.uploaded", id, undefined, { import_type: definition.key, row_count: rows.length }, input.reason ?? null);
+  await auditDataImportAction(c, "data_import.uploaded", id, undefined, { import_type: definition.key, row_count: rows.length, file_type: parsed.fileType, parsed_sheet_name: parsed.parsedSheetName }, input.reason ?? null);
   return { batch: await getDataImportBatchSummary(c.env.DB, id) };
 }
 
@@ -556,13 +647,19 @@ function buildImportValidationPreview(batch: ImportBatchRow, rows: ImportResultR
   return { batch_id: batch.id, batch_number: batch.batch_number, import_type: batch.import_type, status: batch.status, total_rows: batch.row_count, valid_rows: batch.valid_row_count, invalid_rows: batch.invalid_row_count, duplicate_rows: batch.duplicate_count, warnings: batch.warning_count, create_rows: batch.create_count, update_rows: batch.update_count, skipped_rows: batch.skipped_count, rows: rows.map(rowToApi) };
 }
 
-function generateImportErrorCsv(rows: ImportResultRow[]) {
+function generateImportErrorCsv(batch: ImportBatchRow, rows: ImportResultRow[]) {
+  const metadata = parseJson<Record<string, unknown>>(batch.metadata_json, {});
   const reportRows = rows.flatMap((row) => {
     const raw = parseJson<Record<string, unknown>>(row.raw_row_json, {});
     const messages = String(row.error_message ?? row.validation_status ?? "").split(/(?<=\.)\s+/).filter(Boolean);
-    return (messages.length ? messages : [String(row.validation_status)]).map((message) => validationMessageToIssue(row.row_number, message, raw));
+    return (messages.length ? messages : [String(row.validation_status)]).map((message) => ({
+      source_file_name: metadata.source_file_name ?? batch.source_file_name ?? "",
+      file_type: metadata.file_type ?? "",
+      parsed_sheet_name: metadata.parsed_sheet_name ?? "",
+      ...validationMessageToIssue(row.row_number, message, raw)
+    }));
   });
-  return buildCsv(["row_number", "column_name", "submitted_value", "error_message", "severity", "suggested_correction"], reportRows);
+  return buildCsv(["source_file_name", "file_type", "parsed_sheet_name", "row_number", "column_name", "submitted_value", "error_message", "severity", "suggested_correction"], reportRows);
 }
 
 async function validateDataImportBatch(db: Env["DB"], user: AuthUser, batchId: string) {
@@ -765,7 +862,8 @@ async function getImportBody(c: Context<AppBindings>) {
     return {
       import_type: String(form.get("import_type") ?? ""),
       import_mode: String(form.get("import_mode") ?? "VALIDATE_ONLY"),
-      csv_text: file instanceof File ? await file.text() : String(form.get("csv_text") ?? ""),
+      file: file instanceof File ? file : null,
+      csv_text: String(form.get("csv_text") ?? ""),
       source_file_name: file instanceof File ? file.name : String(form.get("source_file_name") ?? ""),
       notes: String(form.get("notes") ?? ""),
       reason: String(form.get("reason") ?? "")
@@ -807,7 +905,7 @@ dataImportRoutes.post("/batches", requireAnyPermission(["data_import.upload", "d
   const body = await getImportBody(c);
   const importType = readString(body.import_type);
   const importMode = IMPORT_MODES.includes(body.import_mode as ImportMode) ? body.import_mode as ImportMode : "VALIDATE_ONLY";
-  const result = await createDataImportBatch(c, { importType, importMode, csvText: String(body.csv_text ?? ""), sourceFileName: readString(body.source_file_name), notes: readString(body.notes), reason: readString(body.reason) });
+  const result = await createDataImportBatch(c, { importType, importMode, csvText: String(body.csv_text ?? ""), file: body.file instanceof File ? body.file : null, sourceFileName: readString(body.source_file_name), notes: readString(body.notes), reason: readString(body.reason) });
   if ("error" in result) return result.error;
   return ok(c, { batch: result.batch }, 201);
 });
@@ -849,8 +947,10 @@ dataImportRoutes.post("/batches/:batchId/cancel", requireAnyPermission(["data_im
 dataImportRoutes.get("/batches/:batchId/errors", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => ok(c, { errors: (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? AND validation_status IN ('INVALID','DUPLICATE') ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results.map(rowToApi) }));
 dataImportRoutes.get("/batches/:batchId/results", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => ok(c, { results: (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results.map(rowToApi) }));
 dataImportRoutes.get("/batches/:batchId/errors/download", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
+  const batch = await c.env.DB.prepare("SELECT * FROM data_import_batches WHERE id = ?").bind(c.req.param("batchId")).first<ImportBatchRow>();
+  if (!batch) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
   const rows = (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? AND validation_status IN ('INVALID','DUPLICATE') ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results;
-  return new Response(generateImportErrorCsv(rows), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="hrm-v2-import-errors-${c.req.param("batchId")}.csv"` } });
+  return new Response(generateImportErrorCsv(batch, rows), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="hrm-v2-import-errors-${c.req.param("batchId")}.csv"` } });
 });
 
 dataExportRoutes.get("/types", requireAnyPermission(["data_export.view", "data_export.manage", "reports.view"]), (c) => ok(c, { types: exportTypes }));

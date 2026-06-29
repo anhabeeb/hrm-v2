@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { AssetsNav } from "../components/assets/AssetsNav";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
@@ -154,7 +155,7 @@ export function UniformTypesPage() {
 
   return (
     <PageShell>
-      <Header title="Uniform Types" description="Manage uniform templates, clearance defaults, replacement cycle, and deduction defaults." action={canManage ? <Button size="sm" onClick={() => setModal({ type: "type" })}>Create type</Button> : null} />
+      <Header title="Uniform Types" description="Manage uniform templates, clearance defaults, replacement cycle, and deduction defaults." action={<><ExportMenu moduleName="Uniform types" rows={filtered as unknown as Record<string, unknown>[]} columns={["code", "name", "category", "default_replacement_cycle_months", "default_clearance_required", "default_deduction_amount", "status"]} filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)} />{canManage ? <Button size="sm" onClick={() => setModal({ type: "type" })}>Create type</Button> : null}</>} />
       <AssetsNav />
       <StandardFilterBar
         search={<StandardSearchInput value={query} onDebouncedChange={setQuery} placeholder="Search code/name/category" />}
@@ -206,7 +207,7 @@ export function UniformInventoryPage() {
 
   return (
     <PageShell>
-      <Header title="Uniform Inventory" description="Track uniform quantities by type, size, and location." action={canManage ? <Button size="sm" onClick={() => setModal({ type: "stock" })}>Create stock</Button> : null} />
+      <Header title="Uniform Inventory" description="Track uniform quantities by type, size, and location." action={<><ExportMenu moduleName="Uniform inventory" rows={stock as unknown as Record<string, unknown>[]} columns={["uniform_type_code", "uniform_type_name", "size_label", "location_name", "total_quantity", "available_quantity", "issued_quantity", "damaged_quantity", "lost_quantity", "reorder_level", "status"]} filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)} />{canManage ? <Button size="sm" onClick={() => setModal({ type: "stock" })}>Create stock</Button> : null}</>} />
       <AssetsNav />
       <StandardFilterBar
         search={<StandardSearchInput value={filters.search} onDebouncedChange={(search) => setFilters((current) => ({ ...current, search }))} placeholder="Search type/size" />}
@@ -274,7 +275,7 @@ export function UniformAssignmentsPage() {
 
   return (
     <PageShell>
-      <Header title="Uniform Assignments" description="Issue, return, damage/lost, waive, and payroll recovery foundation for uniforms." action={canIssue ? <Button size="sm" onClick={() => setModal({ type: "issue" })}><Shirt className="h-4 w-4" /> Issue uniform</Button> : null} />
+      <Header title="Uniform Assignments" description="Issue, return, damage/lost, waive, and payroll recovery foundation for uniforms." action={<><ExportMenu moduleName="Uniform assignments" rows={rows as unknown as Record<string, unknown>[]} columns={["employee_no", "employee_name", "department_name", "location_name", "uniform_type_code", "uniform_type_name", "size_label", "quantity_issued", "quantity_returned", "assignment_status", "clearance_status", "issued_date", "expected_return_date", "deduction_amount"]} filterSummary={activeFilterChips.map((chip) => `${chip.label}: ${chip.value}`)} />{canIssue ? <Button size="sm" onClick={() => setModal({ type: "issue" })}><Shirt className="h-4 w-4" /> Issue uniform</Button> : null}</>} />
       <AssetsNav />
       <StandardFilterBar
         search={<StandardSearchInput value={filters.search} onDebouncedChange={(search) => setFilters((current) => ({ ...current, search }))} placeholder="Employee or uniform" />}

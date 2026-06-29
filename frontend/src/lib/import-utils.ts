@@ -17,6 +17,10 @@ export type ImportTemplateDefinition = {
   category?: string;
   moduleKey?: string;
   description?: string;
+  placeholderOnly?: boolean;
+  createAllowed?: boolean;
+  updateAllowed?: boolean;
+  upsertAllowed?: boolean;
   requiredColumns?: string[];
   columns: ImportColumnDefinition[];
   validation_notes?: string[];
