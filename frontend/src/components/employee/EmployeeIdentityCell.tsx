@@ -1,6 +1,7 @@
 import { Mail, MapPin, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
+import { preloadLikelyRoute } from "../../lib/routePreload";
 import { cn } from "../../lib/utils";
 import type { Employee } from "../../types/employees";
 import { StatusBadge } from "../ui/status-badge";
@@ -109,7 +110,10 @@ export function EmployeeIdentityCell({
   const location = worksiteName ?? locationName ?? employee?.location_name ?? null;
   const department = departmentName ?? employee?.department_name ?? null;
   const classes = sizeClasses[size];
-  const title = to ? <Link to={to} className="hover:text-primary hover:underline">{name}</Link> : name;
+  const preloadProfile = () => {
+    if (to?.startsWith("/employees/")) preloadLikelyRoute("employee-profile");
+  };
+  const title = to ? <Link to={to} onMouseEnter={preloadProfile} onFocus={preloadProfile} className="hover:text-primary hover:underline">{name}</Link> : name;
 
   return (
     <div className={cn("flex min-w-[220px] items-center", classes.gap, className)}>

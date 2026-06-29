@@ -1,5 +1,5 @@
 import { Archive, ArrowLeft, CheckCircle2, Pencil } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeAttendancePanel } from "../components/attendance/EmployeeAttendancePanel";
@@ -15,7 +15,7 @@ import { EmployeeFinalSettlementPanel } from "../components/payroll/EmployeeFina
 import { EmployeeNotesPanel } from "../components/notes/EmployeeNotesPanel";
 import { EmployeePayrollPanel } from "../components/payroll/EmployeePayrollPanel";
 import { EmployeeRosterPanel } from "../components/roster/EmployeeRosterPanel";
-import { PageLoader } from "../components/loading";
+import { PageLoader, TableSkeleton } from "../components/loading";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -65,6 +65,8 @@ export function EmployeeProfilePage() {
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [statusModalError, setStatusModalError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
+  const [loadedTabs, setLoadedTabs] = useState<Partial<Record<ProfileTab, boolean>>>({});
+  const [tabLoading, setTabLoading] = useState<Partial<Record<ProfileTab, boolean>>>({});
 
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("employees.view");
@@ -89,7 +91,7 @@ export function EmployeeProfilePage() {
   const canClearPhoto = permissions.has("documents.archive");
   const canViewDuringOnboarding = permissions.has("employees.360.view_during_onboarding");
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!token || !id || !canView) return;
     setError(null);
     try {
@@ -99,28 +101,6 @@ export function EmployeeProfilePage() {
       setContacts(overview.contacts);
       setOnboarding(overview.onboarding);
       setAudit(overview.audit);
-      try {
-        setJobHistory((await api.listEmployeeJobHistory(token, id)).job_history);
-      } catch {
-        setJobHistory([]);
-      }
-      if (canViewUserAccess) {
-        try {
-          const account = (await api.getEmployeeUserAccount(token, id)).user_account;
-          setUserAccount(account);
-          setUserAccess((await api.getEmployeeUserAccess(token, id)).preview);
-        } catch {
-          setUserAccount(null);
-          setUserAccess(null);
-        }
-      }
-      if (canManageUserAccess || canApplyUserAccess) {
-        try {
-          setRoles((await api.listRoles(token)).roles);
-        } catch {
-          setRoles([]);
-        }
-      }
       if (canViewLifecycle) {
         try {
           setLifecycle((await api.getEmployeeLifecycleSummary(token, id)).summary);
@@ -128,20 +108,70 @@ export function EmployeeProfilePage() {
           setLifecycle(null);
         }
       }
-      try {
-        const requests = (await api.listKycRequests(token, { search: overview.employee.employee_no })).requests;
-        setProfileRequests(requests.filter((request) => request.employee_id === id));
-      } catch {
-        setProfileRequests([]);
-      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load Employee 360 profile.");
     }
-  }
+  }, [token, id, canView, canViewLifecycle]);
+
+  const loadTabData = useCallback(async (tab: ProfileTab, force = false) => {
+    if (!token || !id || !employee) return;
+    if (!force && loadedTabs[tab]) return;
+    const needsData = tab === "Personal Info" || tab === "Job Info" || tab === "User Access";
+    if (!needsData) return;
+    setTabLoading((current) => ({ ...current, [tab]: true }));
+    try {
+      if (tab === "Job Info") {
+        try {
+          setJobHistory((await api.listEmployeeJobHistory(token, id)).job_history);
+        } catch {
+          setJobHistory([]);
+        }
+      }
+      if (tab === "Personal Info") {
+        try {
+          const requests = (await api.listKycRequests(token, { search: employee.employee_no })).requests;
+          setProfileRequests(requests.filter((request) => request.employee_id === id));
+        } catch {
+          setProfileRequests([]);
+        }
+      }
+      if (tab === "User Access") {
+        if (canViewUserAccess) {
+          try {
+            const account = (await api.getEmployeeUserAccount(token, id)).user_account;
+            setUserAccount(account);
+            setUserAccess((await api.getEmployeeUserAccess(token, id)).preview);
+          } catch {
+            setUserAccount(null);
+            setUserAccess(null);
+          }
+        }
+        if (canManageUserAccess || canApplyUserAccess) {
+          try {
+            setRoles((await api.listRoles(token)).roles);
+          } catch {
+            setRoles([]);
+          }
+        }
+      }
+      setLoadedTabs((current) => ({ ...current, [tab]: true }));
+    } finally {
+      setTabLoading((current) => ({ ...current, [tab]: false }));
+    }
+  }, [canApplyUserAccess, canManageUserAccess, canViewUserAccess, employee, id, loadedTabs, token]);
 
   useEffect(() => {
     void load();
-  }, [token, id, canView]);
+  }, [load]);
+
+  useEffect(() => {
+    setLoadedTabs({});
+    setTabLoading({});
+  }, [id]);
+
+  useEffect(() => {
+    void loadTabData(activeTab);
+  }, [activeTab, loadTabData]);
 
   async function archive() {
     if (!token || !employee) return;
@@ -210,7 +240,7 @@ export function EmployeeProfilePage() {
     if (!token || !employee) return;
     try {
       setUserAccess((await api.applyEmployeeRoleMapping(token, employee.id, mappingId)).preview);
-      await load();
+      await loadTabData("User Access", true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to apply user access mapping.");
     }
@@ -313,11 +343,11 @@ export function EmployeeProfilePage() {
           ) : null}
           {activeTab === "Personal Info" ? <div className="space-y-4"><DetailGrid rows={[
             ["Full name", employee.full_name], ["Display name", employee.display_name], ["Gender", employee.gender], ["Date of birth", employee.date_of_birth], ["Nationality", employee.nationality], ["Employee type", employee.employee_type], ["Employment type", employee.employment_type], ["Profile photo", employee.profile_photo_document_id ? "Uploaded" : "Not uploaded"]
-          ]} /><ProfileUpdateRequests rows={profileRequests} /></div> : null}
-          {activeTab === "Job Info" ? <JobInfo employee={employee} jobHistory={jobHistory} /> : null}
+          ]} />{tabLoading["Personal Info"] ? <TableSkeleton rows={3} columns={4} label="Loading profile update requests" /> : <ProfileUpdateRequests rows={profileRequests} />}</div> : null}
+          {activeTab === "Job Info" ? tabLoading["Job Info"] ? <TableSkeleton rows={4} columns={5} label="Loading job history" /> : <JobInfo employee={employee} jobHistory={jobHistory} /> : null}
           {activeTab === "Contracts" ? canContracts ? <EmployeeContractsPanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Contracts unavailable" description="Your account needs employee contract access." /> : null}
           {activeTab === "Contacts" ? <Contacts contacts={contacts} canManage={canContacts} onAdd={() => setContactModal({ mode: "create" })} onEdit={(contact) => setContactModal({ mode: "edit", contact })} onArchive={(contact) => setContactArchiveTarget(contact)} /> : null}
-          {activeTab === "User Access" ? canViewUserAccess ? (
+          {activeTab === "User Access" ? canViewUserAccess ? (tabLoading["User Access"] ? <TableSkeleton rows={4} columns={4} label="Loading user access" /> :
             <UserAccessPanel
               employee={employee}
               token={token}
@@ -326,7 +356,7 @@ export function EmployeeProfilePage() {
               roles={roles}
               canManage={canManageUserAccess}
               canApply={canApplyUserAccess}
-              onRefresh={() => void load()}
+              onRefresh={() => void loadTabData("User Access", true)}
               onApply={(mappingId) => void applyUserAccessMapping(mappingId)}
             />
           ) : <EmptyState title="User access unavailable" description="Your account needs employee.user_account.view or users.view permission." /> : null}

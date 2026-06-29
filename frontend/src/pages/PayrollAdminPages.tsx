@@ -23,6 +23,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateRequiredField } from "../lib/form-validation";
+import { referenceDataCache } from "../lib/referenceDataCache";
 import type { Employee } from "../types/employees";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import type { PayrollAdjustment, PayrollAdvance, PayrollComponent, PayrollDeduction, PayrollPeriod, PayrollSettings } from "../types/payroll";
@@ -161,8 +162,17 @@ function PayrollTablePageLayout({ title, description, error, loading, empty, emp
 }
 
 async function loadReferenceData(token: string) {
-  const [employees, departments, locations, jobLevels, positions, periods] = await Promise.all([api.listEmployees(token), api.listDepartments(token), api.listLocations(token), api.listJobLevels(token), api.listPositions(token), api.listPayrollPeriods(token)]);
-  return { employees: employees.employees, departments: departments.departments, locations: locations.locations, jobLevels: jobLevels.job_levels, positions: positions.positions, periods: periods.periods };
+  return referenceDataCache.getOrLoad("payroll:admin-reference-data", token, async () => {
+    const [employees, departments, locations, jobLevels, positions, periods] = await Promise.all([
+      api.listEmployees(token),
+      api.listDepartments(token),
+      api.listLocations(token),
+      api.listJobLevels(token),
+      api.listPositions(token),
+      api.listPayrollPeriods(token)
+    ]);
+    return { employees: employees.employees, departments: departments.departments, locations: locations.locations, jobLevels: jobLevels.job_levels, positions: positions.positions, periods: periods.periods };
+  });
 }
 
 function payrollOrgFilterChips(input: {

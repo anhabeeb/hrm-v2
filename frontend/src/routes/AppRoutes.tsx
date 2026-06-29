@@ -5,9 +5,20 @@ import { Button } from "../components/ui/button";
 import { ModuleDisabledState } from "../components/ui/page-shell";
 import { useAuth } from "../hooks/useAuth";
 import { AppShell } from "../layouts/AppShell";
+import { measureAsync } from "../lib/performanceDiagnostics";
+import { registerRoutePreloader } from "../lib/routePreload";
+
+type LazyPageComponent = ComponentType<any> & { preload?: () => Promise<unknown> };
 
 function lazyPage(loader: () => Promise<Record<string, unknown>>, exportName: string) {
-  return lazy(async () => ({ default: (await loader())[exportName] as ComponentType<any> }));
+  let loadPromise: Promise<{ default: ComponentType<any> }> | null = null;
+  const load = () => {
+    loadPromise ??= measureAsync(`route chunk ${exportName}`, async () => ({ default: (await loader())[exportName] as ComponentType<any> }));
+    return loadPromise;
+  };
+  const Page = lazy(load) as LazyPageComponent;
+  Page.preload = () => load();
+  return Page;
 }
 
 const AttendanceCalendarPage = lazyPage(() => import("../pages/AttendanceCalendarPage"), "AttendanceCalendarPage");
@@ -80,6 +91,12 @@ const SearchResultsPage = lazyPage(() => import("../pages/SearchResultsPage"), "
 const SettingsPage = lazyPage(() => import("../pages/SettingsPage"), "SettingsPage");
 const SetupPage = lazyPage(() => import("../pages/SetupPage"), "SetupPage");
 const UsersAccessPage = lazyPage(() => import("../pages/UsersAccessPage"), "UsersAccessPage");
+
+registerRoutePreloader("employee-profile", () => EmployeeProfilePage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("onboarding-case", () => LifecyclePage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("payroll-run-detail", () => PayrollRunDetailPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("payroll-runs", () => PayrollRunsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("documents-compliance", () => DocumentCompliancePage.preload?.() ?? Promise.resolve());
 
 function RequireAuth() {
   const { loading, bootstrap, user } = useAuth();

@@ -50,6 +50,7 @@
     "verify:shadcn-navigation-tabs": "node scripts/verify-shadcn-navigation-tabs.mjs",
     "verify:global-search-notifications": "node scripts/verify-global-search-notifications.mjs",
     "verify:performance-optimization": "node scripts/verify-performance-optimization.mjs",
+    "verify:client-side-speed-polish": "node scripts/verify-client-side-speed-polish.mjs",
     "verify:filter-search-date-standardization": "node scripts/verify-filter-search-date-standardization.mjs",
     "verify:frontend-bundle-integrity": "node scripts/verify-frontend-bundle-integrity.mjs",
     "verify:frontend-static-assets": "node scripts/verify-frontend-static-assets.mjs",

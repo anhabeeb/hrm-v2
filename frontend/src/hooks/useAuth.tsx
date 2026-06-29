@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { clearCacheOnPermissionChange, clearSensitiveIndexedDbCaches, permissionScopeHash } from "../lib/cache/hrmCache";
 import { invalidateReferenceDataCache } from "../lib/referenceDataCache";
@@ -25,6 +25,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const bootstrapInflightRef = useRef<Promise<BootstrapStatus> | null>(null);
+  const meInflightRef = useRef<{ token: string; promise: Promise<{ user: AuthUser }> } | null>(null);
 
   const persistSession = useCallback((nextToken: string, nextUser: AuthUser) => {
     const nextSignature = permissionScopeHash({ permissions: nextUser.permissions, roles: nextUser.roles, employeeId: nextUser.employee_id });
@@ -49,9 +51,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshBootstrap = useCallback(async () => {
-    const status = await api.getBootstrapStatus();
+    bootstrapInflightRef.current ??= api.getBootstrapStatus().finally(() => {
+      bootstrapInflightRef.current = null;
+    });
+    const status = await bootstrapInflightRef.current;
     setBootstrap(status);
     return status;
+  }, []);
+
+  const loadCurrentUser = useCallback((savedToken: string) => {
+    if (meInflightRef.current?.token !== savedToken) {
+      meInflightRef.current = {
+        token: savedToken,
+        promise: api.me(savedToken).finally(() => {
+          if (meInflightRef.current?.token === savedToken) meInflightRef.current = null;
+        })
+      };
+    }
+    return meInflightRef.current.promise;
   }, []);
 
   useEffect(() => {
@@ -59,16 +76,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function boot() {
       try {
-        const status = await api.getBootstrapStatus();
+        const status = await refreshBootstrap();
         if (!mounted) {
           return;
         }
-        setBootstrap(status);
 
         const savedToken = localStorage.getItem(TOKEN_KEY);
         if (savedToken && status.setup_completed) {
           try {
-            const result = await api.me(savedToken);
+            const result = await loadCurrentUser(savedToken);
             if (mounted) {
               setToken(savedToken);
               setUser(result.user);
@@ -90,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [clearSession]);
+  }, [clearSession, loadCurrentUser, refreshBootstrap]);
 
   const login = useCallback(
     async (input: { email: string; password: string }) => {
