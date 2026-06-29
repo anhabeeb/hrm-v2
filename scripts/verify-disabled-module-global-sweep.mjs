@@ -222,8 +222,16 @@ const operationalRouteChecks = [
       /requireOperationalModuleEnabled\(c,\s*"self_service"/,
       /disabledModuleResponse\(c,\s*"self_service"/,
       /disabledSubmoduleResponse\(c,\s*"self_service"/,
+      /isOperationalModuleEnabled\(c\.env\.DB,\s*"documents"/,
+      /isOperationalModuleEnabled\(c\.env\.DB,\s*"assets_uniforms"/,
+      /isOperationalSubmoduleEnabled\(c\.env\.DB,\s*"payroll",\s*"payslips"/,
+      /getSelfServiceDashboardSummary\(c,\s*gate\.employeeId!,\s*visibility\)/,
       /requireOperationalModuleEnabled\(c,\s*"attendance"/,
       /requireOperationalModuleEnabled\(c,\s*"roster"/,
+      /requireOperationalModuleEnabled\(c,\s*"leave"/,
+      /requireOperationalModuleEnabled\(c,\s*"documents"/,
+      /requireOperationalModuleEnabled\(c,\s*"assets_uniforms"/,
+      /requireOperationalSubmoduleEnabled\(c,\s*"payroll",\s*"payslips"/,
       /requireOperationalModuleEnabled\(c,\s*"payroll"/
     ],
     area: "self-service and optional self-service module routes use central disabled-module enforcement"
@@ -314,6 +322,8 @@ hasAll("frontend/src/routes/AppRoutes.tsx", [
   "OperationalRouteGate",
   "ModuleDisabledState",
   "module_visibility",
+  "match?: \"any\" | \"all\"",
+  "operationalAll",
   "Open Settings",
   "Enable this module from Settings to use this feature.",
   /operational\("contracts",\s*"Contracts"/,
@@ -344,9 +354,37 @@ hasAll("frontend/src/routes/AppRoutes.tsx", [
 
 hasAll("frontend/src/routes/AppRoutes.tsx", [
   /path="self-service\/profile"\s+element={operational\("self_service"/,
-  /path="self-service\/documents"\s+element={operational\("self_service"/,
-  /path="self-service\/payroll"\s+element={operational\("self_service"/
+  /path="self-service\/documents"\s+element={operationalAll\(\["self_service",\s*"documents"\]/,
+  /path="self-service\/attendance"\s+element={operationalAll\(\["self_service",\s*"attendance"\]/,
+  /path="self-service\/leave"\s+element={operationalAll\(\["self_service",\s*"leave"\]/,
+  /path="self-service\/roster"\s+element={operationalAll\(\["self_service",\s*"roster"\]/,
+  /path="self-service\/payroll"\s+element={operationalAll\(\["self_service",\s*"payroll"\]/,
+  /path="self-service\/assets"\s+element={operationalAll\(\["self_service",\s*"assets_uniforms"\]/,
+  /path="self-service\/uniforms"\s+element={operationalAll\(\["self_service",\s*"assets_uniforms"\]/
 ], "self-service deep links must be guarded by direct disabled-module route state");
+
+hasAll("frontend/src/pages/SelfServicePage.tsx", [
+  "moduleKeys: [\"roster\"]",
+  "moduleKeys: [\"assets_uniforms\"]",
+  "moduleKeys: [\"attendance\"]",
+  "moduleKeys: [\"leave\"]",
+  "moduleKeys: [\"documents\"]",
+  "moduleKeys: [\"payroll\", \"payroll_bank_loans\"]",
+  "moduleKeys: [\"payroll\", \"payroll_pension\"]",
+  "moduleKeys: [\"payroll\", \"payroll_payment_methods\"]",
+  "visibilityKeys",
+  "navItemVisible",
+  "combinedVisibility",
+  "visibleNav.map",
+  "self.module_visibility",
+  "requestVisibility.payment_methods !== false",
+  "requestVisibility.bank_loans !== false",
+  "requestVisibility.pension !== false",
+  "visible(\"roster\")",
+  "visible(\"assets\")",
+  "visible(\"payslips\")"
+], "employee self-service navigation, quick actions, dashboard cards, and optional API calls must obey module visibility");
+hasNo("frontend/src/pages/SelfServicePage.tsx", /nav\.map\(\(item\)/, "self-service tab strip must not render hardcoded nav items without module_visibility filtering");
 
 hasAll("worker/src/routes/dashboard.ts", [
   "moduleControlEnabled(db, \"assets_uniforms\")",
@@ -369,6 +407,7 @@ hasAll("worker/src/routes/search.ts", [
   "quickLinksForUser(db",
   "await quickLinksForUser(c.env.DB",
   "moduleAllowed",
+  "moduleKey: \"assets_uniforms\"",
   "payslips"
 ], "global search skips disabled modules and disabled payroll submodules");
 

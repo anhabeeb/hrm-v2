@@ -7,7 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
-import { disabledModuleResponse, disabledSubmoduleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
+import { disabledModuleResponse, disabledSubmoduleResponse, isOperationalModuleEnabled, isOperationalSubmoduleEnabled, requireOperationalModuleEnabled, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
 import { applyLeaveBalanceChange, getLeaveApprovalChainPreview, getSelfServiceLeaveCycles } from "./leave";
@@ -216,52 +216,80 @@ export function maskSelfServiceSensitiveFields(row: Row | null | undefined, allo
 export async function getSelfServiceModuleVisibility(c: Context<AppBindings>) {
   const settings = await getSelfServiceSettingsRow(c);
   const can = (key: string, fallback = "self_service.view") => hasAny(c, [key, fallback]);
+  const operational = {
+    attendance: await isOperationalModuleEnabled(c.env.DB, "attendance"),
+    roster: await isOperationalModuleEnabled(c.env.DB, "roster"),
+    leave: await isOperationalModuleEnabled(c.env.DB, "leave"),
+    payroll: await isOperationalModuleEnabled(c.env.DB, "payroll"),
+    payroll_payslips: await isOperationalSubmoduleEnabled(c.env.DB, "payroll", "payslips"),
+    payroll_employee_advances: await isOperationalSubmoduleEnabled(c.env.DB, "payroll", "employee_advances"),
+    payroll_payment_methods: await isOperationalSubmoduleEnabled(c.env.DB, "payroll", "payment_methods"),
+    payroll_bank_loans: await isOperationalSubmoduleEnabled(c.env.DB, "payroll", "bank_loans"),
+    payroll_pension: await isOperationalSubmoduleEnabled(c.env.DB, "payroll", "pension"),
+    payroll_custom_deductions: await isOperationalSubmoduleEnabled(c.env.DB, "payroll", "custom_deductions"),
+    documents: await isOperationalModuleEnabled(c.env.DB, "documents"),
+    contracts: await isOperationalModuleEnabled(c.env.DB, "contracts"),
+    assets_uniforms: await isOperationalModuleEnabled(c.env.DB, "assets_uniforms"),
+    approvals: await isOperationalModuleEnabled(c.env.DB, "approvals"),
+    onboarding: await isOperationalModuleEnabled(c.env.DB, "onboarding"),
+    offboarding: await isOperationalModuleEnabled(c.env.DB, "offboarding"),
+    notifications: await isOperationalModuleEnabled(c.env.DB, "notifications")
+  };
   return {
     dashboard: boolSetting(settings, "dashboard_enabled") && can("self_service.dashboard.view"),
     profile: boolSetting(settings, "profile_enabled") && can("self_service.profile.view"),
     profile_update_requests: boolSetting(settings, "profile_update_requests_enabled") && can("self_service.profile_update_requests.view"),
-    documents: boolSetting(settings, "documents_enabled") && can("self_service.documents.compliance.view"),
-    leave: boolSetting(settings, "leave_enabled") && can("self_service.leave.view"),
-    attendance: boolSetting(settings, "attendance_enabled") && can("self_service.attendance.view"),
-    roster: boolSetting(settings, "roster_enabled") && can("self_service.roster.view"),
-    payroll: boolSetting(settings, "payroll_enabled") && can("self_service.payroll.view"),
-    payslips: boolSetting(settings, "payslips_enabled") && can("self_service.payslips.view"),
-    payment_methods: boolSetting(settings, "payment_methods_enabled") && can("self_service.payment_methods.view"),
-    bank_loans: boolSetting(settings, "bank_loans_enabled") && can("self_service.bank_loans.view"),
-    pension: boolSetting(settings, "pension_enabled") && can("self_service.pension.view"),
-    contracts: boolSetting(settings, "contracts_enabled") && can("self_service.contracts.view"),
-    assets: boolSetting(settings, "assets_enabled") && can("self_service.assets.view"),
-    uniforms: boolSetting(settings, "uniforms_enabled") && can("self_service.uniforms.view"),
-    approvals: boolSetting(settings, "approvals_enabled") && can("self_service.approvals.view"),
-    onboarding: boolSetting(settings, "onboarding_enabled") && can("self_service.onboarding.view"),
-    offboarding: boolSetting(settings, "offboarding_enabled") && can("self_service.offboarding.view"),
-    notifications: boolSetting(settings, "notifications_enabled") && can("self_service.notifications.view")
+    documents: operational.documents && boolSetting(settings, "documents_enabled") && can("self_service.documents.compliance.view"),
+    leave: operational.leave && boolSetting(settings, "leave_enabled") && can("self_service.leave.view"),
+    attendance: operational.attendance && boolSetting(settings, "attendance_enabled") && can("self_service.attendance.view"),
+    roster: operational.roster && boolSetting(settings, "roster_enabled") && can("self_service.roster.view"),
+    payroll: operational.payroll && boolSetting(settings, "payroll_enabled") && can("self_service.payroll.view"),
+    payslips: operational.payroll_payslips && boolSetting(settings, "payslips_enabled") && can("self_service.payslips.view"),
+    payroll_employee_advances: operational.payroll_employee_advances && boolSetting(settings, "payroll_enabled") && can("self_service.payroll.view"),
+    payment_methods: operational.payroll_payment_methods && boolSetting(settings, "payment_methods_enabled") && can("self_service.payment_methods.view"),
+    bank_loans: operational.payroll_bank_loans && boolSetting(settings, "bank_loans_enabled") && can("self_service.bank_loans.view"),
+    pension: operational.payroll_pension && boolSetting(settings, "pension_enabled") && can("self_service.pension.view"),
+    custom_deductions: operational.payroll_custom_deductions && boolSetting(settings, "payroll_enabled") && can("self_service.payroll.view"),
+    contracts: operational.contracts && boolSetting(settings, "contracts_enabled") && can("self_service.contracts.view"),
+    assets: operational.assets_uniforms && boolSetting(settings, "assets_enabled") && can("self_service.assets.view"),
+    uniforms: operational.assets_uniforms && boolSetting(settings, "uniforms_enabled") && can("self_service.uniforms.view"),
+    approvals: operational.approvals && boolSetting(settings, "approvals_enabled") && can("self_service.approvals.view"),
+    onboarding: operational.onboarding && boolSetting(settings, "onboarding_enabled") && can("self_service.onboarding.view"),
+    offboarding: operational.offboarding && boolSetting(settings, "offboarding_enabled") && can("self_service.offboarding.view"),
+    notifications: operational.notifications && boolSetting(settings, "notifications_enabled") && can("self_service.notifications.view")
   };
 }
 
-export async function getSelfServiceDashboardSummary(c: Context<AppBindings>, employeeId: string) {
+export async function getSelfServiceDashboardSummary(c: Context<AppBindings>, employeeId: string, visibilityInput?: Record<string, boolean>) {
+  const visibility = visibilityInput ?? await getSelfServiceModuleVisibility(c);
+  const countIf = async (enabled: boolean, sql: string, ...bindings: unknown[]) => {
+    if (!enabled) return { count: 0 };
+    return c.env.DB.prepare(sql).bind(...bindings).first<Row>();
+  };
   const [leaveOpen, attendanceCorrections, expiringDocs, payslips, assets, approvals, kyc] = await Promise.all([
-    c.env.DB.prepare("SELECT COUNT(*) AS count FROM leave_requests WHERE employee_id = ? AND status IN ('DRAFT', 'PENDING_APPROVAL')").bind(employeeId).first<Row>(),
-    c.env.DB.prepare("SELECT COUNT(*) AS count FROM attendance_correction_requests WHERE employee_id = ? AND status IN ('PENDING', 'SUBMITTED')").bind(employeeId).first<Row>(),
-    c.env.DB.prepare("SELECT COUNT(*) AS count FROM employee_documents WHERE employee_id = ? AND status = 'ACTIVE' AND expiry_date IS NOT NULL AND date(expiry_date) <= date('now', '+30 day')").bind(employeeId).first<Row>(),
-    c.env.DB.prepare("SELECT COUNT(*) AS count FROM payroll_payslips WHERE employee_id = ? AND status IN ('GENERATED', 'REGENERATED')").bind(employeeId).first<Row>(),
-    c.env.DB.prepare("SELECT COUNT(*) AS count FROM employee_asset_assignments WHERE employee_id = ? AND COALESCE(returned_date, '') = ''").bind(employeeId).first<Row>(),
-    c.env.DB.prepare("SELECT COUNT(*) AS count FROM approval_instances WHERE employee_id = ? OR submitted_by_user_id = ?").bind(employeeId, c.get("currentUser").id).first<Row>(),
-    c.env.DB.prepare("SELECT COUNT(*) AS count FROM employee_kyc_update_requests WHERE employee_id = ? AND status IN ('SUBMITTED', 'PENDING')").bind(employeeId).first<Row>()
+    countIf(visibility.leave !== false, "SELECT COUNT(*) AS count FROM leave_requests WHERE employee_id = ? AND status IN ('DRAFT', 'PENDING_APPROVAL')", employeeId),
+    countIf(visibility.attendance !== false, "SELECT COUNT(*) AS count FROM attendance_correction_requests WHERE employee_id = ? AND status IN ('PENDING', 'SUBMITTED')", employeeId),
+    countIf(visibility.documents !== false, "SELECT COUNT(*) AS count FROM employee_documents WHERE employee_id = ? AND status = 'ACTIVE' AND expiry_date IS NOT NULL AND date(expiry_date) <= date('now', '+30 day')", employeeId),
+    countIf(visibility.payslips !== false, "SELECT COUNT(*) AS count FROM payroll_payslips WHERE employee_id = ? AND status IN ('GENERATED', 'REGENERATED')", employeeId),
+    countIf(visibility.assets !== false, "SELECT COUNT(*) AS count FROM employee_asset_assignments WHERE employee_id = ? AND COALESCE(returned_date, '') = ''", employeeId),
+    countIf(visibility.approvals !== false, "SELECT COUNT(*) AS count FROM approval_instances WHERE employee_id = ? OR submitted_by_user_id = ?", employeeId, c.get("currentUser").id),
+    countIf(visibility.profile_update_requests !== false, "SELECT COUNT(*) AS count FROM employee_kyc_update_requests WHERE employee_id = ? AND status IN ('SUBMITTED', 'PENDING')", employeeId)
   ]);
-  const upcomingRoster = (
-    await c.env.DB
-      .prepare(
-        `SELECT ra.roster_date, ra.status, st.code AS shift_code, st.name AS shift_name, st.start_time, st.end_time
-         FROM roster_assignments ra
-         JOIN roster_periods rp ON rp.id = ra.roster_period_id
-         LEFT JOIN shift_templates st ON st.id = ra.shift_template_id
-         WHERE ra.employee_id = ? AND ra.roster_date >= date('now') AND rp.status IN ('PUBLISHED', 'LOCKED')
-         ORDER BY ra.roster_date ASC LIMIT 7`
-      )
-      .bind(employeeId)
-      .all<Row>()
-  ).results;
+  const upcomingRoster = visibility.roster !== false
+    ? (
+        await c.env.DB
+          .prepare(
+            `SELECT ra.roster_date, ra.status, st.code AS shift_code, st.name AS shift_name, st.start_time, st.end_time
+             FROM roster_assignments ra
+             JOIN roster_periods rp ON rp.id = ra.roster_period_id
+             LEFT JOIN shift_templates st ON st.id = ra.shift_template_id
+             WHERE ra.employee_id = ? AND ra.roster_date >= date('now') AND rp.status IN ('PUBLISHED', 'LOCKED')
+             ORDER BY ra.roster_date ASC LIMIT 7`
+          )
+          .bind(employeeId)
+          .all<Row>()
+      ).results
+    : [];
   return {
     open_leave_requests: Number(leaveOpen?.count ?? 0),
     pending_attendance_corrections: Number(attendanceCorrections?.count ?? 0),
@@ -270,7 +298,8 @@ export async function getSelfServiceDashboardSummary(c: Context<AppBindings>, em
     active_assets: Number(assets?.count ?? 0),
     submitted_approvals: Number(approvals?.count ?? 0),
     pending_profile_updates: Number(kyc?.count ?? 0),
-    upcoming_roster: upcomingRoster
+    upcoming_roster: upcomingRoster,
+    module_visibility: visibility
   };
 }
 
@@ -804,9 +833,9 @@ selfServiceRoutes.get("/dashboard", async (c) => {
   if (disabled) return disabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
-  const [summary, visibility, notifications] = await Promise.all([
-    getSelfServiceDashboardSummary(c, gate.employeeId!),
-    getSelfServiceModuleVisibility(c),
+  const visibility = await getSelfServiceModuleVisibility(c);
+  const [summary, notifications] = await Promise.all([
+    getSelfServiceDashboardSummary(c, gate.employeeId!, visibility),
     getSelfServiceNotifications(c, gate.employeeId!)
   ]);
   return ok(c, { employee: gate.employee, summary, module_visibility: visibility, notifications: notifications.slice(0, 8), unread_notifications: await getSelfServiceUnreadNotificationCount(c, gate.employeeId!) });
@@ -883,6 +912,8 @@ selfServiceRoutes.get("/documents", async (c) => {
   if (!hasAny(c, ["self_service.documents.compliance.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your self-service documents.");
   const disabled = await assertSelfServiceModuleEnabled(c, "documents_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "documents", "Documents");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const rows = (
@@ -915,6 +946,8 @@ selfServiceRoutes.get("/documents/warnings", async (c) => {
   if (!hasAny(c, ["self_service.documents.compliance.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your document warnings.");
   const disabled = await assertSelfServiceModuleEnabled(c, "documents_compliance_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "documents", "Documents");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   return ok(c, { warnings: maskSelfServiceDocuments(await getSelfServiceDocumentWarnings(c, gate.employeeId!)) });
@@ -961,7 +994,9 @@ selfServiceRoutes.get("/attendance", async (c) => {
 
 selfServiceRoutes.get("/attendance/summary", async (c) => {
   if (!hasAny(c, ["self_service.attendance.view", "self_service.view", "attendance.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service attendance.");
-  const disabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
+  const disabled = await requireSelfServiceAttendanceEnabled(c);
   if (disabled) return disabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
@@ -972,7 +1007,9 @@ selfServiceRoutes.get("/attendance/summary", async (c) => {
 
 selfServiceRoutes.get("/attendance/calendar", async (c) => {
   if (!hasAny(c, ["self_service.attendance.view", "self_service.view", "attendance.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service attendance.");
-  const disabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
+  const disabled = await requireSelfServiceAttendanceEnabled(c);
   if (disabled) return disabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
@@ -985,7 +1022,9 @@ selfServiceRoutes.get("/attendance/calendar", async (c) => {
 
 selfServiceRoutes.get("/attendance/daily-records", async (c) => {
   if (!hasAny(c, ["self_service.attendance.view", "self_service.view", "attendance.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service attendance.");
-  const disabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
+  const disabled = await requireSelfServiceAttendanceEnabled(c);
   if (disabled) return disabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
@@ -998,7 +1037,9 @@ selfServiceRoutes.get("/attendance/daily-records", async (c) => {
 
 selfServiceRoutes.get("/attendance/corrections", async (c) => {
   if (!hasAny(c, ["self_service.attendance_correction.view", "self_service.attendance.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service attendance corrections.");
-  const disabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
+  const disabled = await requireSelfServiceAttendanceEnabled(c);
   if (disabled) return disabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
@@ -1061,6 +1102,8 @@ selfServiceRoutes.post("/attendance/corrections", async (c) => {
 
 selfServiceRoutes.post("/attendance/correction-requests", async (c) => {
   if (!hasAny(c, ["self_service.attendance_correction.request", "self_service.attendance_correction", "attendance.corrections.create"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to request attendance corrections.");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "attendance_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
   const disabled = await requireSelfServiceAttendanceEnabled(c);
   if (disabled) return disabled;
   const gate = await requireSelfServiceEmployeeContext(c);
@@ -1091,6 +1134,8 @@ selfServiceRoutes.get("/leave", async (c) => {
   if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service leave.");
   const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "leave", "Leave");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const balances = (await c.env.DB.prepare("SELECT * FROM leave_balances WHERE employee_id = ? ORDER BY period_year DESC").bind(gate.employeeId).all<Row>()).results;
@@ -1122,6 +1167,8 @@ selfServiceRoutes.get("/leave/summary", async (c) => {
   if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service leave.");
   const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "leave", "Leave");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   return ok(c, { summary: await getSelfServiceLeaveSummary(c, gate.employeeId!) });
@@ -1131,6 +1178,8 @@ selfServiceRoutes.get("/leave/balances", async (c) => {
   if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service leave balances.");
   const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "leave", "Leave");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   return ok(c, await getSelfServiceLeaveBalances(c, gate.employeeId!));
@@ -1140,6 +1189,8 @@ selfServiceRoutes.get("/leave/requests", async (c) => {
   if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service leave requests.");
   const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "leave", "Leave");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const requests = (await c.env.DB.prepare("SELECT lr.*, lt.name AS leave_type_name FROM leave_requests lr JOIN leave_types lt ON lt.id = lr.leave_type_id WHERE lr.employee_id = ? ORDER BY lr.created_at DESC").bind(gate.employeeId).all<Row>()).results;
@@ -1152,6 +1203,8 @@ selfServiceRoutes.post("/leave/requests", async (c) => {
   }
   const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
   if (selfServiceDisabled) return selfServiceDisabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "leave", "Leave");
+  if (moduleDisabled) return moduleDisabled;
   const selfServiceSettings = await getSelfServiceSettingsRow(c);
   if (!boolSetting(selfServiceSettings, "allow_leave_requests")) return fail(c, 403, "SELF_SERVICE_LEAVE_REQUESTS_DISABLED", "Leave requests are disabled.");
   const gate = await requireSelfServiceEmployeeContext(c);
@@ -1250,6 +1303,10 @@ selfServiceRoutes.post("/leave/requests", async (c) => {
 
 selfServiceRoutes.get("/leave/requests/:requestId", async (c) => {
   if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view this leave request.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
+  if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "leave", "Leave");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const request = await c.env.DB.prepare("SELECT * FROM leave_requests WHERE id = ? AND employee_id = ?").bind(c.req.param("requestId"), gate.employeeId).first<Row>();
@@ -1260,6 +1317,10 @@ selfServiceRoutes.get("/leave/requests/:requestId", async (c) => {
 
 selfServiceRoutes.post("/leave/requests/:requestId/cancel", async (c) => {
   if (!hasAny(c, ["self_service.leave.cancel", "leave.cancel", "leave.requests.cancel", "self_service.leave_request"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to cancel this leave request.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
+  if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "leave", "Leave");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const request = await c.env.DB.prepare("SELECT * FROM leave_requests WHERE id = ? AND employee_id = ?").bind(c.req.param("requestId"), gate.employeeId).first<Row>();
@@ -1305,7 +1366,9 @@ selfServiceRoutes.get("/roster", async (c) => {
 
 selfServiceRoutes.get("/roster/weekly", async (c) => {
   if (!hasAny(c, ["self_service.roster.view", "roster.self.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your roster.");
-  const disabled = await assertSelfServiceModuleEnabled(c, "roster_enabled");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "roster_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
+  const disabled = await requireSelfServiceRosterEnabled(c);
   if (disabled) return disabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
@@ -1318,7 +1381,9 @@ selfServiceRoutes.get("/roster/weekly", async (c) => {
 
 selfServiceRoutes.get("/roster/upcoming", async (c) => {
   if (!hasAny(c, ["self_service.roster.view", "roster.self.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your roster.");
-  const disabled = await assertSelfServiceModuleEnabled(c, "roster_enabled");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "roster_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
+  const disabled = await requireSelfServiceRosterEnabled(c);
   if (disabled) return disabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
@@ -1368,6 +1433,7 @@ selfServiceRoutes.get("/payroll", async (c) => {
   if (payrollModuleDisabled) return payrollModuleDisabled;
   const payrollSettings = await c.env.DB.prepare("SELECT module_enabled FROM payroll_settings WHERE id = 'payroll_settings_default'").first<Row>();
   if (Number(payrollSettings?.module_enabled ?? 1) !== 1) return disabledModuleResponse(c, "payroll", "Payroll");
+  const visibility = await getSelfServiceModuleVisibility(c);
   const profile = await c.env.DB.prepare("SELECT employee_id, basic_salary, currency, payroll_included, payment_method, effective_from FROM employee_payroll_profiles WHERE employee_id = ?").bind(gate.employeeId).first<Row>();
   const runs = (
     await c.env.DB
@@ -1383,17 +1449,23 @@ selfServiceRoutes.get("/payroll", async (c) => {
       .bind(gate.employeeId)
       .all<Row>()
   ).results;
-  const advances = (await c.env.DB.prepare("SELECT amount, payment_date, status, notes, created_at FROM payroll_advance_payments WHERE employee_id = ? ORDER BY payment_date DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results;
+  const advances = visibility.payroll_employee_advances !== false && (await isOperationalSubmoduleEnabled(c.env.DB, "payroll", "employee_advances"))
+    ? (await c.env.DB.prepare("SELECT amount, payment_date, status, notes, created_at FROM payroll_advance_payments WHERE employee_id = ? ORDER BY payment_date DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results
+    : [];
   const deductions = (await c.env.DB.prepare("SELECT deduction_type, amount, start_date, end_date, status, reason FROM payroll_deductions WHERE employee_id = ? ORDER BY created_at DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results;
-  const payslips = (await c.env.DB.prepare("SELECT ps.id, ps.payslip_number, ps.status, ps.generated_at, ps.version_number, pp.period_month, pp.period_year, pre.net_salary FROM payroll_payslips ps INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id INNER JOIN payroll_employee_results pre ON pre.id = ps.payroll_employee_result_id WHERE ps.employee_id = ? AND ps.status IN ('GENERATED', 'REGENERATED') ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results;
+  const payslips = visibility.payslips !== false
+    ? (await c.env.DB.prepare("SELECT ps.id, ps.payslip_number, ps.status, ps.generated_at, ps.version_number, pp.period_month, pp.period_year, pre.net_salary FROM payroll_payslips ps INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id INNER JOIN payroll_employee_results pre ON pre.id = ps.payroll_employee_result_id WHERE ps.employee_id = ? AND ps.status IN ('GENERATED', 'REGENERATED') ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC LIMIT 24").bind(gate.employeeId).all<Row>()).results
+    : [];
   const selfServiceSettings = await getSelfServiceSettingsRow(c);
-  return ok(c, { profile: maskSelfServiceSensitiveFields(profile, boolSetting(selfServiceSettings, "show_sensitive_payroll_values")), runs, advances, deductions, payslips, payslip_download_enabled: boolSetting(selfServiceSettings, "allow_payslip_downloads") && hasAny(c, ["self_service.payslips.download", "self_service.payroll.view", "self_service.view"]) });
+  return ok(c, { profile: maskSelfServiceSensitiveFields(profile, boolSetting(selfServiceSettings, "show_sensitive_payroll_values")), runs, advances, deductions, payslips, module_visibility: visibility, payslip_download_enabled: visibility.payslips !== false && boolSetting(selfServiceSettings, "allow_payslip_downloads") && hasAny(c, ["self_service.payslips.download", "self_service.payroll.view", "self_service.view"]) });
 });
 
 selfServiceRoutes.get("/payroll/summary", async (c) => {
   if (!hasAny(c, ["self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service payroll.");
   const disabled = await assertSelfServiceModuleEnabled(c, "payroll_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "payroll", "Payroll");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   return ok(c, { summary: await getSelfServicePayrollSummary(c, gate.employeeId!) });
@@ -1403,6 +1475,8 @@ selfServiceRoutes.get("/payroll/history", async (c) => {
   if (!hasAny(c, ["self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service payroll history.");
   const disabled = await assertSelfServiceModuleEnabled(c, "payroll_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "payroll", "Payroll");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   return ok(c, { history: await getSelfServicePayrollHistory(c, gate.employeeId!) });
@@ -1412,6 +1486,8 @@ selfServiceRoutes.get("/payroll/payslips", async (c) => {
   if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view payslips.");
   const disabled = await assertSelfServiceModuleEnabled(c, "payslips_enabled");
   if (disabled) return disabled;
+  const submoduleDisabled = await requireOperationalSubmoduleEnabled(c, "payroll", "payslips", "Payslips");
+  if (submoduleDisabled) return submoduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   return ok(c, { payslips: await getSelfServicePayslips(c, gate.employeeId!) });
@@ -1423,6 +1499,8 @@ selfServiceRoutes.get("/payslips", async (c) => {
   if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view payslips.");
   const disabled = await assertSelfServiceModuleEnabled(c, "payslips_enabled");
   if (disabled) return disabled;
+  const submoduleDisabled = await requireOperationalSubmoduleEnabled(c, "payroll", "payslips", "Payslips");
+  if (submoduleDisabled) return submoduleDisabled;
   const rows = (await c.env.DB.prepare("SELECT ps.id, ps.payslip_number, ps.status, ps.generated_at, ps.version_number, pp.period_month, pp.period_year, pre.net_salary FROM payroll_payslips ps INNER JOIN payroll_periods pp ON pp.id = ps.payroll_period_id INNER JOIN payroll_employee_results pre ON pre.id = ps.payroll_employee_result_id WHERE ps.employee_id = ? AND ps.status IN ('GENERATED', 'REGENERATED') ORDER BY pp.period_year DESC, pp.period_month DESC, ps.generated_at DESC").bind(gate.employeeId).all<Row>()).results;
   return ok(c, { payslips: rows });
 });
@@ -1431,6 +1509,10 @@ selfServiceRoutes.get("/payslips/:payslipId", async (c) => {
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view payslips.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "payslips_enabled");
+  if (disabled) return disabled;
+  const submoduleDisabled = await requireOperationalSubmoduleEnabled(c, "payroll", "payslips", "Payslips");
+  if (submoduleDisabled) return submoduleDisabled;
   const row = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ? AND employee_id = ?").bind(c.req.param("payslipId"), gate.employeeId).first<Row>();
   if (!row) return fail(c, 404, "PAYSIP_ACCESS_DENIED", "You can only view your own payslips.");
   await recordAudit(c.env.DB, {
@@ -1452,6 +1534,10 @@ selfServiceRoutes.get("/payslips/:payslipId/preview", async (c) => {
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to preview payslips.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "payslips_enabled");
+  if (disabled) return disabled;
+  const submoduleDisabled = await requireOperationalSubmoduleEnabled(c, "payroll", "payslips", "Payslips");
+  if (submoduleDisabled) return submoduleDisabled;
   const row = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ? AND employee_id = ?").bind(c.req.param("payslipId"), gate.employeeId).first<Row>();
   if (!row) return fail(c, 404, "PAYSIP_ACCESS_DENIED", "You can only view your own payslips.");
   await recordAudit(c.env.DB, {
@@ -1473,6 +1559,10 @@ selfServiceRoutes.get("/payslips/:payslipId/download", async (c) => {
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   if (!hasAny(c, ["self_service.payslips.download", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to download payslips.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "payslips_enabled");
+  if (disabled) return disabled;
+  const submoduleDisabled = await requireOperationalSubmoduleEnabled(c, "payroll", "payslips", "Payslips");
+  if (submoduleDisabled) return submoduleDisabled;
   const row = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ? AND employee_id = ?").bind(c.req.param("payslipId"), gate.employeeId).first<Row>();
   if (!row) return fail(c, 404, "PAYSIP_ACCESS_DENIED", "You can only download your own payslips.");
   await c.env.DB.prepare("UPDATE payroll_payslips SET download_count = COALESCE(download_count, 0) + 1, last_downloaded_at = ?, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), new Date().toISOString(), row.id).run();
@@ -1495,6 +1585,8 @@ selfServiceRoutes.get("/assets", async (c) => {
   if (!hasAny(c, ["self_service.assets.view", "self_service.view", "assets.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your assets.");
   const disabled = await assertSelfServiceModuleEnabled(c, "assets_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "assets_uniforms", "Assets and uniforms");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const assignments = (
@@ -1517,6 +1609,10 @@ selfServiceRoutes.get("/assets", async (c) => {
 
 selfServiceRoutes.get("/requests", async (c) => {
   if (!hasAny(c, ["self_service.approvals.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service requests.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "approvals_enabled");
+  if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "approvals", "Approvals");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   return ok(c, { requests: await getSelfServiceSubmittedRequests(c, gate.employeeId!) });
@@ -1526,6 +1622,8 @@ selfServiceRoutes.get("/approvals", async (c) => {
   if (!hasAny(c, ["self_service.approvals.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service approvals.");
   const disabled = await assertSelfServiceModuleEnabled(c, "approvals_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "approvals", "Approvals");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   return ok(c, { approvals: await getSelfServiceApprovalStatus(c, gate.employeeId!), visibility_mode: "SELF_SERVICE" });
@@ -1535,6 +1633,8 @@ selfServiceRoutes.get("/notifications", async (c) => {
   if (!hasAny(c, ["self_service.notifications.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service notifications.");
   const disabled = await assertSelfServiceModuleEnabled(c, "notifications_enabled");
   if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "notifications", "Notifications");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   return ok(c, { notifications: await getSelfServiceNotifications(c, gate.employeeId!), unread_count: await getSelfServiceUnreadNotificationCount(c, gate.employeeId!) });
@@ -1542,6 +1642,10 @@ selfServiceRoutes.get("/notifications", async (c) => {
 
 selfServiceRoutes.post("/notifications/:notificationId/read", async (c) => {
   if (!hasAny(c, ["self_service.notifications.update", "self_service.notifications.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to update self-service notifications.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "notifications_enabled");
+  if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "notifications", "Notifications");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   await markSelfServiceNotificationRead(c, gate.employeeId!, c.req.param("notificationId"));
@@ -1550,6 +1654,10 @@ selfServiceRoutes.post("/notifications/:notificationId/read", async (c) => {
 
 selfServiceRoutes.post("/notifications/mark-all-read", async (c) => {
   if (!hasAny(c, ["self_service.notifications.update", "self_service.notifications.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to update self-service notifications.");
+  const disabled = await assertSelfServiceModuleEnabled(c, "notifications_enabled");
+  if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "notifications", "Notifications");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   await markSelfServiceNotificationRead(c, gate.employeeId!, "all");
@@ -1557,6 +1665,10 @@ selfServiceRoutes.post("/notifications/mark-all-read", async (c) => {
 });
 
 selfServiceRoutes.get("/kyc-requests", async (c) => {
+  const disabled = await assertSelfServiceModuleEnabled(c, "profile_update_requests_enabled");
+  if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "documents", "Documents");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const rows = (
@@ -1575,6 +1687,10 @@ selfServiceRoutes.get("/kyc-requests", async (c) => {
 });
 
 selfServiceRoutes.post("/kyc-requests", async (c) => {
+  const disabled = await assertSelfServiceModuleEnabled(c, "profile_update_requests_enabled");
+  if (disabled) return disabled;
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "documents", "Documents");
+  if (moduleDisabled) return moduleDisabled;
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const body = await readJsonBody(c.req.raw);

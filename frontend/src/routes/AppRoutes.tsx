@@ -145,23 +145,26 @@ function defaultLandingPath(user: { permissions: string[]; employee_id?: string 
   return "/";
 }
 
-function moduleEnabled(moduleVisibility: Record<string, boolean> | undefined, moduleKey: string | string[]) {
+function moduleEnabled(moduleVisibility: Record<string, boolean> | undefined, moduleKey: string | string[], match: "any" | "all" = "any") {
   const keys = Array.isArray(moduleKey) ? moduleKey : [moduleKey];
-  return keys.some((key) => moduleVisibility?.[key] !== false);
+  const enabled = (key: string) => moduleVisibility?.[key] !== false;
+  return match === "all" ? keys.every(enabled) : keys.some(enabled);
 }
 
 function OperationalRouteGate({
   moduleKey,
   moduleName,
-  children
+  children,
+  match = "any"
 }: {
   moduleKey: string | string[];
   moduleName: string;
   children: ReactElement;
+  match?: "any" | "all";
 }) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  if (moduleEnabled(user?.module_visibility, moduleKey)) return children;
+  if (moduleEnabled(user?.module_visibility, moduleKey, match)) return children;
   const canOpenSettings = Boolean(user?.is_owner || user?.permissions.some((permission) => ["settings.view", "settings.manage", "admin.modules.view", "admin.settings_hub.view"].includes(permission)));
   return (
     <ModuleDisabledState
@@ -181,6 +184,10 @@ function OperationalRouteGate({
 
 function operational(moduleKey: string | string[], moduleName: string, children: ReactElement) {
   return <OperationalRouteGate moduleKey={moduleKey} moduleName={moduleName}>{children}</OperationalRouteGate>;
+}
+
+function operationalAll(moduleKey: string[], moduleName: string, children: ReactElement) {
+  return <OperationalRouteGate moduleKey={moduleKey} moduleName={moduleName} match="all">{children}</OperationalRouteGate>;
 }
 
 export function AppRoutes() {
@@ -293,22 +300,22 @@ export function AppRoutes() {
             <Route path="reports/audit" element={<AuditLogPage />} />
             <Route path="self-service" element={operational("self_service", "Self-service", <SelfServicePage />)} />
             <Route path="self-service/profile" element={operational("self_service", "Self-service", <SelfServicePage mode="profile" />)} />
-            <Route path="self-service/documents" element={operational("self_service", "Self-service", <SelfServicePage mode="documents" />)} />
-            <Route path="self-service/attendance" element={operational("self_service", "Self-service", <SelfServicePage mode="attendance" />)} />
-            <Route path="self-service/leave" element={operational("self_service", "Self-service", <SelfServicePage mode="leave" />)} />
-            <Route path="self-service/roster" element={operational("self_service", "Self-service", <SelfServicePage mode="roster" />)} />
-            <Route path="self-service/payroll" element={operational("self_service", "Self-service", <SelfServicePage mode="payroll" />)} />
-            <Route path="self-service/payment-methods" element={operational("self_service", "Self-service", <SelfServicePage mode="payment-methods" />)} />
-            <Route path="self-service/bank-loans" element={operational("self_service", "Self-service", <SelfServicePage mode="bank-loans" />)} />
-            <Route path="self-service/pension" element={operational("self_service", "Self-service", <SelfServicePage mode="pension" />)} />
-            <Route path="self-service/contracts" element={operational("self_service", "Self-service", <SelfServicePage mode="contracts" />)} />
-            <Route path="self-service/onboarding" element={operational("self_service", "Self-service", <SelfServicePage mode="onboarding" />)} />
-            <Route path="self-service/offboarding" element={operational("self_service", "Self-service", <SelfServicePage mode="offboarding" />)} />
-            <Route path="self-service/assets" element={operational("self_service", "Self-service", <SelfServicePage mode="assets" />)} />
-            <Route path="self-service/uniforms" element={operational("self_service", "Self-service", <SelfServicePage mode="uniforms" />)} />
-            <Route path="self-service/approvals" element={operational("self_service", "Self-service", <SelfServicePage mode="approvals" />)} />
-            <Route path="self-service/notifications" element={operational("self_service", "Self-service", <SelfServicePage mode="notifications" />)} />
-            <Route path="self-service/kyc-requests" element={operational("self_service", "Self-service", <SelfServicePage mode="kyc" />)} />
+            <Route path="self-service/documents" element={operationalAll(["self_service", "documents"], "Documents", <SelfServicePage mode="documents" />)} />
+            <Route path="self-service/attendance" element={operationalAll(["self_service", "attendance"], "Attendance", <SelfServicePage mode="attendance" />)} />
+            <Route path="self-service/leave" element={operationalAll(["self_service", "leave"], "Leave", <SelfServicePage mode="leave" />)} />
+            <Route path="self-service/roster" element={operationalAll(["self_service", "roster"], "Roster", <SelfServicePage mode="roster" />)} />
+            <Route path="self-service/payroll" element={operationalAll(["self_service", "payroll"], "Payroll", <SelfServicePage mode="payroll" />)} />
+            <Route path="self-service/payment-methods" element={operationalAll(["self_service", "payroll", "payroll_payment_methods"], "Payment methods", <SelfServicePage mode="payment-methods" />)} />
+            <Route path="self-service/bank-loans" element={operationalAll(["self_service", "payroll", "payroll_bank_loans"], "Bank loans", <SelfServicePage mode="bank-loans" />)} />
+            <Route path="self-service/pension" element={operationalAll(["self_service", "payroll", "payroll_pension"], "Pension", <SelfServicePage mode="pension" />)} />
+            <Route path="self-service/contracts" element={operationalAll(["self_service", "contracts"], "Contracts", <SelfServicePage mode="contracts" />)} />
+            <Route path="self-service/onboarding" element={operationalAll(["self_service", "onboarding"], "Onboarding", <SelfServicePage mode="onboarding" />)} />
+            <Route path="self-service/offboarding" element={operationalAll(["self_service", "offboarding"], "Offboarding", <SelfServicePage mode="offboarding" />)} />
+            <Route path="self-service/assets" element={operationalAll(["self_service", "assets_uniforms"], "Assets and uniforms", <SelfServicePage mode="assets" />)} />
+            <Route path="self-service/uniforms" element={operationalAll(["self_service", "assets_uniforms"], "Assets and uniforms", <SelfServicePage mode="uniforms" />)} />
+            <Route path="self-service/approvals" element={operationalAll(["self_service", "approvals"], "Approvals", <SelfServicePage mode="approvals" />)} />
+            <Route path="self-service/notifications" element={operationalAll(["self_service", "notifications"], "Notifications", <SelfServicePage mode="notifications" />)} />
+            <Route path="self-service/kyc-requests" element={operationalAll(["self_service", "documents"], "KYC requests", <SelfServicePage mode="kyc" />)} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/admin" element={<AdminSettingsPage />} />
             <Route path="admin/help" element={<AdminHelpGuidePage />} />

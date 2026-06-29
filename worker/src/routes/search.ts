@@ -117,7 +117,7 @@ export function getSearchableModuleRegistry(): SearchRegistryEntry[] {
     { module: "Payroll", moduleKey: "payroll", permissions: ["payroll.view", "payroll.runs.view", "payroll.results.view"], route: "/payroll", type: "payroll" },
     { module: "Documents", moduleKey: "documents", permissions: ["documents.view", "documents.registry.view"], route: "/documents/registry", type: "document" },
     { module: "Contracts", moduleKey: "contracts", permissions: ["contracts.view", "employees.contracts.view"], route: "/contracts", type: "contract" },
-    { module: "Assets", moduleKey: "assets", permissions: ["assets.view"], route: "/assets", type: "asset" },
+    { module: "Assets", moduleKey: "assets_uniforms", permissions: ["assets.view"], route: "/assets", type: "asset" },
     { module: "Approvals", moduleKey: "approvals", permissions: ["approvals.view", "approvals.inbox.view"], route: "/approvals", type: "approval" },
     { module: "Lifecycle", moduleKey: "onboarding", permissions: ["onboarding.cases.view", "employees.lifecycle.view"], route: "/onboarding/cases", type: "onboarding" },
     { module: "Lifecycle", moduleKey: "offboarding", permissions: ["offboarding.cases.view", "employees.lifecycle.view"], route: "/offboarding/cases", type: "offboarding" },

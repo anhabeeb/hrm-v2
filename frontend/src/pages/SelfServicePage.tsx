@@ -1,5 +1,5 @@
 import { Bell, CalendarDays, CreditCard, Download, Eye, FileText, Landmark, Plus, RefreshCw, ShieldCheck } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { Badge } from "../components/ui/badge";
@@ -17,36 +17,50 @@ import { cn } from "../lib/utils";
 
 type Mode = "home" | "profile" | "documents" | "attendance" | "leave" | "roster" | "payroll" | "payment-methods" | "bank-loans" | "pension" | "contracts" | "onboarding" | "offboarding" | "assets" | "uniforms" | "approvals" | "notifications" | "kyc";
 type Row = Record<string, unknown>;
+type ModuleVisibility = Record<string, boolean>;
 
 const nav = [
-  { mode: "home", label: "Dashboard", to: "/self-service" },
-  { mode: "profile", label: "My Profile", to: "/self-service/profile" },
-  { mode: "documents", label: "My Documents", to: "/self-service/documents" },
-  { mode: "attendance", label: "My Attendance", to: "/self-service/attendance" },
-  { mode: "leave", label: "My Leave", to: "/self-service/leave" },
-  { mode: "roster", label: "My Roster", to: "/self-service/roster" },
-  { mode: "payroll", label: "My Payroll", to: "/self-service/payroll" },
-  { mode: "payment-methods", label: "Payment Methods", to: "/self-service/payment-methods" },
-  { mode: "bank-loans", label: "Bank Loans", to: "/self-service/bank-loans" },
-  { mode: "pension", label: "Pension", to: "/self-service/pension" },
-  { mode: "contracts", label: "My Contracts", to: "/self-service/contracts" },
-  { mode: "onboarding", label: "My Onboarding", to: "/self-service/onboarding" },
-  { mode: "offboarding", label: "My Offboarding", to: "/self-service/offboarding" },
-  { mode: "assets", label: "My Assets", to: "/self-service/assets" },
-  { mode: "uniforms", label: "My Uniforms", to: "/self-service/uniforms" },
-  { mode: "approvals", label: "Requests & Approvals", to: "/self-service/approvals" },
-  { mode: "notifications", label: "Notifications", to: "/self-service/notifications" },
-  { mode: "kyc", label: "KYC Requests", to: "/self-service/kyc-requests" }
+  { mode: "home", label: "Dashboard", to: "/self-service", visibilityKeys: ["dashboard"] },
+  { mode: "profile", label: "My Profile", to: "/self-service/profile", visibilityKeys: ["profile"] },
+  { mode: "documents", label: "My Documents", to: "/self-service/documents", moduleKeys: ["documents"], visibilityKeys: ["documents"] },
+  { mode: "attendance", label: "My Attendance", to: "/self-service/attendance", moduleKeys: ["attendance"], visibilityKeys: ["attendance"] },
+  { mode: "leave", label: "My Leave", to: "/self-service/leave", moduleKeys: ["leave"], visibilityKeys: ["leave"] },
+  { mode: "roster", label: "My Roster", to: "/self-service/roster", moduleKeys: ["roster"], visibilityKeys: ["roster"] },
+  { mode: "payroll", label: "My Payroll", to: "/self-service/payroll", moduleKeys: ["payroll"], visibilityKeys: ["payroll"] },
+  { mode: "payment-methods", label: "Payment Methods", to: "/self-service/payment-methods", moduleKeys: ["payroll", "payroll_payment_methods"], visibilityKeys: ["payment_methods"] },
+  { mode: "bank-loans", label: "Bank Loans", to: "/self-service/bank-loans", moduleKeys: ["payroll", "payroll_bank_loans"], visibilityKeys: ["bank_loans"] },
+  { mode: "pension", label: "Pension", to: "/self-service/pension", moduleKeys: ["payroll", "payroll_pension"], visibilityKeys: ["pension"] },
+  { mode: "contracts", label: "My Contracts", to: "/self-service/contracts", moduleKeys: ["contracts"], visibilityKeys: ["contracts"] },
+  { mode: "onboarding", label: "My Onboarding", to: "/self-service/onboarding", moduleKeys: ["onboarding"], visibilityKeys: ["onboarding"] },
+  { mode: "offboarding", label: "My Offboarding", to: "/self-service/offboarding", moduleKeys: ["offboarding"], visibilityKeys: ["offboarding"] },
+  { mode: "assets", label: "My Assets", to: "/self-service/assets", moduleKeys: ["assets_uniforms"], visibilityKeys: ["assets"] },
+  { mode: "uniforms", label: "My Uniforms", to: "/self-service/uniforms", moduleKeys: ["assets_uniforms"], visibilityKeys: ["uniforms"] },
+  { mode: "approvals", label: "Requests & Approvals", to: "/self-service/approvals", moduleKeys: ["approvals"], visibilityKeys: ["approvals"] },
+  { mode: "notifications", label: "Notifications", to: "/self-service/notifications", moduleKeys: ["notifications"], visibilityKeys: ["notifications"] },
+  { mode: "kyc", label: "KYC Requests", to: "/self-service/kyc-requests", moduleKeys: ["documents"], visibilityKeys: ["profile_update_requests"] }
 ] as const;
 
+function visibilityAllows(visibility: ModuleVisibility, keys: readonly string[] | undefined) {
+  return !keys?.length || keys.every((key) => visibility[key] !== false);
+}
+
+function navItemVisible(item: (typeof nav)[number], visibility: ModuleVisibility) {
+  const moduleKeys = "moduleKeys" in item ? item.moduleKeys : undefined;
+  const visibilityKeys = "visibilityKeys" in item ? item.visibilityKeys : undefined;
+  return visibilityAllows(visibility, moduleKeys) && visibilityAllows(visibility, visibilityKeys);
+}
+
 export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [linked, setLinked] = useState<boolean | null>(null);
   const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [selfServiceVisibility, setSelfServiceVisibility] = useState<ModuleVisibility | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const activeMode = mode;
+  const combinedVisibility = useMemo<ModuleVisibility>(() => ({ ...(user?.module_visibility ?? {}), ...(selfServiceVisibility ?? {}) }), [selfServiceVisibility, user?.module_visibility]);
+  const visibleNav = useMemo(() => nav.filter((item) => navItemVisible(item, combinedVisibility)), [combinedVisibility]);
 
   async function load() {
     if (!token) return;
@@ -56,9 +70,18 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
     try {
       const self = await api.getSelfServiceMe(token);
       setLinked(self.linked_employee);
+      const nextVisibility = (self.module_visibility ?? {}) as ModuleVisibility;
+      setSelfServiceVisibility(nextVisibility);
       if (!self.linked_employee || self.self_service_available === false) {
         setData(null);
         setMessage(self.unavailable_message ?? "Self-service is unavailable because your account is not linked to an active employee profile.");
+        return;
+      }
+      const activeItem = nav.find((item) => item.mode === activeMode);
+      const requestVisibility = { ...(user?.module_visibility ?? {}), ...nextVisibility };
+      if (activeItem && !navItemVisible(activeItem, requestVisibility)) {
+        setData({ module_visibility: nextVisibility });
+        setMessage(`${activeItem.label} is disabled or not required for employee self-service.`);
         return;
       }
       if (activeMode === "home") setData(await api.getSelfServiceDashboard(token));
@@ -106,13 +129,14 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
       if (activeMode === "payroll") {
         const [payroll, paymentMethods, bankLoans, pension, customDeductions] = await Promise.all([
           api.getSelfServicePayroll(token),
-          api.getSelfServicePaymentMethods(token).catch(() => ({ payment_methods: [] })),
-          api.getSelfServiceBankLoans(token).catch(() => ({ loans: [], payments: [] })),
-          api.getSelfServicePension(token).catch(() => ({ profile: null, contributions: [] })),
-          api.getSelfServiceCustomDeductions(token).catch(() => ({ deductions: [], applications: [], message: null }))
+          requestVisibility.payment_methods !== false ? api.getSelfServicePaymentMethods(token).catch(() => ({ payment_methods: [] })) : Promise.resolve({ payment_methods: [] }),
+          requestVisibility.bank_loans !== false ? api.getSelfServiceBankLoans(token).catch(() => ({ loans: [], payments: [] })) : Promise.resolve({ loans: [], payments: [] }),
+          requestVisibility.pension !== false ? api.getSelfServicePension(token).catch(() => ({ profile: null, contributions: [] })) : Promise.resolve({ profile: null, contributions: [] }),
+          requestVisibility.custom_deductions !== false ? api.getSelfServiceCustomDeductions(token).catch(() => ({ deductions: [], applications: [], message: null })) : Promise.resolve({ deductions: [], applications: [], message: null })
         ]);
         setData({
           ...payroll,
+          module_visibility: requestVisibility,
           payment_methods: paymentMethods.payment_methods,
           bank_loans: bankLoans.loans,
           bank_loan_payments: bankLoans.payments,
@@ -147,7 +171,7 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
 
   useEffect(() => {
     void load();
-  }, [token, activeMode]);
+  }, [token, activeMode, user?.module_visibility]);
 
   return (
     <PageShell>
@@ -165,7 +189,7 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
 
       <Panel className="overflow-x-auto p-2">
         <div className="flex min-w-max gap-1">
-          {nav.map((item) => (
+          {visibleNav.map((item) => (
             <Link
               key={item.mode}
               to={item.to}
@@ -220,6 +244,8 @@ function text(value: unknown) {
 function SelfServiceDashboardSection({ data }: { data: Record<string, unknown> | null }) {
   const employee = (data?.employee ?? {}) as Row;
   const summary = (data?.summary ?? {}) as Row;
+  const visibility = ((data?.module_visibility ?? summary.module_visibility ?? {}) as ModuleVisibility);
+  const visible = (key: string) => visibility[key] !== false;
   const notifications = rows(data, "notifications");
   return (
     <div className="space-y-4 p-4">
@@ -232,30 +258,32 @@ function SelfServiceDashboardSection({ data }: { data: Record<string, unknown> |
           <Badge tone="neutral">{text(employee.employee_no)}</Badge>
         </div>
       </Panel>
-      <div className="grid gap-3 md:grid-cols-3">
-        <QuickActionCard title="Request leave" description="Open your leave balance and requests." action={<Link to="/self-service/leave" className="text-xs font-medium text-primary hover:underline">Open leave</Link>} />
-        <QuickActionCard title="Attendance correction" description="Review attendance and submit corrections." action={<Link to="/self-service/attendance" className="text-xs font-medium text-primary hover:underline">Open attendance</Link>} />
-        <QuickActionCard title="My documents" description="Review document compliance and submissions." action={<Link to="/self-service/documents" className="text-xs font-medium text-primary hover:underline">Open documents</Link>} />
-      </div>
+      {[visible("leave"), visible("attendance"), visible("documents")].some(Boolean) ? (
+        <div className="grid gap-3 md:grid-cols-3">
+          {visible("leave") ? <QuickActionCard title="Request leave" description="Open your leave balance and requests." action={<Link to="/self-service/leave" className="text-xs font-medium text-primary hover:underline">Open leave</Link>} /> : null}
+          {visible("attendance") ? <QuickActionCard title="Attendance correction" description="Review attendance and submit corrections." action={<Link to="/self-service/attendance" className="text-xs font-medium text-primary hover:underline">Open attendance</Link>} /> : null}
+          {visible("documents") ? <QuickActionCard title="My documents" description="Review document compliance and submissions." action={<Link to="/self-service/documents" className="text-xs font-medium text-primary hover:underline">Open documents</Link>} /> : null}
+        </div>
+      ) : null}
       <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-4">
-        <SummaryBox label="Open leave requests" value={summary.open_leave_requests ?? 0} />
-        <SummaryBox label="Attendance corrections" value={summary.pending_attendance_corrections ?? 0} />
-        <SummaryBox label="Expiring documents" value={summary.expiring_documents ?? 0} badge />
-        <SummaryBox label="Available payslips" value={summary.available_payslips ?? 0} />
-        <SummaryBox label="Active assets" value={summary.active_assets ?? 0} />
-        <SummaryBox label="Submitted approvals" value={summary.submitted_approvals ?? 0} />
-        <SummaryBox label="Profile updates" value={summary.pending_profile_updates ?? 0} />
-        <SummaryBox label="Unread notifications" value={data?.unread_notifications ?? 0} />
+        {visible("leave") ? <SummaryBox label="Open leave requests" value={summary.open_leave_requests ?? 0} /> : null}
+        {visible("attendance") ? <SummaryBox label="Attendance corrections" value={summary.pending_attendance_corrections ?? 0} /> : null}
+        {visible("documents") ? <SummaryBox label="Expiring documents" value={summary.expiring_documents ?? 0} badge /> : null}
+        {visible("payslips") ? <SummaryBox label="Available payslips" value={summary.available_payslips ?? 0} /> : null}
+        {visible("assets") ? <SummaryBox label="Active assets" value={summary.active_assets ?? 0} /> : null}
+        {visible("approvals") ? <SummaryBox label="Submitted approvals" value={summary.submitted_approvals ?? 0} /> : null}
+        {visible("profile_update_requests") ? <SummaryBox label="Profile updates" value={summary.pending_profile_updates ?? 0} /> : null}
+        {visible("notifications") ? <SummaryBox label="Unread notifications" value={data?.unread_notifications ?? 0} /> : null}
       </div>
-      <div className="grid gap-3 md:hidden">
+      {visible("notifications") ? <div className="grid gap-3 md:hidden">
         {notifications.slice(0, 3).map((notification, index) => (
           <MobileListCard key={String(notification.id ?? index)} title={text(notification.title)} meta={text(notification.created_at)}>
             <StatusBadge value={notification.severity ?? notification.type} />
           </MobileListCard>
         ))}
-      </div>
-      <SimpleTable title="Upcoming roster" rows={Array.isArray(summary.upcoming_roster) ? summary.upcoming_roster as Row[] : []} columns={["roster_date", "status", "shift_code", "shift_name", "start_time", "end_time"]} />
-      <SimpleTable title="Recent notifications" rows={notifications} columns={["type", "title", "severity", "created_at"]} />
+      </div> : null}
+      {visible("roster") ? <SimpleTable title="Upcoming roster" rows={Array.isArray(summary.upcoming_roster) ? summary.upcoming_roster as Row[] : []} columns={["roster_date", "status", "shift_code", "shift_name", "start_time", "end_time"]} /> : null}
+      {visible("notifications") ? <SimpleTable title="Recent notifications" rows={notifications} columns={["type", "title", "severity", "created_at"]} /> : null}
     </div>
   );
 }
@@ -709,9 +737,11 @@ function MonthlyAttendanceCalendar({ month, records }: { month: string; records:
 function PayrollSection({ data, token }: { data: Record<string, unknown> | null; token: string | null }) {
   const { user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
+  const visibility = ((data?.module_visibility ?? user?.module_visibility ?? {}) as ModuleVisibility);
+  const visible = (key: string) => visibility[key] !== false;
   const profile = (data?.profile ?? {}) as Row;
   const payslips = rows(data, "payslips");
-  const canDownload = Boolean(data?.payslip_download_enabled) || permissions.has("self_service.payslips.download") || permissions.has("self_service.payroll.view") || permissions.has("self_service.view");
+  const canDownload = visible("payslips") && (Boolean(data?.payslip_download_enabled) || permissions.has("self_service.payslips.download") || permissions.has("self_service.payroll.view") || permissions.has("self_service.view"));
   const [error, setError] = useState<string | null>(null);
 
   async function viewPayslip(row: Row) {
@@ -752,7 +782,7 @@ function PayrollSection({ data, token }: { data: Record<string, unknown> | null;
         ))}
       </div>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-      <Panel className="overflow-hidden shadow-none">
+      {visible("payslips") ? <Panel className="overflow-hidden shadow-none">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <h2 className="text-sm font-semibold">Payslips</h2>
           <span className="text-xs text-muted-foreground">Self-service payslips are limited to your linked employee profile.</span>
@@ -790,17 +820,17 @@ function PayrollSection({ data, token }: { data: Record<string, unknown> | null;
             </TableBody>
           </Table>
         </DataTableFrame>
-      </Panel>
+      </Panel> : null}
       <SimpleTable title="Payroll run history" rows={rows(data, "runs")} columns={["period", "status", "basic_salary", "total_earnings", "total_deductions", "net_salary"]} />
-      <SimpleTable title="My payment methods" rows={rows(data, "payment_methods")} columns={["payment_method_type", "payment_institution_name", "bank_account_number_masked", "allocation_type", "allocation_percentage", "allocation_amount", "status", "verification_status"]} />
-      <SimpleTable title="My bank loans" rows={rows(data, "bank_loans")} columns={["payment_institution_name", "loan_reference_number", "monthly_installment_amount", "outstanding_balance", "eligibility_status", "status", "approval_status"]} />
-      <SimpleTable title="Bank loan payment history" rows={rows(data, "bank_loan_payments")} columns={["bank_name_snapshot", "loan_reference_number_snapshot", "deducted_amount", "shortfall_amount", "payment_status", "bank_notification_status", "employee_direct_collection_message", "remittance_reference"]} />
-      {data?.pension_profile ? <SimpleTable title="My pension profile" rows={[data.pension_profile as Row]} columns={["scheme_name", "enrollment_status", "pension_member_id", "effective_date", "status"]} /> : null}
-      <SimpleTable title="My pension contributions" rows={rows(data, "pension_contributions")} columns={["scheme_name", "pensionable_wage", "employee_contribution_amount", "employer_contribution_amount", "total_contribution_amount", "contribution_status"]} />
-      {data?.custom_deductions_message ? <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">{String(data.custom_deductions_message)}</div> : null}
-      <SimpleTable title="My custom deductions" rows={rows(data, "custom_deductions")} columns={["template_name_snapshot", "category_snapshot", "assigned_amount", "total_amount", "remaining_balance", "approval_status", "status"]} />
-      <SimpleTable title="Custom deduction payroll history" rows={rows(data, "custom_deduction_applications")} columns={["template_name_snapshot", "scheduled_amount", "deducted_amount", "shortfall_amount", "remaining_balance_after", "application_status", "created_at"]} />
-      <SimpleTable title="Advances" rows={rows(data, "advances")} columns={["payment_date", "amount", "status", "notes"]} />
+      {visible("payment_methods") ? <SimpleTable title="My payment methods" rows={rows(data, "payment_methods")} columns={["payment_method_type", "payment_institution_name", "bank_account_number_masked", "allocation_type", "allocation_percentage", "allocation_amount", "status", "verification_status"]} /> : null}
+      {visible("bank_loans") ? <SimpleTable title="My bank loans" rows={rows(data, "bank_loans")} columns={["payment_institution_name", "loan_reference_number", "monthly_installment_amount", "outstanding_balance", "eligibility_status", "status", "approval_status"]} /> : null}
+      {visible("bank_loans") ? <SimpleTable title="Bank loan payment history" rows={rows(data, "bank_loan_payments")} columns={["bank_name_snapshot", "loan_reference_number_snapshot", "deducted_amount", "shortfall_amount", "payment_status", "bank_notification_status", "employee_direct_collection_message", "remittance_reference"]} /> : null}
+      {visible("pension") && data?.pension_profile ? <SimpleTable title="My pension profile" rows={[data.pension_profile as Row]} columns={["scheme_name", "enrollment_status", "pension_member_id", "effective_date", "status"]} /> : null}
+      {visible("pension") ? <SimpleTable title="My pension contributions" rows={rows(data, "pension_contributions")} columns={["scheme_name", "pensionable_wage", "employee_contribution_amount", "employer_contribution_amount", "total_contribution_amount", "contribution_status"]} /> : null}
+      {visible("custom_deductions") && data?.custom_deductions_message ? <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">{String(data.custom_deductions_message)}</div> : null}
+      {visible("custom_deductions") ? <SimpleTable title="My custom deductions" rows={rows(data, "custom_deductions")} columns={["template_name_snapshot", "category_snapshot", "assigned_amount", "total_amount", "remaining_balance", "approval_status", "status"]} /> : null}
+      {visible("custom_deductions") ? <SimpleTable title="Custom deduction payroll history" rows={rows(data, "custom_deduction_applications")} columns={["template_name_snapshot", "scheduled_amount", "deducted_amount", "shortfall_amount", "remaining_balance_after", "application_status", "created_at"]} /> : null}
+      {visible("payroll_employee_advances") ? <SimpleTable title="Advances" rows={rows(data, "advances")} columns={["payment_date", "amount", "status", "notes"]} /> : null}
       <SimpleTable title="Deductions" rows={rows(data, "deductions")} columns={["deduction_type", "amount", "start_date", "end_date", "status", "reason"]} />
     </div>
   );
