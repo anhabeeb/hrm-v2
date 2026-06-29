@@ -190,9 +190,10 @@ async function multipartRequest<T>(path: string, body: FormData, token?: string 
   return envelope.data;
 }
 
-async function blobRequest(path: string, token: string) {
+async function blobRequest(path: string, token: string, init: RequestInit = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { Authorization: `Bearer ${token}` }
+    ...init,
+    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` }
   });
   if (!response.ok) {
     let message = "Download failed.";
@@ -2510,8 +2511,8 @@ export const api = {
   getDataImportTemplate(token: string, importType: string) {
     return request<{ template: Record<string, unknown> }>(`/api/v1/data-import/templates/${importType}`, {}, token);
   },
-  downloadDataImportTemplate(token: string, importType: string) {
-    return blobRequest(`/api/v1/data-import/templates/${importType}/download`, token);
+  downloadDataImportTemplate(token: string, importType: string, format: "csv" | "xlsx" = "csv") {
+    return blobRequest(`/api/v1/data-import/templates/${importType}/${format === "xlsx" ? "download.xlsx" : "download"}`, token);
   },
   listDataImportBatches(token: string) {
     return request<{ batches: Record<string, unknown>[] }>("/api/v1/data-import/batches", {}, token);
@@ -2548,6 +2549,9 @@ export const api = {
   },
   runDataExport(token: string, exportType: string, input: Record<string, unknown>) {
     return request<{ export: Record<string, unknown> }>(`/api/v1/data-export/${exportType}/run`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  downloadDataExport(token: string, exportType: string, input: Record<string, unknown>) {
+    return blobRequest(`/api/v1/data-export/${exportType}/download`, token, { method: "POST", body: JSON.stringify(input) });
   },
   listDataExportHistory(token: string) {
     return request<{ history: Record<string, unknown>[] }>("/api/v1/data-export/history", {}, token);

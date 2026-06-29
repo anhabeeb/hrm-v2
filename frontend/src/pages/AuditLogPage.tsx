@@ -1,6 +1,5 @@
-import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
-import { ActionTextButton } from "../components/ui/action-button";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -89,7 +88,22 @@ export function AuditLogPage() {
             </FilterSection>
           </MoreFiltersSheet>
         }
-        actions={canExport ? <ActionTextButton intent="export" className="h-10" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</ActionTextButton> : null}
+        actions={canExport ? (
+          <ExportMenu
+            moduleName="Audit Log"
+            rows={rows as unknown as Record<string, unknown>[]}
+            columns={["created_at", "module", "action", "entity_type", "entity_id", "actor_name", "actor_email", "reason", "ip_address"]}
+            filterSummary={Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)}
+            onBackendExport={async (format) => {
+              if (format === "csv") {
+                await exportCsv();
+                return;
+              }
+              const { exportRows } = await import("../lib/export-utils");
+              exportRows(format, "Audit Log", ["created_at", "module", "action", "entity_type", "entity_id", "actor_name", "actor_email", "reason", "ip_address"], rows as unknown as Record<string, unknown>[], Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`));
+            }}
+          />
+        ) : null}
       >
         <StandardDateRangeFilter value={dateRange} onChange={setDateRange} label="Date Range" />
       </StandardFilterBar>

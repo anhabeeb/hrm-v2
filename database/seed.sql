@@ -1819,7 +1819,7 @@ INSERT OR IGNORE INTO data_transfer_settings (
   rollback_placeholder_enabled, metadata_json
 ) VALUES (
   'data_transfer_settings_default', 1, 1, 5000, 5000,
-  '["csv","text/csv","text/plain"]', 1, 1,
+  '["csv","xlsx","text/csv","text/plain","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]', 1, 1,
   1, 1,
   1, 1,
   1, 1, 1,

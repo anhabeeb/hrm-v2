@@ -2,7 +2,7 @@ import { Archive, Download, Eye, History, RotateCcw, Trash2 } from "lucide-react
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
-import { ActionTextButton } from "../components/ui/action-button";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -23,6 +23,7 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { downloadBlob } from "../lib/export-utils";
 import type { DocumentCategory, DocumentType, EmployeeDocument, EmployeeDocumentVersion } from "../types/documents";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
@@ -32,15 +33,6 @@ function tone(status: string) {
   if (status === "EXPIRING_SOON") return "warning";
   if (status === "ARCHIVED" || status === "SOFT_DELETED") return "neutral";
   return "danger";
-}
-
-function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 const defaultFilters = {
@@ -120,7 +112,7 @@ export function DocumentRegistryPage() {
     if (!token) return;
     try {
       const result = await api.exportDocumentRegistryCsv(token, activeFilters);
-      saveBlob(result.blob, result.filename);
+      downloadBlob(result.blob, result.filename);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to export registry.");
     }
@@ -130,7 +122,7 @@ export function DocumentRegistryPage() {
     if (!token) return;
     try {
       const result = await api.downloadEmployeeDocument(token, doc.employee_id, doc.id);
-      saveBlob(result.blob, result.filename);
+      downloadBlob(result.blob, result.filename);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to download document.");
     }
@@ -198,7 +190,22 @@ export function DocumentRegistryPage() {
           <>
           <Link to="/documents/compliance"><Button variant="outline" size="sm">Compliance</Button></Link>
           <Link to="/documents/missing"><Button variant="outline" size="sm">Missing required</Button></Link>
-          {canExport ? <ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</ActionTextButton> : null}
+          {canExport ? (
+            <ExportMenu
+              moduleName="Document Registry"
+              rows={documents as unknown as Record<string, unknown>[]}
+              columns={["employee_no", "employee_name", "document_type_name", "document_number", "display_status", "issue_date", "expiry_date", "created_at"]}
+              filterSummary={Object.entries(activeFilters).map(([key, value]) => `${key}: ${value}`)}
+              onBackendExport={async (format) => {
+                if (format === "csv") {
+                  await exportCsv();
+                  return;
+                }
+                const { exportRows } = await import("../lib/export-utils");
+                exportRows(format, "Document Registry", ["employee_no", "employee_name", "document_type_name", "document_number", "display_status", "issue_date", "expiry_date", "created_at"], documents as unknown as Record<string, unknown>[], Object.entries(activeFilters).map(([key, value]) => `${key}: ${value}`));
+              }}
+            />
+          ) : null}
           </>
         }
       />

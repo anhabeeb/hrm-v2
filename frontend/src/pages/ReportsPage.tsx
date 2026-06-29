@@ -1,7 +1,8 @@
-import { Download, FileSpreadsheet, FileText, History, RefreshCw } from "lucide-react";
+import { History, RefreshCw } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
@@ -88,11 +89,6 @@ const reportGroupOrder = [
   "Export History / Report Audit Logs",
   "Core"
 ];
-
-const exportPlaceholderMessages = {
-  Excel: "Excel export will be added in a later export phase.",
-  PDF: "PDF export will be added in a later export phase."
-} as const;
 
 export function ReportsPage() {
   const { token, user } = useAuth();
@@ -242,10 +238,6 @@ export function ReportsPage() {
     }
   }
 
-  function disabledExport(format: "Excel" | "PDF") {
-    setMessage(exportPlaceholderMessages[format]);
-  }
-
   const filterChips = Object.entries(activeFilters).filter(([, value]) => value).slice(0, 12);
   const reportDateRange = { from: filters.date_from, to: filters.date_to };
   const activeFilterChips = filterChips.map(([key, value]) => ({
@@ -363,13 +355,23 @@ export function ReportsPage() {
       <ExportActionBar>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-slate-900">Export selected report</p>
-          <p className="text-xs text-muted-foreground">CSV export uses the same active filters and is audit logged. Excel/PDF remain future placeholders.</p>
+          <p className="text-xs text-muted-foreground">CSV export uses the backend audit log. Excel and PDF exports use the currently loaded report rows and active filters.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()} disabled={!canExport || !report?.rows.length}><Download className="h-4 w-4" /> CSV</ActionTextButton>
-          <ActionTextButton intent="export" size="sm" onClick={() => disabledExport("Excel")} disabled={!canExport}><FileSpreadsheet className="h-4 w-4" /> Excel later</ActionTextButton>
-          <ActionTextButton intent="export" size="sm" onClick={() => disabledExport("PDF")} disabled={!canExport}><FileText className="h-4 w-4" /> PDF later</ActionTextButton>
-        </div>
+        <ExportMenu
+          moduleName={report?.label ?? selectedMeta?.label ?? "Report"}
+          rows={report?.rows ?? []}
+          columns={report?.columns ?? []}
+          disabled={!canExport || !report?.rows.length}
+          filterSummary={Object.entries(activeFilters).map(([key, value]) => `${key}: ${value}`)}
+          onBackendExport={async (format) => {
+            if (format === "csv") {
+              await exportCsv();
+              return;
+            }
+            const { exportRows } = await import("../lib/export-utils");
+            exportRows(format, report?.label ?? selectedMeta?.label ?? "Report", report?.columns ?? [], report?.rows ?? [], Object.entries(activeFilters).map(([key, value]) => `${key}: ${value}`));
+          }}
+        />
       </ExportActionBar>
 
       {tab === "reports" ? (
@@ -388,7 +390,7 @@ export function ReportsPage() {
           <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
             <div>
               <h2 className="text-sm font-semibold">Export History / Report Audit Logs</h2>
-              <p className="text-xs text-muted-foreground">CSV, JSON, Excel/PDF placeholders, sensitive export flags, filters, and requester details.</p>
+              <p className="text-xs text-muted-foreground">CSV/JSON export audit logs, sensitive export flags, filters, and requester details.</p>
             </div>
             <ActionTextButton intent="refresh" size="sm" onClick={() => void loadExportLogs()}><RefreshCw className="h-4 w-4" /> Refresh</ActionTextButton>
           </div>

@@ -51,6 +51,7 @@
     "verify:frontend-bundle-integrity": "node scripts/verify-frontend-bundle-integrity.mjs",
     "verify:frontend-static-assets": "node scripts/verify-frontend-static-assets.mjs",
     "verify:button-color-standardization": "node scripts/verify-button-color-standardization.mjs",
+    "verify:import-export-standardization": "node scripts/verify-import-export-standardization.mjs",
     "verify:payroll-submodules": "node scripts/verify-payroll-submodule-toggles.mjs",
     "verify:page-layout-consistency": "node scripts/verify-page-layout-consistency.mjs",
     "verify:admin-help": "node scripts/verify-admin-help-guide.mjs",

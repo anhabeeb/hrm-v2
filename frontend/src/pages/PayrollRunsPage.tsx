@@ -1,6 +1,7 @@
 import { Download, Eye, PlayCircle, RefreshCw, XCircle } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button, RowActionButton } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
@@ -19,6 +20,7 @@ import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { downloadBlob } from "../lib/export-utils";
 import type { PayrollRun } from "../types/payroll";
 
 function money(value: number | null | undefined) {
@@ -91,12 +93,7 @@ export function PayrollRunsPage() {
     if (!token) return;
     try {
       const download = await api.exportPayrollRunCsv(token, run.id);
-      const url = URL.createObjectURL(download.blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = download.filename || `payroll-run-${run.run_no}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(download.blob, download.filename || `payroll-run-${run.run_no}.csv`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to export payroll run.");
     }
@@ -121,6 +118,14 @@ export function PayrollRunsPage() {
         title="Payroll Runs"
         description="Review, approve as placeholder, finalize later, and export generated payroll runs."
         breadcrumbs={[{ label: "Payroll", href: "/payroll" }, { label: "Runs" }]}
+        actions={canExport ? (
+          <ExportMenu
+            moduleName="Payroll Runs"
+            rows={runs as unknown as Record<string, unknown>[]}
+            columns={["run_no", "status", "calculation_mode", "employee_count", "total_earnings", "total_deductions", "net_salary_total", "generated_at", "approved_at"]}
+            filterSummary={Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)}
+          />
+        ) : null}
       />
       <PayrollNav />
       <StandardFilterBar

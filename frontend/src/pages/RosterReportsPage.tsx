@@ -1,15 +1,15 @@
-import { Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterNav } from "../components/roster/RosterNav";
-import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { downloadBlob } from "../lib/export-utils";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 import type { RosterAssignmentStatus } from "../types/roster";
 
@@ -74,12 +74,7 @@ export function RosterReportsPage() {
     if (!token) return;
     try {
       const download = await api.exportRosterReportCsv(token, filters);
-      const url = URL.createObjectURL(download.blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = download.filename || `roster-report-${weekStart}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(download.blob, download.filename || `roster-report-${weekStart}.csv`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to export roster report.");
     }
@@ -101,7 +96,22 @@ export function RosterReportsPage() {
       <PageHeader
         title="Roster Reports"
         description="Weekly schedule summaries prepared for payroll and operations exports."
-        actions={canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}
+        actions={canExport ? (
+          <ExportMenu
+            moduleName="Roster Reports"
+            rows={filtered}
+            columns={["employee_no", "employee_name", "department_name", "location_name", "scheduled_days", "off_days", "leave_days", "unassigned_days", "scheduled_minutes"]}
+            filterSummary={Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)}
+            onBackendExport={async (format) => {
+              if (format === "csv") {
+                await exportCsv();
+                return;
+              }
+              const { exportRows } = await import("../lib/export-utils");
+              exportRows(format, "Roster Reports", ["employee_no", "employee_name", "department_name", "location_name", "scheduled_days", "off_days", "leave_days", "unassigned_days", "scheduled_minutes"], filtered, Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`));
+            }}
+          />
+        ) : null}
       />
       <RosterNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}

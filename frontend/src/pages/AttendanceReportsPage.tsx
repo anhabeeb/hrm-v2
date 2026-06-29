@@ -1,8 +1,7 @@
-import { Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput } from "../components/filters";
-import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
@@ -10,6 +9,7 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { downloadBlob } from "../lib/export-utils";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 
 export function AttendanceReportsPage() {
@@ -73,12 +73,7 @@ export function AttendanceReportsPage() {
     if (!token) return;
     try {
       const download = await api.exportAttendanceReportCsv(token, filters);
-      const url = URL.createObjectURL(download.blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = download.filename || `attendance-report-${dateFrom || "all"}-${dateTo || "all"}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(download.blob, download.filename || `attendance-report-${dateFrom || "all"}-${dateTo || "all"}.csv`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to export attendance report.");
     }
@@ -92,7 +87,22 @@ export function AttendanceReportsPage() {
       <PageHeader
         title="Attendance Reports"
         description="Attendance summary exports prepared for payroll reconciliation."
-        actions={canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}
+        actions={canExport ? (
+          <ExportMenu
+            moduleName="Attendance Reports"
+            rows={reports}
+            columns={["employee_no", "employee_name", "department_name", "location_name", "present_days", "absent_days", "late_days", "missed_punch_days", "total_work_minutes"]}
+            filterSummary={Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)}
+            onBackendExport={async (format) => {
+              if (format === "csv") {
+                await exportCsv();
+                return;
+              }
+              const { exportRows } = await import("../lib/export-utils");
+              exportRows(format, "Attendance Reports", ["employee_no", "employee_name", "department_name", "location_name", "present_days", "absent_days", "late_days", "missed_punch_days", "total_work_minutes"], reports, Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`));
+            }}
+          />
+        ) : null}
       />
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}

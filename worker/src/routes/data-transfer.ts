@@ -6,12 +6,15 @@ import { recordAudit } from "../db/audit";
 import { validateImportRows } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
+import { validationMessageToIssue } from "../utils/import-validation";
+import { buildCsv, buildPdfReport, buildXlsxReport, buildXlsxTemplate, friendlyColumnLabel, type ExcelValidationRule } from "../utils/report-export";
 import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
 
 type ImportMode = "CREATE_ONLY" | "UPDATE_ONLY" | "UPSERT" | "VALIDATE_ONLY";
 type ImportStatus = "UPLOADED" | "VALIDATING" | "VALIDATION_FAILED" | "READY_TO_APPLY" | "APPLYING" | "APPLIED" | "APPLIED_WITH_WARNINGS" | "FAILED" | "CANCELLED";
 type RowValidationStatus = "PENDING" | "VALID" | "INVALID" | "WARNING" | "DUPLICATE";
+type ExportFormat = "csv" | "xlsx" | "pdf";
 
 type ColumnDef = { key: string; required?: boolean; sensitive?: boolean; protected?: boolean; enumKey?: string; sample?: string; note?: string };
 type ImportTypeDefinition = {
@@ -291,8 +294,8 @@ function getDataImportTemplate(importType: string) {
   if (!definition) return null;
   return {
     ...definition,
-    columns: getImportTemplateColumnDefinitions(importType).map((column) => ({ ...column, accepted_values: getImportAcceptedEnumValues(column.enumKey) })),
-    validation_notes: ["Use stable codes instead of internal IDs.", "Use YYYY-MM-DD date format.", "Templates use sample data only and never include real employee data."]
+    columns: getImportTemplateColumnDefinitions(importType).map((column) => ({ ...column, label: friendlyColumnLabel(column.key), accepted_values: getImportAcceptedEnumValues(column.enumKey) })),
+    validation_notes: ["Use stable codes instead of internal IDs.", "Use YYYY-MM-DD date format.", "Required Excel headers are marked with *.", "Templates use sample data only and never include real employee data."]
   };
 }
 
@@ -302,6 +305,87 @@ function generateCsvImportTemplate(importType: string) {
   const columns = template.columns.map((column) => column.key);
   const sample = Object.fromEntries(template.columns.map((column) => [column.key, column.sample ?? ""]));
   return toCsv(columns, [sample]);
+}
+
+async function readLookupValues(db: Env["DB"], table: string, column: string) {
+  try {
+    const rows = await db.prepare(`SELECT ${column} AS value FROM ${table} WHERE COALESCE(is_active, 1) = 1 ORDER BY ${column} LIMIT 500`).all<{ value: string }>();
+    return rows.results.map((row) => String(row.value ?? "")).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function getImportLookupValues(db: Env["DB"], definition: ImportTypeDefinition) {
+  const lookups: Record<string, string[]> = {};
+  const dynamic: Record<string, [string, string]> = {
+    department_code: ["departments", "code"],
+    position_code: ["positions", "code"],
+    worksite_code: ["locations", "code"],
+    job_level_code: ["job_levels", "code"],
+    leave_type_code: ["leave_types", "code"],
+    document_type_code: ["document_types", "code"],
+    payment_institution_code: ["payment_institutions", "code"],
+    pension_scheme_code: ["pension_schemes", "code"],
+    template_code: ["custom_deduction_templates", "code"],
+    contract_type_code: ["contract_types", "code"]
+  };
+  for (const column of definition.columns) {
+    const enumValuesForColumn = getImportAcceptedEnumValues(column.enumKey);
+    if (enumValuesForColumn.length) lookups[column.key] = enumValuesForColumn;
+    const lookup = dynamic[column.key];
+    if (lookup) {
+      const values = await readLookupValues(db, lookup[0], lookup[1]);
+      if (values.length) lookups[column.key] = values;
+    }
+  }
+  if (definition.key === "employees" && lookups.department_code && (lookups.position_code || lookups.job_level_code)) {
+    lookups.valid_department_job_level_position_combinations = ["Use active Department, Job Level, and Position codes. Backend validation rejects invalid combinations."];
+  }
+  return lookups;
+}
+
+function getColumnValidationRules(definition: ImportTypeDefinition, lookupValues: Record<string, string[]>): ExcelValidationRule[] {
+  return definition.columns.flatMap((column): ExcelValidationRule[] => {
+    const rules: ExcelValidationRule[] = [];
+    const required = definition.requiredColumns.includes(column.key) || Boolean(column.required);
+    const prompt = [required ? "Required field." : "", column.note].filter(Boolean).join(" ");
+    const values = lookupValues[column.key] ?? getImportAcceptedEnumValues(column.enumKey);
+    if (values.length) rules.push({ columnKey: column.key, type: "list", values, required, prompt: prompt || "Choose an allowed value from the dropdown." });
+    if (/(date|joined|effective|expiry|start|end|due|period)/i.test(column.key)) rules.push({ columnKey: column.key, type: "date", required, prompt: prompt || "Use YYYY-MM-DD." });
+    if (/(amount|salary|percentage|quantity|count|days|hours|minutes|balance|value|installment|principal)/i.test(column.key)) rules.push({ columnKey: column.key, type: /(count|quantity|days|hours|minutes)/i.test(column.key) ? "whole" : "decimal", required, min: 0, max: /percentage/i.test(column.key) ? 100 : 999999999, prompt: prompt || "Use a non-negative number." });
+    if (/(code|number|email|phone|passport|reference|account)/i.test(column.key)) rules.push({ columnKey: column.key, type: "textLength", required, min: 0, max: 255, prompt: prompt || "Use a concise text value." });
+    return rules;
+  });
+}
+
+async function generateExcelImportTemplate(db: Env["DB"], importType: string) {
+  const definition = getDataImportTypeDefinition(importType);
+  if (!definition) return null;
+  const lookupValues = await getImportLookupValues(db, definition);
+  return buildXlsxTemplate({
+    title: definition.label,
+    instructions: [
+      `${definition.label} import template.`,
+      "Fill rows in the Template sheet only.",
+      "Required fields are marked with *.",
+      "Use YYYY-MM-DD for date fields.",
+      "Dropdown fields use the hidden Lookups sheet.",
+      "Do not rename columns or delete hidden lookup sheets.",
+      "Upload the completed data for validation preview before applying.",
+      "Backend validation remains mandatory and may reject invalid references or out-of-scope employees.",
+      "For Department -> Job Level -> Position, use valid combinations from the reference data; backend validation is authoritative."
+    ],
+    columns: definition.columns.map((column) => ({
+      key: column.key,
+      label: friendlyColumnLabel(column.key),
+      required: definition.requiredColumns.includes(column.key) || Boolean(column.required),
+      sample: column.sample ?? "",
+      note: column.note
+    })),
+    validations: getColumnValidationRules(definition, lookupValues),
+    lookupGroups: lookupValues
+  });
 }
 
 function normalizeImportRowForType(definition: ImportTypeDefinition, row: Record<string, unknown>) {
@@ -357,7 +441,7 @@ async function getDataTransferSettings(db: Env["DB"]) {
     data_export_enabled: 1,
     max_import_rows: 5000,
     max_export_rows: 5000,
-    allowed_import_file_types_json: '["csv","text/csv","text/plain"]',
+    allowed_import_file_types_json: '["csv","xlsx","text/csv","text/plain","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]',
     sensitive_import_requires_permission: 1,
     sensitive_export_requires_permission: 1,
     sensitive_import_requires_reason: 1,
@@ -473,7 +557,12 @@ function buildImportValidationPreview(batch: ImportBatchRow, rows: ImportResultR
 }
 
 function generateImportErrorCsv(rows: ImportResultRow[]) {
-  return toCsv(["row_number", "validation_status", "error_code", "error_message", "raw_row"], rows.map((row) => ({ row_number: row.row_number, validation_status: row.validation_status, error_code: row.error_code, error_message: row.error_message, raw_row: row.raw_row_json })));
+  const reportRows = rows.flatMap((row) => {
+    const raw = parseJson<Record<string, unknown>>(row.raw_row_json, {});
+    const messages = String(row.error_message ?? row.validation_status ?? "").split(/(?<=\.)\s+/).filter(Boolean);
+    return (messages.length ? messages : [String(row.validation_status)]).map((message) => validationMessageToIssue(row.row_number, message, raw));
+  });
+  return buildCsv(["row_number", "column_name", "submitted_value", "error_message", "severity", "suggested_correction"], reportRows);
 }
 
 async function validateDataImportBatch(db: Env["DB"], user: AuthUser, batchId: string) {
@@ -611,7 +700,7 @@ function applyDataExportSensitiveMasking(definition: ExportTypeDefinition, row: 
   return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, /(salary|amount|loan|account|pension|settlement|document|audit|email)/i.test(key) ? "Restricted" : value]));
 }
 
-async function runDataExport(c: Context<AppBindings>, exportType: string, input: { reason?: string | null }) {
+async function runDataExport(c: Context<AppBindings>, exportType: string, input: { reason?: string | null; format?: ExportFormat | string | null }) {
   const definition = getDataExportTypeDefinition(exportType);
   if (!definition) return { error: fail(c, 400, "EXPORT_TYPE_UNKNOWN", "Unknown export type.") };
   const settings = await getDataTransferSettings(c.env.DB);
@@ -629,12 +718,43 @@ async function runDataExport(c: Context<AppBindings>, exportType: string, input:
   }
   const maskedRows = rows.map((row) => applyDataExportSensitiveMasking(definition, row, enforceDataExportPermission(c, "sensitive")));
   const exportId = crypto.randomUUID();
-  const fileName = `hrm-v2-${definition.key}-export.csv`;
-  await c.env.DB.prepare("INSERT INTO report_export_logs (id, report_key, report_name, export_format, filter_snapshot_json, row_count, requested_by_user_id, completed_at, status, file_name, sensitive_export, metadata_json) VALUES (?, ?, ?, 'CSV', ?, ?, ?, ?, 'COMPLETED', ?, ?, ?)")
-    .bind(exportId, `data-export/${definition.key}`, definition.label, JSON.stringify({ source: "data_export_center", reason: input.reason ?? null }), maskedRows.length, c.get("currentUser").id, now(), fileName, definition.sensitive ? 1 : 0, JSON.stringify({ prompt: "22" }))
+  const format = normalizeExportFormat(input.format);
+  const fileName = `hrm-v2-${definition.key}-export.${format}`;
+  await c.env.DB.prepare("INSERT INTO report_export_logs (id, report_key, report_name, export_format, filter_snapshot_json, row_count, requested_by_user_id, completed_at, status, file_name, sensitive_export, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', ?, ?, ?)")
+    .bind(exportId, `data-export/${definition.key}`, definition.label, format.toUpperCase(), JSON.stringify({ source: "data_export_center", reason: input.reason ?? null }), maskedRows.length, c.get("currentUser").id, now(), fileName, definition.sensitive ? 1 : 0, JSON.stringify({ prompt: "22", formats: ["csv", "xlsx", "pdf"] }))
     .run();
   await auditDataExportAction(c, definition.sensitive ? "data_export.sensitive_run" : "data_export.run", exportId, undefined, { export_type: definition.key, row_count: maskedRows.length }, input.reason ?? null);
-  return { export: { id: exportId, type: definition, rows: maskedRows, csv_text: toCsv(definition.columns, maskedRows), file_name: fileName, placeholder: definition.source === "placeholder" } };
+  return { export: { id: exportId, type: definition, rows: maskedRows, csv_text: buildCsv(definition.columns, maskedRows), file_name: fileName, export_format: format, placeholder: definition.source === "placeholder" } };
+}
+
+function normalizeExportFormat(value: unknown): ExportFormat {
+  const format = String(value ?? "csv").toLowerCase();
+  return format === "xlsx" || format === "pdf" ? format : "csv";
+}
+
+function exportResponse(definition: ExportTypeDefinition, rows: Record<string, unknown>[], format: ExportFormat, fileName: string) {
+  if (format === "xlsx") {
+    return new Response(buildXlsxReport(definition.label, definition.columns, rows, [`Module: ${definition.moduleKey}`]), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${fileName}"`
+      }
+    });
+  }
+  if (format === "pdf") {
+    return new Response(buildPdfReport(definition.label, definition.columns, rows, [`Module: ${definition.moduleKey}`]), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${fileName}"`
+      }
+    });
+  }
+  return new Response(buildCsv(definition.columns, rows), {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${fileName}"`
+    }
+  });
 }
 
 async function getImportBody(c: Context<AppBindings>) {
@@ -669,6 +789,12 @@ dataImportRoutes.get("/templates/:importType/download", requireAnyPermission(["d
   if (!csv) return fail(c, 404, "IMPORT_TYPE_NOT_FOUND", "Import template not found.");
   await auditDataImportAction(c, "data_import.template_downloaded", c.req.param("importType"));
   return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="hrm-v2-${c.req.param("importType")}-import-template.csv"` } });
+});
+dataImportRoutes.get("/templates/:importType/download.xlsx", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
+  const xlsx = await generateExcelImportTemplate(c.env.DB, c.req.param("importType"));
+  if (!xlsx) return fail(c, 404, "IMPORT_TYPE_NOT_FOUND", "Import template not found.");
+  await auditDataImportAction(c, "data_import.excel_template_downloaded", c.req.param("importType"));
+  return new Response(xlsx, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="hrm-v2-${c.req.param("importType")}-import-template.xlsx"` } });
 });
 dataImportRoutes.get("/batches", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => ok(c, { batches: (await c.env.DB.prepare("SELECT * FROM data_import_batches ORDER BY created_at DESC LIMIT 100").all<ImportBatchRow>()).results }));
 dataImportRoutes.get("/batches/:batchId", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
@@ -732,6 +858,15 @@ dataExportRoutes.post("/:exportType/run", requireAnyPermission(["data_export.run
   const result = await runDataExport(c, c.req.param("exportType"), await readJsonBody(c.req.raw) as { reason?: string });
   if ("error" in result) return result.error;
   return ok(c, result);
+});
+dataExportRoutes.post("/:exportType/download", requireAnyPermission(["data_export.run", "data_export.manage", "reports.export"]), async (c) => {
+  const input = await readJsonBody(c.req.raw) as { reason?: string; format?: string };
+  const result = await runDataExport(c, c.req.param("exportType"), input);
+  if ("error" in result) return result.error;
+  const definition = getDataExportTypeDefinition(c.req.param("exportType"));
+  if (!definition) return fail(c, 400, "EXPORT_TYPE_UNKNOWN", "Unknown export type.");
+  const format = normalizeExportFormat(input.format);
+  return exportResponse(definition, result.export.rows as Record<string, unknown>[], format, result.export.file_name as string);
 });
 dataExportRoutes.get("/history", requireAnyPermission(["data_export.view", "data_export.manage", "reports.export.history.view"]), async (c) => ok(c, { history: (await c.env.DB.prepare("SELECT * FROM report_export_logs WHERE report_key LIKE 'data-export/%' ORDER BY requested_at DESC LIMIT 100").all<Record<string, unknown>>()).results }));
 dataExportRoutes.get("/history/:exportId", requireAnyPermission(["data_export.view", "data_export.manage", "reports.export.history.view"]), async (c) => {

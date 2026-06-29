@@ -1,8 +1,7 @@
-import { Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AssetsNav } from "../components/assets/AssetsNav";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
-import { ActionTextButton } from "../components/ui/action-button";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
@@ -11,6 +10,7 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { downloadBlob } from "../lib/export-utils";
 import type { AssetCategory } from "../types/assets";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 
@@ -56,12 +56,7 @@ export function AssetsReportsPage() {
     if (!token) return;
     try {
       const file = await api.exportAssetsReportCsv(token, filters);
-      const href = URL.createObjectURL(file.blob);
-      const link = document.createElement("a");
-      link.href = href;
-      link.download = file.filename;
-      link.click();
-      URL.revokeObjectURL(href);
+      downloadBlob(file.blob, file.filename);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to export report.");
     }
@@ -75,7 +70,22 @@ export function AssetsReportsPage() {
         <StandardFilterBar
           search={<StandardSearchInput value={filters.search} onDebouncedChange={(search) => setFilters((current) => ({ ...current, search }))} placeholder="Employee or asset" />}
           reset={<FilterResetButton onReset={resetFilters} />}
-          actions={<><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>{canExport ? <ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export</ActionTextButton> : null}</>}
+          actions={<><Button variant="outline" size="sm" onClick={() => void load()}>Filter</Button>{canExport ? (
+            <ExportMenu
+              moduleName="Asset Reports"
+              rows={rows}
+              columns={columns}
+              filterSummary={Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)}
+              onBackendExport={async (format) => {
+                if (format === "csv") {
+                  await exportCsv();
+                  return;
+                }
+                const { exportRows } = await import("../lib/export-utils");
+                exportRows(format, "Asset Reports", columns, rows, Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`));
+              }}
+            />
+          ) : null}</>}
           moreFilters={
             <MoreFiltersSheet onReset={resetFilters} onApply={() => void load()}>
               <FilterSection title="Organization and dates">

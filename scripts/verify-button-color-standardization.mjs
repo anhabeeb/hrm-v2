@@ -308,14 +308,20 @@ const contractsSource = read("frontend/src/pages/ContractsPage.tsx");
 ].forEach(([label, marker]) => assert(contractsSource.includes(marker), `ContractsPage ${label} action must use ActionTextButton.`));
 
 const auditLogPageSource = read("frontend/src/pages/AuditLogPage.tsx");
-assert(auditLogPageSource.includes('<ActionTextButton intent="export" className="h-10" onClick={() => void exportCsv()}'), "AuditLogPage export must use ActionTextButton export intent.");
+assert(auditLogPageSource.includes("ExportMenu"), "AuditLogPage export must use the shared ExportMenu.");
 
 const reportsPageSource = read("frontend/src/pages/ReportsPage.tsx");
+assert(reportsPageSource.includes("ExportMenu"), "ReportsPage export must use the shared ExportMenu.");
+assert(!/disabledExport\("(Excel|PDF)"\)/.test(reportsPageSource), "ReportsPage must not keep fake Excel/PDF placeholder export actions.");
+
+const exportMenuSource = read("frontend/src/components/export/ExportMenu.tsx");
 [
-  ["CSV export", '<ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}'],
-  ["Excel export placeholder", '<ActionTextButton intent="export" size="sm" onClick={() => disabledExport("Excel")}'],
-  ["PDF export placeholder", '<ActionTextButton intent="export" size="sm" onClick={() => disabledExport("PDF")}']
-].forEach(([label, marker]) => assert(reportsPageSource.includes(marker), `ReportsPage ${label} action must use ActionTextButton export intent.`));
+  ["menu trigger", '<ActionTextButton intent="export" size="sm" onClick={() => setOpen((value) => !value)}'],
+  ["CSV export", 'onClick={() => void run("csv")}'],
+  ["Excel export", 'onClick={() => void run("xlsx")}'],
+  ["PDF export", 'onClick={() => void run("pdf")}']
+].forEach(([label, marker]) => assert(exportMenuSource.includes(marker), `ExportMenu ${label} must use ActionTextButton export intent.`));
+assert((exportMenuSource.match(/<ActionTextButton intent="export"/g) ?? []).length >= 4, "ExportMenu must color trigger, CSV, Excel, and PDF actions with export intent.");
 
 [
   "frontend/src/components/assets/EmployeeAssetsPanel.tsx",

@@ -123,12 +123,16 @@ hasAll("frontend/src/pages/ReportsPage.tsx", [
   "Export History / Report Audit Logs",
   "DataTableFrame",
   "overflow-hidden",
-  "Excel export will be added in a later export phase",
-  "PDF export will be added in a later export phase",
+  "ExportMenu",
+  "exportRows(format",
+  "Excel and PDF exports use the currently loaded report rows",
   "filterChips",
   "payment register reporting",
   "Final settlement status"
 ]);
+
+const reportsPage = read("frontend/src/pages/ReportsPage.tsx");
+ok(!/Excel\/PDF (remain )?future placeholders|Excel export will be added|PDF export will be added/i.test(reportsPage), "Reports page must not present active Excel/PDF exports as placeholders");
 
 hasAll("frontend/src/lib/api.ts", [
   "getReportExportLogs",

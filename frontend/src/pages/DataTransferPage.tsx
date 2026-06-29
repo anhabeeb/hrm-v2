@@ -17,9 +17,13 @@ import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { ImportWizard } from "../components/import/ImportWizard";
+import { ActionTextButton } from "../components/ui/action-button";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { downloadBlob } from "../lib/export-utils";
+import type { ImportTemplateDefinition } from "../lib/import-utils";
 import { FileUploadField, PageHeader, PageShell, SelectField, StandardTabs, TextareaField } from "../components/ui/page-shell";
 
 type Row = Record<string, unknown>;
@@ -87,15 +91,6 @@ function RowTable({ data, columns, empty }: { data: Row[]; columns: string[]; em
   );
 }
 
-function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
   const { token, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -119,9 +114,10 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
   const [smoke, setSmoke] = useState<Row>({});
   const [deployment, setDeployment] = useState<Row>({});
   const [settings, setSettings] = useState<Row>({});
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [importForm, setImportForm] = useState({ import_type: "employees", import_mode: "VALIDATE_ONLY", source_file_name: "", reason: "", notes: "", csv_text: "" });
   const [applyAck, setApplyAck] = useState("");
-  const [exportForm, setExportForm] = useState({ export_type: "employees", reason: "" });
+  const [exportForm, setExportForm] = useState({ export_type: "employees", reason: "", format: "csv" });
 
   const permissions = useMemo(() => new Set(user?.permissions ?? []), [user]);
   const canView = Boolean(user?.is_owner || permissions.has("data_import.view") || permissions.has("data_export.view") || permissions.has("deployment.readiness.view"));
@@ -246,11 +242,11 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
     }
   }
 
-  async function downloadTemplate(importType: string) {
+  async function downloadTemplate(importType: string, format: "csv" | "xlsx" = "xlsx") {
     if (!token) return;
     try {
-      const result = await api.downloadDataImportTemplate(token, importType);
-      saveBlob(result.blob, result.filename);
+      const result = await api.downloadDataImportTemplate(token, importType, format);
+      downloadBlob(result.blob, result.filename);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to download template.");
     }
@@ -260,7 +256,7 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
     if (!token || !selectedBatch?.id) return;
     try {
       const result = await api.downloadDataImportErrors(token, String(selectedBatch.id));
-      saveBlob(result.blob, result.filename);
+      downloadBlob(result.blob, result.filename);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to download import errors.");
     }
@@ -269,9 +265,10 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
   async function runExport() {
     if (!token) return;
     try {
-      const result = await api.runDataExport(token, exportForm.export_type, { reason: exportForm.reason });
-      setLastExport(result.export);
-      setMessage("Export generated and audit logged.");
+      const result = await api.downloadDataExport(token, exportForm.export_type, { reason: exportForm.reason, format: exportForm.format });
+      downloadBlob(result.blob, result.filename);
+      setLastExport({ file_name: result.filename, export_format: exportForm.format });
+      setMessage(`${exportForm.format.toUpperCase()} export generated and audit logged.`);
       const history = await api.listDataExportHistory(token);
       setExportHistory(history.history);
     } catch (err) {
@@ -337,9 +334,11 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
           <>
           <AdminHelpLink target={active === "deployment" || active === "remote-d1" || active === "qa" || active === "smoke" ? "deployment" : "dataImport"} label="View Operations Guide" />
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" /> Refresh</Button>
+          {active === "imports" || active === "templates" ? <ActionTextButton intent="import" size="sm" onClick={() => setWizardOpen(true)}><Upload className="h-4 w-4" /> Import wizard</ActionTextButton> : null}
           </>
         }
       />
+      <ImportWizard token={token} open={wizardOpen} onOpenChange={setWizardOpen} templates={templates as ImportTemplateDefinition[]} defaultImportType={importForm.import_type} onFinished={load} />
 
       <StandardTabs
         label="Data transfer section tabs"
@@ -379,7 +378,7 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
               }}
             />
             <TextareaField className="min-h-36 w-full rounded-md border p-2 text-xs" placeholder="Paste CSV text here" value={importForm.csv_text} onChange={(event) => setImportForm({ ...importForm, csv_text: event.target.value })} />
-            <Button size="sm" onClick={() => void createBatch()} disabled={loading || !importForm.csv_text}><Upload className="h-4 w-4" /> Upload batch</Button>
+            <ActionTextButton intent="upload" size="sm" onClick={() => void createBatch()} disabled={loading || !importForm.csv_text}><Upload className="h-4 w-4" /> Upload batch</ActionTextButton>
           </Panel>
           <div className="space-y-4">
             <RowTable data={batches} columns={["batch_number", "import_type", "import_mode", "row_count", "valid_row_count", "invalid_row_count", "warning_count", "status", "created_at"]} empty="No import batches" />
@@ -392,11 +391,11 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
                 <Badge tone={tone(selectedBatch.status)}>{text(selectedBatch.status)}</Badge>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => void validateBatch()}>Validate</Button>
+                <ActionTextButton intent="create" size="sm" onClick={() => void validateBatch()}>Validate</ActionTextButton>
                 <Input className="max-w-40" placeholder="Type APPLY" value={applyAck} onChange={(event) => setApplyAck(event.target.value)} />
-                <Button size="sm" onClick={() => void applyBatch()} disabled={applyAck !== "APPLY"}>Apply valid rows</Button>
+                <ActionTextButton intent="confirm" size="sm" onClick={() => void applyBatch()} disabled={applyAck !== "APPLY"}>Apply valid rows</ActionTextButton>
                 <Button size="sm" variant="outline" onClick={() => void cancelBatch()}>Cancel</Button>
-                <Button size="sm" variant="outline" onClick={() => void downloadErrors()}><Download className="h-4 w-4" /> Errors CSV</Button>
+                <ActionTextButton intent="download" size="sm" onClick={() => void downloadErrors()}><Download className="h-4 w-4" /> Errors CSV</ActionTextButton>
               </div>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Validation Preview</h3>
               {preview ? <RowTable data={[preview]} columns={["total_rows", "valid_rows", "invalid_rows", "duplicate_rows", "warnings", "create_rows", "update_rows", "skipped_rows"]} empty="No preview" /> : null}
@@ -410,7 +409,12 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
       {active === "templates" ? (
         <div className="space-y-3">
           <RowTable data={templates} columns={["key", "label", "category", "description"]} empty="No templates" />
-          <div className="flex flex-wrap gap-2">{templates.map((template) => <Button key={String(template.key)} size="sm" variant="outline" onClick={() => void downloadTemplate(String(template.key))}><Download className="h-4 w-4" /> {text(template.label)}</Button>)}</div>
+          <div className="flex flex-wrap gap-2">{templates.map((template) => (
+            <div key={String(template.key)} className="flex flex-wrap gap-1">
+              <ActionTextButton size="sm" intent="download" onClick={() => void downloadTemplate(String(template.key), "xlsx")}><FileSpreadsheet className="h-4 w-4" /> {text(template.label)} Excel</ActionTextButton>
+              <ActionTextButton size="sm" intent="download" onClick={() => void downloadTemplate(String(template.key), "csv")}><Download className="h-4 w-4" /> CSV</ActionTextButton>
+            </div>
+          ))}</div>
         </div>
       ) : null}
 
@@ -421,8 +425,13 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
             <SelectField className="h-9 w-full rounded-md border px-2 text-sm" value={exportForm.export_type} onChange={(event) => setExportForm({ ...exportForm, export_type: event.target.value })}>
               {exportTypes.map((type) => <option key={String(type.key)} value={String(type.key)}>{text(type.label)}</option>)}
             </SelectField>
+            <SelectField className="h-9 w-full rounded-md border px-2 text-sm" value={exportForm.format} onChange={(event) => setExportForm({ ...exportForm, format: event.target.value })}>
+              <option value="csv">CSV</option>
+              <option value="xlsx">Excel .xlsx</option>
+              <option value="pdf">PDF</option>
+            </SelectField>
             <Input placeholder="Reason for sensitive exports" value={exportForm.reason} onChange={(event) => setExportForm({ ...exportForm, reason: event.target.value })} />
-            <Button size="sm" onClick={() => void runExport()}><Download className="h-4 w-4" /> Run export</Button>
+            <ActionTextButton size="sm" intent="export" onClick={() => void runExport()}><Download className="h-4 w-4" /> Run export</ActionTextButton>
             {lastExport ? <pre className="max-h-64 overflow-auto rounded bg-slate-50 p-2 text-xs">{text(lastExport.file_name)}{"\n"}{String(lastExport.csv_text ?? "").slice(0, 1500)}</pre> : null}
           </Panel>
           <div className="space-y-2">

@@ -5,6 +5,7 @@ import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import {
   ActiveFilterChips,
@@ -108,6 +109,7 @@ export function EmployeesPage() {
   const canCreate = permissions.has("employees.create");
   const canUpdate = permissions.has("employees.update");
   const canArchive = permissions.has("employees.archive");
+  const canExport = permissions.has("reports.export") || permissions.has("employees.view");
   const canNumber = permissions.has("employees.numbering.manage");
   const canStatus = permissions.has("employees.status.manage");
   const { activeDepartments, filteredJobLevels, filteredPositions } = useCascadingOrganizationFilters({
@@ -258,6 +260,7 @@ export function EmployeesPage() {
               <Button variant="outline" size="sm"><Settings2 className="h-4 w-4" /> Settings</Button>
             </Link>
           ) : null}
+          {canExport ? <ExportMenu moduleName="Employees" rows={filtered as unknown as Record<string, unknown>[]} columns={["employee_no", "full_name", "employee_type", "employment_type", "status_key", "joining_date"]} filterSummary={activeChips.map((chip) => `${chip.label}: ${String(chip.value)}`)} /> : null}
           {canCreate ? <Button size="sm" onClick={() => setModal({ mode: "create" })}><Plus className="h-4 w-4" /> New Employee</Button> : null}
           </>
         }
