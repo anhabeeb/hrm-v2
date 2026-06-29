@@ -25,6 +25,7 @@ import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLab
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { APP_BRANDING } from "../config/branding";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -478,7 +479,7 @@ export function AdminSettingsPage() {
           <Panel className="space-y-3 p-4">
             <div>
               <h2 className="text-sm font-semibold">Server-authoritative hybrid cache</h2>
-              <p className="text-xs text-muted-foreground">HRM frontend cache is server-authoritative and IndexedDB-assisted. Cloudflare Worker API and D1 remain the source of truth.</p>
+              <p className="text-xs text-muted-foreground">{APP_BRANDING.appName} frontend cache is server-authoritative and IndexedDB-assisted. Cloudflare Worker API and D1 remain the source of truth.</p>
             </div>
             <SummaryGrid items={[
               { label: "Cache schema", value: cacheDiagnostics.cache_schema_version ?? "-" },
@@ -513,7 +514,7 @@ export function AdminSettingsPage() {
       {active === "environment" ? <div className="space-y-4"><Button size="sm" onClick={() => runAction("Environment safety checked.", async () => { if (token) setEnvironment((await api.runEnvironmentSafety(token)).environment_safety); })}>Run environment safety check</Button><JsonPanel title="Environment safety" data={environment} /></div> : null}
       {active === "alerts" ? <div className="space-y-4"><Button size="sm" onClick={() => runAction("Admin alerts refreshed.", async () => { if (token) setAlerts((await api.refreshAdminSystemAlerts(token)).alerts); })}>Refresh admin alerts</Button><RowsTable rows={alerts} columns={["severity", "status", "alert_type", "module_key", "title", "message", "created_at"]} empty="No admin alerts." /></div> : null}
       {active === "reports" ? <div className="space-y-4"><Panel className="flex flex-wrap gap-2 p-4"><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={reportKey} onChange={(e) => setReportKey(e.target.value)}>{reportOptions.map((option) => <option key={option} value={option}>{option}</option>)}</SelectField><Button size="sm" onClick={() => void loadReport()}>Load report</Button></Panel><RowsTable rows={reportRows} columns={Object.keys(reportRows[0] ?? { status: "", message: "" }).slice(0, 8)} empty="No report rows loaded." /></div> : null}
-      <ConfirmDialog open={cacheClearConfirm} title="Clear local cache?" description="This clears the current browser's IndexedDB HRM cache only. Server records are not changed." confirmLabel="Clear cache" cancelLabel="Cancel" onConfirm={() => void clearLocalCache()} onCancel={() => setCacheClearConfirm(false)} />
+      <ConfirmDialog open={cacheClearConfirm} title="Clear local cache?" description={`This clears the current browser's IndexedDB ${APP_BRANDING.appShortName} cache only. Server records are not changed.`} confirmLabel="Clear cache" cancelLabel="Cancel" onConfirm={() => void clearLocalCache()} onCancel={() => setCacheClearConfirm(false)} />
     </PageShell>
   );
 }

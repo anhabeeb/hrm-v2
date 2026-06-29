@@ -61,7 +61,7 @@ check(packageJson.scripts?.["verify:cache-timeout"] === "node scripts/verify-pos
   "worker/src/routes/sync.ts"
 ].forEach((file) => check(exists(file), `${file} must exist`));
 
-contains("frontend/src/lib/cache/hrmCache.ts", "HRM frontend cache is server-authoritative and IndexedDB-assisted");
+contains("frontend/src/lib/cache/hrmCache.ts", "APP_BRANDING.appName");
 contains("frontend/src/lib/cache/hrmCache.ts", "getBootstrapPayload");
 contains("frontend/src/lib/cache/hrmCache.ts", "getModuleScopedData");
 contains("frontend/src/lib/cache/hrmCache.ts", "hydratePageCache");

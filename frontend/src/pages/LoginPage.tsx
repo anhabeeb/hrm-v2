@@ -5,6 +5,7 @@ import { useAlert } from "../components/alerts/useAlert";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { APP_BRANDING } from "../config/branding";
 import { ApiError } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -46,7 +47,7 @@ export function LoginPage() {
     }
     try {
       const user = await login({ email, password });
-      alerts.showSuccess("Signed in", "Redirecting to HRM.");
+      alerts.showSuccess("Signed in", `Redirecting to ${APP_BRANDING.appName}.`);
       navigate(defaultLandingPath(user), { replace: true });
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 401) {
@@ -73,8 +74,8 @@ export function LoginPage() {
           <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <LogIn className="h-5 w-5" />
           </div>
-          <h1 className="text-xl font-semibold">Sign in to HRM v2</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Use your HRM access account.</p>
+          <h1 className="text-xl font-semibold">{APP_BRANDING.loginTitle}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{APP_BRANDING.loginSubtitle}</p>
         </div>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">

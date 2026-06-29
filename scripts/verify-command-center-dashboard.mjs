@@ -36,7 +36,7 @@ const appRoutes = "frontend/src/routes/AppRoutes.tsx";
 const loginPage = "frontend/src/pages/LoginPage.tsx";
 
 has(appShell, "topLevelNavItems", "Command Center must be modeled as a top-level sidebar item.");
-has(appShell, "HRM Command Center", "Sidebar must label the first item HRM Command Center.");
+has(appShell, "Command Center", "Sidebar must label the first item Command Center.");
 has(appShell, "LayoutDashboard", "Command Center sidebar item must use a dashboard-style icon.");
 before(appShell, "topLevelNavItems", "const navGroups", "Command Center top-level item must be declared before grouped navigation.");
 hasNo(appShell, /label:\s*["']Dashboard["'][\s\S]{0,120}items:\s*\[\{\s*label:\s*["']Dashboard["']/m, "Dashboard must not remain as a collapsible sidebar group.");
@@ -83,7 +83,7 @@ for (const priorityId of [
   has(dashboardRoute, priorityId, `Required priority KPI ${priorityId} is missing.`);
 }
 
-has(dashboardPage, "HRM Command Center", "Command Center header title is missing.");
+has(dashboardPage, "OmniCore Command Center", "Command Center header title is missing.");
 has(dashboardPage, "Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators.", "Command Center subtitle must match the required copy.");
 has(dashboardPage, "CommandCenterKpiCard", "KPI card component marker is missing.");
 has(dashboardPage, "PriorityKpiIconStrip", "Priority KPI icon strip component is missing.");

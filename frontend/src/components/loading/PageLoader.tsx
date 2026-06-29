@@ -1,8 +1,9 @@
 import { InlineSpinner } from "./InlineSpinner";
+import { APP_BRANDING } from "../../config/branding";
 
 export function PageLoader({
   title = "Loading workspace",
-  description = "Preparing this HRM page.",
+  description = `Preparing this ${APP_BRANDING.appName} page.`,
   compact = false
 }: {
   title?: string;

@@ -17,6 +17,9 @@ export type ExcelTemplateDefinition = {
   lookupGroups?: Record<string, string[]>;
 };
 
+export const REPORT_APP_NAME = "OmniCore - HR";
+export const REPORT_FILE_PREFIX = "omnicore-hr";
+
 const encoder = new TextEncoder();
 
 export function friendlyColumnLabel(key: string) {
@@ -141,7 +144,7 @@ function createZip(files: Array<{ name: string; content: string | Uint8Array }>)
 export function buildXlsxReport(title: string, columns: Array<string | ReportColumn>, rows: ReportRow[], metadata: string[] = []) {
   const normalized = normalizeColumns(columns);
   const reportRows = [normalized.map((column) => column.label), ...rows.map((row) => normalized.map((column) => row[column.key] ?? ""))];
-  const instructions = [["Instructions"], ["Report", title], ["Generated", new Date().toISOString()], ...metadata.map((line) => [line])];
+  const instructions = [["Instructions"], ["Application", REPORT_APP_NAME], ["Report", title], ["Generated", new Date().toISOString()], ...metadata.map((line) => [line])];
   const sheetNames = ["Report", "Instructions"];
   return createZip([
     { name: "[Content_Types].xml", content: contentTypesXml(sheetNames.length) },
@@ -170,7 +173,7 @@ export function buildXlsxTemplate(definition: ExcelTemplateDefinition) {
     { name: "xl/workbook.xml", content: workbookXml(sheetNames, new Set(["Lookups"])) },
     { name: "xl/_rels/workbook.xml.rels", content: workbookRelsXml(sheetNames) },
     { name: "xl/styles.xml", content: stylesXml },
-    { name: "xl/worksheets/sheet1.xml", content: worksheetXml([["Instructions"], ...definition.instructions.map((line) => [line]), ["Generated", new Date().toISOString()]]) },
+    { name: "xl/worksheets/sheet1.xml", content: worksheetXml([["Instructions"], ["Application", REPORT_APP_NAME], ...definition.instructions.map((line) => [line]), ["Generated", new Date().toISOString()]]) },
     { name: "xl/worksheets/sheet2.xml", content: worksheetXml([headers, sample], { validations: definition.validations, columnIndexes }) },
     { name: "xl/worksheets/sheet3.xml", content: worksheetXml(lookupRows) }
   ]);
@@ -178,7 +181,7 @@ export function buildXlsxTemplate(definition: ExcelTemplateDefinition) {
 
 export function buildPdfReport(title: string, columns: Array<string | ReportColumn>, rows: ReportRow[], metadata: string[] = []) {
   const normalized = normalizeColumns(columns);
-  const lines = [title, `Generated: ${new Date().toISOString()}`, ...metadata, "", normalized.map((column) => column.label).join(" | "), ...rows.slice(0, 120).map((row) => normalized.map((column) => String(row[column.key] ?? "")).join(" | "))];
+  const lines = [title, `Application: ${REPORT_APP_NAME}`, `Generated: ${new Date().toISOString()}`, ...metadata, "", normalized.map((column) => column.label).join(" | "), ...rows.slice(0, 120).map((row) => normalized.map((column) => String(row[column.key] ?? "")).join(" | "))];
   const content = lines.map((line, index) => `BT /F1 9 Tf 36 ${780 - index * 13} Td (${pdfText(line.slice(0, 120))}) Tj ET`).join("\n");
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",

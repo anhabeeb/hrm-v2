@@ -1,8 +1,9 @@
 import { ShieldCheck } from "lucide-react";
+import { APP_BRANDING } from "../../config/branding";
 
 export function AppLoader({
-  title = "Preparing HRM workspace...",
-  description = "Loading your secure employee operations dashboard."
+  title = APP_BRANDING.loaderTitle,
+  description = APP_BRANDING.loaderDescription
 }: {
   title?: string;
   description?: string;
@@ -15,8 +16,8 @@ export function AppLoader({
             <ShieldCheck className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-slate-950">HRM v2</p>
-            <p className="truncate text-xs text-muted-foreground">Enterprise people suite</p>
+            <p className="truncate text-sm font-semibold text-slate-950">{APP_BRANDING.appName}</p>
+            <p className="truncate text-xs text-muted-foreground">{APP_BRANDING.tagline}</p>
           </div>
         </div>
         <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-slate-100">

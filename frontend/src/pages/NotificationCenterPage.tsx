@@ -16,6 +16,7 @@ import {
 } from "../components/filters";
 import { LoadingSkeleton, PageHeader, PageShell } from "../components/ui/page-shell";
 import { StatusBadge } from "../components/ui/status-badge";
+import { APP_BRANDING } from "../config/branding";
 import { useAuth } from "../hooks/useAuth";
 import { api, type HrmNotification } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -93,7 +94,7 @@ export function NotificationCenterPage() {
     <PageShell>
       <PageHeader
         title="Notification Center"
-        description="Review HRM notifications, approval updates, document alerts, payroll notices, and system messages for your access scope."
+        description={`Review ${APP_BRANDING.appName} notifications, approval updates, document alerts, payroll notices, and system messages for your access scope.`}
         icon={<Bell className="h-5 w-5" />}
         actions={
           <>

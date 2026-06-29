@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { APP_BRANDING } from "../../config/branding";
 import { APP_CACHE_VERSION, CACHE_SCHEMA_VERSION, moduleCacheKey, userScopedCacheKey, type HrmCacheModule } from "./cacheKeys";
 import {
   clearAllIndexedDbCaches,
@@ -40,7 +41,7 @@ export {
 };
 
 export const SERVER_AUTHORITATIVE_CACHE_RULE =
-  "HRM frontend cache is server-authoritative and IndexedDB-assisted. Cloudflare Worker API plus D1 remains the source of truth.";
+  `${APP_BRANDING.appName} frontend cache is server-authoritative and IndexedDB-assisted. Cloudflare Worker API plus D1 remains the source of truth.`;
 
 const SAFE_TTL_MS = 5 * 60 * 1000;
 const SENSITIVE_TTL_MS = 60 * 1000;

@@ -1,3 +1,5 @@
+import { APP_BRANDING } from "../../config/branding";
+
 export type GuideTone = "info" | "warning" | "success";
 
 export type GuideBlock =
@@ -26,8 +28,8 @@ export const guideSections: GuideSection[] = [
     keywords: ["purpose", "principles", "server authoritative", "audit", "scope", "security"],
     relatedRoutes: [{ label: "Admin Settings", to: "/settings/admin" }],
     blocks: [
-      { type: "paragraph", text: "This guide explains how to configure and operate HRM v2 from start to finish. It is intended for Super Admins and authorized HRM administrators who manage company setup, employees, leave, attendance, roster, payroll, approvals, documents, assets, onboarding, offboarding, reports, and production controls." },
-      { type: "paragraph", text: "HRM v2 is server-authoritative: Cloudflare Worker API and D1 are the true source of information, while browser IndexedDB is only a secondary read cache and safe draft cache." },
+      { type: "paragraph", text: `This guide explains how to configure and operate ${APP_BRANDING.appName} from start to finish. It is intended for Super Admins and authorized HR administrators who manage company setup, employees, leave, attendance, roster, payroll, approvals, documents, assets, onboarding, offboarding, reports, and production controls.` },
+      { type: "paragraph", text: `${APP_BRANDING.appName} is server-authoritative: Cloudflare Worker API and D1 are the true source of information, while browser IndexedDB is only a secondary read cache and safe draft cache.` },
       { type: "list", items: ["Every sensitive action must be permission-controlled.", "Employee data must respect department, worksite, location, role, and access scope boundaries.", "Payroll, leave, attendance, bank loans, pension, final settlement, and security decisions must be validated by the backend.", "Employees should only see their own self-service data.", "Protected Owner/Super Admin accounts must never be accidentally disabled, deleted, or demoted.", "All critical actions must be audited."] }
     ]
   },
@@ -123,7 +125,7 @@ export const guideSections: GuideSection[] = [
     blocks: [
       { type: "paragraph", text: "Add devices under Attendance -> Devices. Supported foundations include ZKTeco CSV import, local bridge placeholder, push/ADMS placeholder, ZKBioTime placeholder, and manual entry." },
       { type: "steps", items: ["Export attendance file from ZKTeco device/software.", "Open Attendance -> Imports.", "Upload CSV.", "Map columns if needed.", "Validate rows.", "Process import.", "Review unmatched, duplicate, and failed rows.", "Attendance daily records update."] },
-      { type: "callout", tone: "warning", title: "Biometric privacy", text: "Do not store fingerprint or face templates in HRM. Store only safe biometric user ID mappings." }
+      { type: "callout", tone: "warning", title: "Biometric privacy", text: `Do not store fingerprint or face templates in ${APP_BRANDING.appName}. Store only safe biometric user ID mappings.` }
     ]
   },
   {
@@ -307,7 +309,7 @@ export const guideSections: GuideSection[] = [
     aliases: ["cache-timeout"],
     relatedRoutes: [{ label: "Security Settings", to: "/settings/admin?section=security-settings" }, { label: "Cache & Sync", to: "/settings/admin?section=cache-sync" }],
     blocks: [
-      { type: "paragraph", text: "HRM uses D1/server as source of truth and IndexedDB as secondary read cache for faster loading, reference data, dashboard summaries, safe drafts, and module cache." },
+      { type: "paragraph", text: `${APP_BRANDING.appName} uses D1/server as source of truth and IndexedDB as secondary read cache for faster loading, reference data, dashboard summaries, safe drafts, and module cache.` },
       { type: "list", items: ["IndexedDB must not override server decisions.", "Clear sensitive cache on logout, idle timeout, permission change, role/scope change, and session expiry.", "Sensitive cache includes payroll, payslips, bank loans, pension, final settlement, documents, audit/security logs."] },
       { type: "callout", tone: "info", title: "Default idle timeout", text: "The default idle timeout is 15 minutes and can be changed from Security Settings. A warning appears before logout; if ignored, sensitive cache is cleared and the user returns to login." }
     ]
@@ -378,7 +380,7 @@ export const guideSections: GuideSection[] = [
     title: "Final Notes",
     keywords: ["final notes", "configure", "preview", "validate", "audit", "report"],
     blocks: [
-      { type: "paragraph", text: "HRM v2 is designed to be configurable. Avoid hardcoding company policies unless absolutely necessary." },
+      { type: "paragraph", text: `${APP_BRANDING.appName} is designed to be configurable. Avoid hardcoding company policies unless absolutely necessary.` },
       { type: "steps", items: ["Check module settings.", "Check permissions.", "Check access scope.", "Check audit logs.", "Run consistency checker.", "Review Employee 360.", "Use reports for cross-module confirmation."] },
       { type: "callout", tone: "success", title: "Safest operating pattern", text: "Configure -> Preview -> Validate -> Approve -> Apply -> Audit -> Report." }
     ]

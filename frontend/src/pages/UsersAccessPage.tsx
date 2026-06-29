@@ -26,6 +26,7 @@ import { FormWarningAlert } from "../components/forms/FormWarningAlert";
 import { ValidationSummary } from "../components/forms/ValidationSummary";
 import { useAlert } from "../components/alerts/useAlert";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter, type ActiveFilterChip } from "../components/filters";
+import { APP_BRANDING } from "../config/branding";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -933,7 +934,7 @@ function AccessScopesTable(props: {
       </UsersAccessFilterBar>
       <div className="border-b bg-sky-50 px-4 py-3 text-sm text-sky-950">
         <div className="font-medium">Roles control what a user can do. Scopes control which employees, departments, and locations the user can access.</div>
-        <div className="mt-1 text-xs">Role mapping scopes are templates. When a mapping is applied, HRM v2 copies those templates to the linked user and updates the existing mapped scope on later applies.</div>
+        <div className="mt-1 text-xs">Role mapping scopes are templates. When a mapping is applied, {APP_BRANDING.appName} copies those templates to the linked user and updates the existing mapped scope on later applies.</div>
       </div>
       {props.loading ? <TableSkeleton rows={5} columns={8} label="Loading access scopes" /> : null}
       {!props.loading && props.scopes.length === 0 ? <EmptyState title="No access scopes found" description="Create role or user scopes to limit employee data by department, location, team, or company." /> : null}

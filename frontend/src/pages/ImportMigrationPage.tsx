@@ -6,6 +6,7 @@ import { Input } from "../components/ui/input";
 import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { APP_BRANDING } from "../config/branding";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 
@@ -60,7 +61,7 @@ export function ImportMigrationPage() {
       <PageHeader
         title="Import / Migration"
         eyebrow="Data transfer"
-        description="Validation-only placeholders for future HRM v2 imports."
+        description={`Validation-only placeholders for future ${APP_BRANDING.appName} imports.`}
         actions={
           <Button variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="h-4 w-4" />
@@ -74,7 +75,7 @@ export function ImportMigrationPage() {
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <h2 className="text-sm font-semibold">Migration safety warning</h2>
-            <p className="mt-1 text-sm">{status?.warning ?? "Import/migration should be performed only after HRM v2 core setup is complete and backups are available."}</p>
+            <p className="mt-1 text-sm">{status?.warning ?? `${APP_BRANDING.appName} import/migration should be performed only after core setup is complete and backups are available.`}</p>
             <p className="mt-1 text-xs">No automatic migration or old HRM import is enabled in this phase.</p>
           </div>
         </div>

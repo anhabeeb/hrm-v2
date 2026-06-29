@@ -46,7 +46,7 @@ requiredFiles.forEach(ensureExists);
 has("package.json", "\"verify:admin-help\": \"node scripts/verify-admin-help-guide.mjs\"", "verify:admin-help script missing");
 has("frontend/src/routes/AppRoutes.tsx", "AdminHelpGuidePage", "admin help page is not lazy-routed");
 has("frontend/src/routes/AppRoutes.tsx", "path=\"admin/help\"", "admin help route missing");
-has("frontend/src/layouts/AppShell.tsx", "HRM Guide", "sidebar link missing");
+has("frontend/src/layouts/AppShell.tsx", "OmniCore Guide", "sidebar link missing");
 has("frontend/src/layouts/AppShell.tsx", "admin.help.view", "sidebar permission guard missing");
 
 has("database/seed.sql", "admin.help.view", "admin.help.view permission missing from seed");

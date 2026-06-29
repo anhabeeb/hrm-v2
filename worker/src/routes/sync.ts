@@ -42,7 +42,7 @@ syncRoutes.get("/bootstrap", async (c) => {
     },
     current_version: await getCurrentSyncVersion(c.env.DB),
     cache_schema_version: CACHE_SCHEMA_VERSION,
-    rule: "HRM frontend cache is server-authoritative and IndexedDB-assisted."
+    rule: "OmniCore - HR frontend cache is server-authoritative and IndexedDB-assisted."
   });
 });
 

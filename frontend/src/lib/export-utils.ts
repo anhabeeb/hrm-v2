@@ -1,3 +1,5 @@
+import { APP_BRANDING } from "../config/branding";
+
 export type ExportColumn = {
   key: string;
   label?: string;
@@ -31,7 +33,7 @@ export function friendlyColumnLabel(key: string) {
 
 export function exportFileName(moduleName: string, extension: string) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return `hrm-v2-${moduleName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${stamp}.${extension}`;
+  return `omnicore-hr-${moduleName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${stamp}.${extension}`;
 }
 
 export function normalizeExportColumns(columns: Array<string | ExportColumn>) {
@@ -191,7 +193,7 @@ function createZip(files: Array<{ name: string; content: string | Uint8Array }>)
 export function createXlsxBlob(title: string, columns: Array<string | ExportColumn>, rows: ExportRow[], metadata: string[] = []) {
   const normalized = normalizeExportColumns(columns);
   const templateRows = [normalized.map((column) => column.label), ...rows.map((row) => normalized.map((column) => row[column.key] ?? ""))];
-  const instructions = [["Instructions"], ["Generated", new Date().toISOString()], ["Report", title], ...metadata.map((line) => [line])];
+  const instructions = [["Instructions"], ["Application", APP_BRANDING.appName], ["Generated", new Date().toISOString()], ["Report", title], ...metadata.map((line) => [line])];
   const sheetNames = ["Report", "Instructions"];
   const files = [
     { name: "[Content_Types].xml", content: contentTypesXml(sheetNames.length) },
@@ -214,7 +216,7 @@ export function createTemplateXlsxBlob(definition: ExcelTemplateDefinition) {
   const maxLookupLength = Math.max(1, ...Object.values(lookupGroups).map((values) => values.length));
   for (let row = 0; row < maxLookupLength; row += 1) lookupRows.push(lookupHeaders.map((key) => lookupGroups[key]?.[row] ?? ""));
   const lookupColumns = Object.fromEntries(definition.columns.map((column, index) => [column.key, index]));
-  const instructions = [["Instructions"], ...definition.instructions.map((line) => [line]), ["Generated", new Date().toISOString()]];
+  const instructions = [["Instructions"], ["Application", APP_BRANDING.appName], ...definition.instructions.map((line) => [line]), ["Generated", new Date().toISOString()]];
   const sheetNames = ["Instructions", "Template", "Lookups"];
   const files = [
     { name: "[Content_Types].xml", content: contentTypesXml(sheetNames.length) },
@@ -233,6 +235,7 @@ export function createPdfBlob(title: string, columns: Array<string | ExportColum
   const normalized = normalizeExportColumns(columns);
   const lines = [
     title,
+    `Application: ${APP_BRANDING.appName}`,
     `Generated: ${new Date().toISOString()}`,
     ...metadata,
     "",

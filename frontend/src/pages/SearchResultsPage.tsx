@@ -7,6 +7,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { LoadingSkeleton, PageHeader, PageShell, StandardTabs } from "../components/ui/page-shell";
 import { StatusBadge } from "../components/ui/status-badge";
+import { APP_BRANDING } from "../config/branding";
 import { useAuth } from "../hooks/useAuth";
 import { api, type GlobalSearchGroup, type GlobalSearchItem } from "../lib/api";
 
@@ -87,7 +88,7 @@ export function SearchResultsPage() {
 
       <div className="rounded-lg border bg-white p-3 shadow-panel">
         <StandardFilterBar
-          search={<StandardSearchInput value={query} onValueChange={setQuery} placeholder="Search HRM records" ariaLabel="Search HRM records" />}
+          search={<StandardSearchInput value={query} onValueChange={setQuery} placeholder={`Search ${APP_BRANDING.appShortName} records`} ariaLabel={`Search ${APP_BRANDING.appShortName} records`} />}
           reset={<FilterResetButton onReset={() => { setQuery(""); setType("all"); setParams({}); }} />}
           actions={<Button onClick={submitSearch}><Search className="h-4 w-4" /> Search</Button>}
         >

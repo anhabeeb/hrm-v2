@@ -66,8 +66,8 @@ const loadingComponents = [
 for (const file of loadingComponents) check(exists(file), `${file} exists`);
 
 hasAll("frontend/src/components/loading/AppLoader.tsx", [
-  "Preparing HRM workspace",
-  "Loading your secure employee operations dashboard",
+  "APP_BRANDING.loaderTitle",
+  "APP_BRANDING.loaderDescription",
   "aria-busy",
   "bg-[linear-gradient",
   "loader-slide",

@@ -5,6 +5,7 @@ import { ActiveFilterChips, FilterResetButton, StandardFilterBar, StandardSearch
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { InfoPanel, PageHeader, PageShell, PermissionDeniedState, SectionCard, WarningPanel } from "../components/ui/page-shell";
+import { APP_BRANDING } from "../config/branding";
 import { canAccessAdminHelp } from "../features/admin-help/AdminHelpLink";
 import { guideSearchKeywords, guideSections, type GuideBlock, type GuideSection } from "../features/admin-help/hrmGuideContent";
 import { useAuth } from "../hooks/useAuth";
@@ -151,8 +152,8 @@ export function AdminHelpGuidePage() {
   return (
     <PageShell constrained={false}>
       <PageHeader
-        title="Advanced HRM Configuration & Operations Guide"
-        description="Super Admin guide for configuring and operating HRM v2 across people, documents, leave, attendance, roster, payroll, approvals, reports, and production controls."
+        title={`${APP_BRANDING.appName} Advanced Configuration & Operations Guide`}
+        description={`Super Admin guide for configuring and operating ${APP_BRANDING.appName} across people, documents, leave, attendance, roster, payroll, approvals, reports, and production controls.`}
         eyebrow="Super Admin Guide"
         actions={
           <>

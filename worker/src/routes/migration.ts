@@ -23,7 +23,7 @@ migrationRoutes.get("/status", requirePermission("settings.view"), (c) => {
     automatic_migration_enabled: false,
     validation_only: true,
     source: "old_hrm_reference_only",
-    warning: "Import/migration should be performed only after HRM v2 core setup is complete and backups are available.",
+    warning: "Import/migration should be performed only after OmniCore - HR core setup is complete and backups are available.",
     supported_placeholders: supportedPlaceholders
   });
 });

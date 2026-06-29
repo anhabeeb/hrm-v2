@@ -35,6 +35,7 @@ import { CardSkeleton } from "../components/loading/CardSkeleton";
 import { DashboardWidget, PageHeader, PageShell, WarningPanel } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Tooltip } from "../components/ui/tooltip";
+import { APP_BRANDING } from "../config/branding";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/useAuth";
@@ -231,8 +232,8 @@ export function DashboardPage() {
   return (
     <PageShell>
       <PageHeader
-        title="HRM Command Center"
-        eyebrow="HRM command center"
+        title="OmniCore Command Center"
+        eyebrow={APP_BRANDING.appName}
         description="Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators."
         actions={
           <div className="flex min-w-0 items-center gap-2">

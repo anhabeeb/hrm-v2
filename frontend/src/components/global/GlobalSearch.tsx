@@ -6,6 +6,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { CommandPalette, LoadingSkeleton } from "../ui/page-shell";
 import { StatusBadge } from "../ui/status-badge";
+import { APP_BRANDING } from "../../config/branding";
 import { useAuth } from "../../hooks/useAuth";
 import { api, type GlobalSearchGroup, type GlobalSearchItem, type GlobalSearchWarning } from "../../lib/api";
 import { cn } from "../../lib/utils";
@@ -147,7 +148,7 @@ export function GlobalSearch() {
 
       {open ? (
         <div className="absolute right-0 top-full z-50 mt-2 w-[min(92vw,38rem)]">
-          <CommandPalette placeholder={query.trim() ? "Search results" : "Quick links and recent workspace areas"}>
+          <CommandPalette placeholder={query.trim() ? "Search results" : `Quick links and recent ${APP_BRANDING.appShortName} workspace areas`}>
             <div className="mb-2 xl:hidden">
               <Input
                 ref={inputRef}

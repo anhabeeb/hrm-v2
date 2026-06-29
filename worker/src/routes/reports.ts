@@ -11,6 +11,8 @@ import { disabledModuleResponse, isOperationalModuleEnabled } from "../utils/mod
 
 type ReportRow = Record<string, unknown>;
 
+const REPORT_FILE_PREFIX = "omnicore-hr";
+
 interface ReportConfig {
   label: string;
   group: string;
@@ -2405,7 +2407,7 @@ Object.entries(reportConfigs).forEach(([reportKey, config]) => {
     const result = await runConfiguredReport(c, reportKey, config);
     if ("error" in result) return result.error;
     const sensitiveExport = hasSensitiveReportPermission(c, config);
-    const fileName = `hrm-v2-${reportKey.replace(/\//g, "-")}-report.csv`;
+    const fileName = `${REPORT_FILE_PREFIX}-${reportKey.replace(/\//g, "-")}-report.csv`;
     await createReportExportLog(c, { reportKey, reportName: config.label, format: "CSV", filters: filters(c), rowCount: result.report.rows.length, status: "COMPLETED", fileName, sensitiveExport });
     return csvResponse(fileName, config.columns, result.report.rows);
   });
@@ -2425,7 +2427,7 @@ Object.entries(reportConfigs).forEach(([reportKey, config]) => {
     const result = await runConfiguredReport(c, reportKey, config);
     if ("error" in result) return result.error;
     const sensitiveExport = hasSensitiveReportPermission(c, config);
-    const fileName = `hrm-v2-${reportKey.replace(/\//g, "-")}-report.${exportFormat === "CSV" ? "csv" : "json"}`;
+    const fileName = `${REPORT_FILE_PREFIX}-${reportKey.replace(/\//g, "-")}-report.${exportFormat === "CSV" ? "csv" : "json"}`;
     const exportId = await createReportExportLog(c, { reportKey, reportName: config.label, format: exportFormat, filters: filters(c), rowCount: result.report.rows.length, status: "COMPLETED", fileName, sensitiveExport });
     if (exportFormat === "CSV") return csvResponse(fileName, config.columns, result.report.rows);
     return ok(c, { export_id: exportId, report: result.report, generated_at: new Date().toISOString() });

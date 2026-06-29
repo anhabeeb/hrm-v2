@@ -3,6 +3,7 @@ import { Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
 import { AppLoader, PageLoader } from "../components/loading";
 import { Button } from "../components/ui/button";
 import { ModuleDisabledState } from "../components/ui/page-shell";
+import { APP_BRANDING } from "../config/branding";
 import { useAuth } from "../hooks/useAuth";
 import { AppShell } from "../layouts/AppShell";
 import { measureAsync } from "../lib/performanceDiagnostics";
@@ -184,7 +185,7 @@ function operational(moduleKey: string | string[], moduleName: string, children:
 
 export function AppRoutes() {
   return (
-    <Suspense fallback={<PageLoader title="Loading HRM page" description="Loading the requested workspace module." />}>
+    <Suspense fallback={<PageLoader title={`Loading ${APP_BRANDING.appName} page`} description="Loading the requested workspace module." />}>
       <Routes>
         <Route path="/setup" element={<SetupGate />} />
         <Route path="/login" element={<LoginGate />} />

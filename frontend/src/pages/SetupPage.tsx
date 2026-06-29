@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
+import { APP_BRANDING } from "../config/branding";
 import { ApiError } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
 
@@ -41,7 +42,7 @@ export function SetupPage() {
             </div>
             <div>
               <h1 className="text-xl font-semibold">Create Owner account</h1>
-              <p className="text-sm text-muted-foreground">This account controls initial HRM v2 access.</p>
+              <p className="text-sm text-muted-foreground">This account controls initial {APP_BRANDING.appName} access.</p>
             </div>
           </div>
 

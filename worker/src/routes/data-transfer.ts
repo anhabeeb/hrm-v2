@@ -7,7 +7,7 @@ import { validateImportRows } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { validationMessageToIssue } from "../utils/import-validation";
-import { buildCsv, buildPdfReport, buildXlsxReport, buildXlsxTemplate, friendlyColumnLabel, type ExcelValidationRule } from "../utils/report-export";
+import { REPORT_FILE_PREFIX, buildCsv, buildPdfReport, buildXlsxReport, buildXlsxTemplate, friendlyColumnLabel, type ExcelValidationRule } from "../utils/report-export";
 import { parseXlsxTemplateSheet } from "../utils/xlsx-import";
 import { fail, getClientIp, ok } from "../utils/http";
 import { disabledModuleResponse, disabledSubmoduleResponse, isOperationalModuleEnabled, isOperationalSubmoduleEnabled } from "../utils/module-enforcement";
@@ -858,7 +858,7 @@ async function runDataExport(c: Context<AppBindings>, exportType: string, input:
   const maskedRows = rows.map((row) => applyDataExportSensitiveMasking(definition, row, enforceDataExportPermission(c, "sensitive")));
   const exportId = crypto.randomUUID();
   const format = normalizeExportFormat(input.format);
-  const fileName = `hrm-v2-${definition.key}-export.${format}`;
+  const fileName = `${REPORT_FILE_PREFIX}-${definition.key}-export.${format}`;
   await c.env.DB.prepare("INSERT INTO report_export_logs (id, report_key, report_name, export_format, filter_snapshot_json, row_count, requested_by_user_id, completed_at, status, file_name, sensitive_export, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED', ?, ?, ?)")
     .bind(exportId, `data-export/${definition.key}`, definition.label, format.toUpperCase(), JSON.stringify({ source: "data_export_center", reason: input.reason ?? null }), maskedRows.length, c.get("currentUser").id, now(), fileName, definition.sensitive ? 1 : 0, JSON.stringify({ prompt: "22", formats: ["csv", "xlsx", "pdf"] }))
     .run();
@@ -934,7 +934,7 @@ dataImportRoutes.get("/templates/:importType/download", requireAnyPermission(["d
   const csv = generateCsvImportTemplate(definition.key);
   if (!csv) return fail(c, 404, "IMPORT_TYPE_NOT_FOUND", "Import template not found.");
   await auditDataImportAction(c, "data_import.template_downloaded", definition.key);
-  return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="hrm-v2-${definition.key}-import-template.csv"` } });
+  return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${REPORT_FILE_PREFIX}-${definition.key}-import-template.csv"` } });
 });
 dataImportRoutes.get("/templates/:importType/download.xlsx", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
   const definition = getDataImportTypeDefinition(c.req.param("importType"));
@@ -943,7 +943,7 @@ dataImportRoutes.get("/templates/:importType/download.xlsx", requireAnyPermissio
   const xlsx = await generateExcelImportTemplate(c.env.DB, definition.key);
   if (!xlsx) return fail(c, 404, "IMPORT_TYPE_NOT_FOUND", "Import template not found.");
   await auditDataImportAction(c, "data_import.excel_template_downloaded", definition.key);
-  return new Response(xlsx, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="hrm-v2-${definition.key}-import-template.xlsx"` } });
+  return new Response(xlsx, { headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="${REPORT_FILE_PREFIX}-${definition.key}-import-template.xlsx"` } });
 });
 dataImportRoutes.get("/batches", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
   const enabledTypes = (await enabledImportTypes(c)).map((definition) => definition.key);
@@ -1024,7 +1024,7 @@ dataImportRoutes.get("/batches/:batchId/errors/download", requireAnyPermission([
   const batch = await c.env.DB.prepare("SELECT * FROM data_import_batches WHERE id = ?").bind(c.req.param("batchId")).first<ImportBatchRow>();
   if (!batch) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
   const rows = (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? AND validation_status IN ('INVALID','DUPLICATE') ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results;
-  return new Response(generateImportErrorCsv(batch, rows), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="hrm-v2-import-errors-${c.req.param("batchId")}.csv"` } });
+  return new Response(generateImportErrorCsv(batch, rows), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${REPORT_FILE_PREFIX}-import-errors-${c.req.param("batchId")}.csv"` } });
 });
 
 dataExportRoutes.get("/types", requireAnyPermission(["data_export.view", "data_export.manage", "reports.view"]), async (c) => ok(c, { types: await enabledExportTypes(c) }));

@@ -1,4 +1,5 @@
 import type { ExcelTemplateDefinition, ExcelValidationRule, ExportColumn } from "./export-utils";
+import { APP_BRANDING } from "../config/branding";
 import { friendlyColumnLabel } from "./export-utils";
 
 export type ImportColumnDefinition = ExportColumn & {
@@ -84,7 +85,7 @@ export function buildExcelTemplateDefinition(template: ImportTemplateDefinition)
       "Dropdown columns use values from the hidden Lookups sheet.",
       "Do not rename columns or delete lookup/instruction sheets.",
       "Upload the completed file for validation preview before applying.",
-      "Use valid combinations for Department, Job Level, and Position from HRM reference data; backend validation is authoritative.",
+      `Use valid combinations for Department, Job Level, and Position from ${APP_BRANDING.appShortName} reference data; backend validation is authoritative.`,
       ...(template.validation_notes ?? [])
     ],
     columns: templateColumnsWithRequiredMarkers(template),

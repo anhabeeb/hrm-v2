@@ -29,6 +29,7 @@ import { GlobalSearch } from "../components/global/GlobalSearch";
 import { NotificationBell } from "../components/global/NotificationBell";
 import { PageLoader } from "../components/loading";
 import { Button } from "../components/ui/button";
+import { APP_BRANDING } from "../config/branding";
 import { useAuth } from "../hooks/useAuth";
 import { cn } from "../lib/utils";
 
@@ -49,7 +50,7 @@ type NavGroup = {
 const SIDEBAR_GROUP_STATE_KEY = "hrm-v2-sidebar-groups";
 
 const topLevelNavItems: NavItem[] = [
-  { label: "HRM Command Center", to: "/", icon: LayoutDashboard, permission: "dashboard.view" }
+  { label: "Command Center", to: "/", icon: LayoutDashboard, permission: "dashboard.view" }
 ];
 
 const navGroups: NavGroup[] = [
@@ -99,7 +100,7 @@ const navGroups: NavGroup[] = [
       { label: "Settings", to: "/settings", icon: Settings, permission: "settings.view" },
       { label: "Organization", to: "/settings/organization", icon: Building2, permission: "organization.view" },
       { label: "Admin Controls", to: "/settings/admin", icon: ShieldCheck, permissionAny: ["admin.settings_hub.view", "admin.modules.view", "admin.system_health.view"] },
-      { label: "HRM Guide", to: "/admin/help", icon: BookOpenCheck, permissionAny: ["admin.help.view", "admin.help.manage"] },
+      { label: "OmniCore Guide", to: "/admin/help", icon: BookOpenCheck, permissionAny: ["admin.help.view", "admin.help.manage"] },
       { label: "Users & Access", to: "/users-access", icon: ShieldCheck, permission: "users.view" }
     ]
   }
@@ -118,7 +119,7 @@ function canShow(item: NavItem, permissions: Set<string>, moduleVisibility: Reco
 }
 
 function routeTitle(pathname: string) {
-  if (pathname === "/" || pathname === "/dashboard" || pathname === "/command-center") return "HRM Command Center";
+  if (pathname === "/" || pathname === "/dashboard" || pathname === "/command-center") return "Command Center";
   const segments = pathname.split("/").filter(Boolean);
   const segment = segments[0] ?? "Dashboard";
   return segment.split("-").map((part: string) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
@@ -211,12 +212,12 @@ export function AppShell() {
           <div className="flex h-full min-h-0 w-full flex-col">
             <div className="flex h-16 shrink-0 items-center border-b px-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm">
-                HR
+                OC
               </div>
               {!collapsed ? (
                 <div className="ml-3 min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-950">HRM v2</p>
-                  <p className="truncate text-xs text-muted-foreground">Enterprise people suite</p>
+                  <p className="truncate text-sm font-semibold text-slate-950">{APP_BRANDING.appName}</p>
+                  <p className="truncate text-xs text-muted-foreground">{APP_BRANDING.tagline}</p>
                 </div>
               ) : null}
             </div>
@@ -334,7 +335,7 @@ export function AppShell() {
               </Button>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>HRM v2</span>
+                  <span>{APP_BRANDING.appShortName}</span>
                   <span>/</span>
                   <span className="truncate">{title}</span>
                 </div>
@@ -360,7 +361,7 @@ export function AppShell() {
 
           <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
             <div className="box-border w-full max-w-none min-w-0 px-3 py-4 sm:px-4 lg:px-6">
-              <Suspense fallback={<PageLoader title="Loading workspace" description="Preparing this HRM module without moving the sidebar or header." />}>
+              <Suspense fallback={<PageLoader title="Loading workspace" description={`Preparing this ${APP_BRANDING.appName} module without moving the sidebar or header.`} />}>
                 <Outlet />
               </Suspense>
             </div>
