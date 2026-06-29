@@ -1,15 +1,15 @@
 import { Archive, Download, Eye, FileUp, ImageUp, RotateCcw, Trash2, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateRange, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
 import type { DocumentType, EmployeeDocument, EmployeeDocumentVersion, MissingDocument } from "../../types/documents";
 import type { Employee } from "../../types/employees";
+import { FormErrorSummary } from "../forms/FormErrorSummary";
+import { ValidatedFileField, ValidatedReasonField, ValidatedSelectField, ValidatedTextField } from "../forms/validated-fields";
 import { ActionTextButton } from "../ui/action-button";
 import { Badge } from "../ui/badge";
 import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
-import { FileUploadField, SelectField } from "../ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { EmployeeDocumentCompliancePanel } from "./EmployeeDocumentCompliancePanel";
 
@@ -27,6 +27,31 @@ function saveBlob(blob: Blob, filename: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function validateDocumentActionReason(reason: string): ValidationIssue[] {
+  return validateRequiredField(reason, "reason", "Reason");
+}
+
+function validateDocumentUploadForm(input: {
+  mode: "upload" | "replace" | "photo";
+  documentTypeId: string;
+  file: File | null;
+  selectedType?: DocumentType;
+  documentNumber: string;
+  issueDate: string;
+  expiryDate: string;
+  reason: string;
+}) {
+  return [
+    ...(input.mode === "upload" ? validateRequiredField(input.documentTypeId, "document_type_id", "Document type") : []),
+    ...validateRequiredField(input.file ? "selected" : "", "file", "File"),
+    ...(input.selectedType?.requires_document_number ? validateRequiredField(input.documentNumber, "document_number", "Document number") : []),
+    ...(input.selectedType?.requires_issue_date ? validateRequiredField(input.issueDate, "issue_date", "Issue date") : []),
+    ...(input.selectedType?.requires_expiry_date ? validateRequiredField(input.expiryDate, "expiry_date", "Expiry date") : []),
+    ...(input.mode === "replace" ? validateRequiredField(input.reason, "reason_for_replacement", "Replacement reason") : []),
+    ...validateDateRange({ start: input.issueDate, end: input.expiryDate, startField: "issue_date", endField: "expiry_date", label: "Expiry date" })
+  ];
 }
 
 export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged }: { employee: Employee; token: string; permissions: Set<string>; onChanged?: () => Promise<void> }) {
@@ -198,15 +223,26 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
 }
 
 function DocumentActionModal({ action, onChange, onClose, onConfirm }: { action: { document: EmployeeDocument; name: "archive" | "restore" | "soft-delete" | "permanent-delete"; reason: string }; onChange: (reason: string) => void; onClose: () => void; onConfirm: () => void }) {
+  const validation = useFormValidation();
+  function handleDocumentAction() {
+    const issues = validateDocumentActionReason(action.reason);
+    validation.setIssues(issues);
+    if (issues.some((issue) => issue.severity === "error")) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    onConfirm();
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
       <div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl">
         <h2 className="text-sm font-semibold">{action.name.replace("-", " ")} document</h2>
         <p className="mt-1 text-xs text-muted-foreground">{action.name === "permanent-delete" ? "This permanently deletes document metadata and all file versions. Use only when legally appropriate." : "This action is audit logged."}</p>
-        <Input className="mt-3" placeholder="Reason" value={action.reason} onChange={(event) => onChange(event.target.value)} />
+        <div className="mt-3"><FormErrorSummary issues={validation.issues} /></div>
+        <ValidatedReasonField required value={action.reason} issues={validation.issues} onChange={onChange} />
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={!action.reason.trim()} onClick={onConfirm}>Confirm</Button>
+          <Button size="sm" disabled={!action.reason.trim()} onClick={handleDocumentAction}>Confirm</Button>
         </div>
       </div>
     </div>
@@ -226,21 +262,17 @@ function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const validation = useFormValidation();
 
   async function submit() {
     setError(null);
-    if (!file) {
-      setError("Choose a file to upload.");
+    const issues = validateDocumentUploadForm({ mode: state.mode, documentTypeId, file, selectedType, documentNumber, issueDate, expiryDate, reason });
+    validation.setIssues(issues);
+    if (issues.some((issue) => issue.severity === "error")) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
-    if (state.mode === "upload" && !documentTypeId) {
-      setError("Choose a document type.");
-      return;
-    }
-    if (state.mode === "replace" && !reason) {
-      setError("Replacement reason is required.");
-      return;
-    }
+    if (!file) return;
     const form = new FormData();
     form.append("file", file);
     if (state.mode === "upload") form.append("document_type_id", documentTypeId);
@@ -261,6 +293,11 @@ function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }
       await onSaved();
       onClose();
     } catch (err) {
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
       setError(err instanceof ApiError ? err.message : "Unable to upload document.");
     } finally {
       setSaving(false);
@@ -277,27 +314,28 @@ function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }
           </div>
           <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
         </div>
+        <div className="px-4 pt-4"><FormErrorSummary issues={validation.issues} /></div>
         <div className="grid gap-3 p-4 md:grid-cols-2">
           {state.mode === "upload" ? (
             <div className="md:col-span-2">
-              <SelectField label="Document type" value={documentTypeId} onValueChange={setDocumentTypeId}>
+              <ValidatedSelectField field="document_type_id" label="Document type" value={documentTypeId} issues={validation.issues} onValueChange={setDocumentTypeId}>
                 {activeTypes.map((type) => <option key={type.id} value={type.id}>{type.name}{type.is_sensitive ? " (Sensitive)" : ""}</option>)}
-              </SelectField>
+              </ValidatedSelectField>
             </div>
           ) : null}
           <div className="space-y-1.5 md:col-span-2">
-            <FileUploadField label="File" accept={selectedType?.allowed_file_types?.join(",") ?? (state.mode === "photo" ? "image/jpeg,image/png,image/webp" : undefined)} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+            <ValidatedFileField field="file" label="File" accept={selectedType?.allowed_file_types?.join(",") ?? (state.mode === "photo" ? "image/jpeg,image/png,image/webp" : undefined)} issues={validation.issues} onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
             {selectedType ? <p className="text-xs text-muted-foreground">Max {selectedType.max_file_size_mb} MB. {selectedType.allowed_file_types?.join(", ")}</p> : null}
           </div>
           {state.mode !== "photo" ? (
             <>
-              <Field label={`Document number${selectedType?.requires_document_number ? " *" : ""}`} value={documentNumber} onChange={setDocumentNumber} />
-              <Field label={`Issue date${selectedType?.requires_issue_date ? " *" : ""}`} value={issueDate} onChange={setIssueDate} type="date" />
-              <Field label={`Expiry date${selectedType?.requires_expiry_date ? " *" : ""}`} value={expiryDate} onChange={setExpiryDate} type="date" />
-              <Field label="Notes" value={notes} onChange={setNotes} />
+              <ValidatedTextField field="document_number" label={`Document number${selectedType?.requires_document_number ? " *" : ""}`} value={documentNumber} issues={validation.issues} onChange={setDocumentNumber} />
+              <ValidatedTextField field="issue_date" label={`Issue date${selectedType?.requires_issue_date ? " *" : ""}`} value={issueDate} issues={validation.issues} onChange={setIssueDate} type="date" />
+              <ValidatedTextField field="expiry_date" label={`Expiry date${selectedType?.requires_expiry_date ? " *" : ""}`} value={expiryDate} issues={validation.issues} onChange={setExpiryDate} type="date" />
+              <ValidatedTextField field="notes" label="Notes" value={notes} issues={validation.issues} onChange={setNotes} />
             </>
           ) : null}
-          {state.mode === "replace" ? <div className="space-y-1.5 md:col-span-2"><Label>Replacement reason *</Label><Input value={reason} onChange={(event) => setReason(event.target.value)} /></div> : null}
+          {state.mode === "replace" ? <div className="md:col-span-2"><ValidatedReasonField field="reason_for_replacement" label="Replacement reason *" required value={reason} issues={validation.issues} onChange={setReason} /></div> : null}
         </div>
         {error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
         <div className="flex justify-end gap-2 border-t px-4 py-3">
@@ -329,8 +367,4 @@ function VersionsModal({ versions, onClose }: { versions: { document: EmployeeDo
       </div>
     </div>
   );
-}
-
-function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><Input type={type} value={value} onChange={(event) => onChange(event.target.value)} /></div>;
 }

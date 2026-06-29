@@ -12,9 +12,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateRequiredField, type ValidationIssue } from "../lib/form-validation";
 import type { DocumentCategory, DocumentRequiredRule, DocumentType, DocumentTypeInput } from "../types/documents";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import { CheckboxField, PageHeader, PageShell, SelectField, StandardTabs, TextareaField } from "../components/ui/page-shell";
+import { FieldError } from "../components/forms/FieldError";
+import { FormErrorSummary } from "../components/forms/FormErrorSummary";
 
 type Tab = "categories" | "types" | "rules";
 
@@ -33,6 +36,46 @@ const defaultType: DocumentTypeInput = {
   requires_document_number: false,
   sort_order: 100
 };
+
+function hasErrors(issues: ValidationIssue[]) {
+  return issues.some((issue) => issue.severity === "error");
+}
+
+function validateJsonField(value: string, field: string, label: string): ValidationIssue[] {
+  if (!value.trim()) return [];
+  try {
+    JSON.parse(value);
+    return [];
+  } catch {
+    return [{ code: "INVALID_JSON", field, message: `${label} must be valid JSON.`, severity: "error" }];
+  }
+}
+
+function validateCategoryForm(input: { name: string; sort: string }): ValidationIssue[] {
+  return [
+    ...validateRequiredField(input.name, "name", "Name"),
+    ...validateAmount({ value: input.sort, field: "sort_order", label: "Sort order", min: 0 })
+  ];
+}
+
+function validateDocumentTypeForm(input: DocumentTypeInput): ValidationIssue[] {
+  return [
+    ...validateRequiredField(input.code, "code", "Code"),
+    ...validateRequiredField(input.name, "name", "Name"),
+    ...validateAmount({ value: input.expiring_soon_days, field: "expiring_soon_days", label: "Expiring soon days", min: 0 }),
+    ...validateAmount({ value: input.max_file_size_mb, field: "max_file_size_mb", label: "Max file size", min: 1 }),
+    ...validateAmount({ value: input.sort_order, field: "sort_order", label: "Sort order", min: 0 }),
+    ...(input.allowed_file_types.length ? [] : [{ code: "REQUIRED_FIELD", field: "allowed_file_types", message: "Allowed file types are required.", severity: "error" as const }])
+  ];
+}
+
+function validateRequiredRuleForm(input: { documentTypeId: string; priority: string; customCondition: string }): ValidationIssue[] {
+  return [
+    ...validateRequiredField(input.documentTypeId, "document_type_id", "Document type"),
+    ...validateAmount({ value: input.priority, field: "rule_priority", label: "Rule priority", min: 0 }),
+    ...validateJsonField(input.customCondition, "custom_condition_json", "Custom condition JSON")
+  ];
+}
 
 export function DocumentSettingsPage() {
   const { token, user } = useAuth();
@@ -163,7 +206,14 @@ function CategoryModal({ token, category, onClose, onSaved }: { token: string; c
   const [description, setDescription] = useState(category?.description ?? "");
   const [sort, setSort] = useState(String(category?.sort_order ?? 100));
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function save() {
+    const issues = validateCategoryForm({ name, sort });
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       const input = { name, description, sort_order: Number(sort) || 100 };
       if (category) await api.updateDocumentCategory(token, category.id, input);
@@ -171,10 +221,15 @@ function CategoryModal({ token, category, onClose, onSaved }: { token: string; c
       await onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save category.");
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save category."));
     }
   }
-  return <Modal title={category ? "Edit category" : "Create category"} error={error} onClose={onClose} onSave={save}><Field label="Name" value={name} onChange={setName} /><Field label="Description" value={description} onChange={setDescription} /><Field label="Sort order" type="number" value={sort} onChange={setSort} /></Modal>;
+  return <Modal title={category ? "Edit category" : "Create category"} error={error} issues={validation.issues} onClose={onClose} onSave={save}><Field field="name" issues={validation.issues} label="Name" value={name} onChange={setName} /><Field field="description" issues={validation.issues} label="Description" value={description} onChange={setDescription} /><Field field="sort_order" issues={validation.issues} label="Sort order" type="number" value={sort} onChange={setSort} /></Modal>;
 }
 
 function TypeModal({ token, type, categories, onClose, onSaved }: { token: string; type?: DocumentType; categories: DocumentCategory[]; onClose: () => void; onSaved: () => Promise<void> }) {
@@ -194,27 +249,39 @@ function TypeModal({ token, type, categories, onClose, onSaved }: { token: strin
     sort_order: type.sort_order
   } : defaultType);
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   const update = (key: keyof DocumentTypeInput, value: string | number | boolean | string[]) => setForm((current) => ({ ...current, [key]: value }));
   async function save() {
+    const issues = validateDocumentTypeForm(form);
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       if (type) await api.updateDocumentType(token, type.id, form);
       else await api.createDocumentType(token, form);
       await onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save document type.");
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save document type."));
     }
   }
   return (
-    <Modal title={type ? "Edit document type" : "Create document type"} error={error} onClose={onClose} onSave={save}>
-      <div className="md:col-span-2"><Label>Category</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.category_id ?? ""} onChange={(event) => update("category_id", event.target.value)}><option value="">No category</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</SelectField></div>
-      <Field label="Code" value={form.code} onChange={(value) => update("code", value)} />
-      <Field label="Name" value={form.name} onChange={(value) => update("name", value)} />
-      <Field label="Description" value={form.description ?? ""} onChange={(value) => update("description", value)} />
-      <Field label="Expiring soon days" type="number" value={String(form.expiring_soon_days)} onChange={(value) => update("expiring_soon_days", Number(value) || 0)} />
-      <Field label="Max file size MB" type="number" value={String(form.max_file_size_mb)} onChange={(value) => update("max_file_size_mb", Number(value) || 1)} />
-      <Field label="Sort order" type="number" value={String(form.sort_order)} onChange={(value) => update("sort_order", Number(value) || 100)} />
-      <div className="md:col-span-2"><Field label="Allowed file types" value={form.allowed_file_types.join(", ")} onChange={(value) => update("allowed_file_types", value.split(",").map((item) => item.trim()).filter(Boolean))} /></div>
+    <Modal title={type ? "Edit document type" : "Create document type"} error={error} issues={validation.issues} onClose={onClose} onSave={save}>
+      <Select field="category_id" issues={validation.issues} label="Category" value={form.category_id ?? ""} onChange={(value) => update("category_id", value)} options={["", ...categories.map((category) => category.id)]} optionLabels={{ "": "No category", ...Object.fromEntries(categories.map((category) => [category.id, category.name])) }} />
+      <Field field="code" issues={validation.issues} label="Code" value={form.code} onChange={(value) => update("code", value)} />
+      <Field field="name" issues={validation.issues} label="Name" value={form.name} onChange={(value) => update("name", value)} />
+      <Field field="description" issues={validation.issues} label="Description" value={form.description ?? ""} onChange={(value) => update("description", value)} />
+      <Field field="expiring_soon_days" issues={validation.issues} label="Expiring soon days" type="number" value={String(form.expiring_soon_days)} onChange={(value) => update("expiring_soon_days", Number(value) || 0)} />
+      <Field field="max_file_size_mb" issues={validation.issues} label="Max file size MB" type="number" value={String(form.max_file_size_mb)} onChange={(value) => update("max_file_size_mb", Number(value) || 1)} />
+      <Field field="sort_order" issues={validation.issues} label="Sort order" type="number" value={String(form.sort_order)} onChange={(value) => update("sort_order", Number(value) || 100)} />
+      <div className="md:col-span-2"><Field field="allowed_file_types" issues={validation.issues} label="Allowed file types" value={form.allowed_file_types.join(", ")} onChange={(value) => update("allowed_file_types", value.split(",").map((item) => item.trim()).filter(Boolean))} /></div>
       {(["is_sensitive", "allow_multiple_files", "requires_document_number", "requires_issue_date", "requires_expiry_date"] as const).map((key) => <CheckboxField key={key} label={key.replace(/_/g, " ")} checked={Boolean(form[key])} onChange={(checked) => update(key, checked)} />)}
     </Modal>
   );
@@ -252,6 +319,7 @@ function RuleModal({
   const [priority, setPriority] = useState(String(rule?.rule_priority ?? 100));
   const [customCondition, setCustomCondition] = useState(rule?.custom_condition_json ?? "");
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   const updateCascade = (next: { locationId?: string; departmentId?: string; jobLevelId?: string; positionId?: string }) => {
     setLocationId(next.locationId ?? "");
     setDepartmentId(next.departmentId ?? "");
@@ -259,6 +327,12 @@ function RuleModal({
     setPositionId(next.positionId ?? "");
   };
   async function save() {
+    const issues = validateRequiredRuleForm({ documentTypeId, priority, customCondition });
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       const input = {
         document_type_id: documentTypeId,
@@ -276,14 +350,19 @@ function RuleModal({
       await onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save required rule.");
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save required rule."));
     }
   }
   return (
-    <Modal title={rule ? "Edit required rule" : "Create required rule"} error={error} onClose={onClose} onSave={save}>
-      <div className="md:col-span-2"><Label>Document type</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={documentTypeId} onChange={(event) => setDocumentTypeId(event.target.value)}>{types.filter((type) => type.is_active).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</SelectField></div>
-      <Select label="Employee type" value={employeeType} onChange={setEmployeeType} options={["", "LOCAL", "FOREIGN", "OTHER"]} />
-      <Select label="Employment type" value={employmentType} onChange={setEmploymentType} options={["", "FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]} />
+    <Modal title={rule ? "Edit required rule" : "Create required rule"} error={error} issues={validation.issues} onClose={onClose} onSave={save}>
+      <Select field="document_type_id" issues={validation.issues} label="Document type" value={documentTypeId} onChange={setDocumentTypeId} options={types.filter((type) => type.is_active).map((type) => type.id)} optionLabels={Object.fromEntries(types.map((type) => [type.id, type.name]))} />
+      <Select field="employee_type" issues={validation.issues} label="Employee type" value={employeeType} onChange={setEmployeeType} options={["", "LOCAL", "FOREIGN", "OTHER"]} />
+      <Select field="employment_type" issues={validation.issues} label="Employment type" value={employmentType} onChange={setEmploymentType} options={["", "FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]} />
       <div className="md:col-span-2">
         <OrganizationCascadeSelector
           includeLocation
@@ -298,21 +377,23 @@ function RuleModal({
           className="grid gap-3 md:grid-cols-2"
         />
       </div>
-      <Field label="Rule priority" type="number" value={priority} onChange={setPriority} />
+      <Field field="rule_priority" issues={validation.issues} label="Rule priority" type="number" value={priority} onChange={setPriority} />
       <CheckboxField label="Required document" checked={isRequired} onChange={setIsRequired} className="self-end" />
-      <div className="md:col-span-2"><Label>Custom condition JSON</Label><TextareaField className="mt-1 min-h-20 w-full rounded-md border bg-white px-3 py-2 font-mono text-xs" value={customCondition} onChange={(event) => setCustomCondition(event.target.value)} placeholder='{"future":"condition"}' /></div>
+      <div className="md:col-span-2"><Label>Custom condition JSON</Label><TextareaField name="custom_condition_json" data-validation-field="custom_condition_json" className="mt-1 min-h-20 w-full rounded-md border bg-white px-3 py-2 font-mono text-xs" value={customCondition} onChange={(event) => setCustomCondition(event.target.value)} placeholder='{"future":"condition"}' /><FieldError issues={validation.fieldIssues("custom_condition_json")} /></div>
     </Modal>
   );
 }
 
-function Modal({ title, error, children, onClose, onSave }: { title: string; error: string | null; children: ReactNode; onClose: () => void; onSave: () => void | Promise<void> }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-2xl rounded-lg border bg-white shadow-xl"><div className="flex items-center justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="grid max-h-[70vh] gap-3 overflow-y-auto p-4 md:grid-cols-2">{children}</div>{error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void onSave()}>Save</Button></div></div></div>;
+function Modal({ title, error, issues, children, onClose, onSave }: { title: string; error: string | null; issues?: ValidationIssue[]; children: ReactNode; onClose: () => void; onSave: () => void | Promise<void> }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-2xl rounded-lg border bg-white shadow-xl"><div className="flex items-center justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="px-4 pt-4"><FormErrorSummary issues={issues} /></div><div className="grid max-h-[70vh] gap-3 overflow-y-auto p-4 md:grid-cols-2">{children}</div>{error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void onSave()}>Save</Button></div></div></div>;
 }
 
-function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><Input type={type} value={value} onChange={(event) => onChange(event.target.value)} /></div>;
+function Field({ label, value, onChange, type = "text", field, issues }: { label: string; value: string; onChange: (value: string) => void; type?: string; field?: string; issues?: ValidationIssue[] }) {
+  const fieldIssues = field ? issues?.filter((issue) => issue.field === field) : undefined;
+  return <div className="space-y-1.5"><Label>{label}</Label><Input name={field} data-validation-field={field} type={type} value={value} onChange={(event) => onChange(event.target.value)} /><FieldError issues={fieldIssues} /></div>;
 }
 
-function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option || "any"} value={option}>{option || "Any"}</option>)}</SelectField></div>;
+function Select({ label, value, onChange, options, field, issues, optionLabels }: { label: string; value: string; onChange: (value: string) => void; options: string[]; field?: string; issues?: ValidationIssue[]; optionLabels?: Record<string, string> }) {
+  const fieldIssues = field ? issues?.filter((issue) => issue.field === field) : undefined;
+  return <div className="space-y-1.5"><Label>{label}</Label><SelectField name={field} data-validation-field={field} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option || "any"} value={option}>{(optionLabels?.[option] ?? option) || "Any"}</option>)}</SelectField><FieldError issues={fieldIssues} /></div>;
 }

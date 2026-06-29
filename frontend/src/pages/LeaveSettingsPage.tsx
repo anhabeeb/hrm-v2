@@ -12,8 +12,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation } from "../lib/form-validation";
 import type { AccessUser, Role } from "../types/auth";
 import type { DocumentType } from "../types/documents";
+import { FormErrorSummary } from "../components/forms/FormErrorSummary";
+import { FieldError } from "../components/forms/FieldError";
 import type { LeavePolicy, LeaveType, LeaveWorkflow, LeaveWorkflowStep } from "../types/leave";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import { CheckboxField, PageHeader, PageShell, SelectField, StandardTabs } from "../components/ui/page-shell";
@@ -283,11 +286,28 @@ function EditableStepsModal({ token, workflow, roles, users, onClose }: { token:
 }
 
 function Modal({ title, children, onClose, onSave }: { title: string; children: ReactNode; onClose: () => void; onSave: () => Promise<void> | void }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-4xl rounded-lg border bg-white shadow-xl"><div className="flex items-center justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="grid max-h-[70vh] gap-3 overflow-y-auto p-4 md:grid-cols-3">{children}</div><div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void onSave()}>Save</Button></div></div></div>;
+  const validation = useFormValidation();
+  const [error, setError] = useState<string | null>(null);
+  async function save() {
+    setError(null);
+    validation.clearIssues();
+    try {
+      await onSave();
+    } catch (err) {
+      const issues = normalizeValidationIssues(err);
+      if (issues.length) {
+        validation.setIssues(issues);
+        setTimeout(() => focusFirstInvalidField(issues), 0);
+      }
+      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save leave settings."));
+    }
+  }
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-4xl rounded-lg border bg-white shadow-xl"><div className="flex items-center justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="px-4 pt-4"><FormErrorSummary issues={validation.issues} />{error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}</div><div className="grid max-h-[70vh] gap-3 overflow-y-auto p-4 md:grid-cols-3">{children}</div><div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void save()}>Save</Button></div></div></div>;
 }
 
 function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><Input type={type} value={value} onChange={(event) => onChange(event.target.value)} /></div>;
+  const field = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  return <div className="space-y-1.5"><Label>{label}</Label><Input name={field} data-validation-field={field} type={type} value={value} onChange={(event) => onChange(event.target.value)} /><FieldError issues={[]} /></div>;
 }
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) {

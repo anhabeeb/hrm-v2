@@ -173,6 +173,44 @@ hasAll("frontend/src/pages/EmployeesPage.tsx", [
   "data-validation-field"
 ], "employee form must expose field-level validation and guarded save state");
 
+hasAll("frontend/src/components/forms/validated-fields.tsx", [
+  "ValidatedTextField",
+  "ValidatedSelectField",
+  "ValidatedReasonField",
+  "ValidatedFileField",
+  "ValidatedTextareaField",
+  "data-validation-field",
+  "aria-invalid",
+  "FieldError"
+], "shared validated field primitives must expose field-level errors and accessibility markers");
+
+const fieldValidationTargets = [
+  ["frontend/src/components/leave/LeaveRequestModal.tsx", ["validateLeaveRequestForm", "FormErrorSummary", "ValidatedSelectField", "ValidatedTextField", "ValidatedReasonField", "useFormValidation", "normalizeValidationIssues", "focusFirstInvalidField"], "leave request modal must validate employee, leave type, dates, and reason fields"],
+  ["frontend/src/components/attendance/AttendanceCorrectionModal.tsx", ["validateAttendanceCorrectionForm", "FormErrorSummary", "FieldError", "ValidatedTextField", "ValidatedSelectField", "ValidatedReasonField", "useFormValidation", "normalizeValidationIssues"], "attendance correction modal must validate employee, date/status, clock, and reason fields"],
+  ["frontend/src/components/roster/RosterAssignmentModal.tsx", ["validateRosterAssignmentForm", "FormErrorSummary", "ValidatedSelectField", "ValidatedTextField", "ValidatedReasonField", "useFormValidation", "normalizeValidationIssues"], "roster assignment modal must validate status, shift template, custom times, and reason fields"],
+  ["frontend/src/components/employee/EmployeeDocumentsPanel.tsx", ["validateDocumentUploadForm", "validateDocumentActionReason", "FormErrorSummary", "ValidatedFileField", "ValidatedSelectField", "ValidatedTextField", "ValidatedReasonField", "requires_document_number", "useFormValidation", "normalizeValidationIssues"], "employee documents panel must validate upload metadata, files, and action reasons"],
+  ["frontend/src/components/assets/EmployeeAssetsPanel.tsx", ["FormErrorSummary", "ValidatedSelectField", "ValidatedTextField", "ValidatedReasonField", "useFormValidation", "normalizeValidationIssues", "validateRequiredField", "validateAmount"], "employee assets panel must validate issue/return/replacement/deduction fields"],
+  ["frontend/src/components/payroll/EmployeePayrollPanel.tsx", ["validateIncrementForm", "validateAdvanceForm", "FormErrorSummary", "ValidatedTextField", "ValidatedReasonField", "useFormValidation", "normalizeValidationIssues"], "employee payroll panel must validate increment, advance, and salary reason flows"],
+  ["frontend/src/components/payroll/EmployeePayrollFoundationPanels.tsx", ["validatePaymentForm", "validateLoanForm", "validatePensionForm", "validateCustomDeductionForm", "FormErrorSummary", "FieldError", "useFormValidation", "normalizeValidationIssues"], "payroll foundation panels must validate payment, loan, pension, and custom deduction forms"],
+  ["frontend/src/pages/DocumentSettingsPage.tsx", ["validateCategoryForm", "validateDocumentTypeForm", "validateRequiredRuleForm", "FormErrorSummary", "FieldError", "useFormValidation", "normalizeValidationIssues"], "document settings forms must validate categories, document types, and required rules"],
+  ["frontend/src/pages/DocumentCompliancePage.tsx", ["FormErrorSummary", "ValidatedReasonField", "ValidatedTextField", "useFormValidation", "normalizeValidationIssues"], "document compliance actions must validate thresholds and reasons"],
+  ["frontend/src/pages/FinalSettlementPage.tsx", ["CreateCaseDialog", "CaseActionDialog", "PaymentActionDialog", "FormErrorSummary", "ValidatedReasonField", "ValidatedTextField", "useFormValidation", "normalizeValidationIssues"], "final settlement dialogs must validate case, action, and payment fields"],
+  ["frontend/src/pages/LeaveSettingsPage.tsx", ["FormErrorSummary", "useFormValidation", "normalizeValidationIssues", "focusFirstInvalidField"], "leave settings modals must surface structured validation errors"],
+  ["frontend/src/pages/LifecyclePage.tsx", ["CreateCaseModal", "ReasonModal", "FormErrorSummary", "FieldError", "ValidatedReasonField", "ValidatedTextField", "useFormValidation", "normalizeValidationIssues"], "lifecycle case and reason modals must validate required fields"],
+  ["frontend/src/pages/PayrollAdminPages.tsx", ["ActionModal", "FormErrorSummary", "ValidatedReasonField", "useFormValidation", "normalizeValidationIssues"], "payroll admin modals must surface structured validation and action reasons"],
+  ["frontend/src/pages/AssetUniformAdvancedPages.tsx", ["UniformTypeModal", "UniformStockModal", "IssueUniformModal", "UniformActionModal", "FormErrorSummary", "FieldError", "useFormValidation", "normalizeValidationIssues", "validateAmount", "validateRequiredField"], "asset/uniform advanced forms must validate type, stock, issue, and lifecycle actions"]
+];
+
+let coveredFieldValidationTargets = 0;
+for (const [file, markers, message] of fieldValidationTargets) {
+  hasAll(file, markers, message);
+  const content = readOptional(file);
+  if (/useFormValidation|Validated[A-Za-z]+Field|FormErrorSummary/.test(content)) coveredFieldValidationTargets += 1;
+  check(`${file}: backend validation issues must be normalized`, content.includes("normalizeValidationIssues"));
+  check(`${file}: invalid fields must be focusable after validation failure`, content.includes("focusFirstInvalidField") || file.includes("LeaveSettingsPage.tsx") || file.includes("PayrollAdminPages.tsx"));
+}
+check("app-wide validation coverage must include all targeted form-heavy screens", coveredFieldValidationTargets === fieldValidationTargets.length);
+
 check(
   "worker/src/routes/employees.ts: create route must use structured employee validation",
   blockContains("worker/src/routes/employees.ts", 'employeeRoutes.post("/", requirePermission("employees.create")', ["validateEmployeeInput(input)", "hasValidationErrors(inputIssues)", "validationResponse(c, inputIssues)"])

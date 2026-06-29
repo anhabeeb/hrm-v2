@@ -21,10 +21,14 @@ import { Timeline } from "../components/ui/timeline";
 import { useAuth } from "../hooks/useAuth";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateField, validateRequiredField } from "../lib/form-validation";
 import type { Employee } from "../types/employees";
 import type { LifecycleSettings, LifecycleTask, OffboardingCase, OnboardingCase } from "../types/lifecycle";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import { CheckboxField, SelectField } from "../components/ui/page-shell";
+import { FieldError } from "../components/forms/FieldError";
+import { FormErrorSummary } from "../components/forms/FormErrorSummary";
+import { ValidatedReasonField, ValidatedTextField } from "../components/forms/validated-fields";
 
 type Mode =
   | "onboarding-dashboard"
@@ -409,27 +413,45 @@ function CreateCaseModal({ kind, employees, organizationRefs, onClose, onCreated
   const [exitType, setExitType] = useState("RESIGNED");
   const [exitReason, setExitReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!token || !employeeId) return;
+    if (!token) return;
+    const issues = [
+      ...validateRequiredField(employeeId, "employee_id", "Employee"),
+      ...(kind === "offboarding" ? validateRequiredField(exitType, "exit_type", "Exit type") : []),
+      ...(kind === "offboarding" ? validateDateField(lastWorkingDay, "last_working_day", "Last working day", { required: true }) : [])
+    ];
+    validation.setIssues(issues);
+    if (issues.some((issue) => issue.severity === "error")) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     setError(null);
     try {
       if (kind === "onboarding") await api.createEmployeeOnboardingCase(token, employeeId);
       else await api.createEmployeeOffboardingCase(token, employeeId, { exit_type: exitType, last_working_day: lastWorkingDay, exit_reason: exitReason || null });
       onCreated();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to create lifecycle case.");
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to create lifecycle case."));
     }
   }
   return (
     <Modal title={`Create ${kind} case`} onClose={onClose}>
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
+        <FormErrorSummary issues={validation.issues} />
         <EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={employeeId} onChange={setEmployeeId} />
+        <FieldError issues={validation.fieldIssues("employee_id")} />
         {kind === "offboarding" ? (
           <>
-            <div><Label>Exit type</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={exitType} onChange={(event) => setExitType(event.target.value)}>{["RESIGNED", "TERMINATED", "END_OF_CONTRACT", "ABSCONDED", "RETIRED", "DECEASED", "OTHER"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField></div>
-            <div><Label>Last working day</Label><Input type="date" value={lastWorkingDay} onChange={(event) => setLastWorkingDay(event.target.value)} /></div>
-            <div><Label>Exit reason</Label><Input value={exitReason} onChange={(event) => setExitReason(event.target.value)} /></div>
+            <div><Label>Exit type</Label><SelectField name="exit_type" data-validation-field="exit_type" className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={exitType} onChange={(event) => setExitType(event.target.value)}>{["RESIGNED", "TERMINATED", "END_OF_CONTRACT", "ABSCONDED", "RETIRED", "DECEASED", "OTHER"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField><FieldError issues={validation.fieldIssues("exit_type")} /></div>
+            <ValidatedTextField field="last_working_day" label="Last working day" type="date" value={lastWorkingDay} issues={validation.issues} onChange={setLastWorkingDay} />
+            <ValidatedTextField field="exit_reason" label="Exit reason" value={exitReason} issues={validation.issues} onChange={setExitReason} />
           </>
         ) : null}
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -1371,18 +1393,31 @@ function ChecklistWorkspaceTable({ tasks }: { tasks: Row[] }) {
 function ReasonModal({ title: modalTitle, onClose, onSubmit }: { title: string; onClose: () => void; onSubmit: (reason: string) => Promise<void> }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!reason.trim()) {
-      setError("Reason is required.");
+    const issues = validateRequiredField(reason, "reason", "Reason");
+    validation.setIssues(issues);
+    if (issues.some((issue) => issue.severity === "error")) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
-    await onSubmit(reason.trim());
+    try {
+      await onSubmit(reason.trim());
+    } catch (err) {
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to complete action."));
+    }
   }
   return (
     <Modal title={modalTitle} onClose={onClose}>
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-        <div><Label>Reason</Label><Input value={reason} onChange={(event) => setReason(event.target.value)} /></div>
+        <FormErrorSummary issues={validation.issues} />
+        <ValidatedReasonField required value={reason} issues={validation.issues} onChange={setReason} />
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><ActionTextButton intent="confirm" type="submit">Confirm</ActionTextButton></div>
       </form>

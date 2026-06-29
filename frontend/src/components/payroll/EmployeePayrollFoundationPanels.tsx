@@ -2,6 +2,7 @@ import { Landmark, PiggyBank, Plus, ReceiptText, ShieldCheck, WalletCards } from
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { ApiError, api } from "../../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateDateRange, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
 import type {
   EmployeeBankLoan,
   CustomDeductionTemplate,
@@ -14,6 +15,8 @@ import type {
 import { Badge } from "../ui/badge";
 import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
+import { FieldError } from "../forms/FieldError";
+import { FormErrorSummary } from "../forms/FormErrorSummary";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { CheckboxField, SelectField as UiSelectField } from "../ui/page-shell";
@@ -72,6 +75,59 @@ type CustomDeductionForm = {
   notes: string;
 };
 
+function hasErrors(issues: ValidationIssue[]) {
+  return issues.some((issue) => issue.severity === "error");
+}
+
+function validatePaymentForm(form: PaymentForm): ValidationIssue[] {
+  const isBank = form.payment_method_type === "BANK_TRANSFER";
+  return [
+    ...validateRequiredField(form.payment_method_type, "payment_method_type", "Payment method type"),
+    ...(isBank ? validateRequiredField(form.payment_institution_id, "payment_institution_id", "Bank/payment institution") : []),
+    ...(isBank ? validateRequiredField(form.bank_account_name, "bank_account_name", "Account name") : []),
+    ...(isBank ? validateRequiredField(form.bank_account_number, "bank_account_number", "Account number") : []),
+    ...(form.allocation_type === "PERCENTAGE" ? validateRequiredField(form.allocation_percentage, "allocation_percentage", "Allocation percentage") : []),
+    ...(form.allocation_type === "PERCENTAGE" ? validateAmount({ value: form.allocation_percentage, field: "allocation_percentage", label: "Allocation percentage", min: 0, max: 100 }) : []),
+    ...(form.allocation_type === "FIXED_AMOUNT" ? validateRequiredField(form.allocation_amount, "allocation_amount", "Allocation amount") : []),
+    ...(form.allocation_type === "FIXED_AMOUNT" ? validateAmount({ value: form.allocation_amount, field: "allocation_amount", label: "Allocation amount", min: 0 }) : [])
+  ];
+}
+
+function validateLoanForm(form: LoanForm): ValidationIssue[] {
+  return [
+    ...validateRequiredField(form.payment_institution_id, "payment_institution_id", "Bank"),
+    ...validateRequiredField(form.loan_reference_number, "loan_reference_number", "Loan reference"),
+    ...validateRequiredField(form.monthly_installment_amount, "monthly_installment_amount", "Monthly installment"),
+    ...validateAmount({ value: form.monthly_installment_amount, field: "monthly_installment_amount", label: "Monthly installment", min: 0 }),
+    ...validateAmount({ value: form.original_loan_amount, field: "original_loan_amount", label: "Original amount", min: 0 }),
+    ...validateAmount({ value: form.outstanding_balance, field: "outstanding_balance", label: "Outstanding balance", min: 0 }),
+    ...validateRequiredField(form.deduction_start_date, "deduction_start_date", "Start date")
+  ];
+}
+
+function validatePensionForm(form: PensionForm): ValidationIssue[] {
+  return [
+    ...validateRequiredField(form.enrollment_status, "enrollment_status", "Enrollment status"),
+    ...validateRequiredField(form.effective_date, "effective_date", "Effective date"),
+    ...validateAmount({ value: form.employee_contribution_percent_override, field: "employee_contribution_percent_override", label: "Employee percent override", min: 0, max: 100 }),
+    ...validateAmount({ value: form.employer_contribution_percent_override, field: "employer_contribution_percent_override", label: "Employer percent override", min: 0, max: 100 }),
+    ...validateAmount({ value: form.employee_extra_voluntary_contribution_amount, field: "employee_extra_voluntary_contribution_amount", label: "Voluntary amount", min: 0 })
+  ];
+}
+
+function validateCustomDeductionForm(form: CustomDeductionForm): ValidationIssue[] {
+  return [
+    ...validateRequiredField(form.template_id, "template_id", "Template"),
+    ...validateRequiredField(form.effective_from, "effective_from", "Effective from"),
+    ...validateRequiredField(form.reason, "reason", "Reason"),
+    ...validateDateRange({ start: form.effective_from, end: form.effective_to, startField: "effective_from", endField: "effective_to", label: "Effective to" }),
+    ...validateAmount({ value: form.assigned_amount, field: "assigned_amount", label: "Assigned amount", min: 0 }),
+    ...validateAmount({ value: form.assigned_percentage, field: "assigned_percentage", label: "Assigned percentage", min: 0, max: 100 }),
+    ...validateAmount({ value: form.total_amount, field: "total_amount", label: "Total amount", min: 0 }),
+    ...validateAmount({ value: form.installment_amount, field: "installment_amount", label: "Installment amount", min: 0 })
+  ];
+}
+
 export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload }: { employeeId: string; summary: EmployeePayrollSummary; onReload: () => Promise<void> }) {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
@@ -101,6 +157,7 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
   const [customAction, setCustomAction] = useState<{ id: string; action: "approve" | "pause" | "resume" | "cancel"; reason: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const validation = useFormValidation();
 
   useEffect(() => {
     if (!token) return;
@@ -128,12 +185,23 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
       setMessage(success);
       await onReload();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to complete payroll foundation action.");
+      const issues = normalizeValidationIssues(err);
+      if (issues.length) {
+        validation.setIssues(issues);
+        setTimeout(() => focusFirstInvalidField(issues), 0);
+      }
+      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to complete payroll foundation action."));
     }
   }
 
   async function savePayment() {
     if (!token || !paymentForm) return;
+    const issues = validatePaymentForm(paymentForm);
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     await run(async () => {
       await api.createEmployeePaymentMethod(token, employeeId, {
         ...paymentForm,
@@ -146,6 +214,12 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
 
   async function saveLoan() {
     if (!token || !loanForm) return;
+    const issues = validateLoanForm(loanForm);
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     await run(async () => {
       await api.createEmployeeBankLoan(token, employeeId, {
         ...loanForm,
@@ -160,6 +234,12 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
 
   async function savePension() {
     if (!token || !pensionForm) return;
+    const issues = validatePensionForm(pensionForm);
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     await run(async () => {
       await api.updateEmployeePensionProfile(token, employeeId, {
         ...pensionForm,
@@ -173,6 +253,12 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
 
   async function saveCustomDeduction() {
     if (!token || !customDeductionForm) return;
+    const issues = validateCustomDeductionForm(customDeductionForm);
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     await run(async () => {
       await api.createEmployeeCustomDeduction(token, employeeId, {
         template_id: customDeductionForm.template_id,
@@ -192,6 +278,12 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
 
   async function runCustomAction() {
     if (!token || !customAction) return;
+    const issues = customAction.action === "cancel" ? validateRequiredField(customAction.reason, "reason", "Reason") : [];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     await run(async () => {
       await api.customDeductionAction(token, customAction.id, customAction.action, customAction.reason || undefined);
       setCustomAction(null);
@@ -267,12 +359,12 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
         </div>
       </Panel> : <DisabledPayrollPanel icon={<ReceiptText className="h-4 w-4" />} title="Custom deductions" />}
 
-      {paymentForm ? <PaymentMethodModal form={paymentForm} institutions={activeInstitutions} onChange={setPaymentForm} onClose={() => setPaymentForm(null)} onConfirm={() => void savePayment()} /> : null}
-      {loanForm ? <LoanModal form={loanForm} institutions={activeInstitutions.filter((institution) => institution.type === "BANK")} onChange={setLoanForm} onClose={() => setLoanForm(null)} onConfirm={() => void saveLoan()} /> : null}
-      {pensionForm ? <PensionModal form={pensionForm} schemes={schemes} onChange={setPensionForm} onClose={() => setPensionForm(null)} onConfirm={() => void savePension()} /> : null}
-      {customDeductionForm ? <CustomDeductionModal form={customDeductionForm} templates={customTemplates} onChange={setCustomDeductionForm} onClose={() => setCustomDeductionForm(null)} onConfirm={() => void saveCustomDeduction()} /> : null}
-      {customAction ? <Modal title={`${customAction.action} custom deduction`} onClose={() => setCustomAction(null)} onConfirm={() => void runCustomAction()} disabled={customAction.action === "cancel" && !customAction.reason.trim()}>
-        <Field label={customAction.action === "cancel" ? "Reason required" : "Reason"}><Input value={customAction.reason} onChange={(event) => setCustomAction({ ...customAction, reason: event.target.value })} /></Field>
+      {paymentForm ? <PaymentMethodModal form={paymentForm} institutions={activeInstitutions} issues={validation.issues} onChange={setPaymentForm} onClose={() => setPaymentForm(null)} onConfirm={() => void savePayment()} /> : null}
+      {loanForm ? <LoanModal form={loanForm} institutions={activeInstitutions.filter((institution) => institution.type === "BANK")} issues={validation.issues} onChange={setLoanForm} onClose={() => setLoanForm(null)} onConfirm={() => void saveLoan()} /> : null}
+      {pensionForm ? <PensionModal form={pensionForm} schemes={schemes} issues={validation.issues} onChange={setPensionForm} onClose={() => setPensionForm(null)} onConfirm={() => void savePension()} /> : null}
+      {customDeductionForm ? <CustomDeductionModal form={customDeductionForm} templates={customTemplates} issues={validation.issues} onChange={setCustomDeductionForm} onClose={() => setCustomDeductionForm(null)} onConfirm={() => void saveCustomDeduction()} /> : null}
+      {customAction ? <Modal title={`${customAction.action} custom deduction`} issues={validation.issues} onClose={() => setCustomAction(null)} onConfirm={() => void runCustomAction()}>
+        <Field label={customAction.action === "cancel" ? "Reason required" : "Reason"} field="reason" issues={validation.issues}><Input name="reason" data-validation-field="reason" value={customAction.reason} onChange={(event) => setCustomAction({ ...customAction, reason: event.target.value })} /></Field>
       </Modal> : null}
     </div>
   );
@@ -364,22 +456,22 @@ function defaultCustomDeductionForm(templates: CustomDeductionTemplate[]): Custo
   };
 }
 
-function PaymentMethodModal({ form, institutions, onChange, onClose, onConfirm }: { form: PaymentForm; institutions: PaymentInstitution[]; onChange: (form: PaymentForm) => void; onClose: () => void; onConfirm: () => void }) {
+function PaymentMethodModal({ form, institutions, issues, onChange, onClose, onConfirm }: { form: PaymentForm; institutions: PaymentInstitution[]; issues: ValidationIssue[]; onChange: (form: PaymentForm) => void; onClose: () => void; onConfirm: () => void }) {
   const isBank = form.payment_method_type === "BANK_TRANSFER";
-  return <Modal title="Payment method" onClose={onClose} onConfirm={onConfirm} disabled={isBank && (!form.payment_institution_id || !form.bank_account_name || !form.bank_account_number)}>
-    <Select label="Type" value={form.payment_method_type} onChange={(value) => onChange({ ...form, payment_method_type: value })} options={[["BANK_TRANSFER", "Bank transfer"], ["CASH", "Cash"], ["CHEQUE_PLACEHOLDER", "Cheque placeholder"], ["MOBILE_WALLET_PLACEHOLDER", "Mobile wallet placeholder"], ["OTHER", "Other"]]} />
-    {isBank ? <Select label="Bank/payment institution" value={form.payment_institution_id} onChange={(value) => onChange({ ...form, payment_institution_id: value })} options={[["", "Select institution"], ...institutions.map((institution) => [institution.id, institution.name] as [string, string])]} /> : null}
-    {isBank ? <Field label="Account name"><Input value={form.bank_account_name} onChange={(event) => onChange({ ...form, bank_account_name: event.target.value })} /></Field> : null}
-    {isBank ? <Field label="Account number"><Input value={form.bank_account_number} onChange={(event) => onChange({ ...form, bank_account_number: event.target.value })} /></Field> : null}
-    {form.payment_method_type === "CASH" ? <Field label="Cash note"><Input value={form.cash_collection_note} onChange={(event) => onChange({ ...form, cash_collection_note: event.target.value })} /></Field> : null}
-    <Select label="Allocation" value={form.allocation_type} onChange={(value) => onChange({ ...form, allocation_type: value })} options={[["FULL", "Full"], ["PERCENTAGE", "Percentage"], ["FIXED_AMOUNT", "Fixed amount"]]} />
-    {form.allocation_type === "PERCENTAGE" ? <Field label="Allocation %"><Input type="number" value={form.allocation_percentage} onChange={(event) => onChange({ ...form, allocation_percentage: event.target.value })} /></Field> : null}
-    {form.allocation_type === "FIXED_AMOUNT" ? <Field label="Allocation amount"><Input type="number" value={form.allocation_amount} onChange={(event) => onChange({ ...form, allocation_amount: event.target.value })} /></Field> : null}
+  return <Modal title="Payment method" issues={issues} onClose={onClose} onConfirm={onConfirm}>
+    <Select label="Type" field="payment_method_type" issues={issues} value={form.payment_method_type} onChange={(value) => onChange({ ...form, payment_method_type: value })} options={[["BANK_TRANSFER", "Bank transfer"], ["CASH", "Cash"], ["CHEQUE_PLACEHOLDER", "Cheque placeholder"], ["MOBILE_WALLET_PLACEHOLDER", "Mobile wallet placeholder"], ["OTHER", "Other"]]} />
+    {isBank ? <Select label="Bank/payment institution" field="payment_institution_id" issues={issues} value={form.payment_institution_id} onChange={(value) => onChange({ ...form, payment_institution_id: value })} options={[["", "Select institution"], ...institutions.map((institution) => [institution.id, institution.name] as [string, string])]} /> : null}
+    {isBank ? <Field label="Account name" field="bank_account_name" issues={issues}><Input name="bank_account_name" data-validation-field="bank_account_name" value={form.bank_account_name} onChange={(event) => onChange({ ...form, bank_account_name: event.target.value })} /></Field> : null}
+    {isBank ? <Field label="Account number" field="bank_account_number" issues={issues}><Input name="bank_account_number" data-validation-field="bank_account_number" value={form.bank_account_number} onChange={(event) => onChange({ ...form, bank_account_number: event.target.value })} /></Field> : null}
+    {form.payment_method_type === "CASH" ? <Field label="Cash note" field="cash_collection_note" issues={issues}><Input name="cash_collection_note" data-validation-field="cash_collection_note" value={form.cash_collection_note} onChange={(event) => onChange({ ...form, cash_collection_note: event.target.value })} /></Field> : null}
+    <Select label="Allocation" field="allocation_type" issues={issues} value={form.allocation_type} onChange={(value) => onChange({ ...form, allocation_type: value })} options={[["FULL", "Full"], ["PERCENTAGE", "Percentage"], ["FIXED_AMOUNT", "Fixed amount"]]} />
+    {form.allocation_type === "PERCENTAGE" ? <Field label="Allocation %" field="allocation_percentage" issues={issues}><Input name="allocation_percentage" data-validation-field="allocation_percentage" type="number" value={form.allocation_percentage} onChange={(event) => onChange({ ...form, allocation_percentage: event.target.value })} /></Field> : null}
+    {form.allocation_type === "FIXED_AMOUNT" ? <Field label="Allocation amount" field="allocation_amount" issues={issues}><Input name="allocation_amount" data-validation-field="allocation_amount" type="number" value={form.allocation_amount} onChange={(event) => onChange({ ...form, allocation_amount: event.target.value })} /></Field> : null}
     <Toggle label="Primary method" checked={form.is_primary} onChange={(checked) => onChange({ ...form, is_primary: checked })} />
   </Modal>;
 }
 
-function CustomDeductionModal({ form, templates, onChange, onClose, onConfirm }: { form: CustomDeductionForm; templates: CustomDeductionTemplate[]; onChange: (form: CustomDeductionForm) => void; onClose: () => void; onConfirm: () => void }) {
+function CustomDeductionModal({ form, templates, issues, onChange, onClose, onConfirm }: { form: CustomDeductionForm; templates: CustomDeductionTemplate[]; issues: ValidationIssue[]; onChange: (form: CustomDeductionForm) => void; onClose: () => void; onConfirm: () => void }) {
   function chooseTemplate(templateId: string) {
     const template = templates.find((item) => item.id === templateId);
     onChange({
@@ -393,59 +485,61 @@ function CustomDeductionModal({ form, templates, onChange, onClose, onConfirm }:
     });
   }
 
-  return <Modal title="Employee custom deduction" onClose={onClose} onConfirm={onConfirm} disabled={!form.template_id || !form.effective_from || !form.reason.trim()}>
-    <Select label="Template" value={form.template_id} onChange={chooseTemplate} options={templates.filter((template) => template.status === "ACTIVE").map((template) => [template.id, `${template.code} - ${template.name}`] as [string, string])} />
-    <Field label="Assigned amount"><Input type="number" min={0} step="0.01" value={form.assigned_amount} onChange={(event) => onChange({ ...form, assigned_amount: event.target.value })} /></Field>
-    <Field label="Assigned percentage"><Input type="number" min={0} max={100} step="0.01" value={form.assigned_percentage} onChange={(event) => onChange({ ...form, assigned_percentage: event.target.value })} /></Field>
-    <Field label="Total amount"><Input type="number" min={0} step="0.01" value={form.total_amount} onChange={(event) => onChange({ ...form, total_amount: event.target.value })} /></Field>
-    <Field label="Installments"><Input type="number" min={1} value={form.installment_count} onChange={(event) => onChange({ ...form, installment_count: event.target.value })} /></Field>
-    <Field label="Installment amount"><Input type="number" min={0} step="0.01" value={form.installment_amount} onChange={(event) => onChange({ ...form, installment_amount: event.target.value })} /></Field>
-    <Field label="Effective from"><Input type="date" value={form.effective_from} onChange={(event) => onChange({ ...form, effective_from: event.target.value })} /></Field>
-    <Field label="Effective to"><Input type="date" value={form.effective_to} onChange={(event) => onChange({ ...form, effective_to: event.target.value })} /></Field>
-    <Field label="Reason"><Input value={form.reason} onChange={(event) => onChange({ ...form, reason: event.target.value })} /></Field>
-    <Field label="Notes"><Input value={form.notes} onChange={(event) => onChange({ ...form, notes: event.target.value })} /></Field>
+  return <Modal title="Employee custom deduction" issues={issues} onClose={onClose} onConfirm={onConfirm}>
+    <Select label="Template" field="template_id" issues={issues} value={form.template_id} onChange={chooseTemplate} options={templates.filter((template) => template.status === "ACTIVE").map((template) => [template.id, `${template.code} - ${template.name}`] as [string, string])} />
+    <Field label="Assigned amount" field="assigned_amount" issues={issues}><Input name="assigned_amount" data-validation-field="assigned_amount" type="number" min={0} step="0.01" value={form.assigned_amount} onChange={(event) => onChange({ ...form, assigned_amount: event.target.value })} /></Field>
+    <Field label="Assigned percentage" field="assigned_percentage" issues={issues}><Input name="assigned_percentage" data-validation-field="assigned_percentage" type="number" min={0} max={100} step="0.01" value={form.assigned_percentage} onChange={(event) => onChange({ ...form, assigned_percentage: event.target.value })} /></Field>
+    <Field label="Total amount" field="total_amount" issues={issues}><Input name="total_amount" data-validation-field="total_amount" type="number" min={0} step="0.01" value={form.total_amount} onChange={(event) => onChange({ ...form, total_amount: event.target.value })} /></Field>
+    <Field label="Installments" field="installment_count" issues={issues}><Input name="installment_count" data-validation-field="installment_count" type="number" min={1} value={form.installment_count} onChange={(event) => onChange({ ...form, installment_count: event.target.value })} /></Field>
+    <Field label="Installment amount" field="installment_amount" issues={issues}><Input name="installment_amount" data-validation-field="installment_amount" type="number" min={0} step="0.01" value={form.installment_amount} onChange={(event) => onChange({ ...form, installment_amount: event.target.value })} /></Field>
+    <Field label="Effective from" field="effective_from" issues={issues}><Input name="effective_from" data-validation-field="effective_from" type="date" value={form.effective_from} onChange={(event) => onChange({ ...form, effective_from: event.target.value })} /></Field>
+    <Field label="Effective to" field="effective_to" issues={issues}><Input name="effective_to" data-validation-field="effective_to" type="date" value={form.effective_to} onChange={(event) => onChange({ ...form, effective_to: event.target.value })} /></Field>
+    <Field label="Reason" field="reason" issues={issues}><Input name="reason" data-validation-field="reason" value={form.reason} onChange={(event) => onChange({ ...form, reason: event.target.value })} /></Field>
+    <Field label="Notes" field="notes" issues={issues}><Input name="notes" data-validation-field="notes" value={form.notes} onChange={(event) => onChange({ ...form, notes: event.target.value })} /></Field>
   </Modal>;
 }
 
-function LoanModal({ form, institutions, onChange, onClose, onConfirm }: { form: LoanForm; institutions: PaymentInstitution[]; onChange: (form: LoanForm) => void; onClose: () => void; onConfirm: () => void }) {
-  return <Modal title="Bank loan deduction" onClose={onClose} onConfirm={onConfirm} disabled={!form.payment_institution_id || !form.loan_reference_number || !form.monthly_installment_amount}>
-    <Select label="Bank" value={form.payment_institution_id} onChange={(value) => onChange({ ...form, payment_institution_id: value })} options={[["", "Select bank"], ...institutions.map((institution) => [institution.id, institution.name] as [string, string])]} />
-    <Field label="Loan reference"><Input value={form.loan_reference_number} onChange={(event) => onChange({ ...form, loan_reference_number: event.target.value })} /></Field>
-    <Field label="Monthly installment"><Input type="number" value={form.monthly_installment_amount} onChange={(event) => onChange({ ...form, monthly_installment_amount: event.target.value })} /></Field>
-    <Field label="Original amount"><Input type="number" value={form.original_loan_amount} onChange={(event) => onChange({ ...form, original_loan_amount: event.target.value })} /></Field>
-    <Field label="Outstanding balance"><Input type="number" value={form.outstanding_balance} onChange={(event) => onChange({ ...form, outstanding_balance: event.target.value })} /></Field>
-    <Field label="Start date"><Input type="date" value={form.deduction_start_date} onChange={(event) => onChange({ ...form, deduction_start_date: event.target.value })} /></Field>
-    <Field label="Priority"><Input type="number" value={form.priority_number} onChange={(event) => onChange({ ...form, priority_number: event.target.value })} /></Field>
+function LoanModal({ form, institutions, issues, onChange, onClose, onConfirm }: { form: LoanForm; institutions: PaymentInstitution[]; issues: ValidationIssue[]; onChange: (form: LoanForm) => void; onClose: () => void; onConfirm: () => void }) {
+  return <Modal title="Bank loan deduction" issues={issues} onClose={onClose} onConfirm={onConfirm}>
+    <Select label="Bank" field="payment_institution_id" issues={issues} value={form.payment_institution_id} onChange={(value) => onChange({ ...form, payment_institution_id: value })} options={[["", "Select bank"], ...institutions.map((institution) => [institution.id, institution.name] as [string, string])]} />
+    <Field label="Loan reference" field="loan_reference_number" issues={issues}><Input name="loan_reference_number" data-validation-field="loan_reference_number" value={form.loan_reference_number} onChange={(event) => onChange({ ...form, loan_reference_number: event.target.value })} /></Field>
+    <Field label="Monthly installment" field="monthly_installment_amount" issues={issues}><Input name="monthly_installment_amount" data-validation-field="monthly_installment_amount" type="number" value={form.monthly_installment_amount} onChange={(event) => onChange({ ...form, monthly_installment_amount: event.target.value })} /></Field>
+    <Field label="Original amount" field="original_loan_amount" issues={issues}><Input name="original_loan_amount" data-validation-field="original_loan_amount" type="number" value={form.original_loan_amount} onChange={(event) => onChange({ ...form, original_loan_amount: event.target.value })} /></Field>
+    <Field label="Outstanding balance" field="outstanding_balance" issues={issues}><Input name="outstanding_balance" data-validation-field="outstanding_balance" type="number" value={form.outstanding_balance} onChange={(event) => onChange({ ...form, outstanding_balance: event.target.value })} /></Field>
+    <Field label="Start date" field="deduction_start_date" issues={issues}><Input name="deduction_start_date" data-validation-field="deduction_start_date" type="date" value={form.deduction_start_date} onChange={(event) => onChange({ ...form, deduction_start_date: event.target.value })} /></Field>
+    <Field label="Priority" field="priority_number" issues={issues}><Input name="priority_number" data-validation-field="priority_number" type="number" value={form.priority_number} onChange={(event) => onChange({ ...form, priority_number: event.target.value })} /></Field>
     <Toggle label="Employer undertaking required" checked={form.employer_undertaking_required} onChange={(checked) => onChange({ ...form, employer_undertaking_required: checked })} />
-    <Field label="Notes"><Input value={form.notes} onChange={(event) => onChange({ ...form, notes: event.target.value })} /></Field>
+    <Field label="Notes" field="notes" issues={issues}><Input name="notes" data-validation-field="notes" value={form.notes} onChange={(event) => onChange({ ...form, notes: event.target.value })} /></Field>
   </Modal>;
 }
 
-function PensionModal({ form, schemes, onChange, onClose, onConfirm }: { form: PensionForm; schemes: PensionScheme[]; onChange: (form: PensionForm) => void; onClose: () => void; onConfirm: () => void }) {
-  return <Modal title="Pension profile" onClose={onClose} onConfirm={onConfirm} disabled={!form.enrollment_status || !form.effective_date}>
-    <Select label="Scheme" value={form.pension_scheme_id} onChange={(value) => onChange({ ...form, pension_scheme_id: value })} options={[["", "No scheme"], ...schemes.map((scheme) => [scheme.id, scheme.scheme_name] as [string, string])]} />
-    <Select label="Enrollment" value={form.enrollment_status} onChange={(value) => onChange({ ...form, enrollment_status: value })} options={[["NOT_ENROLLED", "Not enrolled"], ["ENROLLED", "Enrolled"], ["VOLUNTARY", "Voluntary"], ["EXEMPTED", "Exempted"], ["SUSPENDED", "Suspended"]]} />
-    <Field label="Member ID"><Input value={form.pension_member_id} onChange={(event) => onChange({ ...form, pension_member_id: event.target.value })} /></Field>
-    <Field label="Registration number"><Input value={form.registration_number} onChange={(event) => onChange({ ...form, registration_number: event.target.value })} /></Field>
-    <Field label="Employee % override"><Input type="number" value={form.employee_contribution_percent_override} onChange={(event) => onChange({ ...form, employee_contribution_percent_override: event.target.value })} /></Field>
-    <Field label="Employer % override"><Input type="number" value={form.employer_contribution_percent_override} onChange={(event) => onChange({ ...form, employer_contribution_percent_override: event.target.value })} /></Field>
+function PensionModal({ form, schemes, issues, onChange, onClose, onConfirm }: { form: PensionForm; schemes: PensionScheme[]; issues: ValidationIssue[]; onChange: (form: PensionForm) => void; onClose: () => void; onConfirm: () => void }) {
+  return <Modal title="Pension profile" issues={issues} onClose={onClose} onConfirm={onConfirm}>
+    <Select label="Scheme" field="pension_scheme_id" issues={issues} value={form.pension_scheme_id} onChange={(value) => onChange({ ...form, pension_scheme_id: value })} options={[["", "No scheme"], ...schemes.map((scheme) => [scheme.id, scheme.scheme_name] as [string, string])]} />
+    <Select label="Enrollment" field="enrollment_status" issues={issues} value={form.enrollment_status} onChange={(value) => onChange({ ...form, enrollment_status: value })} options={[["NOT_ENROLLED", "Not enrolled"], ["ENROLLED", "Enrolled"], ["VOLUNTARY", "Voluntary"], ["EXEMPTED", "Exempted"], ["SUSPENDED", "Suspended"]]} />
+    <Field label="Member ID" field="pension_member_id" issues={issues}><Input name="pension_member_id" data-validation-field="pension_member_id" value={form.pension_member_id} onChange={(event) => onChange({ ...form, pension_member_id: event.target.value })} /></Field>
+    <Field label="Registration number" field="registration_number" issues={issues}><Input name="registration_number" data-validation-field="registration_number" value={form.registration_number} onChange={(event) => onChange({ ...form, registration_number: event.target.value })} /></Field>
+    <Field label="Employee % override" field="employee_contribution_percent_override" issues={issues}><Input name="employee_contribution_percent_override" data-validation-field="employee_contribution_percent_override" type="number" value={form.employee_contribution_percent_override} onChange={(event) => onChange({ ...form, employee_contribution_percent_override: event.target.value })} /></Field>
+    <Field label="Employer % override" field="employer_contribution_percent_override" issues={issues}><Input name="employer_contribution_percent_override" data-validation-field="employer_contribution_percent_override" type="number" value={form.employer_contribution_percent_override} onChange={(event) => onChange({ ...form, employer_contribution_percent_override: event.target.value })} /></Field>
     <Toggle label="Employer pays employee share" checked={form.employer_pays_employee_share} onChange={(checked) => onChange({ ...form, employer_pays_employee_share: checked })} />
-    <Field label="Voluntary amount"><Input type="number" value={form.employee_extra_voluntary_contribution_amount} onChange={(event) => onChange({ ...form, employee_extra_voluntary_contribution_amount: event.target.value })} /></Field>
-    <Field label="Effective date"><Input type="date" value={form.effective_date} onChange={(event) => onChange({ ...form, effective_date: event.target.value })} /></Field>
-    <Field label="Notes"><Input value={form.notes} onChange={(event) => onChange({ ...form, notes: event.target.value })} /></Field>
+    <Field label="Voluntary amount" field="employee_extra_voluntary_contribution_amount" issues={issues}><Input name="employee_extra_voluntary_contribution_amount" data-validation-field="employee_extra_voluntary_contribution_amount" type="number" value={form.employee_extra_voluntary_contribution_amount} onChange={(event) => onChange({ ...form, employee_extra_voluntary_contribution_amount: event.target.value })} /></Field>
+    <Field label="Effective date" field="effective_date" issues={issues}><Input name="effective_date" data-validation-field="effective_date" type="date" value={form.effective_date} onChange={(event) => onChange({ ...form, effective_date: event.target.value })} /></Field>
+    <Field label="Notes" field="notes" issues={issues}><Input name="notes" data-validation-field="notes" value={form.notes} onChange={(event) => onChange({ ...form, notes: event.target.value })} /></Field>
   </Modal>;
 }
 
-function Modal({ title, children, disabled, onClose, onConfirm }: { title: string; children: React.ReactNode; disabled?: boolean; onClose: () => void; onConfirm: () => void }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">{title}</h2><div className="mt-3 grid gap-3 md:grid-cols-2">{children}</div><div className="mt-4 flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onClose}>Cancel</Button><Button size="sm" disabled={disabled} onClick={onConfirm}>Save</Button></div></div></div>;
+function Modal({ title, children, issues, onClose, onConfirm }: { title: string; children: React.ReactNode; issues?: ValidationIssue[]; onClose: () => void; onConfirm: () => void }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">{title}</h2><FormErrorSummary issues={issues} /><div className="mt-3 grid gap-3 md:grid-cols-2">{children}</div><div className="mt-4 flex justify-end gap-2"><Button size="sm" variant="outline" onClick={onClose}>Cancel</Button><Button size="sm" onClick={onConfirm}>Save</Button></div></div></div>;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
+function Field({ label, children, field, issues }: { label: string; children: React.ReactNode; field?: string; issues?: ValidationIssue[] }) {
+  const fieldIssues = field ? issues?.filter((issue) => issue.field === field) : undefined;
+  return <div className="space-y-1.5"><Label>{label}</Label>{children}<FieldError issues={fieldIssues} /></div>;
 }
 
-function Select({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (value: string) => void }) {
-  return <UiSelectField label={label} value={value} onValueChange={onChange}>{options.map(([optionValue, optionLabel]) => <option key={optionValue || optionLabel} value={optionValue}>{optionLabel}</option>)}</UiSelectField>;
+function Select({ label, value, options, field, issues, onChange }: { label: string; value: string; options: [string, string][]; field?: string; issues?: ValidationIssue[]; onChange: (value: string) => void }) {
+  const fieldIssues = field ? issues?.filter((issue) => issue.field === field) : undefined;
+  return <div className="space-y-1.5"><UiSelectField label={label} name={field} data-validation-field={field} value={value} onValueChange={onChange}>{options.map(([optionValue, optionLabel]) => <option key={optionValue || optionLabel} value={optionValue}>{optionLabel}</option>)}</UiSelectField><FieldError issues={fieldIssues} /></div>;
 }
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {

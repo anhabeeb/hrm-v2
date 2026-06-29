@@ -16,8 +16,11 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateRequiredField, type ValidationIssue } from "../lib/form-validation";
 import type { DocumentComplianceDashboard, DocumentComplianceSettings, DocumentExpiryAlert, DocumentRenewalCase, DocumentRequirementWaiver, DocumentType } from "../types/documents";
 import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
+import { FormErrorSummary } from "../components/forms/FormErrorSummary";
+import { ValidatedReasonField, ValidatedTextField } from "../components/forms/validated-fields";
 
 type Mode = "dashboard" | "missing" | "expiring" | "expired" | "alerts" | "renewal-cases" | "waivers" | "settings" | "type-settings";
 
@@ -287,31 +290,104 @@ function TypeCompliance({ types, loading, canManage, onEdit }: { types: Document
 
 function TypeComplianceModal({ token, type, onClose, onSaved }: { token: string; type: DocumentType; onClose: () => void; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState<Partial<DocumentType>>(type);
+  const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   const update = (key: keyof DocumentType, value: string | number | boolean | null) => setForm((current) => ({ ...current, [key]: value }));
   async function save() {
-    await api.updateDocumentTypeCompliance(token, type.id, form);
-    await onSaved();
-    onClose();
+    const issues: ValidationIssue[] = [
+      ...validateAmount({ value: form.urgent_expiring_days ?? "", field: "urgent_expiring_days", label: "Urgent expiring days", min: 0 }),
+      ...validateAmount({ value: form.compliance_weight ?? "", field: "compliance_weight", label: "Compliance weight", min: 0 })
+    ];
+    validation.setIssues(issues);
+    if (issues.some((issue) => issue.severity === "error")) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    try {
+      await api.updateDocumentTypeCompliance(token, type.id, form);
+      await onSaved();
+      onClose();
+    } catch (err) {
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save type compliance settings."));
+    }
   }
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-2xl rounded-lg border bg-white shadow-xl"><div className="flex items-center justify-between border-b px-4 py-3"><div><h2 className="text-sm font-semibold">Type compliance settings</h2><p className="text-xs text-muted-foreground">{type.name}</p></div><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="grid gap-3 p-4 md:grid-cols-2"><Toggle label="Expiry required" checked={Boolean(form.expiry_required)} onChange={(value) => update("expiry_required", value)} /><Toggle label="Issue date required" checked={Boolean(form.issue_date_required)} onChange={(value) => update("issue_date_required", value)} /><Toggle label="Document number required" checked={Boolean(form.document_number_required)} onChange={(value) => update("document_number_required", value)} /><Toggle label="Auto-create renewal case" checked={Boolean(form.renewal_case_auto_create)} onChange={(value) => update("renewal_case_auto_create", value)} /><Toggle label="Employee summary visible" checked={form.employee_summary_visible !== false} onChange={(value) => update("employee_summary_visible", value)} /><Toggle label="Employee download allowed" checked={Boolean(form.employee_download_allowed)} onChange={(value) => update("employee_download_allowed", value)} /><Toggle label="Blocks activation" checked={Boolean(form.blocks_employee_activation)} onChange={(value) => update("blocks_employee_activation", value)} /><Toggle label="Payroll warning" checked={Boolean(form.creates_payroll_warning)} onChange={(value) => update("creates_payroll_warning", value)} /><Toggle label="Final settlement warning" checked={Boolean(form.creates_final_settlement_warning)} onChange={(value) => update("creates_final_settlement_warning", value)} /><Field label="Urgent expiring days" type="number" value={String(form.urgent_expiring_days ?? "")} onChange={(value) => update("urgent_expiring_days", value ? Number(value) : null)} /><Field label="Compliance weight" type="number" value={String(form.compliance_weight ?? "")} onChange={(value) => update("compliance_weight", value ? Number(value) : null)} /><div><Label>Sensitivity</Label><SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.sensitivity_level ?? "NORMAL"} onChange={(event) => update("sensitivity_level", event.target.value)}><option value="NORMAL">Normal</option><option value="SENSITIVE">Sensitive</option><option value="HIGHLY_SENSITIVE">Highly sensitive</option></SelectField></div><div className="md:col-span-2"><Label>Renewal instructions</Label><Input value={form.renewal_instructions ?? ""} onChange={(event) => update("renewal_instructions", event.target.value)} /></div></div><div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void save()}>Save</Button></div></div></div>;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+      <div className="w-full max-w-2xl rounded-lg border bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <h2 className="text-sm font-semibold">Type compliance settings</h2>
+            <p className="text-xs text-muted-foreground">{type.name}</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+        </div>
+        <div className="px-4 pt-4">
+          <FormErrorSummary issues={validation.issues} />
+          {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+        </div>
+        <div className="grid gap-3 p-4 md:grid-cols-2">
+          <Toggle label="Expiry required" checked={Boolean(form.expiry_required)} onChange={(value) => update("expiry_required", value)} />
+          <Toggle label="Issue date required" checked={Boolean(form.issue_date_required)} onChange={(value) => update("issue_date_required", value)} />
+          <Toggle label="Document number required" checked={Boolean(form.document_number_required)} onChange={(value) => update("document_number_required", value)} />
+          <Toggle label="Auto-create renewal case" checked={Boolean(form.renewal_case_auto_create)} onChange={(value) => update("renewal_case_auto_create", value)} />
+          <Toggle label="Employee summary visible" checked={form.employee_summary_visible !== false} onChange={(value) => update("employee_summary_visible", value)} />
+          <Toggle label="Employee download allowed" checked={Boolean(form.employee_download_allowed)} onChange={(value) => update("employee_download_allowed", value)} />
+          <Toggle label="Blocks activation" checked={Boolean(form.blocks_employee_activation)} onChange={(value) => update("blocks_employee_activation", value)} />
+          <Toggle label="Payroll warning" checked={Boolean(form.creates_payroll_warning)} onChange={(value) => update("creates_payroll_warning", value)} />
+          <Toggle label="Final settlement warning" checked={Boolean(form.creates_final_settlement_warning)} onChange={(value) => update("creates_final_settlement_warning", value)} />
+          <ValidatedTextField field="urgent_expiring_days" label="Urgent expiring days" type="number" value={String(form.urgent_expiring_days ?? "")} issues={validation.issues} onChange={(value) => update("urgent_expiring_days", value ? Number(value) : null)} />
+          <ValidatedTextField field="compliance_weight" label="Compliance weight" type="number" value={String(form.compliance_weight ?? "")} issues={validation.issues} onChange={(value) => update("compliance_weight", value ? Number(value) : null)} />
+          <div>
+            <Label>Sensitivity</Label>
+            <SelectField className="mt-1 h-9 w-full rounded-md border bg-white px-3 text-sm" value={form.sensitivity_level ?? "NORMAL"} onChange={(event) => update("sensitivity_level", event.target.value)}>
+              <option value="NORMAL">Normal</option>
+              <option value="SENSITIVE">Sensitive</option>
+              <option value="HIGHLY_SENSITIVE">Highly sensitive</option>
+            </SelectField>
+          </div>
+          <div className="md:col-span-2">
+            <Label>Renewal instructions</Label>
+            <Input value={form.renewal_instructions ?? ""} onChange={(event) => update("renewal_instructions", event.target.value)} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t px-4 py-3">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={() => void save()}>Save</Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ReasonModal({ action, onClose }: { action: { title: string; reason: string; required?: boolean; onConfirm: (reason: string) => Promise<void> }; onClose: () => void }) {
   const [reason, setReason] = useState(action.reason);
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function submitReason() {
-    if (action.required && !reason.trim()) {
-      setError("Reason is required.");
+    const issues = action.required ? validateRequiredField(reason, "reason", "Reason") : [];
+    validation.setIssues(issues);
+    if (issues.some((issue) => issue.severity === "error")) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
     try {
       await action.onConfirm(reason.trim());
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to complete action.");
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to complete action."));
     }
   }
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">{action.title}</h2><Input className="mt-3" placeholder="Reason or note" value={reason} onChange={(event) => setReason(event.target.value)} />{error ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void submitReason()}>Confirm</Button></div></div></div>;
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">{action.title}</h2><div className="mt-3"><FormErrorSummary issues={validation.issues} /><ValidatedReasonField required={action.required} value={reason} issues={validation.issues} placeholder="Reason or note" onChange={setReason} /></div>{error ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void submitReason()}>Confirm</Button></div></div></div>;
 }
 
 function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {

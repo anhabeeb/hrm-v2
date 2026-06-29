@@ -19,8 +19,12 @@ import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateDateField, validateDateRange, validateRequiredField, type ValidationIssue } from "../lib/form-validation";
 import type { Employee } from "../types/employees";
 import { CheckboxField, PageHeader, PageShell, SelectField as UiSelectField } from "../components/ui/page-shell";
+import { FieldError } from "../components/forms/FieldError";
+import { FormErrorSummary } from "../components/forms/FormErrorSummary";
+import { ValidatedReasonField, ValidatedTextField } from "../components/forms/validated-fields";
 import type {
   FinalSettlementCase,
   FinalSettlementClearanceItem,
@@ -44,6 +48,10 @@ function bool(value: unknown) {
 
 function ErrorMessage({ error }: { error: string | null }) {
   return error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null;
+}
+
+function hasErrors(issues: ValidationIssue[]) {
+  return issues.some((issue) => issue.severity === "error");
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -197,7 +205,8 @@ export function FinalSettlementPage() {
       setForm({ employee_id: "", exit_type: "RESIGNED", exit_date: "", last_working_day: "", reason: "" });
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to create settlement case.");
+      const issues = normalizeValidationIssues(err);
+      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to create settlement case."));
     }
   }
 
@@ -233,7 +242,8 @@ export function FinalSettlementPage() {
       setCaseAction(null); setReason(""); setNote(""); setAmount("");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Settlement action could not be completed.");
+      const issues = normalizeValidationIssues(err);
+      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Settlement action could not be completed."));
     }
   }
 
@@ -293,7 +303,8 @@ export function FinalSettlementPage() {
       setPaymentAction(null); setReason(""); setNote(""); setReference("");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Payment register action could not be completed.");
+      const issues = normalizeValidationIssues(err);
+      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Payment register action could not be completed."));
     }
   }
 
@@ -469,12 +480,43 @@ function MiniTable({ title, rows }: { title: string; rows: FinalSettlementLineIt
 
 function CreateCaseDialog({ form, employees, organizationRefs, onChange, onClose, onSave }: { form: { employee_id: string; exit_type: string; exit_date: string; last_working_day: string; reason: string }; employees: Employee[]; organizationRefs: ReturnType<typeof useOrganizationReferences>; onChange: (form: { employee_id: string; exit_type: string; exit_date: string; last_working_day: string; reason: string }) => void; onClose: () => void; onSave: () => void }) {
   const update = (key: keyof typeof form, value: string) => onChange({ ...form, [key]: value });
-  return <Dialog title="Create exit payroll case" footer={<><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={onSave}>Create case</Button></>}><div className="grid gap-3 md:grid-cols-2"><div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employeeId) => update("employee_id", employeeId)} /></div><Field label="Exit type"><SelectField value={form.exit_type} onChange={(value) => update("exit_type", value)}>{["RESIGNED", "TERMINATED", "END_OF_CONTRACT", "ABSCONDED", "RETIRED", "DECEASED", "OTHER"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field><Field label="Exit date"><Input type="date" value={form.exit_date} onChange={(event) => update("exit_date", event.target.value)} /></Field><Field label="Last working day"><Input type="date" value={form.last_working_day} onChange={(event) => update("last_working_day", event.target.value)} /></Field><Field label="Reason"><Input value={form.reason} onChange={(event) => update("reason", event.target.value)} /></Field></div></Dialog>;
+  const validation = useFormValidation();
+  function save() {
+    const issues = [
+      ...validateRequiredField(form.employee_id, "employee_id", "Employee"),
+      ...validateRequiredField(form.exit_type, "exit_type", "Exit type"),
+      ...validateDateField(form.exit_date, "exit_date", "Exit date", { required: true }),
+      ...validateDateField(form.last_working_day, "last_working_day", "Last working day", { required: true }),
+      ...validateDateRange({ start: form.exit_date, end: form.last_working_day, startField: "exit_date", endField: "last_working_day", label: "Last working day" }),
+      ...validateRequiredField(form.reason, "reason", "Reason")
+    ];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    onSave();
+  }
+  return <Dialog title="Create exit payroll case" footer={<><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={save}>Create case</Button></>}><FormErrorSummary issues={validation.issues} /><div className="grid gap-3 md:grid-cols-2"><div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employeeId) => update("employee_id", employeeId)} /><FieldError issues={validation.fieldIssues("employee_id")} /></div><Field label="Exit type"><SelectField value={form.exit_type} onChange={(value) => update("exit_type", value)}>{["RESIGNED", "TERMINATED", "END_OF_CONTRACT", "ABSCONDED", "RETIRED", "DECEASED", "OTHER"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field><ValidatedTextField field="exit_date" label="Exit date" type="date" value={form.exit_date} issues={validation.issues} onChange={(value) => update("exit_date", value)} /><ValidatedTextField field="last_working_day" label="Last working day" type="date" value={form.last_working_day} issues={validation.issues} onChange={(value) => update("last_working_day", value)} /><ValidatedReasonField required value={form.reason} issues={validation.issues} onChange={(value) => update("reason", value)} /></div></Dialog>;
 }
 
 function CaseActionDialog({ action, row, note, reason, amount, adjustmentType, onNote, onReason, onAmount, onAdjustmentType, onClose, onSave }: { action: CaseAction; row: FinalSettlementCase; note: string; reason: string; amount: string; adjustmentType: "EARNING" | "DEDUCTION"; onNote: (value: string) => void; onReason: (value: string) => void; onAmount: (value: string) => void; onAdjustmentType: (value: "EARNING" | "DEDUCTION") => void; onClose: () => void; onSave: () => void }) {
   const needsReason = ["reject", "send-back", "unlock", "cancel", "adjustment"].includes(action);
-  return <Dialog title={`${action.replace(/-/g, " ")} - ${row.employee_name ?? row.full_name}`} footer={<><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={onSave}>Apply</Button></>}><div className="space-y-3"><p className="text-sm text-muted-foreground">This action is audited and does not process bank transfers.</p>{action === "adjustment" ? <div className="grid gap-3 md:grid-cols-2"><Field label="Adjustment type"><SelectField value={adjustmentType} onChange={(value) => onAdjustmentType(value as "EARNING" | "DEDUCTION")}><option value="EARNING">Earning</option><option value="DEDUCTION">Deduction</option></SelectField></Field><Field label="Amount"><Input type="number" min="0" step="0.01" value={amount} onChange={(event) => onAmount(event.target.value)} /></Field></div> : null}<Field label={needsReason ? "Reason" : "Note"}><Input value={needsReason ? reason : note} onChange={(event) => needsReason ? onReason(event.target.value) : onNote(event.target.value)} placeholder={needsReason ? "Reason required" : "Optional note"} /></Field></div></Dialog>;
+  const validation = useFormValidation();
+  function save() {
+    const issues = [
+      ...(needsReason ? validateRequiredField(reason, "reason", "Reason") : []),
+      ...(action === "adjustment" ? validateRequiredField(amount, "amount", "Amount") : []),
+      ...(action === "adjustment" ? validateAmount({ value: amount, field: "amount", label: "Amount", min: 0 }) : [])
+    ];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    onSave();
+  }
+  return <Dialog title={`${action.replace(/-/g, " ")} - ${row.employee_name ?? row.full_name}`} footer={<><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={save}>Apply</Button></>}><div className="space-y-3"><FormErrorSummary issues={validation.issues} /><p className="text-sm text-muted-foreground">This action is audited and does not process bank transfers.</p>{action === "adjustment" ? <div className="grid gap-3 md:grid-cols-2"><Field label="Adjustment type"><SelectField value={adjustmentType} onChange={(value) => onAdjustmentType(value as "EARNING" | "DEDUCTION")}><option value="EARNING">Earning</option><option value="DEDUCTION">Deduction</option></SelectField></Field><ValidatedTextField field="amount" label="Amount" type="number" min="0" step="0.01" value={amount} issues={validation.issues} onChange={onAmount} /></div> : null}<ValidatedReasonField field={needsReason ? "reason" : "note"} label={needsReason ? "Reason" : "Note"} required={needsReason} value={needsReason ? reason : note} issues={validation.issues} placeholder={needsReason ? "Reason required" : "Optional note"} onChange={(value) => needsReason ? onReason(value) : onNote(value)} /></div></Dialog>;
 }
 
 function PaymentTable({ rows, canManage, onAction }: { rows: FinalSettlementPaymentRegister[]; canManage: boolean; onAction: (type: PaymentAction, row: FinalSettlementPaymentRegister) => void }) {
@@ -485,7 +527,19 @@ function PaymentTable({ rows, canManage, onAction }: { rows: FinalSettlementPaym
 }
 
 function PaymentActionDialog({ action, row, reason, note, reference, onReason, onNote, onReference, onClose, onSave }: { action: PaymentAction; row: FinalSettlementPaymentRegister; reason: string; note: string; reference: string; onReason: (value: string) => void; onNote: (value: string) => void; onReference: (value: string) => void; onClose: () => void; onSave: () => void }) {
-  return <Dialog title={`${action === "confirm-paid" ? "Confirm manual payment" : "Cancel payment row"} - ${row.employee_name_snapshot}`} footer={<><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={onSave}>Save</Button></>}><div className="space-y-3"><div className="rounded-md border bg-muted px-3 py-2 text-sm text-muted-foreground">Manual payment confirmation only. No bank export or bank transfer is performed.</div>{action === "confirm-paid" ? <><Field label="Confirmation reference"><Input value={reference} onChange={(event) => onReference(event.target.value)} /></Field><Field label="Confirmation note"><Input value={note} onChange={(event) => onNote(event.target.value)} /></Field></> : <Field label="Cancellation reason"><Input value={reason} onChange={(event) => onReason(event.target.value)} /></Field>}</div></Dialog>;
+  const validation = useFormValidation();
+  function save() {
+    const issues = action === "confirm-paid"
+      ? [...validateRequiredField(reference, "confirmation_reference", "Payment reference"), ...validateRequiredField(note, "confirmation_note", "Payment note")]
+      : validateRequiredField(reason, "reason", "Cancellation reason");
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    onSave();
+  }
+  return <Dialog title={`${action === "confirm-paid" ? "Confirm manual payment" : "Cancel payment row"} - ${row.employee_name_snapshot}`} footer={<><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={save}>Save</Button></>}><div className="space-y-3"><FormErrorSummary issues={validation.issues} /><div className="rounded-md border bg-muted px-3 py-2 text-sm text-muted-foreground">Manual payment confirmation only. No bank export or bank transfer is performed.</div>{action === "confirm-paid" ? <><ValidatedTextField field="confirmation_reference" label="Confirmation reference" value={reference} issues={validation.issues} onChange={onReference} /><ValidatedTextField field="confirmation_note" label="Confirmation note" value={note} issues={validation.issues} onChange={onNote} /></> : <ValidatedReasonField field="reason" label="Cancellation reason" required value={reason} issues={validation.issues} onChange={onReason} />}</div></Dialog>;
 }
 
 function ReportsPanel({ reports }: { reports: Record<string, unknown> | null }) {

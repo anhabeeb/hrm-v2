@@ -20,10 +20,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateRequiredField } from "../lib/form-validation";
 import type { Employee } from "../types/employees";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
 import type { PayrollAdjustment, PayrollAdvance, PayrollComponent, PayrollDeduction, PayrollPeriod, PayrollSettings } from "../types/payroll";
 import { CheckboxField, PageHeader, SelectField, TextareaField } from "../components/ui/page-shell";
+import { FormErrorSummary } from "../components/forms/FormErrorSummary";
+import { ValidatedReasonField } from "../components/forms/validated-fields";
 
 type Row = Record<string, unknown>;
 type PayrollSubmoduleSettingKey =
@@ -87,27 +90,55 @@ function Toggle({ label, checked, disabled = false, onChange }: { label: string;
 }
 
 function Modal({ title, children, onClose, onSave }: { title: string; children: React.ReactNode; onClose: () => void; onSave: () => void }) {
+  const validation = useFormValidation();
+  const [error, setError] = useState<string | null>(null);
+  async function save() {
+    setError(null);
+    validation.clearIssues();
+    try {
+      await onSave();
+    } catch (err) {
+      const issues = normalizeValidationIssues(err);
+      if (issues.length) {
+        validation.setIssues(issues);
+        setTimeout(() => focusFirstInvalidField(issues), 0);
+      }
+      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save payroll record."));
+    }
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
       <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-lg border bg-white shadow-xl">
         <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2></div>
+        <div className="px-4 pt-4"><FormErrorSummary issues={validation.issues} />{error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}</div>
         <div className="max-h-[70vh] overflow-auto p-4">{children}</div>
-        <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={onSave}>Save</Button></div>
+        <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void save()}>Save</Button></div>
       </div>
     </div>
   );
 }
 
 function ActionModal({ title, description, reason, reasonRequired, onReason, onClose, onConfirm }: { title: string; description: string; reason?: string; reasonRequired?: boolean; onReason?: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
+  const validation = useFormValidation();
+  function handleActionSubmit() {
+    const issues = reasonRequired ? validateRequiredField(reason, "reason", "Reason") : [];
+    validation.setIssues(issues);
+    if (issues.some((issue) => issue.severity === "error")) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    onConfirm();
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
       <div className="w-full max-w-md rounded-lg border bg-white shadow-xl">
         <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2></div>
         <div className="space-y-3 p-4">
+          <FormErrorSummary issues={validation.issues} />
           <p className="text-sm text-slate-700">{description}</p>
-          {onReason ? <Input value={reason ?? ""} onChange={(event) => onReason(event.target.value)} placeholder={reasonRequired ? "Reason required" : "Reason"} /> : null}
+          {onReason ? <ValidatedReasonField required={reasonRequired} value={reason ?? ""} issues={validation.issues} placeholder={reasonRequired ? "Reason required" : "Reason"} onChange={onReason} /> : null}
         </div>
-        <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={onConfirm}>Confirm</Button></div>
+        <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={handleActionSubmit}>Confirm</Button></div>
       </div>
     </div>
   );

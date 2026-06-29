@@ -5,16 +5,16 @@ import { ActionTextButton } from "../ui/action-button";
 import { Badge } from "../ui/badge";
 import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
 import { Panel } from "../ui/panel";
-import { SelectField as UiSelectField } from "../ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { useAuth } from "../../hooks/useAuth";
 import { ApiError, api } from "../../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateDateRange, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
 import type { AssetAssignment, AssetAssignmentEvent, AssetCategory, AssetItem, AssetUniformClearanceSummary, UniformAssignment } from "../../types/assets";
 import type { EmployeeDocument } from "../../types/documents";
 import type { Employee } from "../../types/employees";
+import { FormErrorSummary } from "../forms/FormErrorSummary";
+import { ValidatedReasonField, ValidatedSelectField, ValidatedTextField } from "../forms/validated-fields";
 
 type LifecycleAction = "return" | "mark-damaged" | "mark-lost" | "write-off";
 type ModalState =
@@ -31,6 +31,10 @@ function statusTone(status?: string) {
   if (status === "RETURNED" || status === "REPLACED") return "neutral";
   if (status === "DAMAGED") return "warning";
   return "danger";
+}
+
+function hasErrors(issues: ValidationIssue[]) {
+  return issues.some((issue) => issue.severity === "error");
 }
 
 export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
@@ -149,16 +153,32 @@ function IssueAssetModal({ employee, categories, items, onClose, onSaved }: { em
   const [expectedReturnAt, setExpectedReturnAt] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function save() {
     if (!token) return;
+    const issues = [
+      ...validateRequiredField(assetItemId, "asset_item_id", "Asset item"),
+      ...validateRequiredField(issuedAt, "issued_date", "Issued date"),
+      ...validateDateRange({ start: issuedAt, end: expectedReturnAt, startField: "issued_date", endField: "expected_return_date", label: "Expected return" })
+    ];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       await api.issueAssetAssignment(token, { employee_id: employee.id, asset_item_id: assetItemId, issued_date: issuedAt, expected_return_date: expectedReturnAt || null, notes: notes || null });
       onSaved();
     } catch (err) {
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
       setError(err instanceof ApiError ? err.message : "Unable to issue asset.");
     }
   }
-  return <Dialog title="Issue asset" error={error} onClose={onClose} onSave={save} saveLabel="Issue"><SelectField label="Asset item" value={assetItemId} onChange={setAssetItemId} options={items.map((item) => [item.id, `${item.code} / ${item.name} / ${categories.find((category) => category.id === item.category_id)?.name ?? item.category_name ?? "Uncategorized"}`])} /><Field label="Issued date" type="date" value={issuedAt} onChange={setIssuedAt} /><Field label="Expected return" type="date" value={expectedReturnAt} onChange={setExpectedReturnAt} /><Field label="Issue notes" value={notes} onChange={setNotes} /></Dialog>;
+  return <Dialog title="Issue asset" error={error} issues={validation.issues} onClose={onClose} onSave={save} saveLabel="Issue"><ValidatedSelectField field="asset_item_id" label="Asset item" value={assetItemId} issues={validation.issues} onValueChange={setAssetItemId}>{items.map((item) => <option key={item.id} value={item.id}>{item.code} / {item.name} / {categories.find((category) => category.id === item.category_id)?.name ?? item.category_name ?? "Uncategorized"}</option>)}</ValidatedSelectField><ValidatedTextField field="issued_date" label="Issued date" type="date" value={issuedAt} issues={validation.issues} onChange={setIssuedAt} /><ValidatedTextField field="expected_return_date" label="Expected return" type="date" value={expectedReturnAt} issues={validation.issues} onChange={setExpectedReturnAt} /><ValidatedTextField field="notes" label="Issue notes" value={notes} issues={validation.issues} onChange={setNotes} /></Dialog>;
 }
 
 function LifecycleModal({ row, action, onClose, onSaved }: { row: AssetAssignment; action: LifecycleAction; onClose: () => void; onSaved: () => void }) {
@@ -168,16 +188,32 @@ function LifecycleModal({ row, action, onClose, onSaved }: { row: AssetAssignmen
   const [reason, setReason] = useState("");
   const [deductionAmount, setDeductionAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function save() {
     if (!token) return;
+    const issues = [
+      ...(action === "return" ? validateRequiredField(returnedDate, "returned_date", "Returned date") : []),
+      ...validateRequiredField(reason, "reason", "Reason"),
+      ...validateAmount({ value: deductionAmount, field: "deduction_amount", label: "Deduction amount", min: 0 })
+    ];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       await api.assetAssignmentAction(token, row.id, action, { reason, returned_date: returnedDate, condition_on_return: condition, deduction_amount: deductionAmount ? Number(deductionAmount) : null });
       onSaved();
     } catch (err) {
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
       setError(err instanceof ApiError ? err.message : "Unable to update assignment.");
     }
   }
-  return <Dialog title={`${action.replace("-", " ")} asset`} error={error} onClose={onClose} onSave={save}>{action === "return" ? <><Field label="Returned date" type="date" value={returnedDate} onChange={setReturnedDate} /><Field label="Condition on return" value={condition} onChange={setCondition} /></> : null}<Field label="Reason / notes" value={reason} onChange={setReason} /><Field label="Deduction amount" type="number" value={deductionAmount} onChange={setDeductionAmount} /></Dialog>;
+  return <Dialog title={`${action.replace("-", " ")} asset`} error={error} issues={validation.issues} onClose={onClose} onSave={save}>{action === "return" ? <><ValidatedTextField field="returned_date" label="Returned date" type="date" value={returnedDate} issues={validation.issues} onChange={setReturnedDate} /><ValidatedTextField field="condition_on_return" label="Condition on return" value={condition} issues={validation.issues} onChange={setCondition} /></> : null}<ValidatedReasonField required value={reason} issues={validation.issues} onChange={setReason} /><ValidatedTextField field="deduction_amount" label="Deduction amount" type="number" value={deductionAmount} issues={validation.issues} onChange={setDeductionAmount} /></Dialog>;
 }
 
 function ReplaceModal({ row, items, onClose, onSaved }: { row: AssetAssignment; items: AssetItem[]; onClose: () => void; onSaved: () => void }) {
@@ -185,16 +221,31 @@ function ReplaceModal({ row, items, onClose, onSaved }: { row: AssetAssignment; 
   const [replacementAssetItemId, setReplacementAssetItemId] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function save() {
     if (!token) return;
+    const issues = [
+      ...validateRequiredField(replacementAssetItemId, "replacement_asset_item_id", "Replacement item"),
+      ...validateRequiredField(reason, "reason", "Reason")
+    ];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       await api.replaceAssetAssignment(token, row.id, { replacement_asset_item_id: replacementAssetItemId || null, reason });
       onSaved();
     } catch (err) {
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
       setError(err instanceof ApiError ? err.message : "Unable to replace asset.");
     }
   }
-  return <Dialog title="Replace asset" error={error} onClose={onClose} onSave={save}><SelectField label="Replacement item" value={replacementAssetItemId} onChange={setReplacementAssetItemId} empty="No replacement item" options={items.map((item) => [item.id, `${item.code} / ${item.name}`])} /><Field label="Reason" value={reason} onChange={setReason} /></Dialog>;
+  return <Dialog title="Replace asset" error={error} issues={validation.issues} onClose={onClose} onSave={save}><ValidatedSelectField field="replacement_asset_item_id" label="Replacement item" value={replacementAssetItemId} issues={validation.issues} onValueChange={setReplacementAssetItemId}><option value="">Select replacement item</option>{items.map((item) => <option key={item.id} value={item.id}>{item.code} / {item.name}</option>)}</ValidatedSelectField><ValidatedReasonField required value={reason} issues={validation.issues} onChange={setReason} /></Dialog>;
 }
 
 function DeductionModal({ row, onClose, onSaved }: { row: AssetAssignment; onClose: () => void; onSaved: () => void }) {
@@ -204,16 +255,33 @@ function DeductionModal({ row, onClose, onSaved }: { row: AssetAssignment; onClo
   const [amount, setAmount] = useState(String(row.deduction_amount ?? ""));
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function save() {
     if (!token) return;
+    const issues = [
+      ...(!deductionId && !adjustmentId ? [{ code: "REQUIRED_FIELD", field: "payroll_deduction_id", message: "Payroll deduction or adjustment ID is required.", severity: "error" as const }] : []),
+      ...validateRequiredField(amount, "deduction_amount", "Deduction amount"),
+      ...validateAmount({ value: amount, field: "deduction_amount", label: "Deduction amount", min: 0 }),
+      ...validateRequiredField(reason, "reason", "Reason")
+    ];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       await api.linkAssetDeduction(token, row.id, { payroll_deduction_id: deductionId || null, payroll_adjustment_id: adjustmentId || null, deduction_amount: amount ? Number(amount) : null, reason });
       onSaved();
     } catch (err) {
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
       setError(err instanceof ApiError ? err.message : "Unable to link deduction.");
     }
   }
-  return <Dialog title="Link deduction/recovery" error={error} onClose={onClose} onSave={save}><Field label="Payroll deduction id" value={deductionId} onChange={setDeductionId} /><Field label="Payroll adjustment id" value={adjustmentId} onChange={setAdjustmentId} /><Field label="Deduction amount" type="number" value={amount} onChange={setAmount} /><Field label="Reason" value={reason} onChange={setReason} /></Dialog>;
+  return <Dialog title="Link deduction/recovery" error={error} issues={validation.issues} onClose={onClose} onSave={save}><ValidatedTextField field="payroll_deduction_id" label="Payroll deduction id" value={deductionId} issues={validation.issues} onChange={setDeductionId} /><ValidatedTextField field="payroll_adjustment_id" label="Payroll adjustment id" value={adjustmentId} issues={validation.issues} onChange={setAdjustmentId} /><ValidatedTextField field="deduction_amount" label="Deduction amount" type="number" value={amount} issues={validation.issues} onChange={setAmount} /><ValidatedReasonField required value={reason} issues={validation.issues} onChange={setReason} /></Dialog>;
 }
 
 function EventsModal({ row, onClose }: { row: AssetAssignment; onClose: () => void }) {
@@ -230,6 +298,7 @@ function AttachmentsModal({ row, onClose }: { row: AssetAssignment; onClose: () 
   const [documentId, setDocumentId] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function load() {
     if (!token) return;
     const [attachmentRows, documentRows] = await Promise.all([api.listAssetAssignmentAttachments(token, row.id), api.listEmployeeDocuments(token, row.employee_id)]);
@@ -240,11 +309,22 @@ function AttachmentsModal({ row, onClose }: { row: AssetAssignment; onClose: () 
   useEffect(() => { void load(); }, [token, row.id]);
   async function attach() {
     if (!token) return;
+    const issues = validateRequiredField(documentId, "employee_document_id", "Document");
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       await api.attachAssetDocument(token, row.id, { employee_document_id: documentId, description });
       setDescription("");
       await load();
     } catch (err) {
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
       setError(err instanceof ApiError ? err.message : "Unable to attach document.");
     }
   }
@@ -253,7 +333,7 @@ function AttachmentsModal({ row, onClose }: { row: AssetAssignment; onClose: () 
     await api.detachAssetDocument(token, row.id, id);
     await load();
   }
-  return <ReadDialog title="Assignment attachments" onClose={onClose}>{error ? <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="mb-3 grid gap-2 md:grid-cols-3"><SelectField label="Document" value={documentId} onChange={setDocumentId} options={documents.map((document) => [document.id, document.original_filename ?? document.document_number ?? document.document_type_name ?? document.id])} /><Field label="Description" value={description} onChange={setDescription} /><div className="flex items-end"><ActionTextButton intent="create" size="sm" disabled={!documentId} onClick={() => void attach()}>Attach</ActionTextButton></div></div><Table><TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Type</TableHead><TableHead>Description</TableHead><TableHead>Attached</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{attachments.map((attachment) => <TableRow key={String(attachment.id)}><TableCell>{Boolean(attachment.restricted) ? <span className="flex items-center gap-2">Restricted document <Badge tone="warning">Restricted</Badge></span> : Boolean(attachment.unavailable) ? "Unavailable document" : String(attachment.original_filename ?? attachment.document_number ?? "-")}</TableCell><TableCell>{Boolean(attachment.restricted) ? "Restricted document" : String(attachment.document_type_name ?? "-")}</TableCell><TableCell>{String(attachment.description ?? "-")}</TableCell><TableCell>{String(attachment.attached_at ?? "-")}</TableCell><TableCell className="text-right"><RowActionButton intent="delete" size="sm" title="Detach" onClick={() => void detach(String(attachment.id))}>Detach</RowActionButton></TableCell></TableRow>)}</TableBody></Table></ReadDialog>;
+  return <ReadDialog title="Assignment attachments" onClose={onClose}>{error ? <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<FormErrorSummary issues={validation.issues} /><div className="mb-3 grid gap-2 md:grid-cols-3"><ValidatedSelectField field="employee_document_id" label="Document" value={documentId} issues={validation.issues} onValueChange={setDocumentId}>{documents.map((document) => <option key={document.id} value={document.id}>{document.original_filename ?? document.document_number ?? document.document_type_name ?? document.id}</option>)}</ValidatedSelectField><ValidatedTextField field="description" label="Description" value={description} issues={validation.issues} onChange={setDescription} /><div className="flex items-end"><ActionTextButton intent="create" size="sm" onClick={() => void attach()}>Attach</ActionTextButton></div></div><Table><TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Type</TableHead><TableHead>Description</TableHead><TableHead>Attached</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{attachments.map((attachment) => <TableRow key={String(attachment.id)}><TableCell>{Boolean(attachment.restricted) ? <span className="flex items-center gap-2">Restricted document <Badge tone="warning">Restricted</Badge></span> : Boolean(attachment.unavailable) ? "Unavailable document" : String(attachment.original_filename ?? attachment.document_number ?? "-")}</TableCell><TableCell>{Boolean(attachment.restricted) ? "Restricted document" : String(attachment.document_type_name ?? "-")}</TableCell><TableCell>{String(attachment.description ?? "-")}</TableCell><TableCell>{String(attachment.attached_at ?? "-")}</TableCell><TableCell className="text-right"><RowActionButton intent="delete" size="sm" title="Detach" onClick={() => void detach(String(attachment.id))}>Detach</RowActionButton></TableCell></TableRow>)}</TableBody></Table></ReadDialog>;
 }
 
 function SimpleHistory({ rows }: { rows: AssetAssignmentEvent[] }) {
@@ -264,18 +344,10 @@ function Metric({ label, value, tone }: { label: string; value: number; tone: "n
   return <div className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">{label}</p><div className="mt-1 flex items-center justify-between"><span className="text-lg font-semibold">{value}</span><Badge tone={tone}>{label}</Badge></div></div>;
 }
 
-function Dialog({ title, error, children, saveLabel = "Save", onClose, onSave }: { title: string; error: string | null; children: ReactNode; saveLabel?: string; onClose: () => void; onSave: () => void | Promise<void> }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-2xl rounded-lg border bg-white shadow-xl"><div className="flex justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="grid gap-3 p-4 md:grid-cols-2">{children}</div>{error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void onSave()}>{saveLabel}</Button></div></div></div>;
+function Dialog({ title, error, issues, children, saveLabel = "Save", onClose, onSave }: { title: string; error: string | null; issues?: ValidationIssue[]; children: ReactNode; saveLabel?: string; onClose: () => void; onSave: () => void | Promise<void> }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-2xl rounded-lg border bg-white shadow-xl"><div className="flex justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="px-4 pt-4"><FormErrorSummary issues={issues} /></div><div className="grid gap-3 p-4 md:grid-cols-2">{children}</div>{error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void onSave()}>{saveLabel}</Button></div></div></div>;
 }
 
 function ReadDialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-lg border bg-white shadow-xl"><div className="flex justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="overflow-auto p-4">{children}</div></div></div>;
-}
-
-function SelectField({ label, value, onChange, options, empty }: { label: string; value: string; onChange: (value: string) => void; options: Array<[string, string]>; empty?: string }) {
-  return <UiSelectField label={label} value={value} onValueChange={onChange}>{empty ? <option value="">{empty}</option> : null}{options.map(([id, labelText]) => <option key={id} value={id}>{labelText}</option>)}</UiSelectField>;
-}
-
-function Field({ label, type = "text", value, onChange }: { label: string; type?: string; value: string; onChange: (value: string) => void }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><Input type={type} value={value} onChange={(event) => onChange(event.target.value)} /></div>;
 }

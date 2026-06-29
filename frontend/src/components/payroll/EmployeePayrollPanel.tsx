@@ -10,12 +10,36 @@ import { Panel } from "../ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { useAuth } from "../../hooks/useAuth";
 import { ApiError, api } from "../../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateDateField, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
 import type { Employee } from "../../types/employees";
 import type { EmployeePayrollProfile, EmployeePayrollSummary } from "../../types/payroll";
+import { FormErrorSummary } from "../forms/FormErrorSummary";
+import { ValidatedReasonField, ValidatedTextField } from "../forms/validated-fields";
 import { EmployeePayrollFoundationPanels } from "./EmployeePayrollFoundationPanels";
 
 function money(value: number | null | undefined, currency = "MVR") {
   return `${currency} ${Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function hasErrors(issues: ValidationIssue[]) {
+  return issues.some((issue) => issue.severity === "error");
+}
+
+function validateIncrementForm(input: { amount: string; effective_date: string; reason: string }): ValidationIssue[] {
+  return [
+    ...validateRequiredField(input.amount, "increment_amount", "Increment amount"),
+    ...validateAmount({ value: input.amount, field: "increment_amount", label: "Increment amount", min: 0 }),
+    ...validateDateField(input.effective_date, "effective_date", "Effective date", { required: true }),
+    ...validateRequiredField(input.reason, "reason", "Reason")
+  ];
+}
+
+function validateAdvanceForm(input: { amount: string; payment_date: string }): ValidationIssue[] {
+  return [
+    ...validateRequiredField(input.amount, "amount", "Advance amount"),
+    ...validateAmount({ value: input.amount, field: "amount", label: "Advance amount", min: 0 }),
+    ...validateDateField(input.payment_date, "payment_date", "Payment date", { required: true })
+  ];
 }
 
 export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
@@ -72,7 +96,8 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
       setMessage("Payroll profile saved.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save payroll profile.");
+      const issues = normalizeValidationIssues(err);
+      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save payroll profile."));
     }
   }
 
@@ -81,13 +106,13 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
     const amount = Number(input.amount);
     const effective_date = input.effective_date;
     const reason = input.reason;
-    if (!amount || !effective_date || !reason) return;
     try {
       await api.createEmployeeIncrement(token, employee.id, { increment_amount: amount, effective_date, reason });
       setIncrementForm(null);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to add increment.");
+      const issues = normalizeValidationIssues(err);
+      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to add increment."));
     }
   }
 
@@ -95,13 +120,13 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
     if (!token) return;
     const amount = Number(input.amount);
     const payment_date = input.payment_date;
-    if (!amount || !payment_date) return;
     try {
       await api.createPayrollAdvance(token, { employee_id: employee.id, amount, payment_date });
       setAdvanceForm(null);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to add advance.");
+      const issues = normalizeValidationIssues(err);
+      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to add advance."));
     }
   }
 
@@ -156,15 +181,45 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
 }
 
 function SalaryReasonModal({ value, onChange, onClose, onConfirm }: { value: string; onChange: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">Salary change reason</h2><p className="mt-1 text-xs text-muted-foreground">A reason is required when changing basic salary.</p><Input className="mt-3" value={value} onChange={(event) => onChange(event.target.value)} placeholder="Reason" /><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><ActionTextButton intent="save" size="sm" disabled={!value.trim()} onClick={onConfirm}>Save profile</ActionTextButton></div></div></div>;
+  const validation = useFormValidation();
+  function handleSalaryReasonSubmit() {
+    const issues = validateRequiredField(value, "reason", "Reason");
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    onConfirm();
+  }
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">Salary change reason</h2><p className="mt-1 text-xs text-muted-foreground">A reason is required when changing basic salary.</p><div className="mt-3"><FormErrorSummary issues={validation.issues} /><ValidatedReasonField required value={value} issues={validation.issues} onChange={onChange} /></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><ActionTextButton intent="save" size="sm" onClick={handleSalaryReasonSubmit}>Save profile</ActionTextButton></div></div></div>;
 }
 
 function IncrementModal({ form, onChange, onClose, onConfirm }: { form: { amount: string; effective_date: string; reason: string }; onChange: (form: { amount: string; effective_date: string; reason: string }) => void; onClose: () => void; onConfirm: () => void }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">Add salary increment</h2><div className="mt-3 grid gap-3"><Input type="number" min={0} placeholder="Increment amount" value={form.amount} onChange={(event) => onChange({ ...form, amount: event.target.value })} /><Input type="date" value={form.effective_date} onChange={(event) => onChange({ ...form, effective_date: event.target.value })} /><Input placeholder="Reason" value={form.reason} onChange={(event) => onChange({ ...form, reason: event.target.value })} /></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><ActionTextButton intent="create" size="sm" disabled={!form.amount || !form.effective_date || !form.reason.trim()} onClick={onConfirm}>Add increment</ActionTextButton></div></div></div>;
+  const validation = useFormValidation();
+  function handleIncrementSubmit() {
+    const issues = validateIncrementForm(form);
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    onConfirm();
+  }
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">Add salary increment</h2><div className="mt-3 grid gap-3"><FormErrorSummary issues={validation.issues} /><ValidatedTextField field="increment_amount" label="Increment amount" type="number" min={0} value={form.amount} issues={validation.issues} onChange={(amount) => onChange({ ...form, amount })} /><ValidatedTextField field="effective_date" label="Effective date" type="date" value={form.effective_date} issues={validation.issues} onChange={(effective_date) => onChange({ ...form, effective_date })} /><ValidatedReasonField required value={form.reason} issues={validation.issues} onChange={(reason) => onChange({ ...form, reason })} /></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><ActionTextButton intent="create" size="sm" onClick={handleIncrementSubmit}>Add increment</ActionTextButton></div></div></div>;
 }
 
 function AdvanceModal({ form, onChange, onClose, onConfirm }: { form: { amount: string; payment_date: string }; onChange: (form: { amount: string; payment_date: string }) => void; onClose: () => void; onConfirm: () => void }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">Add payroll advance</h2><div className="mt-3 grid gap-3"><Input type="number" min={0} placeholder="Advance amount" value={form.amount} onChange={(event) => onChange({ ...form, amount: event.target.value })} /><Input type="date" value={form.payment_date} onChange={(event) => onChange({ ...form, payment_date: event.target.value })} /></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><ActionTextButton intent="create" size="sm" disabled={!form.amount || !form.payment_date} onClick={onConfirm}>Add advance</ActionTextButton></div></div></div>;
+  const validation = useFormValidation();
+  function handleAdvanceSubmit() {
+    const issues = validateAdvanceForm(form);
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    onConfirm();
+  }
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">Add payroll advance</h2><div className="mt-3 grid gap-3"><FormErrorSummary issues={validation.issues} /><ValidatedTextField field="amount" label="Advance amount" type="number" min={0} value={form.amount} issues={validation.issues} onChange={(amount) => onChange({ ...form, amount })} /><ValidatedTextField field="payment_date" label="Payment date" type="date" value={form.payment_date} issues={validation.issues} onChange={(payment_date) => onChange({ ...form, payment_date })} /></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><ActionTextButton intent="create" size="sm" onClick={handleAdvanceSubmit}>Add advance</ActionTextButton></div></div></div>;
 }
 
 function RowsPanel({ title, rows, columns, action }: { title: string; rows: Record<string, unknown>[]; columns: string[]; action?: React.ReactNode }) {

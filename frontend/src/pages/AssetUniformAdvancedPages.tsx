@@ -19,10 +19,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { useAuth } from "../hooks/useAuth";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateDateField, validateDateRange, validateRequiredField, type ValidationIssue } from "../lib/form-validation";
 import type { AssetUniformSettings, UniformAssignment, UniformStockItem, UniformType } from "../types/assets";
 import type { Employee } from "../types/employees";
 import type { OrganizationLocation } from "../types/organization";
 import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
+import { FormErrorSummary } from "../components/forms/FormErrorSummary";
+import { FieldError } from "../components/forms/FieldError";
 
 type ModalState =
   | { type: "type"; row?: UniformType }
@@ -47,6 +50,10 @@ function isOn(value: unknown) {
 
 function text(value: unknown) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
+}
+
+function hasErrors(issues: ValidationIssue[]) {
+  return issues.some((issue) => issue.severity === "error");
 }
 
 export function AssetUniformSettingsPage() {
@@ -310,18 +317,36 @@ function UniformTypeModal({ row, onClose, onSaved }: { row?: UniformType; onClos
     is_active: isOn(row?.is_active ?? true)
   });
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function save() {
     if (!token) return;
+    const issues = [
+      ...validateRequiredField(form.code, "code", "Code"),
+      ...validateRequiredField(form.name, "name", "Name"),
+      ...validateRequiredField(form.category, "category", "Category"),
+      ...validateAmount({ value: form.default_replacement_cycle_months, field: "default_replacement_cycle_months", label: "Replacement cycle months", min: 0 }),
+      ...validateAmount({ value: form.default_deduction_amount, field: "default_deduction_amount", label: "Default deduction amount", min: 0 })
+    ];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       const payload = { ...form, default_replacement_cycle_months: form.default_replacement_cycle_months ? Number(form.default_replacement_cycle_months) : null, default_deduction_amount: form.default_deduction_amount ? Number(form.default_deduction_amount) : null };
       if (row) await api.updateUniformType(token, row.id, payload);
       else await api.createUniformType(token, payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save uniform type.");
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save uniform type."));
     }
   }
-  return <Dialog title={row ? "Edit uniform type" : "Create uniform type"} error={error} onClose={onClose} onSave={save}><Field label="Code"><Input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} /></Field><Field label="Name"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field><Field label="Category"><Select value={form.category} onChange={(value) => setForm({ ...form, category: value })}>{uniformTypeCategories.map((value) => <option key={value} value={value}>{value}</option>)}</Select></Field><Field label="Replacement cycle months"><Input type="number" value={form.default_replacement_cycle_months} onChange={(event) => setForm({ ...form, default_replacement_cycle_months: event.target.value })} /></Field><Field label="Default deduction amount"><Input type="number" value={form.default_deduction_amount} onChange={(event) => setForm({ ...form, default_deduction_amount: event.target.value })} /></Field><CheckboxField label="Active" checked={form.is_active} onChange={(checked) => setForm({ ...form, is_active: checked })} className="self-end" /><div className="md:col-span-2"><Field label="Description"><Input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field></div></Dialog>;
+  return <Dialog title={row ? "Edit uniform type" : "Create uniform type"} error={error} issues={validation.issues} onClose={onClose} onSave={save}><Field field="code" issues={validation.issues} label="Code"><Input name="code" data-validation-field="code" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} /></Field><Field field="name" issues={validation.issues} label="Name"><Input name="name" data-validation-field="name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field><Field field="category" issues={validation.issues} label="Category"><Select value={form.category} onChange={(value) => setForm({ ...form, category: value })}>{uniformTypeCategories.map((value) => <option key={value} value={value}>{value}</option>)}</Select></Field><Field field="default_replacement_cycle_months" issues={validation.issues} label="Replacement cycle months"><Input name="default_replacement_cycle_months" data-validation-field="default_replacement_cycle_months" type="number" value={form.default_replacement_cycle_months} onChange={(event) => setForm({ ...form, default_replacement_cycle_months: event.target.value })} /></Field><Field field="default_deduction_amount" issues={validation.issues} label="Default deduction amount"><Input name="default_deduction_amount" data-validation-field="default_deduction_amount" type="number" value={form.default_deduction_amount} onChange={(event) => setForm({ ...form, default_deduction_amount: event.target.value })} /></Field><CheckboxField label="Active" checked={form.is_active} onChange={(checked) => setForm({ ...form, is_active: checked })} className="self-end" /><div className="md:col-span-2"><Field field="description" issues={validation.issues} label="Description"><Input name="description" data-validation-field="description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field></div></Dialog>;
 }
 
 function UniformStockModal({ row, types, locations, onClose, onSaved }: { row?: UniformStockItem; types: UniformType[]; locations: OrganizationLocation[]; onClose: () => void; onSaved: () => void }) {
@@ -340,34 +365,69 @@ function UniformStockModal({ row, types, locations, onClose, onSaved }: { row?: 
     status: row?.status ?? "ACTIVE"
   });
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function save() {
     if (!token) return;
+    const quantityFields = ["total_quantity", "available_quantity", "issued_quantity", "damaged_quantity", "lost_quantity", "retired_quantity", "reorder_level"] as const;
+    const issues = [
+      ...validateRequiredField(form.uniform_type_id, "uniform_type_id", "Uniform type"),
+      ...quantityFields.flatMap((field) => validateAmount({ value: form[field], field, label: field.replace(/_/g, " "), min: 0 }))
+    ];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       const payload = Object.fromEntries(Object.entries(form).map(([key, value]) => key.endsWith("quantity") || key === "reorder_level" ? [key, value === "" ? null : Number(value)] : [key, value || null]));
       if (row) await api.updateUniformStock(token, row.id, payload);
       else await api.createUniformStock(token, payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save uniform stock.");
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save uniform stock."));
     }
   }
-  return <Dialog title={row ? "Edit uniform stock" : "Create uniform stock"} error={error} onClose={onClose} onSave={save}><Field label="Uniform type"><Select value={form.uniform_type_id} onChange={(value) => setForm({ ...form, uniform_type_id: value })}>{types.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</Select></Field><Field label="Size"><Input value={form.size_label} onChange={(event) => setForm({ ...form, size_label: event.target.value })} /></Field><Field label="Location"><Select value={form.location_id} onChange={(value) => setForm({ ...form, location_id: value })}><option value="">No location</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field><Field label="Status"><Select value={form.status} onChange={(value) => setForm({ ...form, status: value })}>{["ACTIVE", "INACTIVE", "ARCHIVED"].map((value) => <option key={value} value={value}>{value}</option>)}</Select></Field>{(["total_quantity", "available_quantity", "issued_quantity", "damaged_quantity", "lost_quantity", "retired_quantity", "reorder_level"] as const).map((key) => <Field key={key} label={key.replace(/_/g, " ")}><Input type="number" value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} /></Field>)}</Dialog>;
+  return <Dialog title={row ? "Edit uniform stock" : "Create uniform stock"} error={error} issues={validation.issues} onClose={onClose} onSave={save}><Field field="uniform_type_id" issues={validation.issues} label="Uniform type"><Select value={form.uniform_type_id} onChange={(value) => setForm({ ...form, uniform_type_id: value })}>{types.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</Select></Field><Field field="size_label" issues={validation.issues} label="Size"><Input name="size_label" data-validation-field="size_label" value={form.size_label} onChange={(event) => setForm({ ...form, size_label: event.target.value })} /></Field><Field field="location_id" issues={validation.issues} label="Location"><Select value={form.location_id} onChange={(value) => setForm({ ...form, location_id: value })}><option value="">No location</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field><Field field="status" issues={validation.issues} label="Status"><Select value={form.status} onChange={(value) => setForm({ ...form, status: value })}>{["ACTIVE", "INACTIVE", "ARCHIVED"].map((value) => <option key={value} value={value}>{value}</option>)}</Select></Field>{(["total_quantity", "available_quantity", "issued_quantity", "damaged_quantity", "lost_quantity", "retired_quantity", "reorder_level"] as const).map((key) => <Field key={key} field={key} issues={validation.issues} label={key.replace(/_/g, " ")}><Input name={key} data-validation-field={key} type="number" value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} /></Field>)}</Dialog>;
 }
 
 function IssueUniformModal({ employees, organizationRefs, stock, onClose, onSaved }: { employees: Employee[]; organizationRefs: ReturnType<typeof useOrganizationReferences>; stock: UniformStockItem[]; onClose: () => void; onSaved: () => void }) {
   const { token } = useAuth();
   const [form, setForm] = useState({ employee_id: employees[0]?.id ?? "", uniform_stock_item_id: stock[0]?.id ?? "", quantity_issued: "1", issued_date: new Date().toISOString().slice(0, 10), expected_return_date: "", notes: "" });
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   async function save() {
     if (!token) return;
+    const issues = [
+      ...validateRequiredField(form.employee_id, "employee_id", "Employee"),
+      ...validateRequiredField(form.uniform_stock_item_id, "uniform_stock_item_id", "Uniform stock"),
+      ...validateRequiredField(form.quantity_issued, "quantity_issued", "Quantity"),
+      ...validateAmount({ value: form.quantity_issued, field: "quantity_issued", label: "Quantity", min: 1 }),
+      ...validateDateField(form.issued_date, "issued_date", "Issued date", { required: true }),
+      ...validateDateRange({ start: form.issued_date, end: form.expected_return_date, startField: "issued_date", endField: "expected_return_date", label: "Expected return" })
+    ];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       await api.issueUniformAssignment(token, { ...form, quantity_issued: Number(form.quantity_issued), expected_return_date: form.expected_return_date || null });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to issue uniform.");
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to issue uniform."));
     }
   }
-  return <Dialog title="Issue uniform" error={error} onClose={onClose} onSave={save} saveLabel="Issue"><div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employee_id) => setForm({ ...form, employee_id })} mode="asset-rule" /></div><Field label="Uniform stock"><Select value={form.uniform_stock_item_id} onChange={(value) => setForm({ ...form, uniform_stock_item_id: value })}>{stock.map((item) => <option key={item.id} value={item.id}>{item.uniform_type_name} / {item.size_label ?? "-"} / {item.available_quantity} available</option>)}</Select></Field><Field label="Quantity"><Input type="number" value={form.quantity_issued} onChange={(event) => setForm({ ...form, quantity_issued: event.target.value })} /></Field><Field label="Issued date"><Input type="date" value={form.issued_date} onChange={(event) => setForm({ ...form, issued_date: event.target.value })} /></Field><Field label="Expected return"><Input type="date" value={form.expected_return_date} onChange={(event) => setForm({ ...form, expected_return_date: event.target.value })} /></Field><Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field></Dialog>;
+  return <Dialog title="Issue uniform" error={error} issues={validation.issues} onClose={onClose} onSave={save} saveLabel="Issue"><div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employee_id) => setForm({ ...form, employee_id })} mode="asset-rule" /><FieldError issues={validation.fieldIssues("employee_id")} /></div><Field field="uniform_stock_item_id" issues={validation.issues} label="Uniform stock"><Select value={form.uniform_stock_item_id} onChange={(value) => setForm({ ...form, uniform_stock_item_id: value })}>{stock.map((item) => <option key={item.id} value={item.id}>{item.uniform_type_name} / {item.size_label ?? "-"} / {item.available_quantity} available</option>)}</Select></Field><Field field="quantity_issued" issues={validation.issues} label="Quantity"><Input name="quantity_issued" data-validation-field="quantity_issued" type="number" value={form.quantity_issued} onChange={(event) => setForm({ ...form, quantity_issued: event.target.value })} /></Field><Field field="issued_date" issues={validation.issues} label="Issued date"><Input name="issued_date" data-validation-field="issued_date" type="date" value={form.issued_date} onChange={(event) => setForm({ ...form, issued_date: event.target.value })} /></Field><Field field="expected_return_date" issues={validation.issues} label="Expected return"><Input name="expected_return_date" data-validation-field="expected_return_date" type="date" value={form.expected_return_date} onChange={(event) => setForm({ ...form, expected_return_date: event.target.value })} /></Field><Field field="notes" issues={validation.issues} label="Notes"><Input name="notes" data-validation-field="notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field></Dialog>;
 }
 
 function UniformActionModal({ row, action, onClose, onSaved }: { row: UniformAssignment; action: "return" | "mark-damaged" | "mark-lost" | "apply-deduction" | "waive"; onClose: () => void; onSaved: () => void }) {
@@ -376,18 +436,35 @@ function UniformActionModal({ row, action, onClose, onSaved }: { row: UniformAss
   const [quantity, setQuantity] = useState("1");
   const [deductionAmount, setDeductionAmount] = useState(String(row.deduction_amount ?? ""));
   const [error, setError] = useState<string | null>(null);
+  const validation = useFormValidation();
   const needsQuantity = ["return", "mark-damaged", "mark-lost"].includes(action);
   const needsDeduction = action === "apply-deduction" || action === "mark-damaged" || action === "mark-lost";
   async function save() {
     if (!token) return;
+    const issues = [
+      ...(needsQuantity ? validateRequiredField(quantity, "quantity", "Quantity") : []),
+      ...(needsQuantity ? validateAmount({ value: quantity, field: "quantity", label: "Quantity", min: 1 }) : []),
+      ...(needsDeduction ? validateAmount({ value: deductionAmount, field: "deduction_amount", label: "Deduction amount", min: 0 }) : []),
+      ...validateRequiredField(reason, "reason", "Reason")
+    ];
+    validation.setIssues(issues);
+    if (hasErrors(issues)) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     try {
       await api.uniformAssignmentAction(token, row.id, action, { reason, quantity: Number(quantity), quantity_returned: Number(quantity), deduction_amount: deductionAmount ? Number(deductionAmount) : null });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to update uniform assignment.");
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
+      setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to update uniform assignment."));
     }
   }
-  return <Dialog title={`${action.replace("-", " ")} uniform`} error={error} onClose={onClose} onSave={save}>{needsQuantity ? <Field label="Quantity"><Input type="number" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></Field> : null}{needsDeduction ? <Field label="Deduction amount"><Input type="number" value={deductionAmount} onChange={(event) => setDeductionAmount(event.target.value)} /></Field> : null}<div className="md:col-span-2"><Field label="Reason"><Input value={reason} onChange={(event) => setReason(event.target.value)} /></Field></div></Dialog>;
+  return <Dialog title={`${action.replace("-", " ")} uniform`} error={error} issues={validation.issues} onClose={onClose} onSave={save}>{needsQuantity ? <Field field="quantity" issues={validation.issues} label="Quantity"><Input name="quantity" data-validation-field="quantity" type="number" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></Field> : null}{needsDeduction ? <Field field="deduction_amount" issues={validation.issues} label="Deduction amount"><Input name="deduction_amount" data-validation-field="deduction_amount" type="number" value={deductionAmount} onChange={(event) => setDeductionAmount(event.target.value)} /></Field> : null}<div className="md:col-span-2"><Field field="reason" issues={validation.issues} label="Reason"><Input name="reason" data-validation-field="reason" value={reason} onChange={(event) => setReason(event.target.value)} /></Field></div></Dialog>;
 }
 
 function Header({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
@@ -402,12 +479,13 @@ function Alert({ tone: alertTone, children }: { tone: "danger" | "success"; chil
   return <div className={alertTone === "danger" ? "rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" : "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700"}>{children}</div>;
 }
 
-function Dialog({ title, error, children, saveLabel = "Save", onClose, onSave }: { title: string; error: string | null; children: ReactNode; saveLabel?: string; onClose: () => void; onSave: () => void | Promise<void> }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="max-h-[88vh] w-full max-w-3xl overflow-hidden rounded-lg border bg-white shadow-xl"><div className="flex justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="grid max-h-[65vh] gap-3 overflow-auto p-4 md:grid-cols-2">{children}</div>{error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void onSave()}><FilePlus className="h-4 w-4" />{saveLabel}</Button></div></div></div>;
+function Dialog({ title, error, issues, children, saveLabel = "Save", onClose, onSave }: { title: string; error: string | null; issues?: ValidationIssue[]; children: ReactNode; saveLabel?: string; onClose: () => void; onSave: () => void | Promise<void> }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="max-h-[88vh] w-full max-w-3xl overflow-hidden rounded-lg border bg-white shadow-xl"><div className="flex justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">{title}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="px-4 pt-4"><FormErrorSummary issues={issues} /></div><div className="grid max-h-[65vh] gap-3 overflow-auto p-4 md:grid-cols-2">{children}</div>{error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void onSave()}><FilePlus className="h-4 w-4" />{saveLabel}</Button></div></div></div>;
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
+function Field({ label, children, field, issues }: { label: string; children: ReactNode; field?: string; issues?: ValidationIssue[] }) {
+  const fieldIssues = field ? issues?.filter((issue) => issue.field === field) : undefined;
+  return <div className="space-y-1.5"><Label>{label}</Label>{children}<FieldError issues={fieldIssues} /></div>;
 }
 
 function Select({ value, onChange, disabled, children }: { value: string; onChange: (value: string) => void; disabled?: boolean; children: ReactNode }) {

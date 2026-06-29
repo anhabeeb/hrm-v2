@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../../lib/api";
+import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateRange, validateRequiredFields, type ValidationIssue } from "../../lib/form-validation";
 import type { Employee } from "../../types/employees";
 import type { LeaveRequest, LeaveType } from "../../types/leave";
+import { FormErrorSummary } from "../forms/FormErrorSummary";
+import { ValidatedReasonField, ValidatedSelectField, ValidatedTextField } from "../forms/validated-fields";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { SelectField } from "../ui/page-shell";
 
@@ -23,6 +25,18 @@ function estimateDays(start: string, end: string, half: string) {
   if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || b < a) return 0;
   const days = Math.floor((b.getTime() - a.getTime()) / 86400000) + 1;
   return days === 1 && half !== "NONE" ? 0.5 : days;
+}
+
+function validateLeaveRequestForm(form: LeaveRequestForm): ValidationIssue[] {
+  return [
+    ...validateRequiredFields(form as unknown as Record<string, unknown>, {
+      employee_id: "Employee",
+      leave_type_id: "Leave type",
+      start_date: "Start date",
+      end_date: "End date"
+    }),
+    ...validateDateRange({ start: form.start_date, end: form.end_date, startField: "start_date", endField: "end_date", label: "End date" })
+  ];
 }
 
 export function LeaveRequestModal({
@@ -52,6 +66,7 @@ export function LeaveRequestModal({
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const validation = useFormValidation();
   const days = useMemo(() => estimateDays(form.start_date, form.end_date, form.half_day_type), [form]);
 
   useEffect(() => {
@@ -68,6 +83,12 @@ export function LeaveRequestModal({
   }, [token, form.employee_id, form.leave_type_id, form.start_date, form.end_date, form.half_day_type]);
 
   async function submit() {
+    const issues = validateLeaveRequestForm(form);
+    validation.setIssues(issues);
+    if (issues.some((issue) => issue.severity === "error")) {
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -75,6 +96,11 @@ export function LeaveRequestModal({
       await onSaved(result.request);
       onClose();
     } catch (err) {
+      const issuesFromApi = normalizeValidationIssues(err);
+      if (issuesFromApi.length) {
+        validation.setIssues(issuesFromApi);
+        setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      }
       setError(err instanceof ApiError ? err.message : "Unable to create leave request.");
     } finally {
       setSaving(false);
@@ -88,21 +114,12 @@ export function LeaveRequestModal({
           <div><h2 className="text-sm font-semibold">Create leave request</h2><p className="text-xs text-muted-foreground">Document and salary impact are evaluated by the selected policy.</p></div>
           <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
         </div>
+        <div className="px-4 pt-4"><FormErrorSummary issues={validation.issues} /></div>
         <div className="grid gap-3 p-4 md:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>Employee</Label>
-            <SelectField value={form.employee_id} disabled={Boolean(employeeId)} onValueChange={(employee_id) => setForm({ ...form, employee_id })}>
-              {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} · {employee.employee_no}</option>)}
-            </SelectField>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Leave type</Label>
-            <SelectField value={form.leave_type_id} onValueChange={(leave_type_id) => setForm({ ...form, leave_type_id })}>
-              {leaveTypes.filter((type) => Boolean(type.is_active)).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
-            </SelectField>
-          </div>
-          <Field label="Start date" type="date" value={form.start_date} onChange={(value) => setForm({ ...form, start_date: value })} />
-          <Field label="End date" type="date" value={form.end_date} onChange={(value) => setForm({ ...form, end_date: value })} />
+          <ValidatedSelectField field="employee_id" label="Employee" value={form.employee_id} disabled={Boolean(employeeId)} issues={validation.issues} onValueChange={(employee_id) => setForm({ ...form, employee_id })}>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} · {employee.employee_no}</option>)}</ValidatedSelectField>
+          <ValidatedSelectField field="leave_type_id" label="Leave type" value={form.leave_type_id} issues={validation.issues} onValueChange={(leave_type_id) => setForm({ ...form, leave_type_id })}>{leaveTypes.filter((type) => Boolean(type.is_active)).map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</ValidatedSelectField>
+          <ValidatedTextField field="start_date" label="Start date" type="date" value={form.start_date} issues={validation.issues} onChange={(value) => setForm({ ...form, start_date: value })} />
+          <ValidatedTextField field="end_date" label="End date" type="date" value={form.end_date} issues={validation.issues} onChange={(value) => setForm({ ...form, end_date: value })} />
           <div className="space-y-1.5">
             <Label>Half day</Label>
             <SelectField value={form.half_day_type} onValueChange={(half_day_type) => setForm({ ...form, half_day_type: half_day_type as LeaveRequestForm["half_day_type"] })}>
@@ -112,7 +129,7 @@ export function LeaveRequestModal({
             </SelectField>
           </div>
           <div className="rounded-md border px-3 py-2"><p className="text-xs text-muted-foreground">Estimated requested days</p><p className="text-lg font-semibold">{days}</p></div>
-          <div className="space-y-1.5 md:col-span-2"><Label>Reason</Label><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></div>
+          <div className="md:col-span-2"><ValidatedReasonField value={form.reason} issues={validation.issues} onChange={(reason) => setForm({ ...form, reason })} /></div>
           <ApprovalPreview preview={preview} error={previewError} />
         </div>
         {error ? <div className="mx-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
@@ -150,6 +167,4 @@ function ApprovalPreview({ preview, error }: { preview: Record<string, unknown> 
   );
 }
 
-function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
-  return <div className="space-y-1.5"><Label>{label}</Label><Input type={type} value={value} onChange={(event) => onChange(event.target.value)} /></div>;
-}
+
