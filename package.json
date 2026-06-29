@@ -56,6 +56,7 @@
     "verify:employee-user-account-linking": "node scripts/verify-employee-user-account-linking.mjs",
     "verify:global-popup-alerts": "node scripts/verify-global-popup-alerts.mjs",
     "verify:professional-app-loader": "node scripts/verify-professional-app-loader.mjs",
+    "verify:dependency-security-cleanup": "node scripts/verify-dependency-security-cleanup.mjs",
     "verify:payroll-submodules": "node scripts/verify-payroll-submodule-toggles.mjs",
     "verify:page-layout-consistency": "node scripts/verify-page-layout-consistency.mjs",
     "verify:admin-help": "node scripts/verify-admin-help-guide.mjs",
@@ -68,6 +69,6 @@
   },
   "devDependencies": {
     "typescript": "^5.8.3",
-    "wrangler": "^4.56.0"
+    "wrangler": "^4.105.0"
   }
 }
