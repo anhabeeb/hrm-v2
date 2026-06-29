@@ -5,6 +5,7 @@ import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, 
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -417,13 +418,13 @@ function CaseDetails({ selected, lineItems, clearance, events, canApprove, canFi
         <Metric label="Net" value={money(selected.net_settlement_amount)} />
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={() => onAction("submit")}><Send className="h-4 w-4" /> Submit</Button>
-        {canApprove ? <Button size="sm" variant="outline" onClick={() => onAction("approve")}><CheckCircle2 className="h-4 w-4" /> Approve</Button> : null}
-        {canApprove ? <Button size="sm" variant="outline" onClick={() => onAction("reject")}><XCircle className="h-4 w-4" /> Reject</Button> : null}
-        {canApprove ? <Button size="sm" variant="outline" onClick={() => onAction("send-back")}>Send back</Button> : null}
-        {canFinalize ? <Button size="sm" variant="outline" onClick={() => onAction("finalize")}><Lock className="h-4 w-4" /> Finalize</Button> : null}
-        <Button size="sm" variant="outline" onClick={() => onAction("adjustment")}>Manual adjustment</Button>
-        <Button size="sm" variant="outline" onClick={() => onAction("payment")}><Wallet className="h-4 w-4" /> Prepare payment row</Button>
+        <ActionTextButton intent="submit" size="sm" onClick={() => onAction("submit")}><Send className="h-4 w-4" /> Submit</ActionTextButton>
+        {canApprove ? <ActionTextButton intent="approve" size="sm" onClick={() => onAction("approve")}><CheckCircle2 className="h-4 w-4" /> Approve</ActionTextButton> : null}
+        {canApprove ? <ActionTextButton intent="reject" size="sm" onClick={() => onAction("reject")}><XCircle className="h-4 w-4" /> Reject</ActionTextButton> : null}
+        {canApprove ? <ActionTextButton intent="send-back" size="sm" onClick={() => onAction("send-back")}>Send back</ActionTextButton> : null}
+        {canFinalize ? <ActionTextButton intent="finalize" size="sm" onClick={() => onAction("finalize")}><Lock className="h-4 w-4" /> Finalize</ActionTextButton> : null}
+        <ActionTextButton intent="manual-adjustment" size="sm" onClick={() => onAction("adjustment")}>Manual adjustment</ActionTextButton>
+        <ActionTextButton intent="create" size="sm" onClick={() => onAction("payment")}><Wallet className="h-4 w-4" /> Prepare payment row</ActionTextButton>
       </div>
       <MiniTable title="Earnings" rows={earnings} />
       <MiniTable title="Deductions" rows={deductions} />
@@ -432,7 +433,7 @@ function CaseDetails({ selected, lineItems, clearance, events, canApprove, canFi
       <div>
         <h3 className="mb-2 text-sm font-semibold">Clearance</h3>
         <div className="space-y-2">
-          {clearance.map((item) => <div key={item.id} className="rounded-md border p-2 text-sm"><div className="flex justify-between gap-2"><div className="min-w-0"><div className="font-medium">{item.clearance_type}</div><div className="text-xs text-muted-foreground">{item.description}</div></div><StatusBadge value={item.status} /></div><div className="mt-2 flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={() => onClearance(item, "CLEARED")}>Clear</Button><Button size="sm" variant="outline" onClick={() => onClearance(item, "BLOCKED")}>Block</Button><Input className="max-w-[180px]" placeholder="Waiver reason" value={waiverReason} onChange={(event) => onWaiverReason(event.target.value)} /><Button size="sm" variant="outline" onClick={() => onWaive(item)}>Waive</Button></div></div>)}
+          {clearance.map((item) => <div key={item.id} className="rounded-md border p-2 text-sm"><div className="flex justify-between gap-2"><div className="min-w-0"><div className="font-medium">{item.clearance_type}</div><div className="text-xs text-muted-foreground">{item.description}</div></div><StatusBadge value={item.status} /></div><div className="mt-2 flex flex-wrap items-center gap-2"><ActionTextButton intent="complete" size="sm" onClick={() => onClearance(item, "CLEARED")}>Clear</ActionTextButton><ActionTextButton intent="block" size="sm" onClick={() => onClearance(item, "BLOCKED")}>Block</ActionTextButton><Input className="max-w-[180px]" placeholder="Waiver reason" value={waiverReason} onChange={(event) => onWaiverReason(event.target.value)} /><ActionTextButton intent="waive" size="sm" onClick={() => onWaive(item)}>Waive</ActionTextButton></div></div>)}
           {clearance.length === 0 ? <EmptyState title="No clearance rows" description="Calculation will create asset, uniform, document, payroll, and HR clearance rows." /> : null}
         </div>
       </div>

@@ -5,6 +5,7 @@ import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFilters
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
 import { RosterNav } from "../components/roster/RosterNav";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
@@ -261,13 +262,13 @@ export function RosterWeeklyPage() {
         description="Table-first weekly planning with leave, attendance, payroll, and audit hooks prepared."
         actions={
           <>
-          {canManage ? <Button variant="outline" size="sm" onClick={() => { setAction("copy-previous"); setActionReason(""); setOverwrite(false); }}><ClipboardCopy className="h-4 w-4" /> Copy previous</Button> : null}
-          {canManage ? <Button variant="outline" size="sm" onClick={() => { setAction("clear-week"); setActionReason(""); }}><Eraser className="h-4 w-4" /> Clear</Button> : null}
-          {canManage ? <Button size="sm" onClick={() => void save()}><Save className="h-4 w-4" /> Save</Button> : null}
-          {canPublish ? <Button variant="outline" size="sm" onClick={() => void publish()}><Megaphone className="h-4 w-4" /> Publish</Button> : null}
-          {weekly?.period?.status === "PUBLISHED" && canUnpublish ? <Button variant="outline" size="sm" onClick={() => { setAction("unpublish"); setActionReason(""); }}><Undo2 className="h-4 w-4" /> Unpublish</Button> : null}
-          {weekly?.period?.status === "PUBLISHED" && canLock ? <Button variant="outline" size="sm" onClick={() => { setAction("lock"); setActionReason(""); }}><Lock className="h-4 w-4" /> Lock</Button> : null}
-          {weekly?.period?.status === "LOCKED" && canUnlock ? <Button variant="outline" size="sm" onClick={() => { setAction("unlock"); setActionReason(""); }}><Unlock className="h-4 w-4" /> Unlock</Button> : null}
+          {canManage ? <ActionTextButton intent="create" size="sm" onClick={() => { setAction("copy-previous"); setActionReason(""); setOverwrite(false); }}><ClipboardCopy className="h-4 w-4" /> Copy previous</ActionTextButton> : null}
+          {canManage ? <ActionTextButton intent="warning" size="sm" onClick={() => { setAction("clear-week"); setActionReason(""); }}><Eraser className="h-4 w-4" /> Clear</ActionTextButton> : null}
+          {canManage ? <ActionTextButton intent="save" size="sm" onClick={() => void save()}><Save className="h-4 w-4" /> Save</ActionTextButton> : null}
+          {canPublish ? <ActionTextButton intent="save" size="sm" onClick={() => void publish()}><Megaphone className="h-4 w-4" /> Publish</ActionTextButton> : null}
+          {weekly?.period?.status === "PUBLISHED" && canUnpublish ? <ActionTextButton intent="warning" size="sm" onClick={() => { setAction("unpublish"); setActionReason(""); }}><Undo2 className="h-4 w-4" /> Unpublish</ActionTextButton> : null}
+          {weekly?.period?.status === "PUBLISHED" && canLock ? <ActionTextButton intent="warning" size="sm" onClick={() => { setAction("lock"); setActionReason(""); }}><Lock className="h-4 w-4" /> Lock</ActionTextButton> : null}
+          {weekly?.period?.status === "LOCKED" && canUnlock ? <ActionTextButton intent="warning" size="sm" onClick={() => { setAction("unlock"); setActionReason(""); }}><Unlock className="h-4 w-4" /> Unlock</ActionTextButton> : null}
           </>
         }
       />

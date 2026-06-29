@@ -6,6 +6,7 @@ import { AttendanceManualLogModal } from "../components/attendance/AttendanceMan
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { AttendanceRecordModal } from "../components/attendance/AttendanceRecordModal";
 import { Badge } from "../components/ui/badge";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -206,10 +207,10 @@ export function AttendanceRecordsPage() {
         description="Daily attendance, raw punches, correction requests, and payroll impact foundation."
         actions={
           <>
-          {canManageLogs ? <Button variant="outline" size="sm" onClick={() => setEditingLog(null)}><Plus className="h-4 w-4" /> Manual log</Button> : null}
-          {canDevices ? <Button variant="outline" size="sm" onClick={() => setRawImportOpen(true)}><FileClock className="h-4 w-4" /> Import raw logs</Button> : null}
-          {canCorrect ? <Button variant="outline" size="sm" onClick={() => setCorrectionOpen(true)}>Request correction</Button> : null}
-          {canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Manual record</Button> : null}
+          {canManageLogs ? <ActionTextButton intent="create" size="sm" onClick={() => setEditingLog(null)}><Plus className="h-4 w-4" /> Manual log</ActionTextButton> : null}
+          {canDevices ? <ActionTextButton intent="import" size="sm" onClick={() => setRawImportOpen(true)}><FileClock className="h-4 w-4" /> Import raw logs</ActionTextButton> : null}
+          {canCorrect ? <ActionTextButton intent="create" size="sm" onClick={() => setCorrectionOpen(true)}>Request correction</ActionTextButton> : null}
+          {canManage ? <ActionTextButton intent="create" size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Manual record</ActionTextButton> : null}
           </>
         }
       />
@@ -290,7 +291,7 @@ export function AttendanceRecordsPage() {
           <div className="w-full max-w-2xl rounded-lg border bg-white shadow-xl">
             <div className="border-b px-4 py-3"><h2 className="text-base font-semibold">Import Raw Attendance Logs</h2><p className="text-sm text-muted-foreground">Paste an array of device/API punch objects. Duplicate logs are skipped by the backend.</p></div>
             <div className="p-4"><TextareaField className="min-h-64 w-full rounded-md border bg-white p-3 font-mono text-xs" value={rawJson} onChange={(event) => setRawJson(event.target.value)} /></div>
-            <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" onClick={() => setRawImportOpen(false)}>Cancel</Button><Button onClick={() => void importRawLogs()}>Import logs</Button></div>
+            <div className="flex justify-end gap-2 border-t px-4 py-3"><Button variant="outline" onClick={() => setRawImportOpen(false)}>Cancel</Button><ActionTextButton intent="import" onClick={() => void importRawLogs()}>Import logs</ActionTextButton></div>
           </div>
         </div>
       ) : null}

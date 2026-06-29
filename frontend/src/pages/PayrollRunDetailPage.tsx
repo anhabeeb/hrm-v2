@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { PayrollNav } from "../components/payroll/PayrollNav";
+import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Panel } from "../components/ui/panel";
@@ -142,14 +143,14 @@ export function PayrollRunDetailPage() {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0 space-y-1"><div className="flex min-w-0 flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">Approval and finalization</h2><StatusBadge value={run.status} /></div><p className="text-xs text-muted-foreground">Approval history is immutable. Finalized payroll locks frozen result snapshots for payslips and payment register preparation.</p></div>
           <div className="flex flex-wrap gap-2">
-            {canSubmit ? <Button size="sm" variant="outline" onClick={() => setRunAction({ action: "submit", title: "Submit for approval" })}><Send className="h-4 w-4" /> Submit</Button> : null}
-            {canApprove ? <Button size="sm" variant="outline" onClick={() => setRunAction({ action: "approve", title: "Approve payroll run" })}><CheckCircle2 className="h-4 w-4" /> Approve</Button> : null}
-            {canReject ? <Button size="sm" variant="outline" onClick={() => setRunAction({ action: "reject", title: "Reject payroll run", reasonRequired: true })}><XCircle className="h-4 w-4" /> Reject</Button> : null}
-            {canReject ? <Button size="sm" variant="outline" onClick={() => setRunAction({ action: "send_back", title: "Send payroll back", reasonRequired: true })}>Send back</Button> : null}
-            {canFinalize ? <Button size="sm" variant="outline" onClick={() => setRunAction({ action: "finalize", title: "Finalize payroll run" })}><LockKeyhole className="h-4 w-4" /> Finalize</Button> : null}
-            {canUnlock ? <Button size="sm" variant="outline" onClick={() => setRunAction({ action: "unlock", title: "Unlock finalized payroll", reasonRequired: true })}><RefreshCw className="h-4 w-4" /> Unlock</Button> : null}
-            {canPayslips ? <Button size="sm" variant="outline" onClick={() => setRunAction({ action: "payslips", title: "Generate payslips" })}><FileText className="h-4 w-4" /> Generate payslips</Button> : null}
-            {canPayments ? <Button size="sm" variant="outline" onClick={() => setRunAction({ action: "payment_register", title: "Prepare payment register" })}>Prepare register</Button> : null}
+            {canSubmit ? <ActionTextButton intent="submit" size="sm" onClick={() => setRunAction({ action: "submit", title: "Submit for approval" })}><Send className="h-4 w-4" /> Submit</ActionTextButton> : null}
+            {canApprove ? <ActionTextButton intent="approve" size="sm" onClick={() => setRunAction({ action: "approve", title: "Approve payroll run" })}><CheckCircle2 className="h-4 w-4" /> Approve</ActionTextButton> : null}
+            {canReject ? <ActionTextButton intent="reject" size="sm" onClick={() => setRunAction({ action: "reject", title: "Reject payroll run", reasonRequired: true })}><XCircle className="h-4 w-4" /> Reject</ActionTextButton> : null}
+            {canReject ? <ActionTextButton intent="send-back" size="sm" onClick={() => setRunAction({ action: "send_back", title: "Send payroll back", reasonRequired: true })}>Send back</ActionTextButton> : null}
+            {canFinalize ? <ActionTextButton intent="finalize" size="sm" onClick={() => setRunAction({ action: "finalize", title: "Finalize payroll run" })}><LockKeyhole className="h-4 w-4" /> Finalize</ActionTextButton> : null}
+            {canUnlock ? <ActionTextButton intent="warning" size="sm" onClick={() => setRunAction({ action: "unlock", title: "Unlock finalized payroll", reasonRequired: true })}><RefreshCw className="h-4 w-4" /> Unlock</ActionTextButton> : null}
+            {canPayslips ? <ActionTextButton intent="generate" size="sm" onClick={() => setRunAction({ action: "payslips", title: "Generate payslips" })}><FileText className="h-4 w-4" /> Generate payslips</ActionTextButton> : null}
+            {canPayments ? <ActionTextButton intent="create" size="sm" onClick={() => setRunAction({ action: "payment_register", title: "Prepare payment register" })}>Prepare register</ActionTextButton> : null}
           </div>
         </div>
       </Panel> : null}

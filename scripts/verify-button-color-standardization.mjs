@@ -77,12 +77,23 @@ assert(exists("frontend/src/components/ui/row-action-button.tsx"), "frontend/src
 });
 
 const buttonSource = read("frontend/src/components/ui/button.tsx");
+const actionButtonSource = read("frontend/src/components/ui/action-button.tsx");
 has("frontend/src/components/ui/button.tsx", "export type RowActionIntent", "RowActionIntent type is missing.");
 has("frontend/src/components/ui/button.tsx", "ROW_ACTION_VARIANT_BY_INTENT", "Row action intent mapping is missing.");
 has("frontend/src/components/ui/button.tsx", "export function RowActionButton", "RowActionButton component is missing.");
 has("frontend/src/components/ui/button.tsx", "export const ActionIconButton = RowActionButton", "ActionIconButton alias is missing.");
 has("frontend/src/components/ui/row-action-button.tsx", "RowActionButton", "Row action re-export file is missing RowActionButton.");
 has("frontend/src/components/ui/row-action-button.tsx", "ActionIconButton", "Row action re-export file is missing ActionIconButton.");
+has("frontend/src/components/ui/action-button.tsx", "export function ActionTextButton", "ActionTextButton component is missing.");
+has("frontend/src/components/ui/action-button.tsx", "ACTION_TEXT_INTENT_TO_BUTTON_INTENT", "ActionTextButton intent mapping is missing.");
+["submit", "approve", "finalize", "send-back", "waive", "block", "manual-adjustment", "cancel-record", "upload", "import"].forEach((intent) => {
+  assert(actionButtonSource.includes(intent), `ActionTextButton intent ${intent} is missing.`);
+});
+assert(actionButtonSource.includes('"submit": "save"') || actionButtonSource.includes("submit: \"save\""), "Submit text actions must map to green/save.");
+assert(actionButtonSource.includes('"send-back": "warning"'), "Send back text actions must map to amber/warning.");
+assert(actionButtonSource.includes('"manual-adjustment": "warning"'), "Manual adjustment text actions must map to amber/warning.");
+assert(actionButtonSource.includes('"cancel-record": "destructive"'), "Cancel-record text actions must map to red/destructive.");
+assert(actionButtonSource.includes('upload: "import"') && actionButtonSource.includes('import: "import"'), "Upload/import text actions must map to blue/import.");
 
 [
   "view",
@@ -192,6 +203,58 @@ rowActionTags.forEach((tag, index) => {
   ["teal edit actions", /<RowActionButton\b[^>]*intent="edit"[^>]*title="[^"]*Edit/i],
   ["teal generate/create actions", /<RowActionButton\b[^>]*intent="(create|generate)"[^>]*title="[^"]*(Generate|Assign|Issue|Add|Deduct|Attachments)/i]
 ].forEach(([label, pattern]) => assert(pattern.test(combinedSources), `Missing ${label} in real row-action usage.`));
+
+const finalSettlementSource = read("frontend/src/pages/FinalSettlementPage.tsx");
+[
+  ["Submit", '<ActionTextButton intent="submit"'],
+  ["Approve", '<ActionTextButton intent="approve"'],
+  ["Reject", '<ActionTextButton intent="reject"'],
+  ["Send back", '<ActionTextButton intent="send-back"'],
+  ["Finalize", '<ActionTextButton intent="finalize"'],
+  ["Manual adjustment", '<ActionTextButton intent="manual-adjustment"'],
+  ["Prepare payment row", '<ActionTextButton intent="create" size="sm" onClick={() => onAction("payment")}'],
+  ["Clear clearance", '<ActionTextButton intent="complete" size="sm" onClick={() => onClearance(item, "CLEARED")}'],
+  ["Block clearance", '<ActionTextButton intent="block" size="sm" onClick={() => onClearance(item, "BLOCKED")}'],
+  ["Waive clearance", '<ActionTextButton intent="waive" size="sm" onClick={() => onWaive(item)}']
+].forEach(([label, marker]) => assert(finalSettlementSource.includes(marker), `FinalSettlementPage ${label} action must use ActionTextButton with standardized intent.`));
+[
+  'variant="outline" onClick={() => onAction("submit")}',
+  'variant="outline" onClick={() => onAction("approve")}',
+  'variant="outline" onClick={() => onAction("reject")}',
+  'variant="outline" onClick={() => onAction("send-back")}',
+  'variant="outline" onClick={() => onAction("finalize")}',
+  'variant="outline" onClick={() => onAction("adjustment")}',
+  'variant="outline" onClick={() => onAction("payment")}',
+  'variant="outline" onClick={() => onClearance(item, "CLEARED")}',
+  'variant="outline" onClick={() => onClearance(item, "BLOCKED")}',
+  'variant="outline" onClick={() => onWaive(item)}'
+].forEach((marker) => assert(!finalSettlementSource.includes(marker), `FinalSettlementPage workflow action still uses raw outline Button: ${marker}`));
+
+const documentComplianceSource = read("frontend/src/pages/DocumentCompliancePage.tsx");
+assert(/title="Cancel renewal case"[\s\S]*intent="delete"|intent="delete"[\s\S]*title="Cancel renewal case"/.test(documentComplianceSource), "DocumentCompliancePage cancel renewal case must be a red/destructive row action.");
+assert(/title="Cancel waiver"[\s\S]*intent="delete"|intent="delete"[\s\S]*title="Cancel waiver"/.test(documentComplianceSource), "DocumentCompliancePage cancel waiver must be a red/destructive row action.");
+assert(!/<Button\b[^>]*variant="ghost"[^>]*size="sm"[^>]*>Cancel<\/Button>/.test(documentComplianceSource), "DocumentCompliancePage text row Cancel actions must not use raw ghost Button.");
+
+const attendanceRecordsSource = read("frontend/src/pages/AttendanceRecordsPage.tsx");
+[
+  ["Manual log", '<ActionTextButton intent="create" size="sm" onClick={() => setEditingLog(null)}'],
+  ["Import raw logs", '<ActionTextButton intent="import" size="sm" onClick={() => setRawImportOpen(true)}'],
+  ["Request correction", '<ActionTextButton intent="create" size="sm" onClick={() => setCorrectionOpen(true)}'],
+  ["Manual record", '<ActionTextButton intent="create" size="sm" onClick={() => setEditing(null)}'],
+  ["Import logs", '<ActionTextButton intent="import" onClick={() => void importRawLogs()}']
+].forEach(([label, marker]) => assert(attendanceRecordsSource.includes(marker), `AttendanceRecordsPage ${label} button must use ActionTextButton.`));
+
+[
+  "frontend/src/components/assets/EmployeeAssetsPanel.tsx",
+  "frontend/src/components/employee/EmployeeDocumentsPanel.tsx",
+  "frontend/src/components/leave/EmployeeLeavePanel.tsx",
+  "frontend/src/components/payroll/EmployeePayrollPanel.tsx",
+  "frontend/src/pages/PayrollRunDetailPage.tsx",
+  "frontend/src/pages/RosterWeeklyPage.tsx",
+  "frontend/src/pages/ApprovalsPage.tsx"
+].forEach((file) => {
+  has(file, "ActionTextButton", "Meaningful text action buttons must use ActionTextButton.");
+});
 
 const meaningfulActionWords = /\b(approve|confirm|complete|reject|delete|disable|archive|cancel|hold|release|restore|download|upload|import|export|edit|view|open|history|detach|mark bank notified|pause|resume|soft delete|permanent delete|generate|calculate|recalculate)\b/i;
 const rawButtonPattern = /<Button\b[^>\n]*(?:variant="(?:ghost|outline)"[^>\n]*size="(?:icon|sm)"|size="(?:icon|sm)"[^>\n]*variant="(?:ghost|outline)")/;

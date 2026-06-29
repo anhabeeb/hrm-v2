@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../../lib/api";
 import type { DocumentType, EmployeeDocument, EmployeeDocumentVersion, MissingDocument } from "../../types/documents";
 import type { Employee } from "../../types/employees";
+import { ActionTextButton } from "../ui/action-button";
 import { Badge } from "../ui/badge";
 import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
@@ -114,8 +115,8 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
           <p className="text-xs text-muted-foreground">Private R2-backed employee document tracking.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canUpload ? <Button size="sm" variant="outline" onClick={() => setUploadModal({ mode: "photo" })}><ImageUp className="h-4 w-4" /> Profile photo</Button> : null}
-          {canUpload ? <Button size="sm" onClick={() => setUploadModal({ mode: "upload" })}><FileUp className="h-4 w-4" /> Upload document</Button> : null}
+          {canUpload ? <ActionTextButton intent="upload" size="sm" onClick={() => setUploadModal({ mode: "photo" })}><ImageUp className="h-4 w-4" /> Profile photo</ActionTextButton> : null}
+          {canUpload ? <ActionTextButton intent="upload" size="sm" onClick={() => setUploadModal({ mode: "upload" })}><FileUp className="h-4 w-4" /> Upload document</ActionTextButton> : null}
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import { ImageUp, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { ApiError, api } from "../../lib/api";
 import type { Employee } from "../../types/employees";
+import { ActionTextButton } from "../ui/action-button";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -47,16 +48,16 @@ export function EmployeeProfilePhotoControls({
     <div className={compact ? "space-y-2" : "flex flex-wrap items-center gap-2"}>
       {error ? <div className="w-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {canUpload ? (
-        <Button variant="outline" size="sm" onClick={() => { setError(null); setModalOpen(true); }}>
+        <ActionTextButton intent="upload" size="sm" onClick={() => { setError(null); setModalOpen(true); }}>
           <ImageUp className="h-4 w-4" />
           {employee.profile_photo_document_id ? "Change photo" : "Upload photo"}
-        </Button>
+        </ActionTextButton>
       ) : null}
       {canClear && employee.profile_photo_document_id ? (
-        <Button variant="outline" size="sm" disabled={clearing} onClick={() => setClearOpen(true)}>
+        <ActionTextButton intent="delete" size="sm" disabled={clearing} onClick={() => setClearOpen(true)}>
           <Trash2 className="h-4 w-4" />
           {clearing ? "Clearing..." : "Clear photo"}
-        </Button>
+        </ActionTextButton>
       ) : null}
       {modalOpen ? <ProfilePhotoModal employee={employee} token={token} onClose={() => setModalOpen(false)} onSaved={onChanged} /> : null}
       {clearOpen ? (
@@ -66,7 +67,7 @@ export function EmployeeProfilePhotoControls({
             <p className="mt-1 text-xs text-muted-foreground">The Profile Photo document will be archived, not permanently deleted.</p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setClearOpen(false)}>Cancel</Button>
-              <Button size="sm" disabled={clearing} onClick={() => void clearPhoto()}>{clearing ? "Clearing..." : "Clear photo"}</Button>
+              <ActionTextButton intent="delete" size="sm" disabled={clearing} onClick={() => void clearPhoto()}>{clearing ? "Clearing..." : "Clear photo"}</ActionTextButton>
             </div>
           </div>
         </div>
@@ -120,7 +121,7 @@ function ProfilePhotoModal({ employee, token, onClose, onSaved }: { employee: Em
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={saving} onClick={() => void submit()}>{saving ? "Saving..." : "Save photo"}</Button>
+          <ActionTextButton intent="upload" size="sm" disabled={saving} onClick={() => void submit()}>{saving ? "Saving..." : "Save photo"}</ActionTextButton>
         </div>
       </div>
     </div>

@@ -34,3 +34,84 @@ export function ActionButton({ intent, disabled, ...props }: ActionButtonProps) 
     />
   );
 }
+
+export type ActionTextIntent =
+  | "create"
+  | "start"
+  | "generate"
+  | "submit"
+  | "save"
+  | "approve"
+  | "confirm"
+  | "complete"
+  | "enable"
+  | "release"
+  | "finalize"
+  | "neutral"
+  | "view"
+  | "open"
+  | "details"
+  | "refresh"
+  | "warning"
+  | "hold"
+  | "send-back"
+  | "reopen"
+  | "waive"
+  | "block"
+  | "manual-adjustment"
+  | "destructive"
+  | "delete"
+  | "reject"
+  | "disable"
+  | "archive"
+  | "remove"
+  | "cancel-record"
+  | "download"
+  | "export"
+  | "upload"
+  | "import";
+
+const ACTION_TEXT_INTENT_TO_BUTTON_INTENT: Record<ActionTextIntent, ActionButtonIntent> = {
+  create: "create",
+  start: "create",
+  generate: "create",
+  submit: "save",
+  save: "save",
+  approve: "save",
+  confirm: "save",
+  complete: "save",
+  enable: "save",
+  release: "save",
+  finalize: "save",
+  neutral: "neutral",
+  view: "neutral",
+  open: "neutral",
+  details: "neutral",
+  refresh: "neutral",
+  warning: "warning",
+  hold: "warning",
+  "send-back": "warning",
+  reopen: "warning",
+  waive: "warning",
+  block: "warning",
+  "manual-adjustment": "warning",
+  destructive: "destructive",
+  delete: "destructive",
+  reject: "destructive",
+  disable: "destructive",
+  archive: "destructive",
+  remove: "destructive",
+  "cancel-record": "destructive",
+  download: "export",
+  export: "export",
+  upload: "import",
+  import: "import"
+};
+
+export interface ActionTextButtonProps extends Omit<ButtonProps, "variant"> {
+  intent: ActionTextIntent;
+}
+
+export function ActionTextButton({ intent, ...props }: ActionTextButtonProps) {
+  return <ActionButton {...props} intent={ACTION_TEXT_INTENT_TO_BUTTON_INTENT[intent]} />;
+}

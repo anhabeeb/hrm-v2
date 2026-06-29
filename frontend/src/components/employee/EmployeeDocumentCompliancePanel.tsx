@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { ApiError, api } from "../../lib/api";
 import type { EmployeeDocumentCompliance } from "../../types/documents";
 import type { Employee } from "../../types/employees";
+import { ActionTextButton } from "../ui/action-button";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Panel } from "../ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -59,7 +59,7 @@ export function EmployeeDocumentCompliancePanel({ employee, token, permissions }
           <h3 className="flex items-center gap-2 text-sm font-semibold"><ClipboardList className="h-4 w-4" /> Document compliance</h3>
           <p className="text-xs text-muted-foreground">Employee-specific required document status, expiry warnings, and active waivers.</p>
         </div>
-        {canManage ? <Button variant="outline" size="sm" onClick={() => void refresh()}><RefreshCw className="h-4 w-4" /> Refresh</Button> : null}
+        {canManage ? <ActionTextButton intent="refresh" size="sm" onClick={() => void refresh()}><RefreshCw className="h-4 w-4" /> Refresh</ActionTextButton> : null}
       </div>
       {error ? <div className="m-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {compliance ? (

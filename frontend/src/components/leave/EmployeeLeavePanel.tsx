@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ApiError, api } from "../../lib/api";
 import type { Employee } from "../../types/employees";
 import type { LeaveBalance, LeaveDay, LeaveRequest, LeaveType } from "../../types/leave";
+import { ActionTextButton } from "../ui/action-button";
 import { Badge } from "../ui/badge";
 import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
@@ -72,7 +73,7 @@ export function EmployeeLeavePanel({ token, employee, permissions }: { token: st
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div><h3 className="text-sm font-semibold">Leave profile</h3><p className="text-xs text-muted-foreground">Balances, request history, approval timeline, documents, and payroll impact foundation.</p></div>
-        {canCreate ? <Button size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New leave</Button> : null}
+        {canCreate ? <ActionTextButton intent="create" size="sm" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> New leave</ActionTextButton> : null}
       </div>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       <div className="overflow-x-auto rounded-md border">
@@ -101,7 +102,7 @@ export function EmployeeLeavePanel({ token, employee, permissions }: { token: st
             <Input className="mt-3" placeholder="Cancellation reason" value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} />
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" onClick={() => { setCancelTarget(null); setCancelReason(""); }}>Close</Button>
-              <Button disabled={!cancelReason.trim()} onClick={() => void cancel(cancelTarget, cancelReason.trim())}>Cancel leave</Button>
+              <ActionTextButton intent="cancel-record" disabled={!cancelReason.trim()} onClick={() => void cancel(cancelTarget, cancelReason.trim())}>Cancel leave</ActionTextButton>
             </div>
           </div>
         </div>

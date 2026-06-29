@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { ActionTextButton } from "../ui/action-button";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Panel } from "../ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -61,7 +61,7 @@ export function EmployeeFinalSettlementPanel({ employee }: { employee: Employee 
             <h2 className="text-sm font-semibold">Final settlement</h2>
             <p className="text-sm text-muted-foreground">Exit payroll status, clearance, approval, payment, and integration warnings for this employee.</p>
           </div>
-          {canOpen ? <Link to="/payroll/exit-payroll"><Button size="sm" variant="outline">Open Exit Payroll</Button></Link> : null}
+          {canOpen ? <Link to="/payroll/exit-payroll"><ActionTextButton intent="open" size="sm">Open Exit Payroll</ActionTextButton></Link> : null}
         </div>
         {latest ? (
           <div className="mt-4 grid gap-3 md:grid-cols-4">
