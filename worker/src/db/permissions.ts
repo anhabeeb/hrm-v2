@@ -675,10 +675,10 @@ export const PERMISSIONS = [
   { id: "perm_admin_system_alerts_resolve", key: "admin.system_alerts.resolve", module: "admin", description: "Resolve admin system alerts", critical: true },
   { id: "perm_admin_system_alerts_dismiss", key: "admin.system_alerts.dismiss", module: "admin", description: "Dismiss admin system alerts", critical: true },
   { id: "perm_admin_system_alerts_manage", key: "admin.system_alerts.manage", module: "admin", description: "Manage admin system alerts", critical: true },
-  { id: "perm_search_global_use", key: "search.global.use", module: "search", description: "Use global HRM search across permitted records", critical: false },
+  { id: "perm_search_global_use", key: "search.global.use", module: "search", description: "Use global OmniCore - HR search across permitted records", critical: false },
   { id: "perm_search_global_admin", key: "search.global.admin", module: "search", description: "Use admin-level global search helpers", critical: true },
-  { id: "perm_notifications_view", key: "notifications.view", module: "notifications", description: "View own HRM notification center", critical: false },
-  { id: "perm_notifications_manage", key: "notifications.manage", module: "notifications", description: "Manage HRM notification records", critical: true },
+  { id: "perm_notifications_view", key: "notifications.view", module: "notifications", description: "View own OmniCore - HR notification center", critical: false },
+  { id: "perm_notifications_manage", key: "notifications.manage", module: "notifications", description: "Manage OmniCore - HR notification records", critical: true },
   { id: "perm_notifications_preferences_view", key: "notifications.preferences.view", module: "notifications", description: "View notification preferences", critical: false },
   { id: "perm_notifications_preferences_update", key: "notifications.preferences.update", module: "notifications", description: "Update notification preferences", critical: false },
   { id: "perm_notifications_admin_view", key: "notifications.admin.view", module: "notifications", description: "View scoped administrative notifications", critical: true },
@@ -689,11 +689,11 @@ export const PERMISSIONS = [
   { id: "perm_data_import_validate", key: "data_import.validate", module: "data_import", description: "Validate data import batches", critical: true },
   { id: "perm_data_import_apply", key: "data_import.apply", module: "data_import", description: "Apply validated data import batches", critical: true },
   { id: "perm_data_import_cancel", key: "data_import.cancel", module: "data_import", description: "Cancel data import batches", critical: true },
-  { id: "perm_data_import_sensitive", key: "data_import.sensitive", module: "data_import", description: "Import sensitive HRM data when explicitly permitted", critical: true },
+  { id: "perm_data_import_sensitive", key: "data_import.sensitive", module: "data_import", description: "Import sensitive HR data when explicitly permitted", critical: true },
   { id: "perm_data_import_manage", key: "data_import.manage", module: "data_import", description: "Manage data import settings and batches", critical: true },
   { id: "perm_data_export_view", key: "data_export.view", module: "data_export", description: "View the central data export center", critical: true },
   { id: "perm_data_export_run", key: "data_export.run", module: "data_export", description: "Run controlled data exports", critical: true },
-  { id: "perm_data_export_sensitive", key: "data_export.sensitive", module: "data_export", description: "Export sensitive HRM data when explicitly permitted", critical: true },
+  { id: "perm_data_export_sensitive", key: "data_export.sensitive", module: "data_export", description: "Export sensitive HR data when explicitly permitted", critical: true },
   { id: "perm_data_export_manage", key: "data_export.manage", module: "data_export", description: "Manage central data exports", critical: true },
   { id: "perm_data_transfer_settings_view", key: "data_transfer.settings.view", module: "data_transfer", description: "View import/export control settings", critical: true },
   { id: "perm_data_transfer_settings_update", key: "data_transfer.settings.update", module: "data_transfer", description: "Update import/export control settings", critical: true },
@@ -739,7 +739,7 @@ export async function ensureOwnerRole(db: Env["DB"]) {
         `INSERT INTO roles (id, name, description, is_system_role, is_protected, is_active)
          VALUES (?, ?, ?, 1, 1, 1)`
       )
-      .bind(roleId, OWNER_ROLE_NAME, "Protected system role with full HRM access.")
+      .bind(roleId, OWNER_ROLE_NAME, "Protected system role with full OmniCore - HR access.")
       .run();
   } else {
     await db

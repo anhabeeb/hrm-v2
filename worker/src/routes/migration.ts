@@ -58,7 +58,7 @@ migrationRoutes.post("/validate-csv-placeholder", requirePermission("settings.ma
     imported_rows: 0,
     warnings: [
       "This endpoint is a production-readiness placeholder.",
-      "No old HRM data was imported or modified.",
+      "No legacy HR data was imported or modified.",
       "Backups and CSV mapping review are required before a future import."
     ]
   });

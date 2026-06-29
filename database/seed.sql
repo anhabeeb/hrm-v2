@@ -20,8 +20,8 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_access_scopes_apply', 'access_scopes.apply', 'access_scopes', 'Apply data access scopes to users or access templates', 1),
   ('perm_settings_view', 'settings.view', 'settings', 'View system settings', 1),
   ('perm_settings_manage', 'settings.manage', 'settings', 'Manage system settings', 1),
-  ('perm_admin_help_view', 'admin.help.view', 'admin', 'View Super Admin HRM configuration guide', 1),
-  ('perm_admin_help_manage', 'admin.help.manage', 'admin', 'Manage Super Admin HRM guide content', 1),
+  ('perm_admin_help_view', 'admin.help.view', 'admin', 'View Super Admin OmniCore - HR configuration guide', 1),
+  ('perm_admin_help_manage', 'admin.help.manage', 'admin', 'Manage Super Admin OmniCore - HR guide content', 1),
   ('perm_organization_view', 'organization.view', 'organization', 'View organization master data', 0),
   ('perm_organization_manage', 'organization.manage', 'organization', 'Manage organization master data', 0),
   ('perm_employees_view', 'employees.view', 'employees', 'View employee records', 0),
@@ -770,7 +770,7 @@ SET expiring_soon_days = 180,
     creates_payroll_warning = 1,
     creates_final_settlement_warning = 1,
     blocks_employee_activation = 1,
-    renewal_instructions = 'Track passport renewal before expiry; government submission integration is not implemented in HRM v2.',
+    renewal_instructions = 'Track passport renewal before expiry; government submission integration is not implemented in OmniCore - HR.',
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE code = 'PASSPORT';
 
@@ -782,7 +782,7 @@ SET expiring_soon_days = 90,
     creates_payroll_warning = 1,
     creates_final_settlement_warning = 1,
     blocks_employee_activation = 1,
-    renewal_instructions = 'Track visa renewal before expiry; authority integration is not implemented in HRM v2.',
+    renewal_instructions = 'Track visa renewal before expiry; authority integration is not implemented in OmniCore - HR.',
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE code = 'VISA';
 
@@ -794,7 +794,7 @@ SET expiring_soon_days = 60,
     creates_payroll_warning = 1,
     creates_final_settlement_warning = 1,
     blocks_employee_activation = 1,
-    renewal_instructions = 'Track work permit renewal before expiry; authority integration is not implemented in HRM v2.',
+    renewal_instructions = 'Track work permit renewal before expiry; authority integration is not implemented in OmniCore - HR.',
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE code = 'WORK_PERMIT';
 
@@ -1726,11 +1726,11 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_data_import_validate', 'data_import.validate', 'data_import', 'Validate data import batches', 1),
   ('perm_data_import_apply', 'data_import.apply', 'data_import', 'Apply validated data import batches', 1),
   ('perm_data_import_cancel', 'data_import.cancel', 'data_import', 'Cancel data import batches', 1),
-  ('perm_data_import_sensitive', 'data_import.sensitive', 'data_import', 'Import sensitive HRM data when explicitly permitted', 1),
+  ('perm_data_import_sensitive', 'data_import.sensitive', 'data_import', 'Import sensitive HR data when explicitly permitted', 1),
   ('perm_data_import_manage', 'data_import.manage', 'data_import', 'Manage data import settings and batches', 1),
   ('perm_data_export_view', 'data_export.view', 'data_export', 'View the central data export center', 1),
   ('perm_data_export_run', 'data_export.run', 'data_export', 'Run controlled data exports', 1),
-  ('perm_data_export_sensitive', 'data_export.sensitive', 'data_export', 'Export sensitive HRM data when explicitly permitted', 1),
+  ('perm_data_export_sensitive', 'data_export.sensitive', 'data_export', 'Export sensitive HR data when explicitly permitted', 1),
   ('perm_data_export_manage', 'data_export.manage', 'data_export', 'Manage central data exports', 1),
   ('perm_data_transfer_settings_view', 'data_transfer.settings.view', 'data_transfer', 'View import/export control settings', 1),
   ('perm_data_transfer_settings_update', 'data_transfer.settings.update', 'data_transfer', 'Update import/export control settings', 1),
@@ -1764,10 +1764,10 @@ INSERT OR IGNORE INTO module_control_settings (
   ('module_data_transfer', 'data_transfer', 'Data Import / Export', 1, 0, '["reports_exports","audit_security"]', '{"summary":"Controlled CSV import/export, backup readiness, QA, and deployment readiness guidance."}', 'ACTIVE', '{"seeded_prompt":"22"}');
 
 INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VALUES
-  ('perm_search_global_use', 'search.global.use', 'search', 'Use global HRM search across permitted records', 0),
+  ('perm_search_global_use', 'search.global.use', 'search', 'Use global OmniCore - HR search across permitted records', 0),
   ('perm_search_global_admin', 'search.global.admin', 'search', 'Use admin-level global search helpers', 1),
-  ('perm_notifications_view', 'notifications.view', 'notifications', 'View own HRM notification center', 0),
-  ('perm_notifications_manage', 'notifications.manage', 'notifications', 'Manage HRM notification records', 1),
+  ('perm_notifications_view', 'notifications.view', 'notifications', 'View own OmniCore - HR notification center', 0),
+  ('perm_notifications_manage', 'notifications.manage', 'notifications', 'Manage OmniCore - HR notification records', 1),
   ('perm_notifications_preferences_view', 'notifications.preferences.view', 'notifications', 'View notification preferences', 0),
   ('perm_notifications_preferences_update', 'notifications.preferences.update', 'notifications', 'Update notification preferences', 0),
   ('perm_notifications_admin_view', 'notifications.admin.view', 'notifications', 'View scoped administrative notifications', 1);

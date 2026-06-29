@@ -98,6 +98,15 @@ has("frontend/src/components/loading/AppLoader.tsx", "APP_BRANDING.appName", "Ap
 has("frontend/src/components/loading/PageLoader.tsx", "APP_BRANDING.appName", "PageLoader copy must use branding config.");
 hasNo("frontend/src/components/loading/AppLoader.tsx", "HRM v2", "AppLoader must not show legacy product name.");
 
+has("frontend/src/components/global/GlobalSearch.tsx", "APP_BRANDING.appName", "Global Search empty-state copy must use branding config.");
+hasNo("frontend/src/components/global/GlobalSearch.tsx", /search\s+HRM/i, "Global Search must not show legacy search HRM wording.");
+has("frontend/src/pages/ImportMigrationPage.tsx", "legacy HR data", "Import/Migration page must describe old sources as legacy HR data.");
+hasNo("frontend/src/pages/ImportMigrationPage.tsx", /old\s+HRM/i, "Import/Migration page must not refer to the new product as old HRM.");
+hasNo("worker/src/routes/migration.ts", /No\s+old\s+HRM\s+data/i, "Migration API warning must use legacy HR data wording.");
+hasNo("worker/src/db/permissions.ts", /\bHRM\s+(?:search|notification|data|access|guide)\b/i, "Permission descriptions must not use HRM as the product brand.");
+hasNo("database/seed.sql", /\bHRM\s+(?:configuration guide|guide content|search|notification|data)\b/i, "Seeded user-facing permission descriptions must not use HRM as the product brand.");
+hasNo("database/seed.sql", /\bnot implemented in HRM v2\b/i, "Seeded document instructions must use OmniCore - HR or phase wording instead of HRM v2.");
+
 has("frontend/src/pages/DashboardPage.tsx", "OmniCore Command Center", "Command Center header must use OmniCore branding.");
 has("frontend/src/pages/DashboardPage.tsx", "APP_BRANDING.appName", "Command Center eyebrow must use branding config.");
 has("frontend/src/pages/AdminHelpGuidePage.tsx", "APP_BRANDING.appName", "Admin help page must use branding config.");
@@ -114,18 +123,22 @@ has("worker/src/routes/data-transfer.ts", "REPORT_FILE_PREFIX", "Data transfer f
 has("worker/src/routes/reports.ts", 'REPORT_FILE_PREFIX = "omnicore-hr"', "Report route filenames must use branded prefix.");
 has("worker/src/routes/payroll.ts", "Confidential OmniCore - HR payroll document", "payslip generated document note must use product branding.");
 
-const forbiddenVisiblePhrases = [
-  "HRM v2",
-  "HRM Command Center",
-  "HRM Guide",
-  "Search HRM",
-  "Loading HRM",
-  "Preparing HRM",
-  "Sign in to HRM",
-  "Use your HRM",
-  "HRM notifications",
-  "IndexedDB HRM",
-  "HRM reference data"
+const forbiddenVisibleProductPatterns = [
+  { label: "HRM v2", pattern: /\bHRM\s*v2\b/i },
+  { label: "HRM System", pattern: /\bHRM\s+System\b/i },
+  { label: "HR Management System", pattern: /\bHR\s+Management\s+System\b/i },
+  { label: "Human Resource Management System", pattern: /\bHuman\s+Resource\s+Management\s+System\b/i },
+  { label: "Start typing to search HRM", pattern: /Start\s+typing\s+to\s+search\s+HRM\b/i },
+  { label: "search HRM", pattern: /\bsearch\s+HRM\b/i },
+  { label: "Sign in to HRM", pattern: /\bSign\s+in\s+to\s+HRM\b/i },
+  { label: "Loading HRM", pattern: /\bLoading\s+HRM\b/i },
+  { label: "Preparing HRM", pattern: /\bPreparing\s+HRM\b/i },
+  { label: "HRM Guide", pattern: /\bHRM\s+Guide\b/i },
+  { label: "HRM Command Center", pattern: /\bHRM\s+Command\s+Center\b/i },
+  { label: "Use your HRM", pattern: /\bUse\s+your\s+HRM\b/i },
+  { label: "HRM notifications", pattern: /\bHRM\s+notifications\b/i },
+  { label: "IndexedDB HRM", pattern: /\bIndexedDB\s+HRM\b/i },
+  { label: "HRM reference data", pattern: /\bHRM\s+reference\s+data\b/i }
 ];
 
 const frontendFiles = collectFiles("frontend/src")
@@ -134,8 +147,8 @@ const frontendFiles = collectFiles("frontend/src")
 
 for (const file of frontendFiles) {
   const text = read(file);
-  for (const phrase of forbiddenVisiblePhrases) {
-    if (text.includes(phrase)) failures.push(`${file}: forbidden visible legacy product label "${phrase}" found.`);
+  for (const { label, pattern } of forbiddenVisibleProductPatterns) {
+    if (pattern.test(text)) failures.push(`${file}: forbidden visible legacy product label "${label}" found.`);
   }
   if (/\b(?:window\.)?(?:alert|confirm|prompt)\s*\(/.test(text)) failures.push(`${file}: browser alert/confirm/prompt is not allowed.`);
   if (/\bdark:|darkMode\b/.test(text)) failures.push(`${file}: dark mode marker is not allowed.`);

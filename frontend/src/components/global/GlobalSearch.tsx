@@ -221,7 +221,7 @@ export function GlobalSearch() {
                 </div>
               ) : (
                 <div className="rounded-md border bg-slate-50 px-4 py-6 text-center">
-                  <p className="text-sm font-medium text-slate-900">{query.trim() ? "No matching records" : "Start typing to search HRM"}</p>
+                  <p className="text-sm font-medium text-slate-900">{query.trim() ? "No matching records" : `Start typing to search ${APP_BRANDING.appName}`}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {query.trim() ? "Only records you are allowed to access will appear here." : "Search employees, payroll, documents, approvals, settings, and more."}
                   </p>

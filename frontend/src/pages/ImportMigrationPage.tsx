@@ -76,7 +76,7 @@ export function ImportMigrationPage() {
           <div>
             <h2 className="text-sm font-semibold">Migration safety warning</h2>
             <p className="mt-1 text-sm">{status?.warning ?? `${APP_BRANDING.appName} import/migration should be performed only after core setup is complete and backups are available.`}</p>
-            <p className="mt-1 text-xs">No automatic migration or old HRM import is enabled in this phase.</p>
+            <p className="mt-1 text-xs">No automatic legacy HR data import is enabled in this phase.</p>
           </div>
         </div>
       </Panel>
