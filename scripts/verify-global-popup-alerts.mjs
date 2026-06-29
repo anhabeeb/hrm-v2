@@ -93,6 +93,8 @@ hasAll("frontend/src/components/alerts/AlertViewport.tsx", [
 hasAll("frontend/src/components/alerts/PopupAlertCard.tsx", [
   "role={isAssertive ? \"alert\" : \"status\"}",
   "aria-live",
+  "session-expired",
+  "alert.action.variant",
   "success",
   "error",
   "warning",
@@ -103,6 +105,8 @@ hasAll("frontend/src/components/alerts/PopupAlertCard.tsx", [
   "module-disabled",
   "session-expired"
 ], "global popup card supports required alert types and accessible live regions");
+check(!read("frontend/src/components/alerts/PopupAlertCard.tsx").includes("\"session\"].includes(alert.type)"), "session-expired alerts are assertive instead of checking legacy session type");
+check(read("frontend/src/components/alerts/PopupAlertCard.tsx").includes("variant={alert.action.variant ?? \"outline\"}"), "popup alert action button respects action.variant with neutral fallback");
 
 hasAll("frontend/src/lib/alert-utils.ts", [
   "sanitizeAlertMessage",
@@ -147,7 +151,23 @@ const workflowCoverage = [
   ["frontend/src/components/assets/EmployeeAssetsPanel.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "asset assignment workflow uses global alerts"],
   ["frontend/src/pages/AssetUniformAdvancedPages.tsx", ["useAlert", "showSuccess", "showApiError"], "asset/uniform settings use global alerts"],
   ["frontend/src/components/payroll/EmployeePayrollPanel.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "employee payroll workflow uses global alerts"],
-  ["frontend/src/components/payroll/EmployeePayrollFoundationPanels.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "payroll foundation workflow uses global alerts"]
+  ["frontend/src/components/payroll/EmployeePayrollFoundationPanels.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "payroll foundation workflow uses global alerts"],
+  ["frontend/src/components/import/ImportWizard.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "import wizard download/upload/validate/apply actions use global alerts"],
+  ["frontend/src/pages/DataTransferPage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "data transfer import/export/admin actions use global alerts"],
+  ["frontend/src/pages/ApprovalsPage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "central approval workflow actions use global alerts"],
+  ["frontend/src/pages/ContractsPage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "contract workflow actions use global alerts"],
+  ["frontend/src/pages/FinalSettlementPage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "exit payroll/final settlement workflow actions use global alerts"],
+  ["frontend/src/pages/DocumentCompliancePage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "document compliance workflow actions use global alerts"],
+  ["frontend/src/pages/AttendanceRecordsPage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "attendance record recalculation/import actions use global alerts"],
+  ["frontend/src/pages/AttendanceCorrectionsPage.tsx", ["useAlert", "showSuccess", "showApiError"], "attendance correction review actions use global alerts"],
+  ["frontend/src/pages/AttendanceDevicesPage.tsx", ["useAlert", "showSuccess", "showInfo", "showApiError"], "attendance device registry actions use global alerts"],
+  ["frontend/src/pages/AttendanceDeviceOperationsPage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "attendance device operation actions use global alerts"],
+  ["frontend/src/pages/PayrollRunsPage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "payroll run actions use global alerts"],
+  ["frontend/src/pages/PayrollRunDetailPage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "payroll run detail actions use global alerts"],
+  ["frontend/src/pages/PayrollAdminPages.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "payroll admin save/action/export workflows use global alerts"],
+  ["frontend/src/pages/ReportsPage.tsx", ["useAlert", "showSuccess", "showApiError"], "report export workflow uses global alerts"],
+  ["frontend/src/pages/KycRequestsPage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "KYC review workflow uses global alerts"],
+  ["frontend/src/pages/MissingDocumentsPage.tsx", ["useAlert", "showSuccess", "showValidationError", "showApiError"], "missing document upload workflow uses global alerts"]
 ];
 for (const [file, markers, message] of workflowCoverage) hasAll(file, markers, message);
 

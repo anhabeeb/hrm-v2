@@ -12,6 +12,7 @@ import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell"
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import type { DocumentType, MissingDocument } from "../types/documents";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
@@ -140,10 +141,13 @@ function MissingUploadModal({ token, row, type, onClose, onSaved }: { token: str
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const alerts = useAlert();
 
   async function submit() {
     if (!file) {
-      setError("Choose a file to upload.");
+      const message = "Choose a file to upload.";
+      setError(message);
+      alerts.showValidationError(message, "File required");
       return;
     }
     const form = new FormData();
@@ -157,10 +161,13 @@ function MissingUploadModal({ token, row, type, onClose, onSaved }: { token: str
     setError(null);
     try {
       await api.uploadEmployeeDocument(token, row.employee_id, form);
+      alerts.showSuccess("Document uploaded", "Missing required document was uploaded.");
       await onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to upload document.");
+      const message = err instanceof ApiError ? err.message : "Unable to upload document.";
+      setError(message);
+      alerts.showApiError(err, "Unable to upload document.");
     } finally {
       setSaving(false);
     }

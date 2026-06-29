@@ -15,6 +15,7 @@ import { SubNavigationBar, SubNavigationItem } from "../components/ui/navigation
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateRequiredField, type ValidationIssue } from "../lib/form-validation";
 import type { DocumentComplianceDashboard, DocumentComplianceSettings, DocumentExpiryAlert, DocumentRenewalCase, DocumentRequirementWaiver, DocumentType } from "../types/documents";
@@ -54,6 +55,7 @@ function asText(value: unknown) {
 
 export function DocumentCompliancePage({ mode = "dashboard" }: { mode?: Mode }) {
   const { token, user } = useAuth();
+  const alertsApi = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("documents.compliance.view") || permissions.has("documents.view") || permissions.has("reports.documents.view");
   const canManage = permissions.has("documents.compliance.manage") || permissions.has("documents.alerts.manage") || permissions.has("documents.renewal_cases.manage");
@@ -139,22 +141,39 @@ export function DocumentCompliancePage({ mode = "dashboard" }: { mode?: Mode }) 
     if (!token) return;
     try {
       await api.refreshDocumentCompliance(token);
+      alertsApi.showSuccess("Document compliance refreshed", "Document compliance snapshots, alerts, and renewal cases were refreshed.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to refresh compliance.");
+      const message = err instanceof ApiError ? err.message : "Unable to refresh compliance.";
+      setError(message);
+      alertsApi.showApiError(err, "Unable to refresh compliance.");
     }
   }
 
   async function alertAction(alert: DocumentExpiryAlert, action: "acknowledge" | "resolve" | "dismiss", reason = "") {
     if (!token) return;
-    await api.documentAlertAction(token, alert.id, action, reason);
-    await load();
+    try {
+      await api.documentAlertAction(token, alert.id, action, reason);
+      alertsApi.showSuccess("Document alert updated", `Alert ${action.replace("-", " ")} completed.`);
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to update document alert.";
+      setError(message);
+      alertsApi.showApiError(err, "Unable to update document alert.");
+    }
   }
 
   async function caseAction(row: DocumentRenewalCase, action: "mark-in-progress" | "mark-waiting" | "complete" | "cancel", reason = "") {
     if (!token) return;
-    await api.documentRenewalCaseAction(token, row.id, action, { reason, note: reason });
-    await load();
+    try {
+      await api.documentRenewalCaseAction(token, row.id, action, { reason, note: reason });
+      alertsApi.showSuccess("Renewal case updated", `Renewal case ${action.replace("mark-", "").replace("-", " ")} completed.`);
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to update renewal case.";
+      setError(message);
+      alertsApi.showApiError(err, "Unable to update renewal case.");
+    }
   }
 
   if (!canView) return <PageShell><Panel><EmptyState title="Document compliance unavailable" description="Your account needs document compliance permission." /></Panel></PageShell>;
@@ -208,7 +227,7 @@ export function DocumentCompliancePage({ mode = "dashboard" }: { mode?: Mode }) 
         {["missing", "expiring", "expired"].includes(mode) ? <GenericRows rows={rows} loading={loading} /> : null}
         {mode === "alerts" ? <Alerts rows={alerts} loading={loading} canManage={canManage} onAction={(alert, action) => action === "acknowledge" ? void alertAction(alert, action) : setReasonAction({ title: `${action} alert`, reason: "", required: action !== "dismiss", onConfirm: (reason) => alertAction(alert, action, reason) })} /> : null}
         {mode === "renewal-cases" ? <RenewalCases rows={cases} loading={loading} canManage={canManage} onAction={(row, action) => action === "cancel" ? setReasonAction({ title: "Cancel renewal case", reason: "", required: true, onConfirm: (reason) => caseAction(row, action, reason) }) : void caseAction(row, action)} /> : null}
-        {mode === "waivers" ? <Waivers rows={waivers} loading={loading} canManage={canManage} onCancel={(row) => setReasonAction({ title: "Cancel waiver", reason: "", required: true, onConfirm: async (reason) => { if (token) await api.cancelDocumentRequirementWaiver(token, row.id, reason); await load(); } })} /> : null}
+        {mode === "waivers" ? <Waivers rows={waivers} loading={loading} canManage={canManage} onCancel={(row) => setReasonAction({ title: "Cancel waiver", reason: "", required: true, onConfirm: async (reason) => { if (token) await api.cancelDocumentRequirementWaiver(token, row.id, reason); alertsApi.showSuccess("Waiver cancelled", "Document requirement waiver was cancelled."); await load(); } })} /> : null}
         {mode === "settings" && settings ? <SettingsForm settings={settings} token={token!} canManage={canManage} onSaved={load} onError={setError} /> : null}
         {mode === "type-settings" ? <TypeCompliance types={types} loading={loading} canManage={canManage || permissions.has("documents.types.compliance.update")} onEdit={setTypeModal} /> : null}
       </Panel>
@@ -255,13 +274,16 @@ function Waivers({ rows, loading, canManage, onCancel }: { rows: DocumentRequire
 
 function SettingsForm({ settings, token, canManage, onSaved, onError }: { settings: DocumentComplianceSettings; token: string; canManage: boolean; onSaved: () => Promise<void>; onError: (value: string | null) => void }) {
   const [form, setForm] = useState(settings);
+  const alerts = useAlert();
   const update = (key: keyof DocumentComplianceSettings, value: string | number | boolean) => setForm((current) => ({ ...current, [key]: value }));
   async function save(next = form) {
     try {
       await api.updateDocumentComplianceSettings(token, next);
+      alerts.showSuccess("Compliance settings saved", "Document compliance settings were updated.");
       await onSaved();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Unable to save compliance settings.");
+      alerts.showApiError(err, "Unable to save compliance settings.");
     }
   }
   const enabled = Boolean(form.document_compliance_enabled);
@@ -292,6 +314,7 @@ function TypeComplianceModal({ token, type, onClose, onSaved }: { token: string;
   const [form, setForm] = useState<Partial<DocumentType>>(type);
   const [error, setError] = useState<string | null>(null);
   const validation = useFormValidation();
+  const alerts = useAlert();
   const update = (key: keyof DocumentType, value: string | number | boolean | null) => setForm((current) => ({ ...current, [key]: value }));
   async function save() {
     const issues: ValidationIssue[] = [
@@ -300,11 +323,13 @@ function TypeComplianceModal({ token, type, onClose, onSaved }: { token: string;
     ];
     validation.setIssues(issues);
     if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Fix document compliance settings");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
     try {
       await api.updateDocumentTypeCompliance(token, type.id, form);
+      alerts.showSuccess("Type compliance saved", "Document type compliance settings were updated.");
       await onSaved();
       onClose();
     } catch (err) {
@@ -314,6 +339,8 @@ function TypeComplianceModal({ token, type, onClose, onSaved }: { token: string;
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
       }
       setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save type compliance settings."));
+      if (issuesFromApi.length) alerts.showValidationError(issuesFromApi, "Unable to save type compliance settings.");
+      else alerts.showApiError(err, "Unable to save type compliance settings.");
     }
   }
   return (
@@ -368,10 +395,12 @@ function ReasonModal({ action, onClose }: { action: { title: string; reason: str
   const [reason, setReason] = useState(action.reason);
   const [error, setError] = useState<string | null>(null);
   const validation = useFormValidation();
+  const alerts = useAlert();
   async function submitReason() {
     const issues = action.required ? validateRequiredField(reason, "reason", "Reason") : [];
     validation.setIssues(issues);
     if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Reason required");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -385,6 +414,8 @@ function ReasonModal({ action, onClose }: { action: { title: string; reason: str
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
       }
       setError(issuesFromApi[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to complete action."));
+      if (issuesFromApi.length) alerts.showValidationError(issuesFromApi, "Unable to complete action.");
+      else alerts.showApiError(err, "Unable to complete action.");
     }
   }
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">{action.title}</h2><div className="mt-3"><FormErrorSummary issues={validation.issues} /><ValidatedReasonField required={action.required} value={reason} issues={validation.issues} placeholder="Reason or note" onChange={setReason} /></div>{error ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void submitReason()}>Confirm</Button></div></div></div>;

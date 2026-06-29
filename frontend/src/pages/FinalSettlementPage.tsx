@@ -17,6 +17,7 @@ import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateDateField, validateDateRange, validateRequiredField, type ValidationIssue } from "../lib/form-validation";
@@ -76,6 +77,7 @@ function Dialog({ title, children, footer }: { title: string; children: React.Re
 
 export function FinalSettlementPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("final_settlement.view") || permissions.has("final_settlement.cases.view") || permissions.has("final_settlement.manage");
   const canCreate = permissions.has("final_settlement.cases.create") || permissions.has("final_settlement.cases.manage") || permissions.has("final_settlement.manage");
@@ -196,17 +198,23 @@ export function FinalSettlementPage() {
   async function createCase() {
     if (!token) return;
     if (!form.employee_id || !form.exit_date || !form.last_working_day || !form.reason.trim()) {
-      setError("Employee, exit date, last working day, and reason are required.");
+      const message = "Employee, exit date, last working day, and reason are required.";
+      setError(message);
+      alerts.showValidationError(message, "Required fields missing");
       return;
     }
     try {
       await api.createFinalSettlementCase(token, form);
       setCreateOpen(false);
       setForm({ employee_id: "", exit_type: "RESIGNED", exit_date: "", last_working_day: "", reason: "" });
+      alerts.showSuccess("Exit payroll case created", "Final settlement case was created.");
       await load();
     } catch (err) {
       const issues = normalizeValidationIssues(err);
-      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to create settlement case."));
+      const message = issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to create settlement case.");
+      setError(message);
+      if (issues.length) alerts.showValidationError(issues, "Unable to create settlement case.");
+      else alerts.showApiError(err, "Unable to create settlement case.");
     }
   }
 
@@ -218,32 +226,36 @@ export function FinalSettlementPage() {
       if (type === "submit") await api.submitFinalSettlementForApproval(token, id, note.trim() || null);
       if (type === "approve") await api.approveFinalSettlement(token, id, note.trim() || null);
       if (type === "reject") {
-        if (!reason.trim()) return setError("Rejection reason is required.");
+        if (!reason.trim()) { const message = "Rejection reason is required."; setError(message); alerts.showValidationError(message, "Reason required"); return; }
         await api.rejectFinalSettlement(token, id, reason.trim());
       }
       if (type === "send-back") {
-        if (!reason.trim()) return setError("Send-back reason is required.");
+        if (!reason.trim()) { const message = "Send-back reason is required."; setError(message); alerts.showValidationError(message, "Reason required"); return; }
         await api.sendBackFinalSettlement(token, id, reason.trim());
       }
       if (type === "finalize") await api.finalizeFinalSettlement(token, id, note.trim() || null);
       if (type === "unlock") {
-        if (!reason.trim()) return setError("Unlock reason is required.");
+        if (!reason.trim()) { const message = "Unlock reason is required."; setError(message); alerts.showValidationError(message, "Reason required"); return; }
         await api.unlockFinalSettlement(token, id, reason.trim());
       }
       if (type === "cancel") {
-        if (!reason.trim()) return setError("Cancellation reason is required.");
+        if (!reason.trim()) { const message = "Cancellation reason is required."; setError(message); alerts.showValidationError(message, "Reason required"); return; }
         await api.cancelFinalSettlementCase(token, id, reason.trim());
       }
       if (type === "adjustment") {
-        if (!reason.trim() || Number(amount) <= 0) return setError("Manual adjustment amount and reason are required.");
+        if (!reason.trim() || Number(amount) <= 0) { const message = "Manual adjustment amount and reason are required."; setError(message); alerts.showValidationError(message, "Adjustment details required"); return; }
         await api.createFinalSettlementManualAdjustment(token, id, { adjustment_type: adjustmentType, amount: Number(amount), reason: reason.trim() });
       }
       if (type === "payment") await api.prepareFinalSettlementPaymentRegister(token, id);
       setCaseAction(null); setReason(""); setNote(""); setAmount("");
+      alerts.showSuccess("Exit payroll updated", "Final settlement action completed.");
       await load();
     } catch (err) {
       const issues = normalizeValidationIssues(err);
-      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Settlement action could not be completed."));
+      const message = issues[0]?.message ?? (err instanceof ApiError ? err.message : "Settlement action could not be completed.");
+      setError(message);
+      if (issues.length) alerts.showValidationError(issues, "Settlement action could not be completed.");
+      else alerts.showApiError(err, "Settlement action could not be completed.");
     }
   }
 
@@ -251,9 +263,12 @@ export function FinalSettlementPage() {
     if (!token) return;
     try {
       await (recalculate ? api.recalculateFinalSettlementCase(token, row.id, "Recalculated from Exit Payroll page") : api.calculateFinalSettlementCase(token, row.id));
+      alerts.showSuccess(recalculate ? "Settlement recalculated" : "Settlement calculated", "Exit payroll calculation completed.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to calculate settlement.");
+      const message = err instanceof ApiError ? err.message : "Unable to calculate settlement.";
+      setError(message);
+      alerts.showApiError(err, "Unable to calculate settlement.");
     }
   }
 
@@ -262,31 +277,41 @@ export function FinalSettlementPage() {
     if (nextStatus === "WAIVED") {
       setCaseAction({ type: "unlock", row: selected });
       setReason("");
-      setError("Use the Waive action from the clearance row with a reason.");
+      const message = "Use the Waive action from the clearance row with a reason.";
+      setError(message);
+      alerts.showValidationError(message, "Waiver reason required");
       return;
     }
     try {
       await api.updateFinalSettlementClearance(token, selected.id, item.id, { status: nextStatus, reason: null });
+      alerts.showSuccess("Clearance updated", "Final settlement clearance item was updated.");
       await loadDetails(selected);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to update clearance.");
+      const message = err instanceof ApiError ? err.message : "Unable to update clearance.";
+      setError(message);
+      alerts.showApiError(err, "Unable to update clearance.");
     }
   }
 
   async function waiveClearance(item: FinalSettlementClearanceItem) {
     if (!token || !selected) return;
     if (!reason.trim()) {
-      setError("Waiver reason is required.");
+      const message = "Waiver reason is required.";
+      setError(message);
+      alerts.showValidationError(message, "Reason required");
       return;
     }
     try {
       await api.waiveFinalSettlementClearance(token, selected.id, item.id, reason.trim());
       setReason("");
+      alerts.showSuccess("Clearance waived", "Final settlement clearance item was waived.");
       await loadDetails(selected);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to waive clearance item.");
+      const message = err instanceof ApiError ? err.message : "Unable to waive clearance item.";
+      setError(message);
+      alerts.showApiError(err, "Unable to waive clearance item.");
     }
   }
 
@@ -294,17 +319,21 @@ export function FinalSettlementPage() {
     if (!token || !paymentAction) return;
     try {
       if (paymentAction.type === "confirm-paid") {
-        if (!reference.trim() || !note.trim()) return setError("Payment reference and note are required.");
+        if (!reference.trim() || !note.trim()) { const message = "Payment reference and note are required."; setError(message); alerts.showValidationError(message, "Payment details required"); return; }
         await api.confirmManualFinalSettlementPayment(token, paymentAction.row.id, { confirmation_reference: reference.trim(), confirmation_note: note.trim() });
       } else {
-        if (!reason.trim()) return setError("Cancellation reason is required.");
+        if (!reason.trim()) { const message = "Cancellation reason is required."; setError(message); alerts.showValidationError(message, "Reason required"); return; }
         await api.cancelFinalSettlementPayment(token, paymentAction.row.id, reason.trim());
       }
       setPaymentAction(null); setReason(""); setNote(""); setReference("");
+      alerts.showSuccess("Payment register updated", "Final settlement payment register action completed.");
       await load();
     } catch (err) {
       const issues = normalizeValidationIssues(err);
-      setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Payment register action could not be completed."));
+      const message = issues[0]?.message ?? (err instanceof ApiError ? err.message : "Payment register action could not be completed.");
+      setError(message);
+      if (issues.length) alerts.showValidationError(issues, "Payment register action could not be completed.");
+      else alerts.showApiError(err, "Payment register action could not be completed.");
     }
   }
 
@@ -312,9 +341,12 @@ export function FinalSettlementPage() {
     if (!token || !settingsData) return;
     try {
       await api.updateFinalSettlementSettings(token, nextSettings ?? settingsData);
+      alerts.showSuccess("Exit payroll settings saved", "Final settlement settings were updated.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save settlement settings.");
+      const message = err instanceof ApiError ? err.message : "Unable to save settlement settings.";
+      setError(message);
+      alerts.showApiError(err, "Unable to save settlement settings.");
     }
   }
 

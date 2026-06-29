@@ -27,6 +27,7 @@ import { OrganizationCascadeSelector } from "../components/organization/Organiza
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceLog, AttendanceRawLog, AttendanceRecord } from "../types/attendance";
 import type { Employee } from "../types/employees";
@@ -42,6 +43,7 @@ function statusTone(status: string) {
 
 export function AttendanceRecordsPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("attendance.view");
   const canManage = permissions.has("attendance.manage");
@@ -146,9 +148,12 @@ export function AttendanceRecordsPage() {
     if (!token) return;
     try {
       await api.recalculateAttendanceRecord(token, record.id);
+      alerts.showSuccess("Recalculation queued", "Attendance record recalculation was queued.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to queue recalculation.");
+      const message = err instanceof ApiError ? err.message : "Unable to queue recalculation.";
+      setError(message);
+      alerts.showApiError(err, "Unable to queue recalculation.");
     }
   }
 
@@ -158,9 +163,13 @@ export function AttendanceRecordsPage() {
       const logs = JSON.parse(rawJson) as Record<string, unknown>[];
       await api.importAttendanceRawLogs(token, { logs, source: "MANUAL_IMPORT" });
       setRawImportOpen(false);
+      alerts.showSuccess("Raw logs imported", "Attendance raw logs were imported.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Enter valid raw log JSON before importing.");
+      const message = err instanceof ApiError ? err.message : "Enter valid raw log JSON before importing.";
+      setError(message);
+      if (err instanceof SyntaxError) alerts.showValidationError(message, "Invalid raw log JSON");
+      else alerts.showApiError(err, "Unable to import raw logs.");
     }
   }
 

@@ -18,7 +18,7 @@ const typeConfig = {
 export function PopupAlertCard({ alert, onDismiss }: { alert: PopupAlert; onDismiss: (id: string) => void }) {
   const config = typeConfig[alert.type];
   const Icon = config.icon;
-  const isAssertive = ["error", "validation", "permission", "session"].includes(alert.type);
+  const isAssertive = ["error", "validation", "permission", "session-expired"].includes(alert.type);
 
   return (
     <div
@@ -37,7 +37,7 @@ export function PopupAlertCard({ alert, onDismiss }: { alert: PopupAlert; onDism
           <p className={cn("text-sm font-semibold", config.title)}>{alert.title}</p>
           {alert.message ? <p className="mt-1 break-words text-sm text-slate-700">{alert.message}</p> : null}
           {alert.action ? (
-            <Button size="sm" variant="outline" className="mt-3" onClick={alert.action.onClick}>
+            <Button size="sm" variant={alert.action.variant ?? "outline"} className="mt-3" onClick={alert.action.onClick}>
               {alert.action.label}
             </Button>
           ) : null}

@@ -21,6 +21,7 @@ import { ImportWizard } from "../components/import/ImportWizard";
 import { ActionTextButton } from "../components/ui/action-button";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import { downloadBlob } from "../lib/export-utils";
 import type { ImportTemplateDefinition } from "../lib/import-utils";
@@ -93,6 +94,7 @@ function RowTable({ data, columns, empty }: { data: Row[]; columns: string[]; em
 
 export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const [searchParams, setSearchParams] = useSearchParams();
   const [active, setActive] = useState<Mode>((searchParams.get("section") as Mode) || mode);
   const [loading, setLoading] = useState(false);
@@ -142,7 +144,9 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
     const mime = file.type.toLowerCase();
     const type = name.endsWith(".xlsx") || mime.includes("spreadsheetml.sheet") ? "xlsx" : name.endsWith(".csv") || mime === "text/csv" || mime === "text/plain" ? "csv" : null;
     if (!type) {
-      setError("Unsupported import file. Upload a CSV file or an Excel .xlsx template.");
+      const message = "Unsupported import file. Upload a CSV file or an Excel .xlsx template.";
+      setError(message);
+      alerts.showValidationError(message, "Unsupported file");
       return;
     }
     setImportFile(file);
@@ -230,13 +234,17 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
           return form;
         })())
         : await api.createDataImportBatch(token, { ...importForm, import_mode: importMode });
-      setMessage(selectedImportIsValidationOnly ? "Validation-only batch uploaded. Run validation preview; no records will be created or updated." : "Import batch uploaded. Run validation before apply.");
+      const successMessage = selectedImportIsValidationOnly ? "Validation-only batch uploaded. Run validation preview; no records will be created or updated." : "Import batch uploaded. Run validation before apply.";
+      setMessage(successMessage);
+      alerts.showSuccess("Import batch uploaded", successMessage);
       setImportFile(null);
       setImportFileType(null);
       await load();
       await openBatch(String(result.batch.id));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to create import batch.");
+      const message = err instanceof ApiError ? err.message : "Unable to create import batch.";
+      setError(message);
+      alerts.showApiError(err, "Unable to create import batch.");
     } finally {
       setLoading(false);
     }
@@ -247,10 +255,13 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
     try {
       await api.validateDataImportBatch(token, String(selectedBatch.id));
       setMessage("Validation completed.");
+      alerts.showSuccess("Validation completed", "Import rows were validated. Review row-level results before applying.");
       await openBatch(String(selectedBatch.id));
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to validate import batch.");
+      const message = err instanceof ApiError ? err.message : "Unable to validate import batch.";
+      setError(message);
+      alerts.showApiError(err, "Unable to validate import batch.");
     }
   }
 
@@ -260,10 +271,13 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
       await api.applyDataImportBatch(token, String(selectedBatch.id), { acknowledgement: applyAck, reason: importForm.reason });
       setApplyAck("");
       setMessage("Import apply finished. Review row-level results.");
+      alerts.showSuccess("Import applied", "Import apply finished. Review row-level results.");
       await openBatch(String(selectedBatch.id));
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to apply import batch.");
+      const message = err instanceof ApiError ? err.message : "Unable to apply import batch.";
+      setError(message);
+      alerts.showApiError(err, "Unable to apply import batch.");
     }
   }
 
@@ -272,10 +286,13 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
     try {
       await api.cancelDataImportBatch(token, String(selectedBatch.id), importForm.reason || "Cancelled from Data Import Center.");
       setMessage("Import batch cancelled.");
+      alerts.showSuccess("Import batch cancelled", "The selected import batch was cancelled.");
       await openBatch(String(selectedBatch.id));
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to cancel import batch.");
+      const message = err instanceof ApiError ? err.message : "Unable to cancel import batch.";
+      setError(message);
+      alerts.showApiError(err, "Unable to cancel import batch.");
     }
   }
 
@@ -284,8 +301,11 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
     try {
       const result = await api.downloadDataImportTemplate(token, importType, format);
       downloadBlob(result.blob, result.filename);
+      alerts.showSuccess("Template downloaded", `${format.toUpperCase()} import template downloaded.`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to download template.");
+      const message = err instanceof ApiError ? err.message : "Unable to download template.";
+      setError(message);
+      alerts.showApiError(err, "Unable to download template.");
     }
   }
 
@@ -294,8 +314,11 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
     try {
       const result = await api.downloadDataImportErrors(token, String(selectedBatch.id));
       downloadBlob(result.blob, result.filename);
+      alerts.showSuccess("Import errors downloaded", "Row-level import error file downloaded.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to download import errors.");
+      const message = err instanceof ApiError ? err.message : "Unable to download import errors.";
+      setError(message);
+      alerts.showApiError(err, "Unable to download import errors.");
     }
   }
 
@@ -306,46 +329,84 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
       downloadBlob(result.blob, result.filename);
       setLastExport({ file_name: result.filename, export_format: exportForm.format });
       setMessage(`${exportForm.format.toUpperCase()} export generated and audit logged.`);
+      alerts.showSuccess("Export generated", `${exportForm.format.toUpperCase()} export generated and audit logged.`);
       const history = await api.listDataExportHistory(token);
       setExportHistory(history.history);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to run export.");
+      const message = err instanceof ApiError ? err.message : "Unable to run export.";
+      setError(message);
+      alerts.showApiError(err, "Unable to run export.");
     }
   }
 
   async function recordBackup() {
     if (!token) return;
-    await api.recordBackupReadiness(token, { backup_type: "D1_DATABASE", status: "PLANNED", notes: "Manual backup record from Admin Data Transfer Center." });
-    setMessage("Backup readiness record created.");
-    await load();
+    try {
+      await api.recordBackupReadiness(token, { backup_type: "D1_DATABASE", status: "PLANNED", notes: "Manual backup record from Admin Data Transfer Center." });
+      setMessage("Backup readiness record created.");
+      alerts.showSuccess("Backup readiness recorded", "Backup readiness record created.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to record backup readiness.";
+      setError(message);
+      alerts.showApiError(err, "Unable to record backup readiness.");
+    }
   }
 
   async function seedQa() {
     if (!token) return;
-    await api.seedQaTestMatrix(token);
-    setMessage("QA defaults seeded.");
-    await load();
+    try {
+      await api.seedQaTestMatrix(token);
+      setMessage("QA defaults seeded.");
+      alerts.showSuccess("QA defaults seeded", "QA test defaults were seeded.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to seed QA defaults.";
+      setError(message);
+      alerts.showApiError(err, "Unable to seed QA defaults.");
+    }
   }
 
   async function recordSmoke() {
     if (!token) return;
-    await api.recordSmokeTestResult(token, { status: "WARNING", summary: { note: "Record created from Admin UI. Run npm run smoke:production-readiness from CLI." } });
-    setMessage("Smoke result placeholder recorded.");
-    await load();
+    try {
+      await api.recordSmokeTestResult(token, { status: "WARNING", summary: { note: "Record created from Admin UI. Run npm run smoke:production-readiness from CLI." } });
+      setMessage("Smoke result placeholder recorded.");
+      alerts.showSuccess("Smoke result recorded", "Smoke result placeholder recorded.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to record smoke result.";
+      setError(message);
+      alerts.showApiError(err, "Unable to record smoke result.");
+    }
   }
 
   async function recordDeployment() {
     if (!token) return;
-    await api.recordDeploymentReadiness(token, { environment_name: "production", deployment_status: "NOT_READY", d1_status: "CHECK_REQUIRED", r2_status: "CHECK_REQUIRED", schema_status: "CHECK_REQUIRED", seed_status: "CHECK_REQUIRED", production_readiness_status: "CHECK_REQUIRED", smoke_test_status: "CHECK_REQUIRED", known_blockers: [], last_deployment_note: "Manual deployment readiness record." });
-    setMessage("Deployment readiness record created.");
-    await load();
+    try {
+      await api.recordDeploymentReadiness(token, { environment_name: "production", deployment_status: "NOT_READY", d1_status: "CHECK_REQUIRED", r2_status: "CHECK_REQUIRED", schema_status: "CHECK_REQUIRED", seed_status: "CHECK_REQUIRED", production_readiness_status: "CHECK_REQUIRED", smoke_test_status: "CHECK_REQUIRED", known_blockers: [], last_deployment_note: "Manual deployment readiness record." });
+      setMessage("Deployment readiness record created.");
+      alerts.showSuccess("Deployment readiness recorded", "Deployment readiness record created.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to record deployment readiness.";
+      setError(message);
+      alerts.showApiError(err, "Unable to record deployment readiness.");
+    }
   }
 
   async function saveSettings() {
     if (!token) return;
-    const updated = await api.updateDataTransferSettings(token, settings);
-    setSettings(updated.settings);
-    setMessage("Data transfer settings saved.");
+    try {
+      const updated = await api.updateDataTransferSettings(token, settings);
+      setSettings(updated.settings);
+      setMessage("Data transfer settings saved.");
+      alerts.showSuccess("Settings saved", "Data transfer settings saved.");
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to save data transfer settings.";
+      setError(message);
+      alerts.showApiError(err, "Unable to save data transfer settings.");
+    }
   }
 
   if (!canView) {

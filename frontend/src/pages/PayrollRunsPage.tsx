@@ -19,6 +19,7 @@ import { DataTableShell } from "../components/ui/data-table-shell";
 import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import { downloadBlob } from "../lib/export-utils";
 import type { PayrollRun } from "../types/payroll";
@@ -37,6 +38,7 @@ function normalizeRunStatus(status: string) {
 
 export function PayrollRunsPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const [params, setParams] = useSearchParams();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("payroll.runs.view") || permissions.has("payroll.view");
@@ -74,7 +76,9 @@ export function PayrollRunsPage() {
   async function confirmRunAction() {
     if (!token || !action) return;
     if (action.name === "cancel" && !reason.trim()) {
-      setError("Cancellation reason is required.");
+      const message = "Cancellation reason is required.";
+      setError(message);
+      alerts.showValidationError(message, "Reason required");
       return;
     }
     try {
@@ -83,9 +87,12 @@ export function PayrollRunsPage() {
       if (action.name === "cancel") await api.cancelPayrollRun(token, action.run.id, reason.trim());
       setAction(null);
       setReason("");
+      alerts.showSuccess("Payroll run updated", `Payroll run ${action.name} completed.`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to update payroll run.");
+      const message = err instanceof ApiError ? err.message : "Unable to update payroll run.";
+      setError(message);
+      alerts.showApiError(err, "Unable to update payroll run.");
     }
   }
 
@@ -94,8 +101,11 @@ export function PayrollRunsPage() {
     try {
       const download = await api.exportPayrollRunCsv(token, run.id);
       downloadBlob(download.blob, download.filename || `payroll-run-${run.run_no}.csv`);
+      alerts.showSuccess("Payroll run exported", "Payroll run CSV was downloaded.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to export payroll run.");
+      const message = err instanceof ApiError ? err.message : "Unable to export payroll run.";
+      setError(message);
+      alerts.showApiError(err, "Unable to export payroll run.");
     }
   }
 

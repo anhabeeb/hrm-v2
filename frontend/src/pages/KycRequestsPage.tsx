@@ -10,12 +10,14 @@ import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { api } from "../lib/api";
 
 type Row = Record<string, unknown>;
 
 export function KycRequestsPage() {
   const { token } = useAuth();
+  const alerts = useAlert();
   const [requests, setRequests] = useState<Row[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -56,22 +58,38 @@ export function KycRequestsPage() {
 
   async function approve(row: Row) {
     if (!token) return;
-    await api.approveKycRequest(token, String(row.id), reviewNote);
-    setReviewAction(null);
-    setReviewNote("");
-    await load();
+    try {
+      await api.approveKycRequest(token, String(row.id), reviewNote);
+      setReviewAction(null);
+      setReviewNote("");
+      alerts.showSuccess("KYC request approved", "Employee profile update request was approved.");
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to approve KYC request.";
+      setError(message);
+      alerts.showApiError(err, "Unable to approve KYC request.");
+    }
   }
 
   async function reject(row: Row) {
     if (!token) return;
     if (!reviewNote.trim()) {
-      setError("Review note is required when rejecting a KYC request.");
+      const message = "Review note is required when rejecting a KYC request.";
+      setError(message);
+      alerts.showValidationError(message, "Review note required");
       return;
     }
-    await api.rejectKycRequest(token, String(row.id), reviewNote.trim());
-    setReviewAction(null);
-    setReviewNote("");
-    await load();
+    try {
+      await api.rejectKycRequest(token, String(row.id), reviewNote.trim());
+      setReviewAction(null);
+      setReviewNote("");
+      alerts.showSuccess("KYC request rejected", "Employee profile update request was rejected.");
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to reject KYC request.";
+      setError(message);
+      alerts.showApiError(err, "Unable to reject KYC request.");
+    }
   }
 
   return (

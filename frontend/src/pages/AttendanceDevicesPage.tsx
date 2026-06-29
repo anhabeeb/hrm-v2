@@ -11,12 +11,14 @@ import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceDevice } from "../types/attendance";
 import type { OrganizationLocation } from "../types/organization";
 
 export function AttendanceDevicesPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("attendance.devices.view") || permissions.has("attendance.devices.manage") || permissions.has("attendance.view");
   const canManage = permissions.has("attendance.devices.manage") || permissions.has("attendance.devices.update");
@@ -74,9 +76,12 @@ export function AttendanceDevicesPage() {
     if (!token) return;
     try {
       await api.attendanceDeviceAction(token, device.id, name);
+      alerts.showSuccess("Device updated", `${device.name} was ${name === "enable" ? "enabled" : "disabled"}.`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to update device.");
+      const message = err instanceof ApiError ? err.message : "Unable to update device.";
+      setError(message);
+      alerts.showApiError(err, "Unable to update device.");
     }
   }
 
@@ -84,9 +89,12 @@ export function AttendanceDevicesPage() {
     if (!token) return;
     try {
       await api.archiveAttendanceDevice(token, device.id, "Archived from device registry.");
+      alerts.showSuccess("Device archived", `${device.name} was archived.`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to archive device.");
+      const message = err instanceof ApiError ? err.message : "Unable to archive device.";
+      setError(message);
+      alerts.showApiError(err, "Unable to archive device.");
     }
   }
 
@@ -95,8 +103,11 @@ export function AttendanceDevicesPage() {
     try {
       const result = await api.testAttendanceDeviceConnection(token, device.id);
       setError(result.message);
+      alerts.showInfo("Device test completed", result.message ?? "Device test placeholder completed.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to test device placeholder.");
+      const message = err instanceof ApiError ? err.message : "Unable to test device placeholder.";
+      setError(message);
+      alerts.showApiError(err, "Unable to test device placeholder.");
     }
   }
 

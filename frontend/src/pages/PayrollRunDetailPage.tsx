@@ -12,6 +12,7 @@ import { InputField, PageHeader, PageShell } from "../components/ui/page-shell";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import type { PayrollApprovalEvent, PayrollPaymentRegister, PayrollPayslip, PayrollRun, PayrollRunEmployee, PayrollRunLine } from "../types/payroll";
 
@@ -29,6 +30,7 @@ function normalizeResultStatus(status: string) {
 export function PayrollRunDetailPage() {
   const { id } = useParams();
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("payroll.results.view") || permissions.has("payroll.runs.view") || permissions.has("payroll.view");
   const canManage = permissions.has("payroll.results.update") || permissions.has("payroll.runs.manage") || permissions.has("payroll.manage");
@@ -95,7 +97,9 @@ export function PayrollRunDetailPage() {
   async function confirmHoldAction() {
     if (!token || !id || !holdModal) return;
     if (holdModal.action === "hold" && !holdReason.trim()) {
-      setError("Hold reason is required.");
+      const message = "Hold reason is required.";
+      setError(message);
+      alerts.showValidationError(message, "Reason required");
       return;
     }
     try {
@@ -103,9 +107,12 @@ export function PayrollRunDetailPage() {
       if (holdModal.action === "release") await api.releasePayrollRunEmployee(token, id, holdModal.employee.id);
       setHoldModal(null);
       setHoldReason("");
+      alerts.showSuccess("Payroll row updated", `Employee payroll row ${holdModal.action === "hold" ? "held" : "released"}.`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to update payroll row.");
+      const message = err instanceof ApiError ? err.message : "Unable to update payroll row.";
+      setError(message);
+      alerts.showApiError(err, "Unable to update payroll row.");
     }
   }
 
@@ -113,7 +120,9 @@ export function PayrollRunDetailPage() {
     if (!token || !id || !runAction) return;
     const reason = actionReason.trim();
     if (runAction.reasonRequired && !reason) {
-      setError("Reason is required.");
+      const message = "Reason is required.";
+      setError(message);
+      alerts.showValidationError(message, "Reason required");
       return;
     }
     try {
@@ -127,9 +136,12 @@ export function PayrollRunDetailPage() {
       if (runAction.action === "payment_register") await api.preparePayrollRunPaymentRegister(token, id);
       setRunAction(null);
       setActionReason("");
+      alerts.showSuccess("Payroll action completed", `${runAction.title} completed.`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to complete payroll action.");
+      const message = err instanceof ApiError ? err.message : "Unable to complete payroll action.";
+      setError(message);
+      alerts.showApiError(err, "Unable to complete payroll action.");
     }
   }
 

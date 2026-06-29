@@ -10,6 +10,7 @@ import { Input } from "../ui/input";
 import { FileUploadField, SelectField, TextareaField } from "../ui/page-shell";
 import { Panel } from "../ui/panel";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "../ui/sheet";
+import { useAlert } from "../alerts/useAlert";
 import { ImportPreviewTable } from "./ImportPreviewTable";
 
 type ImportWizardStep = "template" | "upload" | "preview" | "confirm" | "done";
@@ -44,6 +45,7 @@ export function ImportWizard({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const alerts = useAlert();
   const template = useMemo(() => templates.find((item) => item.key === importType) ?? templates[0], [importType, templates]);
   const placeholderOnly = Boolean(template?.placeholderOnly);
 
@@ -70,9 +72,13 @@ export function ImportWizard({
     try {
       const result = await api.downloadDataImportTemplate(token, template.key, format);
       downloadBlob(result.blob, result.filename);
-      setMessage(format === "xlsx" ? "Excel template downloaded with Instructions and Lookups sheets." : "CSV template downloaded.");
+      const successMessage = format === "xlsx" ? "Excel template downloaded with Instructions and Lookups sheets." : "CSV template downloaded.";
+      setMessage(successMessage);
+      alerts.showSuccess("Template downloaded", successMessage);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to download template.");
+      const message = err instanceof ApiError ? err.message : "Unable to download template.";
+      setError(message);
+      alerts.showApiError(err, "Unable to download template.");
     }
   }
 
@@ -103,9 +109,13 @@ export function ImportWizard({
       const detail = await api.getDataImportBatch(token, String(result.batch.id));
       setRows(detail.rows);
       setStep("preview");
-      setMessage(placeholderOnly ? "Validation-only batch uploaded. Run validation preview; no records will be created or updated." : "Import batch uploaded. Run validation preview before applying.");
+      const successMessage = placeholderOnly ? "Validation-only batch uploaded. Run validation preview; no records will be created or updated." : "Import batch uploaded. Run validation preview before applying.";
+      setMessage(successMessage);
+      alerts.showSuccess("Import batch uploaded", successMessage);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to upload import batch.");
+      const message = err instanceof ApiError ? err.message : "Unable to upload import batch.";
+      setError(message);
+      alerts.showApiError(err, "Unable to upload import batch.");
     } finally {
       setBusy(false);
     }
@@ -123,9 +133,13 @@ export function ImportWizard({
       setPreview(previewData.preview as ImportPreviewSummary);
       setRows(detail.rows);
       setStep("confirm");
-      setMessage(placeholderOnly ? "Validation preview completed. This import type is validation-only." : "Validation preview completed.");
+      const successMessage = placeholderOnly ? "Validation preview completed. This import type is validation-only." : "Validation preview completed.";
+      setMessage(successMessage);
+      alerts.showSuccess("Validation completed", successMessage);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to validate import batch.");
+      const message = err instanceof ApiError ? err.message : "Unable to validate import batch.";
+      setError(message);
+      alerts.showApiError(err, "Unable to validate import batch.");
     } finally {
       setBusy(false);
     }
@@ -139,10 +153,14 @@ export function ImportWizard({
       const result = await api.applyDataImportBatch(token, String(batch.id), { acknowledgement: ack, reason });
       setBatch(result.batch);
       setStep("done");
-      setMessage("Import apply finished. Review row-level results and audit history.");
+      const successMessage = "Import apply finished. Review row-level results and audit history.";
+      setMessage(successMessage);
+      alerts.showSuccess("Import applied", successMessage);
       await onFinished?.();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to apply import batch.");
+      const message = err instanceof ApiError ? err.message : "Unable to apply import batch.";
+      setError(message);
+      alerts.showApiError(err, "Unable to apply import batch.");
     } finally {
       setBusy(false);
     }
@@ -150,8 +168,13 @@ export function ImportWizard({
 
   async function downloadErrors() {
     if (!token || !batch?.id) return;
-    const result = await api.downloadDataImportErrors(token, String(batch.id));
-    downloadBlob(result.blob, result.filename);
+    try {
+      const result = await api.downloadDataImportErrors(token, String(batch.id));
+      downloadBlob(result.blob, result.filename);
+      alerts.showSuccess("Import errors downloaded", "Row-level import error file downloaded.");
+    } catch (err) {
+      alerts.showApiError(err, "Unable to download import errors.");
+    }
   }
 
   function selectImportFile(file: File | undefined) {
@@ -164,7 +187,9 @@ export function ImportWizard({
     const mime = file.type.toLowerCase();
     const type = name.endsWith(".xlsx") || mime.includes("spreadsheetml.sheet") ? "xlsx" : name.endsWith(".csv") || mime === "text/csv" || mime === "text/plain" ? "csv" : null;
     if (!type) {
-      setError("Unsupported import file. Upload a CSV file or an Excel .xlsx template.");
+      const message = "Unsupported import file. Upload a CSV file or an Excel .xlsx template.";
+      setError(message);
+      alerts.showValidationError(message, "Unsupported file");
       return;
     }
     setSelectedFile(file);

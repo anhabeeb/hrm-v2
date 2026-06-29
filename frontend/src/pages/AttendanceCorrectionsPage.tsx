@@ -14,6 +14,7 @@ import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceCorrection } from "../types/attendance";
 import type { Employee } from "../types/employees";
@@ -38,6 +39,7 @@ function parseSnapshot(value?: string | null) {
 
 export function AttendanceCorrectionsPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("attendance.corrections.view") || permissions.has("attendance.corrections.review") || permissions.has("attendance.view") || permissions.has("attendance.corrections.manage") || permissions.has("attendance.manage");
   const canCorrect = permissions.has("attendance.corrections.create") || permissions.has("attendance.correct") || permissions.has("attendance.corrections.manage") || permissions.has("attendance.manage");
@@ -111,9 +113,12 @@ export function AttendanceCorrectionsPage() {
       if (type === "cancel") await api.cancelAttendanceCorrection(token, correction.id, note ?? null);
       setReviewAction(null);
       setReviewNote("");
+      alerts.showSuccess("Correction updated", `Attendance correction ${type} completed.`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to update correction request.");
+      const message = err instanceof ApiError ? err.message : "Unable to update correction request.";
+      setError(message);
+      alerts.showApiError(err, "Unable to update correction request.");
     }
   }
 

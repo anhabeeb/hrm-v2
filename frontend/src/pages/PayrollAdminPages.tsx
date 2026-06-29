@@ -19,6 +19,7 @@ import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateRequiredField } from "../lib/form-validation";
 import type { Employee } from "../types/employees";
@@ -120,10 +121,12 @@ function Modal({ title, children, onClose, onSave }: { title: string; children: 
 
 function ActionModal({ title, description, reason, reasonRequired, onReason, onClose, onConfirm }: { title: string; description: string; reason?: string; reasonRequired?: boolean; onReason?: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
   const validation = useFormValidation();
+  const alerts = useAlert();
   function handleActionSubmit() {
     const issues = reasonRequired ? validateRequiredField(reason, "reason", "Reason") : [];
     validation.setIssues(issues);
     if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Reason required");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -204,6 +207,7 @@ function PayrollOrgFilter({ departments, locations, jobLevels, positions, depart
 
 export function PayrollAdvancesPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("payroll.advances.view") || permissions.has("payroll.view");
   const canManage = permissions.has("payroll.advances.manage");
@@ -245,13 +249,17 @@ export function PayrollAdvancesPage() {
     try {
       if (editing.id) await api.updatePayrollAdvance(token, editing.id, editing);
       else await api.createPayrollAdvance(token, editing);
-      setEditing(null); await load();
-    } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save advance."); }
+      setEditing(null);
+      alerts.showSuccess("Advance saved", "Payroll advance was saved.");
+      await load();
+    } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save advance."); alerts.showApiError(err, "Unable to save advance."); }
   }
   async function confirmAction() {
     if (!token || !rowAction) return;
     if (rowAction.name === "cancel" && !actionReason.trim()) {
-      setError("Cancellation reason is required.");
+      const message = "Cancellation reason is required.";
+      setError(message);
+      alerts.showValidationError(message, "Reason required");
       return;
     }
     try {
@@ -259,8 +267,9 @@ export function PayrollAdvancesPage() {
       if (rowAction.name === "cancel") await api.cancelPayrollAdvance(token, rowAction.row.id, actionReason.trim());
       setRowAction(null);
       setActionReason("");
+      alerts.showSuccess("Advance updated", `Payroll advance ${rowAction.name} completed.`);
       await load();
-    } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update advance."); }
+    } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update advance."); alerts.showApiError(err, "Unable to update advance."); }
   }
   const chips = useMemo<ActiveFilterChip[]>(() => [
     ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
@@ -283,6 +292,7 @@ function AdvanceModal({ value, employees, departments, locations, jobLevels, pos
 
 export function PayrollComponentsPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("payroll.components.manage") || permissions.has("payroll.view");
   const canManage = permissions.has("payroll.components.manage");
@@ -299,11 +309,11 @@ export function PayrollComponentsPage() {
   useEffect(() => { void load(); }, [token, canView]);
   async function save() {
     if (!token || !editing) return;
-    try { if (editing.id) await api.updatePayrollComponent(token, editing.id, editing); else await api.createPayrollComponent(token, editing); setEditing(null); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save component."); }
+    try { if (editing.id) await api.updatePayrollComponent(token, editing.id, editing); else await api.createPayrollComponent(token, editing); setEditing(null); alerts.showSuccess("Component saved", "Payroll component was saved."); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save component."); alerts.showApiError(err, "Unable to save component."); }
   }
   async function toggle(component: PayrollComponent) {
     if (!token) return;
-    try { await api.payrollComponentAction(token, component.id, component.is_active ? "disable" : "enable"); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update component."); }
+    try { await api.payrollComponentAction(token, component.id, component.is_active ? "disable" : "enable"); alerts.showSuccess("Component updated", `Payroll component ${component.is_active ? "disabled" : "enabled"}.`); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update component."); alerts.showApiError(err, "Unable to update component."); }
   }
   const filtered = rows.filter((row) => `${row.code} ${row.name} ${row.category ?? ""}`.toLowerCase().includes(search.toLowerCase()));
   const chips = useMemo<ActiveFilterChip[]>(() => search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : [], [search]);
@@ -321,6 +331,7 @@ function ComponentModal({ value, onChange, onClose, onSave }: { value: Partial<P
 
 export function PayrollDeductionsPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("payroll.view");
   const canManage = permissions.has("payroll.manage") || permissions.has("payroll.adjustments.manage");
@@ -340,8 +351,8 @@ export function PayrollDeductionsPage() {
   const filters = useMemo(() => ({ search, department_id: departmentId, location_id: locationId, status, deduction_type: type }), [search, departmentId, locationId, status, type]);
   async function load() { if (!token || !canView) return; setLoading(true); setError(null); try { const [result, refs, comps] = await Promise.all([api.listPayrollDeductions(token, filters), loadReferenceData(token), api.listPayrollComponents(token)]); setRows(result.deductions); setEmployees(refs.employees); setDepartments(refs.departments); setLocations(refs.locations); setJobLevels(refs.jobLevels); setPositions(refs.positions); setPeriods(refs.periods); setComponents(comps.components.filter((component) => String(component.type).includes("DEDUCTION") || component.type === "DEDUCTION")); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to load deductions."); } finally { setLoading(false); } }
   useEffect(() => { void load(); }, [token, canView, filters]);
-  async function save() { if (!token || !editing) return; try { if (editing.id) await api.updatePayrollDeduction(token, editing.id, editing); else await api.createPayrollDeduction(token, editing); setEditing(null); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save deduction."); } }
-  async function confirmAction() { if (!token || !rowAction) return; if (rowAction.name === "cancel" && !actionReason.trim()) { setError("Cancellation reason is required."); return; } try { await api.payrollDeductionAction(token, rowAction.row.id, rowAction.name, rowAction.name === "cancel" ? actionReason.trim() : undefined); setRowAction(null); setActionReason(""); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update deduction."); } }
+  async function save() { if (!token || !editing) return; try { if (editing.id) await api.updatePayrollDeduction(token, editing.id, editing); else await api.createPayrollDeduction(token, editing); setEditing(null); alerts.showSuccess("Deduction saved", "Payroll deduction was saved."); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save deduction."); alerts.showApiError(err, "Unable to save deduction."); } }
+  async function confirmAction() { if (!token || !rowAction) return; if (rowAction.name === "cancel" && !actionReason.trim()) { const message = "Cancellation reason is required."; setError(message); alerts.showValidationError(message, "Reason required"); return; } try { await api.payrollDeductionAction(token, rowAction.row.id, rowAction.name, rowAction.name === "cancel" ? actionReason.trim() : undefined); setRowAction(null); setActionReason(""); alerts.showSuccess("Deduction updated", `Payroll deduction ${rowAction.name} completed.`); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update deduction."); alerts.showApiError(err, "Unable to update deduction."); } }
   const chips = useMemo<ActiveFilterChip[]>(() => [
     ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
     ...(status ? [{ key: "status", label: "Status", value: status.replace(/_/g, " "), title: status, onRemove: () => setStatus("") }] : []),
@@ -363,6 +374,7 @@ function DeductionModal({ value, employees, departments, locations, jobLevels, p
 
 export function PayrollAdjustmentsPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("payroll.view");
   const canManage = permissions.has("payroll.adjustments.manage");
@@ -372,8 +384,8 @@ export function PayrollAdjustmentsPage() {
   const [rowAction, setRowAction] = useState<{ row: PayrollAdjustment; name: "approve" | "cancel" } | null>(null); const [actionReason, setActionReason] = useState("");
   async function load() { if (!token || !canView) return; setLoading(true); setError(null); try { const [result, refs] = await Promise.all([api.listPayrollAdjustments(token, { search }), loadReferenceData(token)]); setRows(result.adjustments); setEmployees(refs.employees); setDepartments(refs.departments); setLocations(refs.locations); setJobLevels(refs.jobLevels); setPositions(refs.positions); setPeriods(refs.periods); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to load adjustments."); } finally { setLoading(false); } }
   useEffect(() => { void load(); }, [token, canView, search]);
-  async function save() { if (!token || !editing) return; try { if (editing.id) await api.updatePayrollAdjustment(token, editing.id, editing); else await api.createPayrollAdjustment(token, editing); setEditing(null); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save adjustment."); } }
-  async function confirmAction() { if (!token || !rowAction) return; if (rowAction.name === "cancel" && !actionReason.trim()) { setError("Cancellation reason is required."); return; } try { if (rowAction.name === "approve") await api.approvePayrollAdjustment(token, rowAction.row.id); if (rowAction.name === "cancel") await api.cancelPayrollAdjustment(token, rowAction.row.id, actionReason.trim()); setRowAction(null); setActionReason(""); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update adjustment."); } }
+  async function save() { if (!token || !editing) return; try { if (editing.id) await api.updatePayrollAdjustment(token, editing.id, editing); else await api.createPayrollAdjustment(token, editing); setEditing(null); alerts.showSuccess("Adjustment saved", "Payroll adjustment was saved."); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save adjustment."); alerts.showApiError(err, "Unable to save adjustment."); } }
+  async function confirmAction() { if (!token || !rowAction) return; if (rowAction.name === "cancel" && !actionReason.trim()) { const message = "Cancellation reason is required."; setError(message); alerts.showValidationError(message, "Reason required"); return; } try { if (rowAction.name === "approve") await api.approvePayrollAdjustment(token, rowAction.row.id); if (rowAction.name === "cancel") await api.cancelPayrollAdjustment(token, rowAction.row.id, actionReason.trim()); setRowAction(null); setActionReason(""); alerts.showSuccess("Adjustment updated", `Payroll adjustment ${rowAction.name} completed.`); await load(); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update adjustment."); alerts.showApiError(err, "Unable to update adjustment."); } }
   const chips = useMemo<ActiveFilterChip[]>(() => search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : [], [search]);
   if (!canView) return <Panel><EmptyState title="Adjustments unavailable" description="Your account needs payroll.view permission." /></Panel>;
   return <PayrollTablePageLayout title="Payroll Adjustments" description="Manage manual earning and deduction adjustments." error={error} loading={loading} empty={rows.length === 0} emptyTitle="No adjustments" chips={chips} onReset={() => setSearch("")} filters={<SearchInput value={search} onChange={setSearch} />} exportRows={rows as unknown as Record<string, unknown>[]} exportColumns={["employee_no", "employee_name", "payroll_period_id", "adjustment_type", "amount", "status", "reason"]} action={canManage ? <Button size="sm" onClick={() => setEditing({ adjustment_type: "EARNING", status: "DRAFT" })}><Plus className="h-4 w-4" /> Create adjustment</Button> : null}>
@@ -403,6 +415,7 @@ export function PayrollFinalSettlementsPage() {
 
 export function PayrollSettingsPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("payroll.settings.view") || permissions.has("payroll.settings.manage") || permissions.has("payroll.submodules.view") || permissions.has("payroll.submodules.manage") || permissions.has("payroll.custom_deduction_settings.view") || permissions.has("payroll.custom_deduction_settings.manage") || permissions.has("payroll.view");
   const canManageSettings = permissions.has("payroll.settings.manage") || permissions.has("payroll.custom_deduction_settings.update") || permissions.has("payroll.custom_deduction_settings.manage");
@@ -412,16 +425,19 @@ export function PayrollSettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => { async function load() { if (!token || !canView) return; try { setSettings((await api.getPayrollSettings(token)).settings); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to load payroll settings."); } } void load(); }, [token, canView]);
   function update<K extends keyof PayrollSettings>(key: K, value: PayrollSettings[K]) { if (settings) setSettings({ ...settings, [key]: value }); }
-  async function save() { if (!token || !settings) return; try { setSettings((await api.updatePayrollSettings(token, settings)).settings); setMessage("Payroll settings saved."); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save payroll settings."); } }
-  async function togglePayrollModule(enabled: boolean) { if (!token || !settings) return; try { setSettings((await api.updatePayrollSettings(token, { ...settings, module_enabled: enabled })).settings); setMessage(enabled ? "Payroll module enabled." : "Payroll module disabled."); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update payroll module status."); } }
+  async function save() { if (!token || !settings) return; try { setSettings((await api.updatePayrollSettings(token, settings)).settings); setMessage("Payroll settings saved."); alerts.showSuccess("Payroll settings saved", "Payroll settings were updated."); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to save payroll settings."); alerts.showApiError(err, "Unable to save payroll settings."); } }
+  async function togglePayrollModule(enabled: boolean) { if (!token || !settings) return; try { setSettings((await api.updatePayrollSettings(token, { ...settings, module_enabled: enabled })).settings); const successMessage = enabled ? "Payroll module enabled." : "Payroll module disabled."; setMessage(successMessage); alerts.showSuccess("Payroll module updated", successMessage); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to update payroll module status."); alerts.showApiError(err, "Unable to update payroll module status."); } }
   async function togglePayrollSubmodule(key: PayrollSubmoduleSettingKey, enabled: boolean) {
     if (!token || !settings) return;
     try {
       setSettings((await api.updatePayrollSettings(token, { ...settings, [key]: enabled })).settings);
       const label = payrollSubmoduleCards.find((item) => item.key === key)?.name ?? "Payroll submodule";
-      setMessage(`${label} ${enabled ? "enabled" : "disabled"}.`);
+      const successMessage = `${label} ${enabled ? "enabled" : "disabled"}.`;
+      setMessage(successMessage);
+      alerts.showSuccess("Payroll submodule updated", successMessage);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to update payroll submodule status.");
+      alerts.showApiError(err, "Unable to update payroll submodule status.");
     }
   }
   if (!canView) return <Panel><EmptyState title="Payroll settings unavailable" description="Your account needs payroll settings permission." /></Panel>;
@@ -562,6 +578,7 @@ function SubmoduleSettingsSection({ enabled, name, children }: { enabled: boolea
 
 export function PayrollReportsPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("payroll.reports.view");
   const canExport = permissions.has("payroll.reports.export");
@@ -589,7 +606,7 @@ export function PayrollReportsPage() {
   useEffect(() => { void load(); }, [token, canView, filters]);
   async function exportCsv() {
     if (!token) return;
-    try { const download = await api.exportPayrollReportCsv(token, filters); const url = URL.createObjectURL(download.blob); const link = document.createElement("a"); link.href = url; link.download = download.filename || `payroll-${report}.csv`; link.click(); URL.revokeObjectURL(url); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to export payroll report."); }
+    try { const download = await api.exportPayrollReportCsv(token, filters); const url = URL.createObjectURL(download.blob); const link = document.createElement("a"); link.href = url; link.download = download.filename || `payroll-${report}.csv`; link.click(); URL.revokeObjectURL(url); alerts.showSuccess("Payroll report exported", "Payroll report CSV was downloaded."); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to export payroll report."); alerts.showApiError(err, "Unable to export payroll report."); }
   }
   const chips = useMemo<ActiveFilterChip[]>(() => [
     ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),

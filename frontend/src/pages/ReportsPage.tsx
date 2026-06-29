@@ -21,6 +21,7 @@ import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { api } from "../lib/api";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
 
@@ -92,6 +93,7 @@ const reportGroupOrder = [
 
 export function ReportsPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const [tab, setTab] = useState<Tab>("reports");
   const [selected, setSelected] = useState("");
@@ -232,9 +234,12 @@ export function ReportsPage() {
       anchor.click();
       URL.revokeObjectURL(url);
       setMessage("CSV export created and audit logged.");
+      alerts.showSuccess("Report exported", "CSV export created and audit logged.");
       if (tab === "exports") void loadExportLogs();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed.");
+      const message = err instanceof Error ? err.message : "Export failed.";
+      setError(message);
+      alerts.showApiError(err, "Export failed.");
     }
   }
 

@@ -24,6 +24,7 @@ import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
@@ -57,6 +58,7 @@ function bool(value: unknown) {
 
 export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
   const { token, user } = useAuth();
+  const alertApi = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const [tab, setTab] = useState<Tab>(mode);
   const [contracts, setContracts] = useState<Row[]>([]);
@@ -153,9 +155,17 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
 
   async function refreshAlerts() {
     if (!token) return;
-    const result = await api.refreshContractAlerts(token);
-    setMessage(`Contract alerts refreshed. ${result.created} alert checks completed.`);
-    await load();
+    try {
+      const result = await api.refreshContractAlerts(token);
+      const successMessage = `Contract alerts refreshed. ${result.created} alert checks completed.`;
+      setMessage(successMessage);
+      alertApi.showSuccess("Contract alerts refreshed", successMessage);
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to refresh contract alerts.";
+      setError(message);
+      alertApi.showApiError(err, "Unable to refresh contract alerts.");
+    }
   }
 
   async function saveSettings(next: Row) {
@@ -163,8 +173,11 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
     try {
       setSettings((await api.updateContractSettings(token, next)).settings);
       setMessage("Contract settings updated.");
+      alertApi.showSuccess("Contract settings saved", "Contract settings updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update contract settings.");
+      const message = err instanceof Error ? err.message : "Unable to update contract settings.";
+      setError(message);
+      alertApi.showApiError(err, "Unable to update contract settings.");
     }
   }
 
@@ -174,9 +187,12 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
       await api.contractAction(token, String(actionTarget.row.id), actionTarget.action, { reason });
       setActionTarget(null);
       setMessage(`${actionTarget.title} completed.`);
+      alertApi.showSuccess("Contract action completed", `${actionTarget.title} completed.`);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Contract action failed.");
+      const message = err instanceof Error ? err.message : "Contract action failed.";
+      setError(message);
+      alertApi.showApiError(err, "Contract action failed.");
     }
   }
 
@@ -255,8 +271,8 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
         </Panel>
       ) : null}
 
-      {contractModal ? <ContractForm employees={employees} organizationRefs={organizationRefs} types={activeTypes} onClose={() => setContractModal(false)} onSave={async (employeeId, input) => { if (!token) return; await api.createEmployeeContract(token, employeeId, input); setContractModal(false); await load(); }} /> : null}
-      {typeModal ? <ContractTypeForm type={Object.keys(typeModal).length ? typeModal : null} onClose={() => setTypeModal(null)} onSave={async (input) => { if (!token) return; await api.createContractType(token, input); setTypeModal(null); await load(); }} /> : null}
+      {contractModal ? <ContractForm employees={employees} organizationRefs={organizationRefs} types={activeTypes} onClose={() => setContractModal(false)} onSave={async (employeeId, input) => { if (!token) return; await api.createEmployeeContract(token, employeeId, input); setContractModal(false); alertApi.showSuccess("Contract saved", "Employee contract draft was saved."); await load(); }} /> : null}
+      {typeModal ? <ContractTypeForm type={Object.keys(typeModal).length ? typeModal : null} onClose={() => setTypeModal(null)} onSave={async (input) => { if (!token) return; await api.createContractType(token, input); setTypeModal(null); alertApi.showSuccess("Contract type saved", "Contract type was saved."); await load(); }} /> : null}
       {actionTarget ? (
         <ReasonDialog
           title={actionTarget.title}
@@ -313,6 +329,7 @@ function ContractTable({ rows, canManage, onAction }: { rows: Row[]; canManage: 
 function ContractForm({ employees, organizationRefs, types, onClose, onSave }: { employees: Employee[]; organizationRefs: ReturnType<typeof useOrganizationReferences>; types: Row[]; onClose: () => void; onSave: (employeeId: string, input: Row) => Promise<void> }) {
   const [form, setForm] = useState({ employee_id: "", contract_type_id: "", contract_number: "", contract_title: "", contract_start_date: "", contract_end_date: "", probation_start_date: "", probation_end_date: "", confirmation_due_date: "", basic_salary_snapshot: "", salary_currency_snapshot: "MVR", notes: "" });
   const [error, setError] = useState<string | null>(null);
+  const alerts = useAlert();
   const selectedType = useMemo(() => types.find((type) => String(type.id) === form.contract_type_id), [types, form.contract_type_id]);
   const requiresEndDate = bool(selectedType?.requires_end_date);
   const requiresProbation = bool(selectedType?.requires_probation);
@@ -321,15 +338,21 @@ function ContractForm({ employees, organizationRefs, types, onClose, onSave }: {
     event.preventDefault();
     setError(null);
     if (!form.contract_type_id) {
-      setError("Please select a contract type.");
+      const message = "Please select a contract type.";
+      setError(message);
+      alerts.showValidationError(message, "Contract type required");
       return;
     }
     if (requiresEndDate && !form.contract_end_date) {
-      setError("Contract end date is required for this contract type.");
+      const message = "Contract end date is required for this contract type.";
+      setError(message);
+      alerts.showValidationError(message, "Contract end date required");
       return;
     }
     if (requiresProbation && (!form.probation_start_date || !form.probation_end_date)) {
-      setError("Probation dates are required for this contract type.");
+      const message = "Probation dates are required for this contract type.";
+      setError(message);
+      alerts.showValidationError(message, "Probation dates required");
       return;
     }
     try {
@@ -348,7 +371,9 @@ function ContractForm({ employees, organizationRefs, types, onClose, onSave }: {
         notes: form.notes || null
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save contract.");
+      const message = err instanceof Error ? err.message : "Unable to save contract.";
+      setError(message);
+      alerts.showApiError(err, "Unable to save contract.");
     }
   }
   return (
@@ -391,9 +416,14 @@ function ContractTypeForm({ type, onClose, onSave }: { type: Row | null; onClose
     default_probation_months: fieldValue(type?.default_probation_months),
     description: fieldValue(type?.description)
   });
+  const alerts = useAlert();
   async function submit(event: FormEvent) {
     event.preventDefault();
-    await onSave({ ...form, default_duration_months: form.default_duration_months ? Number(form.default_duration_months) : null, default_probation_months: form.default_probation_months ? Number(form.default_probation_months) : null });
+    try {
+      await onSave({ ...form, default_duration_months: form.default_duration_months ? Number(form.default_duration_months) : null, default_probation_months: form.default_probation_months ? Number(form.default_probation_months) : null });
+    } catch (err) {
+      alerts.showApiError(err, "Unable to save contract type.");
+    }
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4">
@@ -439,6 +469,7 @@ function ContractSettingsPanel({ settings, canEdit, onSave }: { settings: Row | 
 function ReasonDialog({ title, description, reasonRequired, onClose, onConfirm }: { title: string; description: string; reasonRequired?: boolean; onClose: () => void; onConfirm: (reason: string | null) => void }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const alerts = useAlert();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4">
       <div className="w-full max-w-md rounded-md border bg-white p-4 shadow-lg">
@@ -448,7 +479,7 @@ function ReasonDialog({ title, description, reasonRequired, onClose, onConfirm }
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => { if (reasonRequired && !reason.trim()) { setError("Reason is required."); return; } onConfirm(reason.trim() || null); }}>Confirm</Button>
+          <Button onClick={() => { if (reasonRequired && !reason.trim()) { const message = "Reason is required."; setError(message); alerts.showValidationError(message, "Reason required"); return; } onConfirm(reason.trim() || null); }}>Confirm</Button>
         </div>
       </div>
     </div>

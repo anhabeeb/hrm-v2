@@ -23,6 +23,7 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import type {
@@ -68,6 +69,7 @@ function can(userPermissions: Set<string>, keys: string[]) {
 
 export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = useMemo(() => new Set(user?.permissions ?? []), [user?.permissions]);
   const canView = can(permissions, ["approvals.view", "approvals.inbox.view", "approvals.instances.view", "approvals.workflows.view", "approvals.settings.view", "approvals.manage"]);
   const canManage = can(permissions, ["approvals.manage", "approvals.workflows.manage", "approvals.settings.manage"]);
@@ -154,13 +156,20 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
 
   async function submitDecision() {
     if (!token || !reasonAction) return;
+    if (reasonAction.required && !reasonAction.reason.trim()) {
+      alerts.showValidationError("A reason is required before submitting this approval decision.", "Reason required");
+      return;
+    }
     try {
       await api.approvalInstanceAction(token, reasonAction.instance.id, reasonAction.action, { reason: reasonAction.reason, note: reasonAction.reason });
       setReasonAction(null);
       setSelected(null);
+      alerts.showSuccess("Approval updated", `The ${reasonAction.action.replace("-", " ")} decision was submitted.`);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to submit approval decision.");
+      const message = err instanceof ApiError ? err.message : "Unable to submit approval decision.";
+      setError(message);
+      alerts.showApiError(err, "Unable to submit approval decision.");
     }
   }
 
@@ -169,9 +178,12 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
     try {
       await api.createApprovalWorkflow(token, { ...workflowForm, priority_number: Number(workflowForm.priority_number) } as Partial<ApprovalWorkflow>);
       setWorkflowForm({ workflow_code: "", workflow_name: "", module_key: "generic", action_key: "approval", applies_to_entity_type: "generic", priority_number: "100", status: "DRAFT" });
+      alerts.showSuccess("Workflow created", "Approval workflow was created.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save workflow.");
+      const message = err instanceof ApiError ? err.message : "Unable to save workflow.";
+      setError(message);
+      alerts.showApiError(err, "Unable to save workflow.");
     }
   }
 
@@ -179,9 +191,12 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
     if (!token || !workflowDetail) return;
     try {
       await api.createApprovalWorkflowStep(token, workflowDetail.workflow.id, { ...stepForm, step_number: Number(stepForm.step_number), skip_if_no_approver: stepForm.skip_if_no_approver });
+      alerts.showSuccess("Workflow step added", "Approval workflow step was added.");
       await openWorkflow(workflowDetail.workflow);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save workflow step.");
+      const message = err instanceof ApiError ? err.message : "Unable to save workflow step.";
+      setError(message);
+      alerts.showApiError(err, "Unable to save workflow step.");
     }
   }
 
@@ -189,15 +204,25 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
     if (!token || !workflowDetail) return;
     try {
       await api.createApprovalWorkflowCondition(token, workflowDetail.workflow.id, { ...conditionForm, value: conditionForm.value });
+      alerts.showSuccess("Workflow condition added", "Approval workflow condition was added.");
       await openWorkflow(workflowDetail.workflow);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save workflow condition.");
+      const message = err instanceof ApiError ? err.message : "Unable to save workflow condition.";
+      setError(message);
+      alerts.showApiError(err, "Unable to save workflow condition.");
     }
   }
 
   async function runPreview() {
     if (!token || !workflowDetail) return;
-    setPreview((await api.previewApprovalWorkflow(token, { module_key: workflowDetail.workflow.module_key, action_key: workflowDetail.workflow.action_key })).preview);
+    try {
+      setPreview((await api.previewApprovalWorkflow(token, { module_key: workflowDetail.workflow.module_key, action_key: workflowDetail.workflow.action_key })).preview);
+      alerts.showSuccess("Workflow preview ready", "Approval workflow preview was generated.");
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to preview workflow.";
+      setError(message);
+      alerts.showApiError(err, "Unable to preview workflow.");
+    }
   }
 
   async function saveDelegation() {
@@ -205,9 +230,26 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
     try {
       await api.createApprovalDelegation(token, delegationForm);
       setDelegationForm({ delegate_user_id: "", start_at: "", end_at: "", reason: "", module_key: "", action_key: "" });
+      alerts.showSuccess("Delegation created", "Approval delegation was created.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save delegation.");
+      const message = err instanceof ApiError ? err.message : "Unable to save delegation.";
+      setError(message);
+      alerts.showApiError(err, "Unable to save delegation.");
+    }
+  }
+
+  async function refreshApprovalMaintenance() {
+    if (!token) return;
+    try {
+      await api.refreshApprovalReminders(token);
+      await api.refreshApprovalEscalations(token);
+      alerts.showSuccess("Approval reminders refreshed", "Reminder and escalation checks were refreshed.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to refresh approval reminders.";
+      setError(message);
+      alerts.showApiError(err, "Unable to refresh approval reminders.");
     }
   }
 
@@ -228,7 +270,7 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
             filterSummary={activeChips.map((chip) => `${chip.label}: ${chip.value}`)}
             disabled={mode === "settings"}
           />
-          {can(permissions, ["approvals.escalations.manage", "approvals.manage"]) ? <ActionTextButton intent="refresh" size="sm" onClick={async () => { if (token) { await api.refreshApprovalReminders(token); await api.refreshApprovalEscalations(token); await load(); } }}><RefreshCw className="h-4 w-4" /> Refresh reminders</ActionTextButton> : null}
+          {can(permissions, ["approvals.escalations.manage", "approvals.manage"]) ? <ActionTextButton intent="refresh" size="sm" onClick={() => void refreshApprovalMaintenance()}><RefreshCw className="h-4 w-4" /> Refresh reminders</ActionTextButton> : null}
           <Link to="/reports"><ActionTextButton intent="view" size="sm"><FileText className="h-4 w-4" /> Report Center</ActionTextButton></Link>
           </>
         }
@@ -285,13 +327,16 @@ function WorkflowBuilder({ rows, loading, form, setForm, onSave, onOpen, canMana
 
 function SettingsPanel({ settings, token, canManage, onSaved, onError }: { settings: ApprovalWorkflowSettings; token: string; canManage: boolean; onSaved: () => Promise<void>; onError: (message: string | null) => void }) {
   const [form, setForm] = useState(settings);
+  const alerts = useAlert();
   const update = (key: keyof ApprovalWorkflowSettings, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
   async function save(next = form) {
     try {
       await api.updateApprovalSettings(token, next);
+      alerts.showSuccess("Approval settings saved", "Central approval workflow settings were updated.");
       await onSaved();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Unable to save approval settings.");
+      alerts.showApiError(err, "Unable to save approval settings.");
     }
   }
   const enabled = Boolean(form.approval_workflows_enabled);
@@ -343,10 +388,16 @@ function ReasonDialog({ action, setAction, onSubmit }: { action: { title: string
 
 function TemplateDialog({ token, template, onClose, onSaved }: { token: string; template: ApprovalNotificationTemplate; onClose: () => void; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState(template);
+  const alerts = useAlert();
   async function save() {
-    await api.updateApprovalNotificationTemplate(token, template.id, form);
-    await onSaved();
-    onClose();
+    try {
+      await api.updateApprovalNotificationTemplate(token, template.id, form);
+      alerts.showSuccess("Notification template saved", "Approval notification template was updated.");
+      await onSaved();
+      onClose();
+    } catch (err) {
+      alerts.showApiError(err, "Unable to save notification template.");
+    }
   }
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-2xl rounded-lg border bg-white p-4 shadow-xl"><h2 className="text-sm font-semibold">Notification template</h2><div className="mt-3 grid gap-3"><Field label="Name" value={form.template_name} onChange={(value) => setForm({ ...form, template_name: value })} /><Field label="Subject" value={form.subject_template ?? ""} onChange={(value) => setForm({ ...form, subject_template: value })} /><Field label="Body" value={form.body_template} onChange={(value) => setForm({ ...form, body_template: value })} /><Toggle label="Enabled" checked={Boolean(form.is_enabled)} onChange={(value) => setForm({ ...form, is_enabled: value })} /></div><div className="mt-4 flex justify-end gap-2"><Button variant="outline" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={() => void save()}><Bell className="h-4 w-4" /> Save</Button></div></div></div>;
 }

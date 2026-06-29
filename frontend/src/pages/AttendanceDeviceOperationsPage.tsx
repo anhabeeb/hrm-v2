@@ -16,6 +16,7 @@ import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
+import { useAlert } from "../components/alerts/useAlert";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceDevice, AttendanceDeviceSettings, AttendanceImportBatch, AttendanceImportRowError, AttendanceLockedDayWarning, AttendanceRawLog, AttendanceUnmatchedLog, AttendanceVendorIntegration, EmployeeBiometricMapping } from "../types/attendance";
@@ -96,6 +97,7 @@ function DeviceSettings({ token, canManage }: { token: string; canManage: boolea
   const [settings, setSettings] = useState<AttendanceDeviceSettings | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const alerts = useAlert();
 
   async function load() {
     try {
@@ -114,8 +116,11 @@ function DeviceSettings({ token, canManage }: { token: string; canManage: boolea
     try {
       setSettings((await api.updateAttendanceDeviceSettings(token, settings)).settings);
       setMessage("Device integration settings saved.");
+      alerts.showSuccess("Device settings saved", "Attendance device integration settings were saved.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save device settings.");
+      const message = err instanceof ApiError ? err.message : "Unable to save device settings.";
+      setError(message);
+      alerts.showApiError(err, "Unable to save device settings.");
     }
   }
 
@@ -184,6 +189,7 @@ function ImportBatches({ token, canManage }: { token: string; canManage: boolean
   const [deviceId, setDeviceId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const alerts = useAlert();
 
   async function load() {
     const [batchResult, deviceResult] = await Promise.all([api.listAttendanceImportBatches(token), api.listAttendanceDevices(token)]);
@@ -194,16 +200,23 @@ function ImportBatches({ token, canManage }: { token: string; canManage: boolean
 
   async function upload(event: FormEvent) {
     event.preventDefault();
-    if (!file) return;
+    if (!file) {
+      alerts.showValidationError("Choose a CSV file before uploading.", "File required");
+      return;
+    }
     setError(null);
     setMessage(null);
     try {
       const result = await api.uploadZktecoCsvAttendance(token, { file, attendance_device_id: deviceId || null });
-      setMessage(`Import uploaded. Inserted ${String(result.inserted ?? 0)}, unmatched ${String(result.unmatched ?? 0)}, duplicates ${String(result.duplicates ?? 0)}.`);
+      const successMessage = `Import uploaded. Inserted ${String(result.inserted ?? 0)}, unmatched ${String(result.unmatched ?? 0)}, duplicates ${String(result.duplicates ?? 0)}.`;
+      setMessage(successMessage);
+      alerts.showSuccess("Attendance import uploaded", successMessage);
       setFile(null);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to upload CSV import.");
+      const message = err instanceof ApiError ? err.message : "Unable to upload CSV import.";
+      setError(message);
+      alerts.showApiError(err, "Unable to upload CSV import.");
     }
   }
 
@@ -255,17 +268,41 @@ function UnmatchedLogs({ token }: { token: string }) {
 function ImportErrors({ token }: { token: string }) {
   const [rows, setRows] = useState<AttendanceImportRowError[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const alerts = useAlert();
   async function load() { setRows((await api.listAttendanceImportErrors(token)).errors); }
+  async function resolve(row: AttendanceImportRowError) {
+    try {
+      await api.resolveAttendanceImportError(token, row.id);
+      alerts.showSuccess("Import error resolved", "Attendance import row error was marked resolved.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to resolve import error.";
+      setError(message);
+      alerts.showApiError(err, "Unable to resolve import error.");
+    }
+  }
   useEffect(() => { void load().catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load import errors.")); }, [token]);
-  return <Panel className="overflow-hidden"><StatusLine error={error} /><DataTable rows={rows} columns={["batch_number", "row_number", "error_code", "error_message", "status", "created_at"]} action={(row) => <RowActionButton intent="save" size="sm" title="Resolve import error" onClick={() => void api.resolveAttendanceImportError(token, row.id).then(load)}>Resolve</RowActionButton>} /></Panel>;
+  return <Panel className="overflow-hidden"><StatusLine error={error} /><DataTable rows={rows} columns={["batch_number", "row_number", "error_code", "error_message", "status", "created_at"]} action={(row) => <RowActionButton intent="save" size="sm" title="Resolve import error" onClick={() => void resolve(row)}>Resolve</RowActionButton>} /></Panel>;
 }
 
 function LockedWarnings({ token }: { token: string }) {
   const [rows, setRows] = useState<AttendanceLockedDayWarning[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const alerts = useAlert();
   async function load() { setRows((await api.listAttendanceLockedDayWarnings(token)).warnings); }
+  async function resolve(row: AttendanceLockedDayWarning) {
+    try {
+      await api.resolveAttendanceLockedDayWarning(token, row.id, "Reviewed");
+      alerts.showSuccess("Locked-day warning resolved", "Locked-day import warning was marked reviewed.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to resolve locked-day warning.";
+      setError(message);
+      alerts.showApiError(err, "Unable to resolve locked-day warning.");
+    }
+  }
   useEffect(() => { void load().catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load locked-day warnings.")); }, [token]);
-  return <Panel className="overflow-hidden"><StatusLine error={error} /><DataTable rows={rows} columns={["employee_name", "employee_no", "attendance_date", "warning_type", "message", "status", "created_at"]} action={(row) => <RowActionButton intent="save" size="sm" title="Resolve locked-day warning" onClick={() => void api.resolveAttendanceLockedDayWarning(token, row.id, "Reviewed").then(load)}><ShieldCheck className="h-4 w-4" /> Resolve</RowActionButton>} /></Panel>;
+  return <Panel className="overflow-hidden"><StatusLine error={error} /><DataTable rows={rows} columns={["employee_name", "employee_no", "attendance_date", "warning_type", "message", "status", "created_at"]} action={(row) => <RowActionButton intent="save" size="sm" title="Resolve locked-day warning" onClick={() => void resolve(row)}><ShieldCheck className="h-4 w-4" /> Resolve</RowActionButton>} /></Panel>;
 }
 
 function Diagnostics({ token }: { token: string }) {
@@ -279,9 +316,21 @@ function VendorIntegrations({ token, canManage }: { token: string; canManage: bo
   const [rows, setRows] = useState<AttendanceVendorIntegration[]>([]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const alerts = useAlert();
   async function load() { setRows((await api.listAttendanceVendorIntegrations(token)).integrations); }
+  async function test(row: AttendanceVendorIntegration) {
+    try {
+      await api.testAttendanceVendorIntegration(token, row.id);
+      alerts.showInfo("Vendor test completed", "Vendor integration test placeholder completed.");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to test vendor integration.";
+      setError(message);
+      alerts.showApiError(err, "Unable to test vendor integration.");
+    }
+  }
   useEffect(() => { void load().catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load vendor integrations.")); }, [token]);
-  return <Panel className="overflow-hidden"><Toolbar>{canManage ? <ActionTextButton intent="create" size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> Add placeholder</ActionTextButton> : <span />}</Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={["name", "vendor", "integration_type", "status", "last_test_status", "last_test_message"]} action={(row) => <RowActionButton intent="neutral" size="sm" title="Test vendor integration" onClick={() => void api.testAttendanceVendorIntegration(token, row.id).then(load)}><Wrench className="h-4 w-4" /> Test</RowActionButton>} />{creating ? <VendorModal token={token} onClose={() => setCreating(false)} onSaved={load} /> : null}</Panel>;
+  return <Panel className="overflow-hidden"><Toolbar>{canManage ? <ActionTextButton intent="create" size="sm" onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> Add placeholder</ActionTextButton> : <span />}</Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={["name", "vendor", "integration_type", "status", "last_test_status", "last_test_message"]} action={(row) => <RowActionButton intent="neutral" size="sm" title="Test vendor integration" onClick={() => void test(row)}><Wrench className="h-4 w-4" /> Test</RowActionButton>} />{creating ? <VendorModal token={token} onClose={() => setCreating(false)} onSaved={load} /> : null}</Panel>;
 }
 
 function DeviceReports({ token }: { token: string }) {
@@ -289,6 +338,7 @@ function DeviceReports({ token }: { token: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const alerts = useAlert();
   async function load() {
     const report = (await api.getReport(token, key)).report;
     setRows(report.rows);
@@ -296,13 +346,20 @@ function DeviceReports({ token }: { token: string }) {
   }
   useEffect(() => { void load().catch((err) => setError(err instanceof ApiError ? err.message : "Unable to load attendance device report.")); }, [token, key]);
   async function exportCsv() {
-    const download = await api.exportReportCsv(token, key);
-    const url = URL.createObjectURL(download.blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = download.filename || `${key.replace(/\//g, "-")}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    try {
+      const download = await api.exportReportCsv(token, key);
+      const url = URL.createObjectURL(download.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = download.filename || `${key.replace(/\//g, "-")}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      alerts.showSuccess("Report exported", "Attendance device report CSV was downloaded.");
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Unable to export attendance device report.";
+      setError(message);
+      alerts.showApiError(err, "Unable to export attendance device report.");
+    }
   }
   const chips = useMemo<ActiveFilterChip[]>(() => key !== reportKeys[0] ? [{ key: "report", label: "Report", value: key, onRemove: () => setKey(reportKeys[0]) }] : [], [key]);
   return <Panel className="overflow-hidden"><Toolbar chips={chips}><StandardSelectFilter value={key} onValueChange={setKey} allLabel={reportKeys[0]} width="documentType" options={reportKeys.slice(1).map((item) => ({ value: item, label: item }))} /><FilterResetButton onReset={() => setKey(reportKeys[0])} /><ActionTextButton intent="export" size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</ActionTextButton></Toolbar><StatusLine error={error} /><DataTable rows={rows} columns={columns} /></Panel>;
@@ -319,15 +376,19 @@ function MappingModal({ token, mapping, employees, devices, onClose, onSaved }: 
     notes: mapping?.notes ?? ""
   });
   const [error, setError] = useState<string | null>(null);
+  const alerts = useAlert();
   async function submit(event: FormEvent) {
     event.preventDefault();
     try {
       if (mapping) await api.updateBiometricMapping(token, mapping.id, form);
       else await api.createBiometricMapping(token, form);
+      alerts.showSuccess("Biometric mapping saved", "Employee biometric mapping was saved.");
       await onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save mapping.");
+      const message = err instanceof ApiError ? err.message : "Unable to save mapping.";
+      setError(message);
+      alerts.showApiError(err, "Unable to save mapping.");
     }
   }
   return <Modal title={mapping ? "Edit Biometric Mapping" : "Add Biometric Mapping"} onClose={onClose}><form onSubmit={(event) => void submit(event)} className="grid gap-3 md:grid-cols-2"><StatusLine error={error} /><div className="md:col-span-2"><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={form.employee_id} onChange={(employee_id) => setForm({ ...form, employee_id })} /></div><Field label="Device"><SelectField className="h-9 rounded-md border bg-white px-3 text-sm" value={form.attendance_device_id} onChange={(event) => setForm({ ...form, attendance_device_id: event.target.value })}><option value="">Any device</option>{devices.map((device) => <option key={device.id} value={device.id}>{device.name}</option>)}</SelectField></Field><Field label="Biometric user ID"><Input required value={form.biometric_user_id} onChange={(event) => setForm({ ...form, biometric_user_id: event.target.value })} /></Field><Field label="Biometric user name"><Input value={form.biometric_user_name} onChange={(event) => setForm({ ...form, biometric_user_name: event.target.value })} /></Field><Field label="External employee code"><Input value={form.external_employee_code} onChange={(event) => setForm({ ...form, external_employee_code: event.target.value })} /></Field><Field label="Notes"><Input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></Field><div className="flex justify-end gap-2 md:col-span-2"><Button variant="outline" onClick={onClose}>Cancel</Button><ActionTextButton intent="save" type="submit">Save mapping</ActionTextButton></div></form></Modal>;
@@ -338,14 +399,18 @@ function ResolveUnmatchedModal({ token, log, employees, onClose, onSaved }: { to
   const [employeeId, setEmployeeId] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const alerts = useAlert();
   async function submit(event: FormEvent) {
     event.preventDefault();
     try {
       await api.mapAttendanceUnmatchedLog(token, log.id, { employee_id: employeeId, note });
+      alerts.showSuccess("Unmatched log resolved", "Biometric log was linked to an employee.");
       await onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to resolve unmatched log.");
+      const message = err instanceof ApiError ? err.message : "Unable to resolve unmatched log.";
+      setError(message);
+      alerts.showApiError(err, "Unable to resolve unmatched log.");
     }
   }
   return <Modal title="Resolve unmatched biometric log" onClose={onClose}><form onSubmit={(event) => void submit(event)} className="space-y-3"><StatusLine error={error} /><p className="text-sm text-muted-foreground">Biometric ID {log.biometric_user_id ?? "-"} at {log.punch_time ?? "-"}.</p><EmployeeCascadeSelect employees={employees} departments={organizationRefs.departments} locations={organizationRefs.locations} jobLevels={organizationRefs.jobLevels} positions={organizationRefs.positions} value={employeeId} onChange={setEmployeeId} /><Field label="Resolution note"><Input value={note} onChange={(event) => setNote(event.target.value)} /></Field><div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><ActionTextButton intent="complete" type="submit">Resolve</ActionTextButton></div></form></Modal>;
@@ -355,11 +420,17 @@ function VendorModal({ token, onClose, onSaved }: { token: string; onClose: () =
   const [name, setName] = useState("");
   const [vendor, setVendor] = useState("ZKTECO");
   const [integrationType, setIntegrationType] = useState("API_PLACEHOLDER");
+  const alerts = useAlert();
   async function submit(event: FormEvent) {
     event.preventDefault();
-    await api.createAttendanceVendorIntegration(token, { name, vendor, integration_type: integrationType });
-    await onSaved();
-    onClose();
+    try {
+      await api.createAttendanceVendorIntegration(token, { name, vendor, integration_type: integrationType });
+      alerts.showSuccess("Vendor integration saved", "Vendor integration placeholder was saved.");
+      await onSaved();
+      onClose();
+    } catch (err) {
+      alerts.showApiError(err, "Unable to save vendor integration.");
+    }
   }
   return <Modal title="Add vendor integration placeholder" onClose={onClose}><form onSubmit={(event) => void submit(event)} className="space-y-3"><Field label="Name"><Input required value={name} onChange={(event) => setName(event.target.value)} /></Field><Field label="Vendor"><Input value={vendor} onChange={(event) => setVendor(event.target.value)} /></Field><Field label="Integration type"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={integrationType} onChange={(event) => setIntegrationType(event.target.value)}>{["CSV_IMPORT", "LOCAL_BRIDGE", "PUSH_ADMS", "API_PLACEHOLDER"].map((item) => <option key={item}>{item}</option>)}</SelectField></Field><div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><ActionTextButton intent="save" type="submit">Save placeholder</ActionTextButton></div></form></Modal>;
 }
