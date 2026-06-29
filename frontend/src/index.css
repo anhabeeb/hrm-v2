@@ -43,3 +43,15 @@ select,
 textarea {
   font: inherit;
 }
+
+@keyframes loader-slide {
+  0% {
+    transform: translateX(-80%);
+  }
+  50% {
+    transform: translateX(65%);
+  }
+  100% {
+    transform: translateX(185%);
+  }
+}

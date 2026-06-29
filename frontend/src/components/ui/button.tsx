@@ -1,4 +1,5 @@
 import { isValidElement, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { InlineSpinner } from "../loading/InlineSpinner";
 import { cn } from "../../lib/utils";
 
 export type ButtonVariant =
@@ -30,6 +31,8 @@ export type ButtonSize = "sm" | "md" | "icon";
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  loading?: boolean;
+  loadingLabel?: string;
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
@@ -126,9 +129,9 @@ function inferActionVariant(label: string): ButtonVariant {
   return "actionCreate";
 }
 
-export function Button({ className, variant, size = "md", type = "button", children, disabled, title, "aria-label": ariaLabel, ...props }: ButtonProps) {
+export function Button({ className, variant, size = "md", type = "button", children, disabled, loading, loadingLabel = "Working", title, "aria-label": ariaLabel, ...props }: ButtonProps) {
   const label = [ariaLabel, title, textFromReactNode(children)].filter(Boolean).join(" ");
-  const effectiveVariant = disabled ? "actionDisabled" : variant ?? inferActionVariant(label);
+  const effectiveVariant = disabled || loading ? "actionDisabled" : variant ?? inferActionVariant(label);
   const effectiveAriaLabel = ariaLabel ?? (size === "icon" ? title ?? (label || "Action") : undefined);
 
   return (
@@ -140,11 +143,13 @@ export function Button({ className, variant, size = "md", type = "button", child
         sizeClasses[size],
         className
       )}
-      disabled={disabled}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       title={title ?? (size === "icon" ? effectiveAriaLabel : undefined)}
       aria-label={effectiveAriaLabel}
       {...props}
     >
+      {loading ? <InlineSpinner className="shrink-0" label={loadingLabel} /> : null}
       {children}
     </button>
   );

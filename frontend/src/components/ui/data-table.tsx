@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
+import { TableSkeleton } from "../loading/TableSkeleton";
 import { cn } from "../../lib/utils";
 import { EmptyState } from "./empty-state";
-import { ErrorState, LoadingSkeleton } from "./page-shell";
+import { ErrorState } from "./page-shell";
 import { ResponsiveTableWrapper } from "./data-table-shell";
 
 interface DataTableFrameProps {
@@ -24,7 +25,7 @@ export function DataTableFrame({
   className
 }: DataTableFrameProps) {
   if (loading) {
-    return <LoadingSkeleton rows={5} />;
+    return <TableSkeleton rows={5} />;
   }
 
   if (error) {

@@ -67,8 +67,8 @@ export function SetupPage() {
               />
             </div>
             {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-            <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? "Creating account" : "Complete setup"}
+            <Button type="submit" className="w-full" disabled={submitting} loading={submitting} loadingLabel="Creating owner account">
+              Complete setup
               <ArrowRight className="h-4 w-4" />
             </Button>
           </form>

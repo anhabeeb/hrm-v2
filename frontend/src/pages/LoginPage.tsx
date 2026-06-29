@@ -95,8 +95,8 @@ export function LoginPage() {
             {passwordError ? <p className="text-xs text-red-700">{passwordError}</p> : null}
           </div>
           {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-          <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? "Signing in" : "Sign in"}
+          <Button type="submit" className="w-full" disabled={submitting} loading={submitting} loadingLabel="Signing in">
+            Sign in
           </Button>
         </form>
       </div>

@@ -1,9 +1,11 @@
 import { Badge } from "../ui/badge";
 import { EmptyState } from "../ui/empty-state";
+import { TableSkeleton } from "../loading/TableSkeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { rowLevelIssueFromImportRow, type ImportPreviewSummary } from "../../lib/import-utils";
 
-export function ImportPreviewTable({ preview, rows }: { preview: ImportPreviewSummary | null; rows: Record<string, unknown>[] }) {
+export function ImportPreviewTable({ preview, rows, loading = false }: { preview: ImportPreviewSummary | null; rows: Record<string, unknown>[]; loading?: boolean }) {
+  if (loading) return <TableSkeleton rows={4} columns={6} label="Loading import preview" />;
   const issues = rows.map(rowLevelIssueFromImportRow);
   if (!preview && !issues.length) return <EmptyState title="No validation preview yet" description="Upload a file and run validation to see row-level issues." />;
   return (

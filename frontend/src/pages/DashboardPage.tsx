@@ -31,6 +31,7 @@ import { Link } from "react-router-dom";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { CardSkeleton } from "../components/loading/CardSkeleton";
 import { DashboardWidget, PageHeader, PageShell, WarningPanel } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Tooltip } from "../components/ui/tooltip";
@@ -482,7 +483,8 @@ function CommandCenterSkeleton() {
   const skeletonCards = Array.from({ length: 4 }).map((_, index) => ({ id: `skeleton-${index}` }));
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" aria-busy="true" aria-label="Loading Command Center KPI groups" data-professional-loader="command-center">
+      <CardSkeleton cards={4} />
       {["Workforce", "Attendance", "Payroll"].map((group) => (
         <DashboardWidget key={group} title={group} description="Loading live KPI cards.">
           <div className="mx-auto flex max-w-[89rem] flex-col items-center gap-4 p-4">

@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ComponentType } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import { LoadingScreen } from "../components/LoadingScreen";
+import { AppLoader, PageLoader } from "../components/loading";
 import { useAuth } from "../hooks/useAuth";
 import { AppShell } from "../layouts/AppShell";
 
@@ -82,7 +82,7 @@ const UsersAccessPage = lazyPage(() => import("../pages/UsersAccessPage"), "User
 function RequireAuth() {
   const { loading, bootstrap, user } = useAuth();
   if (loading || !bootstrap) {
-    return <LoadingScreen />;
+    return <AppLoader />;
   }
   if (bootstrap.setup_required) {
     return <Navigate to="/setup" replace />;
@@ -96,7 +96,7 @@ function RequireAuth() {
 function SetupGate() {
   const { loading, bootstrap, user } = useAuth();
   if (loading || !bootstrap) {
-    return <LoadingScreen />;
+    return <AppLoader />;
   }
   if (!bootstrap.setup_required) {
     return <Navigate to={user ? "/" : "/login"} replace />;
@@ -107,7 +107,7 @@ function SetupGate() {
 function LoginGate() {
   const { loading, bootstrap, user } = useAuth();
   if (loading || !bootstrap) {
-    return <LoadingScreen />;
+    return <AppLoader />;
   }
   if (bootstrap.setup_required) {
     return <Navigate to="/setup" replace />;
@@ -127,7 +127,7 @@ function defaultLandingPath(user: { permissions: string[]; employee_id?: string 
 
 export function AppRoutes() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<PageLoader title="Loading HRM page" description="Loading the requested workspace module." />}>
       <Routes>
         <Route path="/setup" element={<SetupGate />} />
         <Route path="/login" element={<LoginGate />} />

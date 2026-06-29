@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
+import { TableSkeleton } from "../loading/TableSkeleton";
 import { cn } from "../../lib/utils";
 import { EmptyState } from "./empty-state";
-import { LoadingSkeleton, ErrorState } from "./page-shell";
+import { ErrorState } from "./page-shell";
 
 export const dataTableShellCompatibilityMarkers = ["LoadingState"] as const;
 
@@ -24,7 +25,7 @@ export function DataTableShell({
   emptyDescription = "Try changing filters or add a new record when you are ready.",
   className
 }: DataTableShellProps) {
-  if (loading) return <LoadingSkeleton rows={5} />;
+  if (loading) return <TableSkeleton rows={5} />;
   if (error) return <ErrorState title="Unable to load records" description={error} />;
   if (empty) {
     return (

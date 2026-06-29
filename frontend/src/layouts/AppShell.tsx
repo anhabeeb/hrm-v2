@@ -23,10 +23,11 @@ import {
   UserRound,
   Users
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { GlobalSearch } from "../components/global/GlobalSearch";
 import { NotificationBell } from "../components/global/NotificationBell";
+import { PageLoader } from "../components/loading";
 import { Button } from "../components/ui/button";
 import { useAuth } from "../hooks/useAuth";
 import { cn } from "../lib/utils";
@@ -347,7 +348,9 @@ export function AppShell() {
 
           <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
             <div className="box-border w-full max-w-none min-w-0 px-3 py-4 sm:px-4 lg:px-6">
-              <Outlet />
+              <Suspense fallback={<PageLoader title="Loading workspace" description="Preparing this HRM module without moving the sidebar or header." />}>
+                <Outlet />
+              </Suspense>
             </div>
           </main>
         </div>

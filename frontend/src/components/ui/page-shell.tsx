@@ -1,6 +1,7 @@
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { Settings as SettingsIcon } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { CardSkeleton, FormSkeleton, TableSkeleton } from "../loading";
 import { useAuth } from "../../hooks/useAuth";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
@@ -536,31 +537,22 @@ export const AlertBanner = WarningPanel;
 export const NotificationBanner = WarningPanel;
 
 export function LoadingSkeleton({ rows = 4 }: { rows?: number }) {
+  return <TableSkeleton rows={rows} columns={4} label="Loading content" />;
+}
+
+export function LoadingState({ title = "Loading", description = "Fetching the latest records." }: { title?: string; description?: string }) {
   return (
-    <div className="rounded-lg border bg-white p-4 shadow-panel">
-      <div className="space-y-3">
-        {Array.from({ length: rows }).map((_, index) => (
-          <div key={index} className="h-4 animate-pulse rounded bg-slate-100" style={{ width: `${90 - index * 8}%` }} />
-        ))}
+    <div className="space-y-4" aria-busy="true" aria-live="polite">
+      <CardSkeleton cards={4} />
+      <div className="rounded-lg border bg-white p-4 shadow-panel">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </div>
     </div>
   );
 }
 
-export function LoadingState({ title = "Loading", description = "Fetching the latest records." }: { title?: string; description?: string }) {
-  return (
-    <div className="rounded-lg border bg-white p-6 shadow-panel">
-      <div className="space-y-3">
-        <div className="h-3 w-36 animate-pulse rounded bg-slate-200" />
-        <div className="h-8 w-56 animate-pulse rounded bg-slate-100" />
-        <div>
-          <h3 className="text-sm font-semibold">{title}</h3>
-          <p className="text-sm text-muted-foreground">{description}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
+export { CardSkeleton, FormSkeleton, TableSkeleton };
 
 export function ErrorState({ title = "Something went wrong", description, action }: { title?: string; description?: ReactNode; action?: ReactNode }) {
   return (
