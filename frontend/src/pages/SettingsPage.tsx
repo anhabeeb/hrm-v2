@@ -9,6 +9,7 @@ import { Panel } from "../components/ui/panel";
 import { Switch } from "../components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Tooltip } from "../components/ui/tooltip";
+import { useAlert } from "../components/alerts/useAlert";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -62,7 +63,8 @@ function boolPayload(value: boolean) {
 }
 
 export function SettingsPage() {
-  const { token, user } = useAuth();
+  const { token, user, refreshCurrentUser } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const [settings, setSettings] = useState<SettingsMap>({});
   const [loading, setLoading] = useState(false);
@@ -146,10 +148,15 @@ export function SettingsPage() {
           break;
       }
       setSettings((previous) => ({ ...previous, [toggle.section]: saved }));
-      setMessage(`${toggle.label} ${nextEnabled ? "enabled" : "disabled"}.`);
+      await refreshCurrentUser();
+      const successMessage = `${toggle.label} ${nextEnabled ? "enabled" : "disabled"}.`;
+      setMessage(successMessage);
+      alerts.showSuccess("Module visibility updated", successMessage);
     } catch (error) {
       setSettings((previous) => ({ ...previous, [toggle.section]: oldSettings }));
-      setMessage(error instanceof Error ? error.message : `Unable to update ${toggle.label}.`);
+      const errorMessage = error instanceof Error ? error.message : `Unable to update ${toggle.label}.`;
+      setMessage(errorMessage);
+      alerts.showApiError(error, `Unable to update ${toggle.label}.`);
     } finally {
       setSavingKey(null);
     }

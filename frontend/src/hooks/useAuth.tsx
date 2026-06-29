@@ -15,6 +15,7 @@ interface AuthContextValue {
   refreshBootstrap: () => Promise<BootstrapStatus>;
   login: (input: { email: string; password: string }) => Promise<AuthUser>;
   setupOwner: (input: { name: string; email: string; password: string }) => Promise<void>;
+  refreshCurrentUser: () => Promise<AuthUser | null>;
   logout: () => Promise<void>;
 }
 
@@ -126,6 +127,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [persistSession, refreshBootstrap]
   );
 
+  const refreshCurrentUser = useCallback(async () => {
+    const currentToken = localStorage.getItem(TOKEN_KEY);
+    if (!currentToken) {
+      clearSession();
+      return null;
+    }
+    try {
+      const result = await loadCurrentUser(currentToken);
+      persistSession(currentToken, result.user);
+      return result.user;
+    } catch {
+      clearSession();
+      return null;
+    }
+  }, [clearSession, loadCurrentUser, persistSession]);
+
   const logout = useCallback(async () => {
     const currentToken = localStorage.getItem(TOKEN_KEY);
     clearSession();
@@ -139,8 +156,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearSession]);
 
   const value = useMemo(
-    () => ({ token, user, bootstrap, loading, refreshBootstrap, login, setupOwner, logout }),
-    [token, user, bootstrap, loading, refreshBootstrap, login, setupOwner, logout]
+    () => ({ token, user, bootstrap, loading, refreshBootstrap, login, setupOwner, refreshCurrentUser, logout }),
+    [token, user, bootstrap, loading, refreshBootstrap, login, setupOwner, refreshCurrentUser, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

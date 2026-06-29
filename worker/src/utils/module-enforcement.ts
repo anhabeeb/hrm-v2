@@ -123,6 +123,48 @@ async function moduleControlEnabledRaw(db: Env["DB"], moduleKey: string, fallbac
   }
 }
 
+async function settingEnabledRaw(db: Env["DB"], sql: string, fallback = true) {
+  try {
+    const row = await db.prepare(sql).first<{ enabled: unknown }>();
+    if (!row) return fallback;
+    return bool(row.enabled, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+async function moduleSpecificSettingEnabledRaw(db: Env["DB"], moduleKey: string, fallback = true): Promise<boolean> {
+  switch (moduleKey) {
+    case "attendance":
+      return settingEnabledRaw(db, "SELECT module_enabled AS enabled FROM attendance_settings WHERE id = 'attendance_settings_default'", fallback);
+    case "zkteco_attendance":
+      return settingEnabledRaw(db, "SELECT module_enabled AS enabled FROM attendance_settings WHERE id = 'attendance_settings_default'", fallback);
+    case "roster":
+      return settingEnabledRaw(db, "SELECT module_enabled AS enabled FROM roster_settings WHERE id = 'roster_settings_default'", fallback);
+    case "payroll":
+      return settingEnabledRaw(db, "SELECT module_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'", fallback);
+    case "documents":
+    case "document_compliance":
+      return settingEnabledRaw(db, "SELECT document_compliance_enabled AS enabled FROM document_compliance_settings ORDER BY created_at LIMIT 1", fallback);
+    case "contracts":
+      return settingEnabledRaw(db, "SELECT contracts_enabled AS enabled FROM contract_settings ORDER BY created_at LIMIT 1", fallback);
+    case "assets_uniforms":
+      return settingEnabledRaw(db, "SELECT asset_module_enabled AS enabled FROM asset_uniform_settings WHERE id = 'asset_uniform_settings_default'", fallback);
+    case "final_settlement":
+      return settingEnabledRaw(db, "SELECT CASE WHEN COALESCE(module_enabled, 1) = 1 AND COALESCE(final_settlement_enabled, 1) = 1 THEN 1 ELSE 0 END AS enabled FROM final_settlement_settings WHERE id = 'final_settlement_settings_default'", fallback);
+    case "approvals":
+      return settingEnabledRaw(db, "SELECT approval_workflows_enabled AS enabled FROM approval_workflow_settings WHERE id = 'approval_workflow_settings_default'", fallback);
+    case "onboarding":
+      return settingEnabledRaw(db, "SELECT onboarding_enabled AS enabled FROM onboarding_settings WHERE id = 'onboarding_settings_default'", fallback);
+    case "offboarding":
+      return settingEnabledRaw(db, "SELECT offboarding_enabled AS enabled FROM offboarding_settings WHERE id = 'offboarding_settings_default'", fallback);
+    case "self_service":
+      return settingEnabledRaw(db, "SELECT module_enabled AS enabled FROM self_service_settings WHERE id = 'self_service_settings_default'", fallback);
+    default:
+      return fallback;
+  }
+}
+
 export function disabledModulePayload(moduleKey: string, moduleLabel?: string) {
   const label = moduleLabel || moduleKey.replace(/_/g, " ");
   return {
@@ -162,13 +204,25 @@ export async function isOperationalModuleEnabled(db: Env["DB"], moduleKey: strin
   if (PAYROLL_SUBMODULE_SETTING_KEYS[normalized]) {
     return isOperationalSubmoduleEnabled(db, "payroll", normalized);
   }
-  return moduleControlEnabledRaw(db, normalized, true);
+  const centralEnabled = await moduleControlEnabledRaw(db, normalized, true);
+  if (!centralEnabled) return false;
+  return moduleSpecificSettingEnabledRaw(db, normalized, true);
 }
 
 export async function isOperationalSubmoduleEnabled(db: Env["DB"], moduleKey: string, submoduleKey: string | null | undefined): Promise<boolean> {
   const normalizedModule = normalizeOperationalModuleKey(moduleKey);
+  const rawSubmodule = String(submoduleKey ?? "").trim();
   const normalizedSubmodule = normalizeOperationalModuleKey(submoduleKey);
   if (!(await isOperationalModuleEnabled(db, normalizedModule))) return false;
+  if (normalizedModule === "assets_uniforms") {
+    if (rawSubmodule === "uniforms" || rawSubmodule === "uniform") {
+      return settingEnabledRaw(db, "SELECT uniform_module_enabled AS enabled FROM asset_uniform_settings WHERE id = 'asset_uniform_settings_default'", true);
+    }
+    if (rawSubmodule === "assets" || rawSubmodule === "asset") {
+      return settingEnabledRaw(db, "SELECT asset_module_enabled AS enabled FROM asset_uniform_settings WHERE id = 'asset_uniform_settings_default'", true);
+    }
+    return true;
+  }
   if (normalizedModule !== "payroll") return isOperationalModuleEnabled(db, normalizedSubmodule);
   const settingKey = PAYROLL_SUBMODULE_SETTING_KEYS[normalizedSubmodule];
   if (!settingKey) return true;

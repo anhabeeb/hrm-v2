@@ -83,6 +83,46 @@ hasAll("worker/src/utils/module-enforcement.ts", [
   "Enable this module from Settings to use this feature."
 ], "shared backend module-disabled helper");
 
+hasAll("worker/src/utils/module-enforcement.ts", [
+  "moduleControlEnabledRaw",
+  "settingEnabledRaw",
+  "moduleSpecificSettingEnabledRaw",
+  "centralEnabled",
+  "moduleSpecificSettingEnabledRaw(db, normalized, true)",
+  "roster_settings",
+  "attendance_settings",
+  "payroll_settings",
+  "asset_uniform_settings",
+  "asset_module_enabled",
+  "uniform_module_enabled",
+  "document_compliance_settings",
+  "document_compliance_enabled",
+  "contract_settings",
+  "contracts_enabled",
+  "onboarding_settings",
+  "onboarding_enabled",
+  "offboarding_settings",
+  "offboarding_enabled",
+  "self_service_settings",
+  "module_enabled AS enabled"
+], "module visibility must combine central module_control_settings with module-specific settings tables");
+
+hasNo(
+  "worker/src/utils/module-enforcement.ts",
+  /case "roster":[\s\S]{0,260}attendance_settings/,
+  "Roster visibility must come from roster_settings, not Attendance settings"
+);
+hasNo(
+  "worker/src/utils/module-enforcement.ts",
+  /case "payroll":[\s\S]{0,260}attendance_settings/,
+  "Payroll visibility must come from payroll_settings, not Attendance settings"
+);
+hasNo(
+  "worker/src/utils/module-enforcement.ts",
+  /case "leave":[\s\S]{0,260}attendance_settings/,
+  "Leave visibility must not be disabled just because Attendance is disabled"
+);
+
 hasAll("worker/src/utils/action-validation.ts", [
   "validateModuleEnabledForAction",
   "isOperationalModuleEnabled",
@@ -318,6 +358,14 @@ hasAll("frontend/src/layouts/AppShell.tsx", [
 ], "sidebar/nav hides disabled operational entries while settings remain permission-controlled");
 hasNo("frontend/src/layouts/AppShell.tsx", /moduleKey:\s*"settings"/, "settings navigation must not be hidden by operational module toggles");
 
+hasAll("frontend/src/hooks/useAuth.tsx", [
+  "refreshCurrentUser: () => Promise<AuthUser | null>",
+  "const refreshCurrentUser = useCallback",
+  "api.me",
+  "persistSession(currentToken, result.user)",
+  "clearSession()"
+], "auth hook exposes current-user refresh so module_visibility updates immediately after settings changes");
+
 hasAll("frontend/src/routes/AppRoutes.tsx", [
   "OperationalRouteGate",
   "ModuleDisabledState",
@@ -479,8 +527,13 @@ hasAll("frontend/src/pages/SettingsPage.tsx", [
   ">|</span>",
   "api.updatePayrollSettings",
   "api.updateOnboardingSettings",
-  "api.updateSelfServiceSettings"
-], "main Settings toggle control center remains intact");
+  "api.updateSelfServiceSettings",
+  "refreshCurrentUser",
+  "await refreshCurrentUser()",
+  "useAlert",
+  "alerts.showSuccess",
+  "alerts.showApiError"
+], "main Settings toggle control center saves settings, refreshes module visibility, and shows popup feedback");
 hasNo("frontend/src/pages/PayrollAdminPages.tsx", /<ModuleToggleHeader\b/, "individual payroll settings page must not reintroduce large toggle controls");
 
 [
