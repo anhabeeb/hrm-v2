@@ -21,8 +21,67 @@ const employeeProfile = read("frontend/src/pages/EmployeeProfilePage.tsx");
 const lifecyclePage = read("frontend/src/pages/LifecyclePage.tsx");
 const usersAccess = read("frontend/src/pages/UsersAccessPage.tsx");
 const selfService = read("worker/src/routes/self-service.ts");
+const selfServicePage = read("frontend/src/pages/SelfServicePage.tsx");
 const dataTransferRoutes = readOptional("worker/src/routes/data-transfer.ts");
 const wrangler = read("worker/wrangler.toml");
+const packageJson = read("package.json");
+
+function selfServiceRouteBlock(method, route) {
+  const marker = `selfServiceRoutes.${method}("${route}"`;
+  const start = selfService.indexOf(marker);
+  if (start < 0) return "";
+  const next = selfService.indexOf("\nselfServiceRoutes.", start + marker.length);
+  return selfService.slice(start, next < 0 ? selfService.length : next);
+}
+
+const activeSelfServiceGuardRoutes = [
+  ["get", "/dashboard"],
+  ["get", "/profile"],
+  ["get", "/profile/update-requests"],
+  ["post", "/profile/update-requests"],
+  ["post", "/profile/update-requests/:requestId/cancel"],
+  ["get", "/documents"],
+  ["get", "/documents/warnings"],
+  ["get", "/attendance"],
+  ["get", "/attendance/summary"],
+  ["get", "/attendance/calendar"],
+  ["get", "/attendance/daily-records"],
+  ["get", "/attendance/corrections"],
+  ["post", "/attendance/corrections"],
+  ["post", "/attendance/correction-requests"],
+  ["get", "/leave"],
+  ["get", "/leave/summary"],
+  ["get", "/leave/balances"],
+  ["get", "/leave/requests"],
+  ["post", "/leave/requests"],
+  ["get", "/leave/requests/:requestId"],
+  ["post", "/leave/requests/:requestId/cancel"],
+  ["get", "/roster"],
+  ["get", "/roster/weekly"],
+  ["get", "/roster/upcoming"],
+  ["get", "/roster/week"],
+  ["get", "/payroll"],
+  ["get", "/payroll/summary"],
+  ["get", "/payroll/history"],
+  ["get", "/payroll/payslips"],
+  ["get", "/payslips"],
+  ["get", "/payslips/:payslipId"],
+  ["get", "/payslips/:payslipId/preview"],
+  ["get", "/payslips/:payslipId/download"],
+  ["get", "/assets"],
+  ["get", "/requests"],
+  ["get", "/approvals"],
+  ["get", "/notifications"],
+  ["post", "/notifications/:notificationId/read"],
+  ["post", "/notifications/mark-all-read"],
+  ["get", "/kyc-requests"],
+  ["post", "/kyc-requests"]
+];
+
+const activeGuardRouteFailures = activeSelfServiceGuardRoutes.filter(([method, route]) => {
+  const block = selfServiceRouteBlock(method, route);
+  return !block || block.includes("requireLinkedEmployee(c)") || !block.includes("requireSelfServiceEmployeeContext(c)");
+});
 
 check("GET employee user account endpoint exists", employeeRoutes.includes('employeeRoutes.get("/:id/user-account"'));
 check("link existing user endpoint exists", employeeRoutes.includes('user-account/link-existing'));
@@ -67,9 +126,16 @@ check("offboarding readiness enforces user access deactivation", lifecycleRoutes
 check("offboarding finalization deactivates linked access", lifecycleRoutes.includes("finalizeEmployeeExitFromOffboarding") && lifecycleRoutes.includes("const accessResult = await deactivateEmployeeUserAccessForOffboarding"));
 check("offboarding UI shows deactivation action", lifecyclePage.includes("OffboardingUserAccessPanel") && lifecyclePage.includes("Deactivate linked access") && lifecyclePage.includes("api.deactivateEmployeeUserForExit"));
 check("Users & Access lists linked employee details", usersRoutes.includes("employee_no") && usersRoutes.includes("employee_name") && usersAccess.includes("employee_name") && usersAccess.includes("Employee link"));
-check("self-service requires linked active employee context", selfService.includes("SELF_SERVICE_UNAVAILABLE") && selfService.includes("This account is not linked to an active employee profile.") && selfService.includes("es.can_login = 1"));
+check("operational self-service routes use active employee context", activeGuardRouteFailures.length === 0);
+check("weak linked-only self-service guard is not used", !selfService.includes("requireLinkedEmployee("));
+check("self-service active context checks can_login", selfService.includes("INNER JOIN employee_statuses es ON es.id = e.status_id AND es.can_login = 1"));
+check("self-service active context blocks archived employees", selfService.includes("WHERE e.id = ? AND e.archived_at IS NULL"));
+check("/me exposes linked and active availability state", selfService.includes("linked_employee") && selfService.includes("active_employee") && selfService.includes("self_service_available") && selfService.includes("unavailable_message"));
+check("frontend shows clean self-service unavailable state", selfServicePage.includes("SELF_SERVICE_UNAVAILABLE") && selfServicePage.includes("Self-service is unavailable because your account is not linked to an active employee profile."));
+check("post-offboarding self-service data remains guarded", lifecycleRoutes.includes("deactivateEmployeeUserAccessForOffboarding") && activeGuardRouteFailures.length === 0);
+check("related post-production verifier scripts remain wired", ["verify:import-export-standardization", "verify:button-color-standardization", "verify:frontend-static-assets", "verify:frontend-bundle-integrity", "verify:filter-search-date-standardization", "verify:command-center-dashboard"].every((marker) => packageJson.includes(marker)));
 check("no generic employee import silently creates users", !dataTransferRoutes.includes("INSERT INTO users"));
-check("no browser alert confirm prompt in changed UI", !/\b(window\.)?(alert|confirm|prompt)\s*\(/.test(employeeProfile) && !/\b(window\.)?(alert|confirm|prompt)\s*\(/.test(lifecyclePage) && !/\b(window\.)?(alert|confirm|prompt)\s*\(/.test(usersAccess));
+check("no browser alert confirm prompt in changed UI", !/\b(window\.)?(alert|confirm|prompt)\s*\(/.test(employeeProfile) && !/\b(window\.)?(alert|confirm|prompt)\s*\(/.test(lifecyclePage) && !/\b(window\.)?(alert|confirm|prompt)\s*\(/.test(usersAccess) && !/\b(window\.)?(alert|confirm|prompt)\s*\(/.test(selfServicePage));
 check("PBKDF2 iterations remain 100000", read("worker/src/auth/password.ts").includes("PBKDF2_ITERATIONS = 100000"));
 check("D1 binding unchanged", wrangler.includes('database_name = "hrm-v2"') && wrangler.includes('database_id = "97f9966e-4fe5-4999-aed7-dc20d75fc89e"'));
 check("R2 binding unchanged", wrangler.includes('bucket_name = "hrm-v2-documents"'));

@@ -56,9 +56,9 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
     try {
       const self = await api.getSelfServiceMe(token);
       setLinked(self.linked_employee);
-      if (!self.linked_employee) {
+      if (!self.linked_employee || self.self_service_available === false) {
         setData(null);
-        setMessage(self.unavailable_message ?? "This account is not linked to an employee profile.");
+        setMessage(self.unavailable_message ?? "Self-service is unavailable because your account is not linked to an active employee profile.");
         return;
       }
       if (activeMode === "home") setData(await api.getSelfServiceDashboard(token));
@@ -135,7 +135,11 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
       if (activeMode === "notifications") setData(await api.getSelfServiceNotifications(token));
       if (activeMode === "kyc") setData(await api.listSelfServiceKycRequests(token));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Self-service could not be loaded.");
+      if (err instanceof ApiError && err.code === "SELF_SERVICE_UNAVAILABLE") {
+        setError("Self-service is unavailable because your account is not linked to an active employee profile.");
+      } else {
+        setError(err instanceof Error ? err.message : "Self-service could not be loaded.");
+      }
     } finally {
       setLoading(false);
     }

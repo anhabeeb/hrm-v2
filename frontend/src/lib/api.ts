@@ -500,7 +500,7 @@ export const api = {
     return request<{ active_contract: Record<string, unknown> | null; contract_history: Record<string, unknown>[]; salary_terms_visible: boolean; message?: string | null }>("/api/v1/self-service/contracts", {}, token);
   },
   getSelfServiceMe(token: string) {
-    return request<{ linked_employee: boolean; employee_id: string | null; unavailable_message: string | null; module_visibility?: Record<string, boolean> }>("/api/v1/self-service/me", {}, token);
+    return request<{ linked_employee: boolean; active_employee?: boolean; self_service_available?: boolean; employee_id: string | null; unavailable_message: string | null; module_visibility?: Record<string, boolean> }>("/api/v1/self-service/me", {}, token);
   },
   getSelfServiceSettings(token: string) {
     return request<{ settings: Record<string, unknown> }>("/api/v1/self-service/settings", {}, token);

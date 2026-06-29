@@ -33,14 +33,6 @@ async function linkedEmployeeId(c: Context<AppBindings>) {
   return row?.id ?? null;
 }
 
-async function requireLinkedEmployee(c: Context<AppBindings>) {
-  const employeeId = await linkedEmployeeId(c);
-  if (!employeeId) {
-    return { employeeId: null, response: fail(c, 403, "SELF_SERVICE_UNAVAILABLE", "This account is not linked to an employee profile.") };
-  }
-  return { employeeId, response: null };
-}
-
 function maskSelfServiceDocuments(rows: Row[]) {
   return rows.map((row) => {
     const sensitive = Number(row.is_sensitive ?? 0) === 1;
@@ -739,12 +731,21 @@ selfServiceRoutes.get("/me", async (c) => {
   const disabled = await requireSelfServiceEnabled(c);
   if (disabled) return disabled;
   const employeeId = await linkedEmployeeId(c);
+  const activeEmployee = employeeId ? await getAuthenticatedSelfServiceEmployee(c) : null;
   const visibility = await getSelfServiceModuleVisibility(c);
+  const linked = Boolean(employeeId);
+  const active = Boolean(activeEmployee);
   return ok(c, {
-    linked_employee: Boolean(employeeId),
+    linked_employee: linked,
+    active_employee: active,
+    self_service_available: linked && active,
     employee_id: employeeId,
     module_visibility: visibility,
-    unavailable_message: employeeId ? null : "This account is not linked to an employee profile."
+    unavailable_message: !linked
+      ? "This account is not linked to an employee profile."
+      : !active
+        ? "This account is not linked to an active employee profile."
+        : null
   });
 });
 
@@ -808,7 +809,7 @@ selfServiceRoutes.get("/profile", async (c) => {
   if (!hasAny(c, ["self_service.profile.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your self-service profile.");
   const disabled = await assertSelfServiceModuleEnabled(c, "profile_enabled");
   if (disabled) return disabled;
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const employee = await c.env.DB
     .prepare(
@@ -875,7 +876,7 @@ selfServiceRoutes.get("/documents", async (c) => {
   if (!hasAny(c, ["self_service.documents.compliance.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your self-service documents.");
   const disabled = await assertSelfServiceModuleEnabled(c, "documents_enabled");
   if (disabled) return disabled;
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const rows = (
     await c.env.DB
@@ -918,7 +919,7 @@ selfServiceRoutes.get("/attendance", async (c) => {
   if (selfServiceDisabled) return selfServiceDisabled;
   const disabled = await requireSelfServiceAttendanceEnabled(c);
   if (disabled) return disabled;
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const from = c.req.query("date_from") ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
   const to = c.req.query("date_to") ?? new Date().toISOString().slice(0, 10);
@@ -1007,7 +1008,7 @@ selfServiceRoutes.post("/attendance/corrections", async (c) => {
   if (!boolSetting(selfServiceSettings, "allow_attendance_correction_requests")) return fail(c, 403, "SELF_SERVICE_ATTENDANCE_CORRECTIONS_DISABLED", "Attendance correction requests are disabled.");
   const settings = await getSelfServiceAttendanceSettings(c);
   if (Number(settings.allow_employee_correction_requests ?? 1) !== 1) return fail(c, 403, "ATTENDANCE_CORRECTIONS_DISABLED", "Employee attendance correction requests are disabled.");
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const body = await readJsonBody(c.req.raw);
   const attendanceDate = readString(body.attendance_date);
@@ -1055,7 +1056,7 @@ selfServiceRoutes.post("/attendance/correction-requests", async (c) => {
   if (!hasAny(c, ["self_service.attendance_correction.request", "self_service.attendance_correction", "attendance.corrections.create"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to request attendance corrections.");
   const disabled = await requireSelfServiceAttendanceEnabled(c);
   if (disabled) return disabled;
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const body = await readJsonBody(c.req.raw);
   const attendanceDate = readString(body.attendance_date);
@@ -1083,7 +1084,7 @@ selfServiceRoutes.get("/leave", async (c) => {
   if (!hasAny(c, ["self_service.leave.view", "self_service.leave_request", "leave.request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service leave.");
   const disabled = await assertSelfServiceModuleEnabled(c, "leave_enabled");
   if (disabled) return disabled;
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const balances = (await c.env.DB.prepare("SELECT * FROM leave_balances WHERE employee_id = ? ORDER BY period_year DESC").bind(gate.employeeId).all<Row>()).results;
   const cycles = await getSelfServiceLeaveCycles(c, gate.employeeId);
@@ -1146,7 +1147,7 @@ selfServiceRoutes.post("/leave/requests", async (c) => {
   if (selfServiceDisabled) return selfServiceDisabled;
   const selfServiceSettings = await getSelfServiceSettingsRow(c);
   if (!boolSetting(selfServiceSettings, "allow_leave_requests")) return fail(c, 403, "SELF_SERVICE_LEAVE_REQUESTS_DISABLED", "Leave requests are disabled.");
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const body = await readJsonBody(c.req.raw);
   const leaveTypeId = readString(body.leave_type_id);
@@ -1268,7 +1269,7 @@ selfServiceRoutes.get("/roster", async (c) => {
   if (selfServiceDisabled) return selfServiceDisabled;
   const disabled = await requireSelfServiceRosterEnabled(c);
   if (disabled) return disabled;
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const weekStart = readString(c.req.query("week_start_date")) || isoDate(new Date());
   const start = /^\d{4}-\d{2}-\d{2}$/.test(weekStart) ? weekStart : isoDate(new Date());
@@ -1323,7 +1324,7 @@ selfServiceRoutes.get("/roster/week", async (c) => {
   if (selfServiceDisabled) return selfServiceDisabled;
   const disabled = await requireSelfServiceRosterEnabled(c);
   if (disabled) return disabled;
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const weekStart = readString(c.req.query("week_start_date")) || isoDate(new Date());
   const start = /^\d{4}-\d{2}-\d{2}$/.test(weekStart) ? weekStart : isoDate(new Date());
@@ -1354,7 +1355,7 @@ selfServiceRoutes.get("/payroll", async (c) => {
   if (!hasAny(c, ["self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view self-service payroll.");
   const disabled = await assertSelfServiceModuleEnabled(c, "payroll_enabled");
   if (disabled) return disabled;
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const payrollSettings = await c.env.DB.prepare("SELECT module_enabled FROM payroll_settings WHERE id = 'payroll_settings_default'").first<Row>();
   if (Number(payrollSettings?.module_enabled ?? 1) !== 1) return fail(c, 503, "PAYROLL_MODULE_DISABLED", "Payroll module is disabled.");
@@ -1408,7 +1409,7 @@ selfServiceRoutes.get("/payroll/payslips", async (c) => {
 });
 
 selfServiceRoutes.get("/payslips", async (c) => {
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view payslips.");
   const disabled = await assertSelfServiceModuleEnabled(c, "payslips_enabled");
@@ -1418,7 +1419,7 @@ selfServiceRoutes.get("/payslips", async (c) => {
 });
 
 selfServiceRoutes.get("/payslips/:payslipId", async (c) => {
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view payslips.");
   const row = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ? AND employee_id = ?").bind(c.req.param("payslipId"), gate.employeeId).first<Row>();
@@ -1439,7 +1440,7 @@ selfServiceRoutes.get("/payslips/:payslipId", async (c) => {
 });
 
 selfServiceRoutes.get("/payslips/:payslipId/preview", async (c) => {
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   if (!hasAny(c, ["self_service.payslips.view", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to preview payslips.");
   const row = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ? AND employee_id = ?").bind(c.req.param("payslipId"), gate.employeeId).first<Row>();
@@ -1460,7 +1461,7 @@ selfServiceRoutes.get("/payslips/:payslipId/preview", async (c) => {
 });
 
 selfServiceRoutes.get("/payslips/:payslipId/download", async (c) => {
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   if (!hasAny(c, ["self_service.payslips.download", "self_service.payroll.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to download payslips.");
   const row = await c.env.DB.prepare("SELECT * FROM payroll_payslips WHERE id = ? AND employee_id = ?").bind(c.req.param("payslipId"), gate.employeeId).first<Row>();
@@ -1485,7 +1486,7 @@ selfServiceRoutes.get("/assets", async (c) => {
   if (!hasAny(c, ["self_service.assets.view", "self_service.view", "assets.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your assets.");
   const disabled = await assertSelfServiceModuleEnabled(c, "assets_enabled");
   if (disabled) return disabled;
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const assignments = (
     await c.env.DB
@@ -1547,7 +1548,7 @@ selfServiceRoutes.post("/notifications/mark-all-read", async (c) => {
 });
 
 selfServiceRoutes.get("/kyc-requests", async (c) => {
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const rows = (
     await c.env.DB
@@ -1565,7 +1566,7 @@ selfServiceRoutes.get("/kyc-requests", async (c) => {
 });
 
 selfServiceRoutes.post("/kyc-requests", async (c) => {
-  const gate = await requireLinkedEmployee(c);
+  const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   const body = await readJsonBody(c.req.raw);
   const section = readString(body.section);
