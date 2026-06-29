@@ -8,6 +8,7 @@ import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -31,6 +32,8 @@ employeeAssetRoutes.use("*", requireAuth);
 employeeNoteCategoryRoutes.use("*", requireAuth);
 employeeNoteRoutes.use("*", requireAuth);
 auditRoutes.use("*", requireAuth);
+assetRoutes.use("*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
+employeeAssetRoutes.use("*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
 
 function has(c: Context<AppBindings>, permission: string) {
   return c.get("currentUser").permissions.includes(permission);

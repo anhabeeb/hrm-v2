@@ -9,6 +9,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import { refreshComplianceAfterDocumentChange, resolveDocumentAlertForRenewedDocument } from "./document-compliance";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -120,6 +121,8 @@ export const employeeDocumentRoutes = new Hono<AppBindings>();
 
 documentRoutes.use("*", requireAuth);
 employeeDocumentRoutes.use("*", requireAuth);
+documentRoutes.use("*", requireOperationalModuleMiddleware("documents", "Documents"));
+employeeDocumentRoutes.use("*", requireOperationalModuleMiddleware("documents", "Documents"));
 
 function boolRow(value: number) {
   return value === 1;

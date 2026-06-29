@@ -7,6 +7,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, Env } from "../types";
 import { hasValidationErrors, validateContractRules, validationResponse } from "../lib/moduleValidation";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
+import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -22,6 +23,16 @@ const selfServiceContractRoutes = new Hono<AppBindings>();
 contractRoutes.use("*", requireAuth);
 employeeContractRoutes.use("*", requireAuth);
 selfServiceContractRoutes.use("*", requireAuth);
+employeeContractRoutes.use("*", async (c, next) => {
+  const disabled = await requireContractsEnabled(c);
+  if (disabled) return disabled;
+  await next();
+});
+selfServiceContractRoutes.use("*", async (c, next) => {
+  const disabled = await requireContractsEnabled(c);
+  if (disabled) return disabled;
+  await next();
+});
 
 const CONTRACT_READ = ["contracts.view", "contracts.manage", "employees.contracts.view"];
 const CONTRACT_CREATE = ["contracts.create", "contracts.manage", "employees.contracts.manage"];
@@ -288,8 +299,10 @@ async function getContractSettings(db: Env["DB"]) {
 }
 
 async function requireContractsEnabled(c: Context<AppBindings>) {
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "contracts", "Contracts");
+  if (moduleDisabled) return moduleDisabled;
   const settings = await getContractSettings(c.env.DB);
-  if (settings.contracts_enabled !== 1) return fail(c, 403, "CONTRACTS_DISABLED", "Contract management is currently disabled.");
+  if (settings.contracts_enabled !== 1) return disabledModuleResponse(c, "contracts", "Contracts");
   return null;
 }
 
@@ -791,6 +804,12 @@ contractRoutes.post("/types/:typeId/archive", requireAnyPermission(TYPES_ARCHIVE
   await c.env.DB.prepare("UPDATE contract_types SET status = 'ARCHIVED', is_active = 0, archived_by_user_id = ?, archived_at = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, nowIso(), nowIso(), type.id).run();
   await auditContract(c, { action: "contract_type.archived", entityType: "contract_type", entityId: type.id, oldValue: type, reason: stringOrNull((await readJsonBody(c.req.raw)).reason) });
   return ok(c, { archived: true });
+});
+
+contractRoutes.use("*", async (c, next) => {
+  const disabled = await requireContractsEnabled(c);
+  if (disabled) return disabled;
+  await next();
 });
 
 contractRoutes.get("/probation/due", requireAnyPermission(PROBATION_VIEW), async (c) => {

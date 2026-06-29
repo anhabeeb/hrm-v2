@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import type { MiddlewareHandler } from "hono";
 import type { AppBindings, AuthUser, Env } from "../types";
 
 export const MODULE_DISABLED_RESPONSE_MODEL = "MODULE_DISABLED";
@@ -189,6 +190,22 @@ export async function requireOperationalModuleEnabled(c: Context<AppBindings>, m
 
 export async function requireOperationalSubmoduleEnabled(c: Context<AppBindings>, moduleKey: string, submoduleKey: string, submoduleLabel?: string) {
   return (await isOperationalSubmoduleEnabled(c.env.DB, moduleKey, submoduleKey)) ? null : disabledSubmoduleResponse(c, normalizeOperationalModuleKey(moduleKey), submoduleKey, submoduleLabel);
+}
+
+export function requireOperationalModuleMiddleware(moduleKey: string, moduleLabel?: string): MiddlewareHandler<AppBindings> {
+  return async (c, next) => {
+    const disabled = await requireOperationalModuleEnabled(c, moduleKey, moduleLabel);
+    if (disabled) return disabled;
+    await next();
+  };
+}
+
+export function requireOperationalSubmoduleMiddleware(moduleKey: string, submoduleKey: string, submoduleLabel?: string): MiddlewareHandler<AppBindings> {
+  return async (c, next) => {
+    const disabled = await requireOperationalSubmoduleEnabled(c, moduleKey, submoduleKey, submoduleLabel);
+    if (disabled) return disabled;
+    await next();
+  };
 }
 
 export async function getModuleVisibilityForUser(db: Env["DB"], user?: Pick<AuthUser, "permissions" | "is_owner">) {

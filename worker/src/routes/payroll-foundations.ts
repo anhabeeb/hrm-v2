@@ -6,6 +6,7 @@ import { hasValidationErrors, validateDateRange, validatePayrollRules } from "..
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { disabledModuleResponse, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
 
 type Row = Record<string, unknown>;
 type BindValue = string | number | null;
@@ -129,10 +130,13 @@ function payrollSubmoduleEnabled(settings: Row | null | undefined, key: PayrollS
 }
 
 async function requirePayrollSubmoduleEnabled(c: Context<AppBindings>, key: PayrollSubmoduleKey) {
+  const centralSubmodule = key.replace(/_enabled$/, "").replace("bank_loan_deductions", "bank_loans");
+  const centralDisabled = await requireOperationalSubmoduleEnabled(c, "payroll", centralSubmodule, PAYROLL_SUBMODULE_LABELS[key]);
+  if (centralDisabled) return centralDisabled;
   const settings = await getPayrollSettingsRow(c);
-  if (!bool(settings?.module_enabled, true)) return fail(c, 503, "PAYROLL_MODULE_DISABLED", "Payroll module is disabled.");
+  if (!bool(settings?.module_enabled, true)) return disabledModuleResponse(c, "payroll", "Payroll");
   if (!payrollSubmoduleEnabled(settings, key)) {
-    return fail(c, 403, "PAYROLL_SUBMODULE_DISABLED", `${PAYROLL_SUBMODULE_LABELS[key]} payroll submodule is disabled.`);
+    return requireOperationalSubmoduleEnabled(c, "payroll", centralSubmodule, PAYROLL_SUBMODULE_LABELS[key]);
   }
   return null;
 }
@@ -206,8 +210,10 @@ async function getPayrollSettingsRow(c: Context<AppBindings>) {
 }
 
 async function requireCustomDeductionsEnabled(c: Context<AppBindings>) {
+  const centralDisabled = await requireOperationalSubmoduleEnabled(c, "payroll", "custom_deductions", "Custom deductions");
+  if (centralDisabled) return centralDisabled;
   const settings = await getPayrollSettingsRow(c);
-  if (!customDeductionSettingsEnabled(settings)) return fail(c, 403, "CUSTOM_DEDUCTIONS_DISABLED", "Custom deductions are disabled in payroll settings.");
+  if (!customDeductionSettingsEnabled(settings)) return requireOperationalSubmoduleEnabled(c, "payroll", "custom_deductions", "Custom deductions");
   return null;
 }
 

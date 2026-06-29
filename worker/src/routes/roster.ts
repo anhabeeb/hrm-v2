@@ -8,6 +8,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -230,8 +231,10 @@ async function requireRosterModuleEnabled(c: Context<AppBindings>, next: () => P
     await next();
     return;
   }
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "roster", "Roster");
+  if (moduleDisabled) return moduleDisabled;
   const settings = await getRosterSettings(c);
-  if (!bool(settings.module_enabled, true)) return fail(c, 503, "ROSTER_MODULE_DISABLED", "Roster module is disabled.");
+  if (!bool(settings.module_enabled, true)) return disabledModuleResponse(c, "roster", "Roster");
   await next();
 }
 

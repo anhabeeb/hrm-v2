@@ -118,7 +118,8 @@ if (!rosterRouteText.includes("UPDATE shift_templates SET") || !rosterRouteText.
 requireIncludes("worker/src/routes/self-service.ts", [
   'selfServiceRoutes.get("/roster"',
   'selfServiceRoutes.get("/roster/week"',
-  "ROSTER_MODULE_DISABLED",
+  "requireOperationalModuleEnabled",
+  "disabledModuleResponse",
   "rp.status IN ('PUBLISHED', 'LOCKED')"
 ]);
 
@@ -136,7 +137,7 @@ requireIncludes("frontend/src/pages/RosterWeeklyPage.tsx", [
   "CONFLICT",
   "CANCELLED",
   "CHANGED_AFTER_PUBLISH",
-  "ROSTER_MODULE_DISABLED",
+  "MODULE_DISABLED",
   "moduleDisabled"
 ]);
 
@@ -163,12 +164,12 @@ requireIncludes("frontend/src/components/ui/page-shell.tsx", [
 ]);
 
 requireIncludes("frontend/src/pages/RosterShiftTemplatesPage.tsx", [
-  "ROSTER_MODULE_DISABLED",
+  "MODULE_DISABLED",
   "moduleDisabled"
 ]);
 
 requireIncludes("frontend/src/pages/RosterReportsPage.tsx", [
-  "ROSTER_MODULE_DISABLED",
+  "MODULE_DISABLED",
   "moduleDisabled",
   "DAY_OFF",
   "SICK_LEAVE",
@@ -183,7 +184,7 @@ requireIncludes("frontend/src/pages/SelfServicePage.tsx", [
   "My Roster",
   "RosterSelfServiceSection",
   "getSelfServiceRoster",
-  "ROSTER_MODULE_DISABLED",
+  "MODULE_DISABLED",
   "Changed after publish"
 ]);
 

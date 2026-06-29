@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
+import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -235,6 +236,9 @@ export const selfServiceDocumentComplianceRoutes = new Hono<AppBindings>();
 documentComplianceRoutes.use("*", requireAuth);
 employeeDocumentComplianceRoutes.use("*", requireAuth);
 selfServiceDocumentComplianceRoutes.use("*", requireAuth);
+documentComplianceRoutes.use("*", requireOperationalModuleMiddleware("documents", "Documents"));
+employeeDocumentComplianceRoutes.use("*", requireOperationalModuleMiddleware("documents", "Documents"));
+selfServiceDocumentComplianceRoutes.use("*", requireOperationalModuleMiddleware("documents", "Documents"));
 
 const COMPLIANCE_VIEW = ["documents.compliance.view", "documents.compliance.manage", "documents.view"];
 const COMPLIANCE_MANAGE = ["documents.compliance.manage"];

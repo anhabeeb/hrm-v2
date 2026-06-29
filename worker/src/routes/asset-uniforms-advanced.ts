@@ -10,6 +10,7 @@ import type { AccessRealtimePayload } from "../realtime/publisher";
 import type { AppBindings, Env } from "../types";
 import { hasValidationErrors, validateAssetUniformRules, validationResponse } from "../lib/moduleValidation";
 import { fail, getClientIp, ok } from "../utils/http";
+import { disabledSubmoduleResponse, requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 type Row = Record<string, unknown>;
@@ -42,6 +43,22 @@ assetUniformAdvancedRoutes.use("*", requireAuth);
 uniformRoutes.use("*", requireAuth);
 employeeAssetUniformRoutes.use("*", requireAuth);
 selfServiceAssetUniformRoutes.use("*", requireAuth);
+assetUniformAdvancedRoutes.use("*", async (c, next) => {
+  if (c.req.path.endsWith("/assets/settings")) {
+    await next();
+    return;
+  }
+  return requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms")(c, next);
+});
+uniformRoutes.use("*", async (c, next) => {
+  if (c.req.path.endsWith("/uniforms/settings")) {
+    await next();
+    return;
+  }
+  return requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms")(c, next);
+});
+employeeAssetUniformRoutes.use("*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
+selfServiceAssetUniformRoutes.use("*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
 
 function text(value: unknown) {
   return readString(value);
@@ -193,13 +210,13 @@ async function updateAssetUniformSettings(c: Context<AppBindings>) {
 
 async function requireAssetModuleEnabled(c: Context<AppBindings>) {
   const settings = await getAssetUniformSettings(c.env.DB);
-  if (settings.asset_module_enabled === 0) return fail(c, 403, "ASSET_MODULE_DISABLED", "Asset lifecycle management is disabled.");
+  if (settings.asset_module_enabled === 0) return disabledSubmoduleResponse(c, "assets_uniforms", "assets", "Assets");
   return null;
 }
 
 async function requireUniformModuleEnabled(c: Context<AppBindings>) {
   const settings = await getAssetUniformSettings(c.env.DB);
-  if (settings.uniform_module_enabled === 0) return fail(c, 403, "UNIFORM_MODULE_DISABLED", "Uniform lifecycle management is disabled.");
+  if (settings.uniform_module_enabled === 0) return disabledSubmoduleResponse(c, "assets_uniforms", "uniforms", "Uniforms");
   return null;
 }
 

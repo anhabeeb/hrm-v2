@@ -12,6 +12,7 @@ import { autoCreateOnboardingCaseAfterEmployeeCreate } from "./lifecycle";
 import { applyRoleMappingToEmployee, roleMappingPreviewForEmployee } from "./role-mappings";
 import type { AppBindings, DbUser, UserStatus } from "../types";
 import { fail, getClientIp, ok, okCached } from "../utils/http";
+import { requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { isEmail, normalizeEmail, readJsonBody, readString } from "../utils/validation";
 
 type EmployeeType = "LOCAL" | "FOREIGN" | "OTHER";
@@ -2101,6 +2102,8 @@ employeeRoutes.post("/:id/job-history", requirePermission("employees.job_history
 });
 
 employeeRoutes.get("/:id/onboarding", requirePermission("employees.view"), async (c) => {
+  const disabled = await requireOperationalModuleEnabled(c, "onboarding", "Onboarding");
+  if (disabled) return disabled;
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "view"))) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   }
@@ -2109,6 +2112,8 @@ employeeRoutes.get("/:id/onboarding", requirePermission("employees.view"), async
 });
 
 employeeRoutes.patch("/:id/onboarding/:taskId", requirePermission("employees.onboarding.manage"), async (c) => {
+  const disabled = await requireOperationalModuleEnabled(c, "onboarding", "Onboarding");
+  if (disabled) return disabled;
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "manage"))) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   }

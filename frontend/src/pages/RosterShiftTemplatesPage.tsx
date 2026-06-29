@@ -41,7 +41,7 @@ export function RosterShiftTemplatesPage() {
     try {
       setTemplates((await api.listShiftTemplates(token)).shift_templates);
     } catch (err) {
-      if (err instanceof ApiError && err.code === "ROSTER_MODULE_DISABLED") {
+      if (err instanceof ApiError && (err.code === "ROSTER_MODULE_DISABLED" || err.code === "MODULE_DISABLED")) {
         setModuleDisabled(true);
         setTemplates([]);
         return;

@@ -1,6 +1,8 @@
-import { lazy, Suspense, type ComponentType } from "react";
-import { Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { lazy, Suspense, type ComponentType, type ReactElement } from "react";
+import { Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
 import { AppLoader, PageLoader } from "../components/loading";
+import { Button } from "../components/ui/button";
+import { ModuleDisabledState } from "../components/ui/page-shell";
 import { useAuth } from "../hooks/useAuth";
 import { AppShell } from "../layouts/AppShell";
 
@@ -125,6 +127,44 @@ function defaultLandingPath(user: { permissions: string[]; employee_id?: string 
   return "/";
 }
 
+function moduleEnabled(moduleVisibility: Record<string, boolean> | undefined, moduleKey: string | string[]) {
+  const keys = Array.isArray(moduleKey) ? moduleKey : [moduleKey];
+  return keys.some((key) => moduleVisibility?.[key] !== false);
+}
+
+function OperationalRouteGate({
+  moduleKey,
+  moduleName,
+  children
+}: {
+  moduleKey: string | string[];
+  moduleName: string;
+  children: ReactElement;
+}) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  if (moduleEnabled(user?.module_visibility, moduleKey)) return children;
+  const canOpenSettings = Boolean(user?.is_owner || user?.permissions.some((permission) => ["settings.view", "settings.manage", "admin.modules.view", "admin.settings_hub.view"].includes(permission)));
+  return (
+    <ModuleDisabledState
+      action={
+        <div className="flex flex-wrap gap-2">
+          <span className="text-sm text-muted-foreground">{moduleName} module is disabled. Enable this module from Settings to use this feature.</span>
+          {canOpenSettings ? (
+            <Button variant="outline" size="sm" onClick={() => navigate("/settings")}>
+              Open Settings
+            </Button>
+          ) : null}
+        </div>
+      }
+    />
+  );
+}
+
+function operational(moduleKey: string | string[], moduleName: string, children: ReactElement) {
+  return <OperationalRouteGate moduleKey={moduleKey} moduleName={moduleName}>{children}</OperationalRouteGate>;
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader title="Loading HRM page" description="Loading the requested workspace module." />}>
@@ -142,115 +182,115 @@ export function AppRoutes() {
             <Route path="employees/kyc-requests" element={<KycRequestsPage />} />
             <Route path="employees/settings" element={<EmployeeSettingsPage />} />
             <Route path="employees/:id" element={<EmployeeProfilePage />} />
-            <Route path="onboarding" element={<LifecyclePage mode="onboarding-dashboard" />} />
-            <Route path="onboarding/cases" element={<LifecyclePage mode="onboarding-cases" />} />
-            <Route path="onboarding/alerts" element={<LifecyclePage mode="onboarding-alerts" />} />
+            <Route path="onboarding" element={operational("onboarding", "Onboarding", <LifecyclePage mode="onboarding-dashboard" />)} />
+            <Route path="onboarding/cases" element={operational("onboarding", "Onboarding", <LifecyclePage mode="onboarding-cases" />)} />
+            <Route path="onboarding/alerts" element={operational("onboarding", "Onboarding", <LifecyclePage mode="onboarding-alerts" />)} />
             <Route path="onboarding/settings" element={<LifecyclePage mode="onboarding-settings" />} />
-            <Route path="offboarding" element={<LifecyclePage mode="offboarding-dashboard" />} />
-            <Route path="offboarding/cases" element={<LifecyclePage mode="offboarding-cases" />} />
+            <Route path="offboarding" element={operational("offboarding", "Offboarding", <LifecyclePage mode="offboarding-dashboard" />)} />
+            <Route path="offboarding/cases" element={operational("offboarding", "Offboarding", <LifecyclePage mode="offboarding-cases" />)} />
             <Route path="offboarding/settings" element={<LifecyclePage mode="offboarding-settings" />} />
             <Route path="lifecycle/reports" element={<LifecyclePage mode="lifecycle-reports" />} />
-            <Route path="contracts" element={<ContractsPage />} />
-            <Route path="contracts/probation" element={<ContractsPage mode="probation" />} />
-            <Route path="contracts/renewals" element={<ContractsPage mode="renewals" />} />
-            <Route path="contracts/alerts" element={<ContractsPage mode="alerts" />} />
-            <Route path="approvals" element={<ApprovalsPage />} />
-            <Route path="approvals/submitted" element={<ApprovalsPage mode="submitted" />} />
-            <Route path="approvals/overdue" element={<ApprovalsPage mode="overdue" />} />
-            <Route path="approvals/escalated" element={<ApprovalsPage mode="escalated" />} />
-            <Route path="approvals/delegated" element={<ApprovalsPage mode="delegated" />} />
-            <Route path="approvals/history" element={<ApprovalsPage mode="history" />} />
+            <Route path="contracts" element={operational("contracts", "Contracts", <ContractsPage />)} />
+            <Route path="contracts/probation" element={operational("contracts", "Contracts", <ContractsPage mode="probation" />)} />
+            <Route path="contracts/renewals" element={operational("contracts", "Contracts", <ContractsPage mode="renewals" />)} />
+            <Route path="contracts/alerts" element={operational("contracts", "Contracts", <ContractsPage mode="alerts" />)} />
+            <Route path="approvals" element={operational("approvals", "Approvals", <ApprovalsPage />)} />
+            <Route path="approvals/submitted" element={operational("approvals", "Approvals", <ApprovalsPage mode="submitted" />)} />
+            <Route path="approvals/overdue" element={operational("approvals", "Approvals", <ApprovalsPage mode="overdue" />)} />
+            <Route path="approvals/escalated" element={operational("approvals", "Approvals", <ApprovalsPage mode="escalated" />)} />
+            <Route path="approvals/delegated" element={operational("approvals", "Approvals", <ApprovalsPage mode="delegated" />)} />
+            <Route path="approvals/history" element={operational("approvals", "Approvals", <ApprovalsPage mode="history" />)} />
             <Route path="approvals/workflows" element={<ApprovalsPage mode="workflows" />} />
             <Route path="approvals/settings" element={<ApprovalsPage mode="settings" />} />
-            <Route path="approvals/delegations" element={<ApprovalsPage mode="delegations" />} />
+            <Route path="approvals/delegations" element={operational("approvals", "Approvals", <ApprovalsPage mode="delegations" />)} />
             <Route path="approvals/templates" element={<ApprovalsPage mode="templates" />} />
-            <Route path="approvals/reports" element={<ApprovalsPage mode="reports" />} />
-            <Route path="attendance" element={<AttendanceRecordsPage />} />
-            <Route path="attendance/records" element={<AttendanceRecordsPage />} />
-            <Route path="attendance/calendar" element={<AttendanceCalendarPage />} />
-            <Route path="attendance/corrections" element={<AttendanceCorrectionsPage />} />
-            <Route path="attendance/devices" element={<AttendanceDevicesPage />} />
-            <Route path="attendance/devices/settings" element={<AttendanceDeviceOperationsPage mode="settings" />} />
-            <Route path="attendance/biometric-mappings" element={<AttendanceDeviceOperationsPage mode="mappings" />} />
-            <Route path="attendance/imports" element={<AttendanceDeviceOperationsPage mode="imports" />} />
-            <Route path="attendance/raw-logs" element={<AttendanceDeviceOperationsPage mode="raw-logs" />} />
-            <Route path="attendance/unmatched-logs" element={<AttendanceDeviceOperationsPage mode="unmatched" />} />
-            <Route path="attendance/import-errors" element={<AttendanceDeviceOperationsPage mode="errors" />} />
-            <Route path="attendance/locked-day-import-warnings" element={<AttendanceDeviceOperationsPage mode="locked-warnings" />} />
-            <Route path="attendance/device-diagnostics" element={<AttendanceDeviceOperationsPage mode="diagnostics" />} />
-            <Route path="attendance/vendor-integrations" element={<AttendanceDeviceOperationsPage mode="vendor-integrations" />} />
-            <Route path="attendance/device-reports" element={<AttendanceDeviceOperationsPage mode="reports" />} />
-            <Route path="attendance/reports" element={<AttendanceReportsPage />} />
+            <Route path="approvals/reports" element={operational("approvals", "Approvals", <ApprovalsPage mode="reports" />)} />
+            <Route path="attendance" element={operational("attendance", "Attendance", <AttendanceRecordsPage />)} />
+            <Route path="attendance/records" element={operational("attendance", "Attendance", <AttendanceRecordsPage />)} />
+            <Route path="attendance/calendar" element={operational("attendance", "Attendance", <AttendanceCalendarPage />)} />
+            <Route path="attendance/corrections" element={operational("attendance", "Attendance", <AttendanceCorrectionsPage />)} />
+            <Route path="attendance/devices" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDevicesPage />)} />
+            <Route path="attendance/devices/settings" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="settings" />)} />
+            <Route path="attendance/biometric-mappings" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="mappings" />)} />
+            <Route path="attendance/imports" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="imports" />)} />
+            <Route path="attendance/raw-logs" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="raw-logs" />)} />
+            <Route path="attendance/unmatched-logs" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="unmatched" />)} />
+            <Route path="attendance/import-errors" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="errors" />)} />
+            <Route path="attendance/locked-day-import-warnings" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="locked-warnings" />)} />
+            <Route path="attendance/device-diagnostics" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="diagnostics" />)} />
+            <Route path="attendance/vendor-integrations" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="vendor-integrations" />)} />
+            <Route path="attendance/device-reports" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="reports" />)} />
+            <Route path="attendance/reports" element={operational("attendance", "Attendance", <AttendanceReportsPage />)} />
             <Route path="attendance/settings" element={<AttendanceSettingsPage />} />
-            <Route path="leave" element={<LeaveRequestsPage />} />
-            <Route path="leave/requests" element={<LeaveRequestsPage />} />
-            <Route path="leave/approvals" element={<LeaveRequestsPage approvalsOnly />} />
-            <Route path="leave/calendar" element={<LeaveCalendarPage />} />
-            <Route path="leave/settings" element={<LeaveSettingsPage />} />
-            <Route path="leave/workflows" element={<LeaveSettingsPage />} />
-            <Route path="payroll" element={<PayrollDashboardPage />} />
-            <Route path="payroll/periods" element={<PayrollPeriodsPage />} />
-            <Route path="payroll/runs" element={<PayrollRunsPage />} />
-            <Route path="payroll/runs/:id" element={<PayrollRunDetailPage />} />
-            <Route path="payroll/advances" element={<PayrollAdvancesPage />} />
-            <Route path="payroll/deductions" element={<PayrollDeductionsPage />} />
-            <Route path="payroll/adjustments" element={<PayrollAdjustmentsPage />} />
-            <Route path="payroll/components" element={<PayrollComponentsPage />} />
-            <Route path="payroll/payslips" element={<PayrollPayslipsPage />} />
-            <Route path="payroll/payment-register" element={<PayrollPaymentRegisterPage />} />
-            <Route path="payroll/payment-institutions" element={<PayrollPaymentInstitutionsPage />} />
-            <Route path="payroll/bank-loans" element={<PayrollBankLoansPage />} />
-            <Route path="payroll/custom-deductions" element={<PayrollCustomDeductionsPage />} />
-            <Route path="payroll/pension" element={<PayrollPensionPage />} />
-            <Route path="payroll/history" element={<PayrollHistoryPage />} />
-            <Route path="payroll/exit-payroll" element={<FinalSettlementPage />} />
+            <Route path="leave" element={operational("leave", "Leave", <LeaveRequestsPage />)} />
+            <Route path="leave/requests" element={operational("leave", "Leave", <LeaveRequestsPage />)} />
+            <Route path="leave/approvals" element={operational("leave", "Leave", <LeaveRequestsPage approvalsOnly />)} />
+            <Route path="leave/calendar" element={operational("leave", "Leave", <LeaveCalendarPage />)} />
+            <Route path="leave/settings" element={operational("leave", "Leave", <LeaveSettingsPage />)} />
+            <Route path="leave/workflows" element={operational("leave", "Leave", <LeaveSettingsPage />)} />
+            <Route path="payroll" element={operational("payroll", "Payroll", <PayrollDashboardPage />)} />
+            <Route path="payroll/periods" element={operational("payroll", "Payroll", <PayrollPeriodsPage />)} />
+            <Route path="payroll/runs" element={operational("payroll", "Payroll", <PayrollRunsPage />)} />
+            <Route path="payroll/runs/:id" element={operational("payroll", "Payroll", <PayrollRunDetailPage />)} />
+            <Route path="payroll/advances" element={operational("payroll_employee_advances", "Employee advances", <PayrollAdvancesPage />)} />
+            <Route path="payroll/deductions" element={operational("payroll", "Payroll", <PayrollDeductionsPage />)} />
+            <Route path="payroll/adjustments" element={operational("payroll_adjustments", "Payroll adjustments", <PayrollAdjustmentsPage />)} />
+            <Route path="payroll/components" element={operational("payroll", "Payroll", <PayrollComponentsPage />)} />
+            <Route path="payroll/payslips" element={operational("payroll_payslips", "Payslips", <PayrollPayslipsPage />)} />
+            <Route path="payroll/payment-register" element={operational("payroll_payment_register", "Payment register", <PayrollPaymentRegisterPage />)} />
+            <Route path="payroll/payment-institutions" element={operational("payroll_payment_institutions", "Payment institutions", <PayrollPaymentInstitutionsPage />)} />
+            <Route path="payroll/bank-loans" element={operational("payroll_bank_loans", "Bank loans", <PayrollBankLoansPage />)} />
+            <Route path="payroll/custom-deductions" element={operational("payroll_custom_deductions", "Custom deductions", <PayrollCustomDeductionsPage />)} />
+            <Route path="payroll/pension" element={operational("payroll_pension", "Pension", <PayrollPensionPage />)} />
+            <Route path="payroll/history" element={operational("payroll", "Payroll", <PayrollHistoryPage />)} />
+            <Route path="payroll/exit-payroll" element={operational("final_settlement", "Final settlement", <FinalSettlementPage />)} />
             <Route path="payroll/settings" element={<PayrollSettingsPage />} />
-            <Route path="payroll/reports" element={<PayrollReportsPage />} />
-            <Route path="roster" element={<RosterWeeklyPage />} />
-            <Route path="roster/weekly" element={<RosterWeeklyPage />} />
-            <Route path="roster/shift-templates" element={<RosterShiftTemplatesPage />} />
-            <Route path="roster/reports" element={<RosterReportsPage />} />
+            <Route path="payroll/reports" element={operational("payroll_reports", "Payroll reports", <PayrollReportsPage />)} />
+            <Route path="roster" element={operational("roster", "Roster", <RosterWeeklyPage />)} />
+            <Route path="roster/weekly" element={operational("roster", "Roster", <RosterWeeklyPage />)} />
+            <Route path="roster/shift-templates" element={operational("roster", "Roster", <RosterShiftTemplatesPage />)} />
+            <Route path="roster/reports" element={operational("roster", "Roster", <RosterReportsPage />)} />
             <Route path="roster/settings" element={<RosterSettingsPage />} />
-            <Route path="documents" element={<DocumentRegistryPage />} />
-            <Route path="documents/registry" element={<DocumentRegistryPage />} />
-            <Route path="documents/missing" element={<MissingDocumentsPage />} />
-            <Route path="documents/compliance" element={<DocumentCompliancePage />} />
-            <Route path="documents/compliance/missing" element={<DocumentCompliancePage mode="missing" />} />
-            <Route path="documents/compliance/expiring" element={<DocumentCompliancePage mode="expiring" />} />
-            <Route path="documents/compliance/expired" element={<DocumentCompliancePage mode="expired" />} />
-            <Route path="documents/compliance/alerts" element={<DocumentCompliancePage mode="alerts" />} />
-            <Route path="documents/compliance/renewal-cases" element={<DocumentCompliancePage mode="renewal-cases" />} />
-            <Route path="documents/compliance/waivers" element={<DocumentCompliancePage mode="waivers" />} />
-            <Route path="assets" element={<AssetsDashboardPage />} />
-            <Route path="assets/items" element={<AssetsItemsPage />} />
-            <Route path="assets/assignments" element={<AssetAssignmentsPage />} />
-            <Route path="assets/uniforms" element={<UniformInventoryPage />} />
-            <Route path="assets/uniform-assignments" element={<UniformAssignmentsPage />} />
-            <Route path="assets/uniform-types" element={<UniformTypesPage />} />
-            <Route path="assets/categories" element={<AssetSettingsPage mode="categories" />} />
-            <Route path="assets/deduction-rules" element={<AssetSettingsPage mode="deduction-rules" />} />
+            <Route path="documents" element={operational("documents", "Documents", <DocumentRegistryPage />)} />
+            <Route path="documents/registry" element={operational("documents", "Documents", <DocumentRegistryPage />)} />
+            <Route path="documents/missing" element={operational("documents", "Documents", <MissingDocumentsPage />)} />
+            <Route path="documents/compliance" element={operational("documents", "Documents", <DocumentCompliancePage />)} />
+            <Route path="documents/compliance/missing" element={operational("documents", "Documents", <DocumentCompliancePage mode="missing" />)} />
+            <Route path="documents/compliance/expiring" element={operational("documents", "Documents", <DocumentCompliancePage mode="expiring" />)} />
+            <Route path="documents/compliance/expired" element={operational("documents", "Documents", <DocumentCompliancePage mode="expired" />)} />
+            <Route path="documents/compliance/alerts" element={operational("documents", "Documents", <DocumentCompliancePage mode="alerts" />)} />
+            <Route path="documents/compliance/renewal-cases" element={operational("documents", "Documents", <DocumentCompliancePage mode="renewal-cases" />)} />
+            <Route path="documents/compliance/waivers" element={operational("documents", "Documents", <DocumentCompliancePage mode="waivers" />)} />
+            <Route path="assets" element={operational("assets_uniforms", "Assets and uniforms", <AssetsDashboardPage />)} />
+            <Route path="assets/items" element={operational("assets_uniforms", "Assets and uniforms", <AssetsItemsPage />)} />
+            <Route path="assets/assignments" element={operational("assets_uniforms", "Assets and uniforms", <AssetAssignmentsPage />)} />
+            <Route path="assets/uniforms" element={operational("assets_uniforms", "Assets and uniforms", <UniformInventoryPage />)} />
+            <Route path="assets/uniform-assignments" element={operational("assets_uniforms", "Assets and uniforms", <UniformAssignmentsPage />)} />
+            <Route path="assets/uniform-types" element={operational("assets_uniforms", "Assets and uniforms", <UniformTypesPage />)} />
+            <Route path="assets/categories" element={operational("assets_uniforms", "Assets and uniforms", <AssetSettingsPage mode="categories" />)} />
+            <Route path="assets/deduction-rules" element={operational("assets_uniforms", "Assets and uniforms", <AssetSettingsPage mode="deduction-rules" />)} />
             <Route path="assets/settings" element={<AssetUniformSettingsPage />} />
-            <Route path="assets/reports" element={<AssetsReportsPage />} />
-            <Route path="reports" element={<ReportsPage />} />
+            <Route path="assets/reports" element={operational("assets_uniforms", "Assets and uniforms", <AssetsReportsPage />)} />
+            <Route path="reports" element={operational(["reports", "reports_exports"], "Reports", <ReportsPage />)} />
             <Route path="reports/audit" element={<AuditLogPage />} />
-            <Route path="self-service" element={<SelfServicePage />} />
-            <Route path="self-service/profile" element={<SelfServicePage mode="profile" />} />
-            <Route path="self-service/documents" element={<SelfServicePage mode="documents" />} />
-            <Route path="self-service/attendance" element={<SelfServicePage mode="attendance" />} />
-            <Route path="self-service/leave" element={<SelfServicePage mode="leave" />} />
-            <Route path="self-service/roster" element={<SelfServicePage mode="roster" />} />
-            <Route path="self-service/payroll" element={<SelfServicePage mode="payroll" />} />
-            <Route path="self-service/payment-methods" element={<SelfServicePage mode="payment-methods" />} />
-            <Route path="self-service/bank-loans" element={<SelfServicePage mode="bank-loans" />} />
-            <Route path="self-service/pension" element={<SelfServicePage mode="pension" />} />
-            <Route path="self-service/contracts" element={<SelfServicePage mode="contracts" />} />
-            <Route path="self-service/onboarding" element={<SelfServicePage mode="onboarding" />} />
-            <Route path="self-service/offboarding" element={<SelfServicePage mode="offboarding" />} />
-            <Route path="self-service/assets" element={<SelfServicePage mode="assets" />} />
-            <Route path="self-service/uniforms" element={<SelfServicePage mode="uniforms" />} />
-            <Route path="self-service/approvals" element={<SelfServicePage mode="approvals" />} />
-            <Route path="self-service/notifications" element={<SelfServicePage mode="notifications" />} />
-            <Route path="self-service/kyc-requests" element={<SelfServicePage mode="kyc" />} />
+            <Route path="self-service" element={operational("self_service", "Self-service", <SelfServicePage />)} />
+            <Route path="self-service/profile" element={operational("self_service", "Self-service", <SelfServicePage mode="profile" />)} />
+            <Route path="self-service/documents" element={operational("self_service", "Self-service", <SelfServicePage mode="documents" />)} />
+            <Route path="self-service/attendance" element={operational("self_service", "Self-service", <SelfServicePage mode="attendance" />)} />
+            <Route path="self-service/leave" element={operational("self_service", "Self-service", <SelfServicePage mode="leave" />)} />
+            <Route path="self-service/roster" element={operational("self_service", "Self-service", <SelfServicePage mode="roster" />)} />
+            <Route path="self-service/payroll" element={operational("self_service", "Self-service", <SelfServicePage mode="payroll" />)} />
+            <Route path="self-service/payment-methods" element={operational("self_service", "Self-service", <SelfServicePage mode="payment-methods" />)} />
+            <Route path="self-service/bank-loans" element={operational("self_service", "Self-service", <SelfServicePage mode="bank-loans" />)} />
+            <Route path="self-service/pension" element={operational("self_service", "Self-service", <SelfServicePage mode="pension" />)} />
+            <Route path="self-service/contracts" element={operational("self_service", "Self-service", <SelfServicePage mode="contracts" />)} />
+            <Route path="self-service/onboarding" element={operational("self_service", "Self-service", <SelfServicePage mode="onboarding" />)} />
+            <Route path="self-service/offboarding" element={operational("self_service", "Self-service", <SelfServicePage mode="offboarding" />)} />
+            <Route path="self-service/assets" element={operational("self_service", "Self-service", <SelfServicePage mode="assets" />)} />
+            <Route path="self-service/uniforms" element={operational("self_service", "Self-service", <SelfServicePage mode="uniforms" />)} />
+            <Route path="self-service/approvals" element={operational("self_service", "Self-service", <SelfServicePage mode="approvals" />)} />
+            <Route path="self-service/notifications" element={operational("self_service", "Self-service", <SelfServicePage mode="notifications" />)} />
+            <Route path="self-service/kyc-requests" element={operational("self_service", "Self-service", <SelfServicePage mode="kyc" />)} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/admin" element={<AdminSettingsPage />} />
             <Route path="admin/help" element={<AdminHelpGuidePage />} />

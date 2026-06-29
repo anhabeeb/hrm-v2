@@ -111,7 +111,7 @@ export function RosterWeeklyPage() {
       setDraft(weeklyResult.assignment_map ?? {});
       setDirty(new Set());
     } catch (err) {
-      if (err instanceof ApiError && err.code === "ROSTER_MODULE_DISABLED") {
+      if (err instanceof ApiError && (err.code === "ROSTER_MODULE_DISABLED" || err.code === "MODULE_DISABLED")) {
         setModuleDisabled(true);
         setWeekly(null);
         return;

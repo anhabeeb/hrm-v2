@@ -24,6 +24,13 @@ function hasAll(relativePath, markers, area) {
   }
 }
 
+function hasAny(relativePath, markers, message) {
+  const text = read(relativePath);
+  if (!markers.some((marker) => marker instanceof RegExp ? marker.test(text) : text.includes(marker))) {
+    failures.push(`${relativePath}: ${message}`);
+  }
+}
+
 function hasNo(relativePath, pattern, message) {
   const text = read(relativePath);
   if (pattern.test(text)) failures.push(`${relativePath}: ${message}`);
@@ -45,6 +52,7 @@ function requireScript(scriptName) {
   "worker/src/routes/reports.ts",
   "worker/src/routes/data-transfer.ts",
   "frontend/src/layouts/AppShell.tsx",
+  "frontend/src/routes/AppRoutes.tsx",
   "frontend/src/types/auth.ts"
 ].forEach((file) => {
   if (!exists(file)) failures.push(`${file}: missing required disabled-module sweep file`);
@@ -62,6 +70,8 @@ hasAll("worker/src/utils/module-enforcement.ts", [
   "isOperationalSubmoduleEnabled",
   "requireOperationalModuleEnabled",
   "requireOperationalSubmoduleEnabled",
+  "requireOperationalModuleMiddleware",
+  "requireOperationalSubmoduleMiddleware",
   "getModuleVisibilityForUser",
   "filterDisabledOperationalModules",
   "PAYROLL_SUBMODULE_SETTING_KEYS",
@@ -78,6 +88,194 @@ hasAll("worker/src/utils/action-validation.ts", [
   "isOperationalModuleEnabled",
   "disabledModuleResponse"
 ], "shared action validation module state enforcement");
+
+const operationalRouteChecks = [
+  {
+    file: "worker/src/routes/leave.ts",
+    markers: [
+      /leaveRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("leave"/,
+      /employeeLeaveRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("leave"/
+    ],
+    area: "leave operational routes use central disabled-module enforcement"
+  },
+  {
+    file: "worker/src/routes/documents.ts",
+    markers: [
+      /documentRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("documents"/,
+      /employeeDocumentRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("documents"/
+    ],
+    area: "document operational routes use central disabled-module enforcement"
+  },
+  {
+    file: "worker/src/routes/document-compliance.ts",
+    markers: [
+      /documentComplianceRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("documents"/,
+      /employeeDocumentComplianceRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("documents"/,
+      /selfServiceDocumentComplianceRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("documents"/
+    ],
+    area: "document compliance routes use central disabled-module enforcement"
+  },
+  {
+    file: "worker/src/routes/approvals.ts",
+    markers: [
+      /approvalRoutes\.use\("\*",\s*async/,
+      /requireOperationalModuleMiddleware\("approvals"/,
+      /selfServiceApprovalRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("approvals"/,
+      /approvalReportRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("approvals"/,
+      /approvals\/settings/,
+      /approvals\/workflows/
+    ],
+    area: "approval operational routes use central disabled-module enforcement while settings remain reachable"
+  },
+  {
+    file: "worker/src/routes/attendance-devices-zkteco.ts",
+    markers: [
+      /attendanceDeviceSyncRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("zkteco_attendance"/,
+      /employeeAttendanceDeviceSyncRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("zkteco_attendance"/,
+      /selfServiceAttendanceDeviceSyncRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("zkteco_attendance"/
+    ],
+    area: "ZKTeco attendance device routes use central disabled-module enforcement"
+  },
+  {
+    file: "worker/src/routes/assets-notes-audit.ts",
+    markers: [
+      /assetRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("assets_uniforms"/,
+      /employeeAssetRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("assets_uniforms"/
+    ],
+    area: "asset routes use central disabled-module enforcement"
+  },
+  {
+    file: "worker/src/routes/asset-uniforms-advanced.ts",
+    markers: [
+      /assetUniformAdvancedRoutes\.use\("\*",\s*async/,
+      /uniformRoutes\.use\("\*",\s*async/,
+      /requireOperationalModuleMiddleware\("assets_uniforms"/,
+      /employeeAssetUniformRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("assets_uniforms"/,
+      /selfServiceAssetUniformRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("assets_uniforms"/,
+      /disabledSubmoduleResponse\(c,\s*"assets_uniforms",\s*"assets"/,
+      /disabledSubmoduleResponse\(c,\s*"assets_uniforms",\s*"uniforms"/
+    ],
+    area: "advanced asset and uniform routes use central module/submodule enforcement"
+  },
+  {
+    file: "worker/src/routes/contracts.ts",
+    markers: [
+      /requireOperationalModuleEnabled\(c,\s*"contracts"/,
+      /disabledModuleResponse\(c,\s*"contracts"/,
+      /contractRoutes\.get\("\/settings"/,
+      /contractRoutes\.use\("\*",\s*async/,
+      /employeeContractRoutes\.use\("\*",\s*async/,
+      /selfServiceContractRoutes\.use\("\*",\s*async/
+    ],
+    area: "contract operational routes use central disabled-module enforcement while settings remain reachable"
+  },
+  {
+    file: "worker/src/routes/final-settlement.ts",
+    markers: [
+      /requireOperationalModuleEnabled\(c,\s*"final_settlement"/,
+      /disabledModuleResponse\(c,\s*"final_settlement"/,
+      /finalSettlementRoutes\.get\("\/settings"/,
+      /finalSettlementRoutes\.use\("\*",\s*async/,
+      /employeeFinalSettlementRoutes\.use\("\*",\s*async/
+    ],
+    area: "final settlement routes use central disabled-module enforcement while settings remain reachable"
+  },
+  {
+    file: "worker/src/routes/payroll.ts",
+    markers: [
+      /requireOperationalModuleEnabled\(c,\s*"payroll"/,
+      /requireOperationalSubmoduleEnabled\(c,\s*"payroll"/,
+      /disabledModuleResponse\(c,\s*"payroll"/
+    ],
+    area: "payroll operational routes use central module/submodule enforcement"
+  },
+  {
+    file: "worker/src/routes/payroll-foundations.ts",
+    markers: [
+      /requireOperationalSubmoduleEnabled\(c,\s*"payroll"/,
+      /disabledModuleResponse\(c,\s*"payroll"/,
+      /custom_deductions/
+    ],
+    area: "payroll foundation submodule routes use central submodule enforcement"
+  },
+  {
+    file: "worker/src/routes/attendance.ts",
+    markers: [
+      /requireOperationalModuleEnabled\(c,\s*"attendance"/,
+      /disabledModuleResponse\(c,\s*"attendance"/,
+      /path\.includes\("\/attendance\/settings"\)/
+    ],
+    area: "attendance routes use central disabled-module enforcement while settings remain reachable"
+  },
+  {
+    file: "worker/src/routes/roster.ts",
+    markers: [
+      /requireOperationalModuleEnabled\(c,\s*"roster"/,
+      /disabledModuleResponse\(c,\s*"roster"/,
+      /c\.req\.path\.endsWith\("\/settings"\)/
+    ],
+    area: "roster routes use central disabled-module enforcement while settings remain reachable"
+  },
+  {
+    file: "worker/src/routes/self-service.ts",
+    markers: [
+      /requireOperationalModuleEnabled\(c,\s*"self_service"/,
+      /disabledModuleResponse\(c,\s*"self_service"/,
+      /disabledSubmoduleResponse\(c,\s*"self_service"/,
+      /requireOperationalModuleEnabled\(c,\s*"attendance"/,
+      /requireOperationalModuleEnabled\(c,\s*"roster"/,
+      /requireOperationalModuleEnabled\(c,\s*"payroll"/
+    ],
+    area: "self-service and optional self-service module routes use central disabled-module enforcement"
+  },
+  {
+    file: "worker/src/routes/lifecycle.ts",
+    markers: [
+      /requireOperationalModuleMiddleware\("onboarding"/,
+      /requireOperationalModuleMiddleware\("offboarding"/,
+      /onboardingRoutes\.use\("\*"/,
+      /offboardingRoutes\.use\("\*"/,
+      /employeeLifecycleRoutes\.use\("\/:employeeId\/onboarding\/\*"/,
+      /employeeLifecycleRoutes\.use\("\/:employeeId\/offboarding\/\*"/,
+      /selfServiceLifecycleRoutes\.use\("\/onboarding"/,
+      /selfServiceLifecycleRoutes\.use\("\/offboarding"/
+    ],
+    area: "onboarding/offboarding operational routes use central disabled-module enforcement"
+  },
+  {
+    file: "worker/src/routes/employees.ts",
+    markers: [
+      /requireOperationalModuleEnabled\(c,\s*"onboarding"/,
+      /employeeRoutes\.get\("\/:id\/onboarding"/,
+      /employeeRoutes\.patch\("\/:id\/onboarding\/:taskId"/
+    ],
+    area: "employee optional onboarding subfeature routes use central disabled-module enforcement"
+  }
+];
+
+for (const check of operationalRouteChecks) {
+  hasAll(check.file, check.markers, check.area);
+}
+
+const legacyDisabledCodes = /\b(CONTRACTS_DISABLED|PAYROLL_MODULE_DISABLED|PAYROLL_SUBMODULE_DISABLED|ATTENDANCE_MODULE_DISABLED|ROSTER_MODULE_DISABLED|ASSET_MODULE_DISABLED|UNIFORM_MODULE_DISABLED|FINAL_SETTLEMENT_MODULE_DISABLED|SELF_SERVICE_DISABLED|SELF_SERVICE_MODULE_DISABLED|CUSTOM_DEDUCTIONS_DISABLED)\b/;
+[
+  "worker/src/routes/leave.ts",
+  "worker/src/routes/documents.ts",
+  "worker/src/routes/document-compliance.ts",
+  "worker/src/routes/approvals.ts",
+  "worker/src/routes/attendance-devices-zkteco.ts",
+  "worker/src/routes/assets-notes-audit.ts",
+  "worker/src/routes/contracts.ts",
+  "worker/src/routes/asset-uniforms-advanced.ts",
+  "worker/src/routes/final-settlement.ts",
+  "worker/src/routes/payroll.ts",
+  "worker/src/routes/payroll-foundations.ts",
+  "worker/src/routes/attendance.ts",
+  "worker/src/routes/roster.ts",
+  "worker/src/routes/self-service.ts",
+  "worker/src/routes/lifecycle.ts",
+  "worker/src/routes/employees.ts"
+].forEach((file) => hasNo(file, legacyDisabledCodes, "disabled operational APIs must use standard MODULE_DISABLED/SUBMODULE_DISABLED response models"));
 
 hasAll("worker/src/db/users.ts", [
   "getModuleVisibilityForUser",
@@ -111,6 +309,44 @@ hasAll("frontend/src/layouts/AppShell.tsx", [
   "moduleKey: \"self_service\""
 ], "sidebar/nav hides disabled operational entries while settings remain permission-controlled");
 hasNo("frontend/src/layouts/AppShell.tsx", /moduleKey:\s*"settings"/, "settings navigation must not be hidden by operational module toggles");
+
+hasAll("frontend/src/routes/AppRoutes.tsx", [
+  "OperationalRouteGate",
+  "ModuleDisabledState",
+  "module_visibility",
+  "Open Settings",
+  "Enable this module from Settings to use this feature.",
+  /operational\("contracts",\s*"Contracts"/,
+  /operational\("leave",\s*"Leave"/,
+  /operational\("documents",\s*"Documents"/,
+  /operational\("approvals",\s*"Approvals"/,
+  /operational\("attendance",\s*"Attendance"/,
+  /operational\("zkteco_attendance",\s*"ZKTeco attendance"/,
+  /operational\("assets_uniforms",\s*"Assets and uniforms"/,
+  /operational\("final_settlement",\s*"Final settlement"/,
+  /operational\("payroll",\s*"Payroll"/,
+  /operational\("payroll_payslips",\s*"Payslips"/,
+  /operational\("payroll_payment_register",\s*"Payment register"/,
+  /operational\("payroll_payment_institutions",\s*"Payment institutions"/,
+  /operational\("payroll_bank_loans",\s*"Bank loans"/,
+  /operational\("payroll_custom_deductions",\s*"Custom deductions"/,
+  /operational\("payroll_pension",\s*"Pension"/,
+  /operational\("payroll_reports",\s*"Payroll reports"/,
+  /operational\("roster",\s*"Roster"/,
+  /operational\(\["reports",\s*"reports_exports"\],\s*"Reports"/,
+  /operational\("self_service",\s*"Self-service"/,
+  /path="payroll\/settings"\s+element={<PayrollSettingsPage/,
+  /path="attendance\/settings"\s+element={<AttendanceSettingsPage/,
+  /path="roster\/settings"\s+element={<RosterSettingsPage/,
+  /path="assets\/settings"\s+element={<AssetUniformSettingsPage/,
+  /path="settings"/
+], "direct frontend operational routes show clean disabled-module states while settings remain reachable");
+
+hasAll("frontend/src/routes/AppRoutes.tsx", [
+  /path="self-service\/profile"\s+element={operational\("self_service"/,
+  /path="self-service\/documents"\s+element={operational\("self_service"/,
+  /path="self-service\/payroll"\s+element={operational\("self_service"/
+], "self-service deep links must be guarded by direct disabled-module route state");
 
 hasAll("worker/src/routes/dashboard.ts", [
   "moduleControlEnabled(db, \"assets_uniforms\")",

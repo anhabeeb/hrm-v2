@@ -6,6 +6,7 @@ import { hasValidationErrors, validateApprovalWorkflowRules, validateDateRange, 
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
+import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 
 type Db = Env["DB"];
 
@@ -1149,6 +1150,15 @@ function actionError(c: ApprovalContextBinding, code: string) {
 approvalRoutes.use("*", requireAuth);
 selfServiceApprovalRoutes.use("*", requireAuth);
 approvalReportRoutes.use("*", requireAuth);
+approvalRoutes.use("*", async (c, next) => {
+  if (c.req.path.includes("/approvals/settings") || c.req.path.includes("/approvals/workflows")) {
+    await next();
+    return;
+  }
+  return requireOperationalModuleMiddleware("approvals", "Approvals")(c, next);
+});
+selfServiceApprovalRoutes.use("*", requireOperationalModuleMiddleware("approvals", "Approvals"));
+approvalReportRoutes.use("*", requireOperationalModuleMiddleware("approvals", "Approvals"));
 
 approvalRoutes.get("/settings", async (c) => {
   const user = c.get("currentUser");

@@ -8,6 +8,7 @@ import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -25,6 +26,8 @@ export const employeeLeaveRoutes = new Hono<AppBindings>();
 
 leaveRoutes.use("*", requireAuth);
 employeeLeaveRoutes.use("*", requireAuth);
+leaveRoutes.use("*", requireOperationalModuleMiddleware("leave", "Leave"));
+employeeLeaveRoutes.use("*", requireOperationalModuleMiddleware("leave", "Leave"));
 
 function routeParam(c: Context<AppBindings>, name: string) {
   return c.req.param(name) ?? "";

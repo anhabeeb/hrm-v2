@@ -84,7 +84,7 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
           ]);
           setData({ ...attendance, device_summary: deviceSummary });
         } catch (err) {
-          if (err instanceof ApiError && err.code === "ATTENDANCE_MODULE_DISABLED") {
+          if (err instanceof ApiError && (err.code === "ATTENDANCE_MODULE_DISABLED" || err.code === "MODULE_DISABLED")) {
             setData({ attendance_module_enabled: false });
           } else {
             throw err;
@@ -96,7 +96,7 @@ export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
         try {
           setData(await api.getSelfServiceRoster(token));
         } catch (err) {
-          if (err instanceof ApiError && (err.code === "ROSTER_MODULE_DISABLED" || err.code === "ROSTER_SELF_SERVICE_DISABLED")) {
+          if (err instanceof ApiError && (err.code === "ROSTER_MODULE_DISABLED" || err.code === "ROSTER_SELF_SERVICE_DISABLED" || err.code === "MODULE_DISABLED" || err.code === "SUBMODULE_DISABLED")) {
             setData({ roster_module_enabled: false });
           } else {
             throw err;

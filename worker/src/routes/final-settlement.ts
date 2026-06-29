@@ -8,6 +8,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 import { getActivePaymentMethodSnapshot, getEmployeePaymentMethods, getFinalSettlementCustomDeductionImpact } from "./payroll-foundations";
 
@@ -85,6 +86,11 @@ export const employeeFinalSettlementRoutes = new Hono<AppBindings>();
 
 finalSettlementRoutes.use("*", requireAuth);
 employeeFinalSettlementRoutes.use("*", requireAuth);
+employeeFinalSettlementRoutes.use("*", async (c, next) => {
+  const disabled = await requireFinalSettlementModuleEnabled(c);
+  if (disabled) return disabled;
+  await next();
+});
 
 function routeParam(c: Context<AppBindings>, name: string) {
   return c.req.param(name) ?? "";
@@ -282,8 +288,10 @@ function settlementPayrollSubmoduleEnabled(settings: Record<string, unknown> | n
 }
 
 export async function requireFinalSettlementModuleEnabled(c: Context<AppBindings>) {
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "final_settlement", "Final settlement");
+  if (moduleDisabled) return moduleDisabled;
   const settings = await getFinalSettlementSettings(c.env.DB);
-  if (Number(settings.final_settlement_enabled ?? settings.module_enabled ?? 1) !== 1) return fail(c, 503, "FINAL_SETTLEMENT_MODULE_DISABLED", "Final settlement module is disabled.");
+  if (Number(settings.final_settlement_enabled ?? settings.module_enabled ?? 1) !== 1) return disabledModuleResponse(c, "final_settlement", "Final settlement");
   return null;
 }
 
@@ -1324,6 +1332,12 @@ finalSettlementRoutes.patch("/settings", requireAnyPermission(["final_settlement
   const settings = await getFinalSettlementSettings(c.env.DB);
   await auditFinalSettlement(c, { action: "final_settlement.settings.updated", entityType: "final_settlement_settings", entityId: "final_settlement_settings_default", oldValue: oldSettings, newValue: settings });
   return ok(c, { settings });
+});
+
+finalSettlementRoutes.use("*", async (c, next) => {
+  const disabled = await requireFinalSettlementModuleEnabled(c);
+  if (disabled) return disabled;
+  await next();
 });
 
 finalSettlementRoutes.get("/cases", requireAnyPermission(["final_settlement.view", "final_settlement.cases.view", "final_settlement.manage"]), async (c) => {

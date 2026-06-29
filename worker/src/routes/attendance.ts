@@ -9,6 +9,7 @@ import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -100,13 +101,15 @@ async function auditAttendance(c: Context<AppBindings>, input: { action: string;
 
 async function requireAttendanceModuleEnabled(c: Context<AppBindings>, next: () => Promise<void>) {
   const path = c.req.path;
-  if (path.includes("/attendance/settings") || path.includes("/attendance/devices")) {
+  if (path.includes("/attendance/settings")) {
     await next();
     return;
   }
+  const moduleDisabled = await requireOperationalModuleEnabled(c, "attendance", "Attendance");
+  if (moduleDisabled) return moduleDisabled;
   const settings = await getAttendanceSettings(c);
   if (Number(settings.module_enabled ?? 1) !== 1) {
-    return fail(c, 503, "ATTENDANCE_MODULE_DISABLED", "Attendance module is disabled.");
+    return disabledModuleResponse(c, "attendance", "Attendance");
   }
   await next();
 }

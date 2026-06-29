@@ -8,6 +8,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -39,6 +40,9 @@ attendanceDeviceSyncRoutes.use("*", async (c, next) => {
 });
 employeeAttendanceDeviceSyncRoutes.use("*", requireAuth);
 selfServiceAttendanceDeviceSyncRoutes.use("*", requireAuth);
+attendanceDeviceSyncRoutes.use("*", requireOperationalModuleMiddleware("zkteco_attendance", "ZKTeco attendance"));
+employeeAttendanceDeviceSyncRoutes.use("*", requireOperationalModuleMiddleware("zkteco_attendance", "ZKTeco attendance"));
+selfServiceAttendanceDeviceSyncRoutes.use("*", requireOperationalModuleMiddleware("zkteco_attendance", "ZKTeco attendance"));
 
 function optionalString(value: unknown) {
   const text = readString(value);

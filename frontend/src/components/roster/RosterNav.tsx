@@ -21,7 +21,7 @@ export function RosterNav() {
     api.getRosterSettings(token)
       .then((result) => setModuleEnabled(result.settings.module_enabled !== false && result.settings.module_enabled !== 0))
       .catch((err) => {
-        if (err instanceof ApiError && err.code === "ROSTER_MODULE_DISABLED") setModuleEnabled(false);
+        if (err instanceof ApiError && (err.code === "ROSTER_MODULE_DISABLED" || err.code === "MODULE_DISABLED")) setModuleEnabled(false);
       });
   }, [token, user?.permissions]);
 

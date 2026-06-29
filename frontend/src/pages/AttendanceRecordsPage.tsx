@@ -128,7 +128,7 @@ export function AttendanceRecordsPage() {
       setPositions(positionResult.positions);
       setLocations(locationResult.locations);
     } catch (err) {
-      if (err instanceof ApiError && err.code === "ATTENDANCE_MODULE_DISABLED") {
+      if (err instanceof ApiError && (err.code === "ATTENDANCE_MODULE_DISABLED" || err.code === "MODULE_DISABLED")) {
         setAttendanceDisabled(true);
         setRecords([]);
         setRawLogs([]);

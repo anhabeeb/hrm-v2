@@ -10,6 +10,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, DbUser, UserStatus } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
+import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { isEmail, normalizeEmail, readString } from "../utils/validation";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
 import { uploadEmployeeDocument } from "./documents";
@@ -39,6 +40,10 @@ offboardingRoutes.use("*", requireAuth);
 employeeLifecycleRoutes.use("*", requireAuth);
 selfServiceLifecycleRoutes.use("*", requireAuth);
 lifecycleRoutes.use("*", requireAuth);
+employeeLifecycleRoutes.use("/:employeeId/onboarding/*", requireOperationalModuleMiddleware("onboarding", "Onboarding"));
+employeeLifecycleRoutes.use("/:employeeId/offboarding/*", requireOperationalModuleMiddleware("offboarding", "Offboarding"));
+selfServiceLifecycleRoutes.use("/onboarding", requireOperationalModuleMiddleware("onboarding", "Onboarding"));
+selfServiceLifecycleRoutes.use("/offboarding", requireOperationalModuleMiddleware("offboarding", "Offboarding"));
 
 const onboardingSettingsFields = [
   "onboarding_enabled",
@@ -2167,6 +2172,7 @@ async function lifecycleSummary(c: Context<AppBindings>, employeeId: string) {
 
 onboardingRoutes.get("/settings", requireAnyPermission(["onboarding.settings.view", "onboarding.settings.manage", "settings.view"]), async (c) => ok(c, { settings: await ensureOnboardingSettings(c.env.DB) }));
 onboardingRoutes.patch("/settings", requireAnyPermission(["onboarding.settings.update", "onboarding.settings.manage", "settings.manage"]), async (c) => ok(c, { settings: await updateSettings(c, "onboarding_settings", onboardingSettingsFields) }));
+onboardingRoutes.use("*", requireOperationalModuleMiddleware("onboarding", "Onboarding"));
 onboardingRoutes.get("/cases", requireAnyPermission(["onboarding.cases.view", "onboarding.cases.manage", "employees.view"]), async (c) => ok(c, { cases: await listOnboardingCases(c) }));
 onboardingRoutes.get("/dashboard-summary", requireAnyPermission(["onboarding.dashboard.view", "onboarding.cases.view", "dashboard.view"]), async (c) => {
   try {
@@ -2698,6 +2704,7 @@ onboardingRoutes.post("/tasks/:taskId/assign", requireAnyPermission(["onboarding
 
 offboardingRoutes.get("/settings", requireAnyPermission(["offboarding.settings.view", "offboarding.settings.manage", "settings.view"]), async (c) => ok(c, { settings: await ensureOffboardingSettings(c.env.DB) }));
 offboardingRoutes.patch("/settings", requireAnyPermission(["offboarding.settings.update", "offboarding.settings.manage", "settings.manage"]), async (c) => ok(c, { settings: await updateSettings(c, "offboarding_settings", offboardingSettingsFields) }));
+offboardingRoutes.use("*", requireOperationalModuleMiddleware("offboarding", "Offboarding"));
 offboardingRoutes.get("/cases", requireAnyPermission(["offboarding.cases.view", "offboarding.cases.manage", "employees.view"]), async (c) => ok(c, { cases: await listOffboardingCases(c) }));
 offboardingRoutes.get("/dashboard", requireAnyPermission(["offboarding.dashboard.view", "offboarding.cases.view", "dashboard.view"]), async (c) => {
   const cases = await listOffboardingCases(c);

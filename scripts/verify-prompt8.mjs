@@ -33,7 +33,8 @@ const requiredStatusTokens = [
 ];
 const requiredBackendTokens = [
   "requireAttendanceModuleEnabled",
-  "ATTENDANCE_MODULE_DISABLED",
+  "requireOperationalModuleEnabled",
+  "disabledModuleResponse",
   "getAttendanceSettings",
   "calculateDailyAttendanceStatus",
   "refreshDailyAttendanceRecord",
@@ -63,14 +64,15 @@ const requiredSelfServiceTokens = [
   "self_service.attendance.view",
   "self_service.attendance_correction.request",
   "requireSelfServiceAttendanceEnabled",
-  "ATTENDANCE_MODULE_DISABLED",
+  "requireOperationalModuleEnabled",
+  "disabledModuleResponse",
   "allow_employee_correction_requests",
   "requested_values_json"
 ];
 const requiredFrontendTokens = [
   "AttendanceManualLogModal",
   "module_enabled",
-  "ATTENDANCE_MODULE_DISABLED",
+  "MODULE_DISABLED",
   "attendanceDisabled",
   "Attendance module is disabled.",
   "listAttendanceLogs",
@@ -130,7 +132,7 @@ const attendanceFrontend = [
   read("frontend/src/pages/AttendanceReportsPage.tsx"),
   read("frontend/src/pages/SelfServicePage.tsx")
 ].join("\n");
-assertIncludes("frontend module-disabled awareness", attendanceFrontend, ["module_enabled", "ATTENDANCE_MODULE_DISABLED", "Attendance module is disabled.", "attendanceDisabled"]);
+assertIncludes("frontend module-disabled awareness", attendanceFrontend, ["module_enabled", "MODULE_DISABLED", "Attendance module is disabled.", "attendanceDisabled"]);
 
 const attendanceUiFiles = walk(join(root, "frontend", "src")).filter((path) => /Attendance|attendance/.test(path));
 const promptFiles = attendanceUiFiles.filter((path) => /window\.(prompt|confirm|alert)\s*\(/.test(readFileSync(path, "utf8")));

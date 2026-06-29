@@ -54,7 +54,7 @@ export function RosterReportsPage() {
       setDepartments(departmentResult.departments);
       setLocations(locationResult.locations);
     } catch (err) {
-      if (err instanceof ApiError && err.code === "ROSTER_MODULE_DISABLED") {
+      if (err instanceof ApiError && (err.code === "ROSTER_MODULE_DISABLED" || err.code === "MODULE_DISABLED")) {
         setModuleDisabled(true);
         setReports([]);
         return;
