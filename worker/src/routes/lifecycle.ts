@@ -17,6 +17,16 @@ import { uploadEmployeeDocument } from "./documents";
 type BindValue = string | number | null;
 type LifecycleCaseType = "ONBOARDING" | "OFFBOARDING";
 type TaskStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "WAIVED" | "BLOCKED" | "NOT_REQUIRED" | "CANCELLED";
+type OnboardingDashboardQuery = Record<string, string>;
+type OnboardingDashboardCase = Record<string, unknown> & {
+  blocker_types: string[];
+  setup_statuses: Record<string, string>;
+  has_started_setup: boolean;
+  ready_for_activation: boolean;
+  is_blocked: boolean;
+  is_overdue: boolean;
+  starting_this_week: boolean;
+};
 
 export const onboardingRoutes = new Hono<AppBindings>();
 export const offboardingRoutes = new Hono<AppBindings>();
@@ -655,11 +665,12 @@ async function getScopedEmployee(c: Context<AppBindings>, employeeId: string, ac
   if (!allowed) return null;
   return c.env.DB
     .prepare(
-      `SELECT e.*, d.name AS department_name, l.name AS location_name, p.title AS position_name, es.key AS status_key, es.name AS status_name
+      `SELECT e.*, d.name AS department_name, l.name AS location_name, p.title AS position_name, jl.name AS job_level_name, es.key AS status_key, es.name AS status_name
        FROM employees e
        LEFT JOIN departments d ON d.id = e.primary_department_id
        LEFT JOIN locations l ON l.id = e.primary_location_id
        LEFT JOIN positions p ON p.id = e.primary_position_id
+       LEFT JOIN job_levels jl ON jl.id = e.job_level_id
        LEFT JOIN employee_statuses es ON es.id = e.status_id
        WHERE e.id = ? AND e.archived_at IS NULL`
     )
@@ -1756,16 +1767,280 @@ async function listOnboardingCases(c: Context<AppBindings>) {
   }
   if (c.req.query("overdue") === "1") conditions.push("oc.due_date IS NOT NULL AND date(oc.due_date) < date('now') AND oc.onboarding_status NOT IN ('ACTIVATED', 'CANCELLED')");
   const rows = await c.env.DB.prepare(
-    `SELECT oc.*, e.employee_no, e.full_name AS employee_name, d.name AS department_name, l.name AS location_name, p.title AS position_name
+    `SELECT oc.*, e.employee_no, e.full_name AS employee_name, e.joining_date AS planned_start_date,
+       e.primary_department_id, e.primary_location_id, e.primary_position_id, e.job_level_id,
+       d.name AS department_name, l.name AS location_name, p.title AS position_name, jl.name AS job_level_name,
+       owner.name AS assigned_owner_name
      FROM employee_onboarding_cases oc
      INNER JOIN employees e ON e.id = oc.employee_id
      LEFT JOIN departments d ON d.id = e.primary_department_id
      LEFT JOIN locations l ON l.id = e.primary_location_id
      LEFT JOIN positions p ON p.id = e.primary_position_id
+     LEFT JOIN job_levels jl ON jl.id = e.job_level_id
+     LEFT JOIN users owner ON owner.id = oc.assigned_owner_user_id
      ${where(conditions)}
      ORDER BY oc.created_at DESC`
   ).bind(...binds).all<Record<string, unknown>>();
   return rows.results;
+}
+
+function parseJsonArrayField(value: unknown) {
+  if (!value || typeof value !== "string") return [] as Record<string, unknown>[];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is Record<string, unknown> => item && typeof item === "object" && !Array.isArray(item)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function onboardingActionErrorMessage(item: unknown) {
+  if (typeof item === "string") return item;
+  if (item && typeof item === "object" && !Array.isArray(item)) {
+    const row = item as Record<string, unknown>;
+    return String(row.message ?? row.title ?? row.label ?? row.task_name ?? row.task_key ?? row.type ?? "Onboarding requirement is incomplete.");
+  }
+  return item == null ? "Onboarding requirement is incomplete." : String(item);
+}
+
+function dashboardDate(value: unknown) {
+  return value ? String(value).slice(0, 10) : "";
+}
+
+function onboardingCaseIsClosed(row: Record<string, unknown>) {
+  return ["ACTIVATED", "CANCELLED"].includes(String(row.onboarding_status ?? ""));
+}
+
+function taskIsComplete(task: Record<string, unknown>) {
+  return ["COMPLETED", "WAIVED", "NOT_REQUIRED"].includes(String(task.task_status ?? task.status ?? ""));
+}
+
+function taskIsRequired(task: Record<string, unknown>) {
+  return Number(task.is_required ?? task.required ?? 0) === 1;
+}
+
+function caseSetupStatus(tasks: Record<string, unknown>[], keys: string[]) {
+  const relevant = tasks.filter((task) => keys.includes(String(task.task_key ?? "")));
+  if (!relevant.length) return "NOT_REQUIRED";
+  if (relevant.every(taskIsComplete)) return "COMPLETE";
+  if (relevant.some((task) => String(task.task_status ?? task.status ?? "") === "BLOCKED")) return "BLOCKED";
+  if (relevant.some(taskIsRequired)) return "MISSING";
+  return "WARNING";
+}
+
+async function getOnboardingDashboardTasks(db: D1Database, caseIds: string[]) {
+  if (!caseIds.length) return [] as Record<string, unknown>[];
+  const placeholders = caseIds.map(() => "?").join(", ");
+  const rows = await db
+    .prepare(`SELECT * FROM employee_onboarding_tasks WHERE onboarding_case_id IN (${placeholders})`)
+    .bind(...caseIds)
+    .all<Record<string, unknown>>();
+  return rows.results;
+}
+
+function buildOnboardingDashboardKpi(input: {
+  id: string;
+  title: string;
+  value: number;
+  description: string;
+  tone: string;
+  iconKey: string;
+  query: OnboardingDashboardQuery;
+  enabled?: boolean;
+  permissionRequired?: string | null;
+}) {
+  return {
+    id: input.id,
+    title: input.title,
+    value: input.value,
+    description: input.description,
+    tone: input.tone,
+    icon_key: input.iconKey,
+    route: "/onboarding/cases",
+    query: input.query,
+    enabled: input.enabled !== false,
+    permission_required: input.permissionRequired ?? null
+  };
+}
+
+function buildOnboardingDashboardBlocker(input: {
+  id: string;
+  title: string;
+  count: number;
+  explanation: string;
+  query: OnboardingDashboardQuery;
+  enabled?: boolean;
+}) {
+  return {
+    id: input.id,
+    title: input.title,
+    count: input.count,
+    explanation: input.explanation,
+    route: "/onboarding/cases",
+    query: input.query,
+    enabled: input.enabled !== false
+  };
+}
+
+export async function getOnboardingDashboardSummary(c: Context<AppBindings>) {
+  const warnings: Array<{ group: string; message: string }> = [];
+  const cases = await listOnboardingCases(c);
+  const activeCases = cases.filter((row) => !onboardingCaseIsClosed(row));
+  const today = new Date().toISOString().slice(0, 10);
+  const current = new Date();
+  const day = current.getUTCDay();
+  const weekStartDate = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate() - (day === 0 ? 6 : day - 1)));
+  const weekEndDate = new Date(weekStartDate);
+  weekEndDate.setUTCDate(weekStartDate.getUTCDate() + 6);
+  const weekStart = weekStartDate.toISOString().slice(0, 10);
+  const weekEnd = weekEndDate.toISOString().slice(0, 10);
+
+  let moduleStatuses: Record<string, boolean> = {};
+  let settings: Record<string, unknown> | null = null;
+  let tasks: Record<string, unknown>[] = [];
+  try {
+    moduleStatuses = await getOnboardingWorkspaceModuleStatuses(c);
+  } catch {
+    warnings.push({ group: "enabled_modules", message: "Enabled module summary could not be loaded." });
+  }
+  try {
+    settings = await ensureOnboardingSettings(c.env.DB);
+  } catch {
+    warnings.push({ group: "settings", message: "Onboarding settings summary could not be loaded." });
+  }
+  try {
+    tasks = await getOnboardingDashboardTasks(c.env.DB, cases.map((row) => String(row.id)));
+  } catch {
+    warnings.push({ group: "tasks", message: "Task readiness summary could not be loaded." });
+  }
+
+  const tasksByCase = new Map<string, Record<string, unknown>[]>();
+  for (const task of tasks) {
+    const caseId = String(task.onboarding_case_id ?? "");
+    if (!caseId) continue;
+    const existing = tasksByCase.get(caseId) ?? [];
+    existing.push(task);
+    tasksByCase.set(caseId, existing);
+  }
+
+  const enrichedCases: OnboardingDashboardCase[] = cases.map((row): OnboardingDashboardCase => {
+    const rowTasks = tasksByCase.get(String(row.id)) ?? [];
+    const blockers = parseJsonArrayField(row.blockers_json);
+    const blockerTypes = Array.from(new Set([
+      ...blockers.map((blocker) => String(blocker.task_key ?? blocker.type ?? "SETUP").toUpperCase()),
+      ...rowTasks.filter((task) => taskIsRequired(task) && !taskIsComplete(task)).map((task) => String(task.task_key ?? "SETUP").toUpperCase())
+    ]));
+    const setupStatuses = {
+      employee_data: caseSetupStatus(rowTasks, ["personal_info", "contact_info", "job_assignment"]),
+      documents: caseSetupStatus(rowTasks, ["documents"]),
+      contract: caseSetupStatus(rowTasks, ["contract"]),
+      payroll: caseSetupStatus(rowTasks, ["payroll_profile", "payment_method", "pension_profile"]),
+      user_account: caseSetupStatus(rowTasks, ["user_access"]),
+      approvals: caseSetupStatus(rowTasks, ["activation_approval"]),
+      assets_uniforms: caseSetupStatus(rowTasks, ["assets_uniforms"])
+    };
+    const started = rowTasks.some((task) => !["NOT_STARTED", "PENDING"].includes(String(task.task_status ?? task.status ?? "")));
+    const requiredMissing = rowTasks.some((task) => taskIsRequired(task) && !taskIsComplete(task));
+    const ready = !onboardingCaseIsClosed(row) && (String(row.activation_status ?? "") === "READY" || String(row.onboarding_status ?? "") === "READY_FOR_APPROVAL") && !requiredMissing;
+    return {
+      ...row,
+      blocker_types: blockerTypes,
+      setup_statuses: setupStatuses,
+      has_started_setup: started,
+      ready_for_activation: ready,
+      is_blocked: !onboardingCaseIsClosed(row) && (String(row.onboarding_status ?? "") === "BLOCKED" || requiredMissing || blockers.length > 0),
+      is_overdue: !onboardingCaseIsClosed(row) && Boolean(row.due_date) && dashboardDate(row.due_date) < today,
+      starting_this_week: Boolean(row.planned_start_date) && dashboardDate(row.planned_start_date) >= weekStart && dashboardDate(row.planned_start_date) <= weekEnd
+    };
+  });
+
+  const countSetup = (key: string) => enrichedCases.filter((row) => activeCases.some((active) => String(active["id"]) === String(row["id"])) && (row.setup_statuses as Record<string, unknown>)?.[key] && !["COMPLETE", "NOT_REQUIRED"].includes(String((row.setup_statuses as Record<string, unknown>)[key]))).length;
+  const hasContracts = moduleStatuses.contracts !== false && Number(settings?.require_contract_before_activation ?? 0) === 1 && hasAny(c, ["contracts.view", "employees.contracts.view", "onboarding.cases.view", "onboarding.dashboard.view"]);
+  const hasPayroll = moduleStatuses.payroll !== false && Number(settings?.require_payroll_profile_before_activation ?? 1) === 1 && hasAny(c, ["payroll.view", "employees.payroll.view", "onboarding.cases.view", "onboarding.dashboard.view"]);
+  const hasDocuments = moduleStatuses.document_compliance !== false && Number(settings?.require_documents_before_activation ?? 1) === 1 && hasAny(c, ["documents.view", "documents.checklist.view", "onboarding.cases.view", "onboarding.dashboard.view"]);
+  const hasUserAccount = moduleStatuses.self_service !== false && Number(settings?.require_user_account_before_activation ?? 0) === 1 && hasAny(c, ["users.view", "self_service.manage_access", "onboarding.cases.view", "onboarding.dashboard.view"]);
+  const hasApprovals = moduleStatuses.approvals !== false && Number(settings?.require_approval_before_activation ?? 0) === 1;
+  const hasAssets = moduleStatuses.assets_uniforms !== false && Number(settings?.require_asset_uniform_issue_before_activation ?? 0) === 1 && hasAny(c, ["assets.view", "onboarding.cases.view", "onboarding.dashboard.view"]);
+
+  const readyCount = enrichedCases.filter((row) => row.ready_for_activation).length;
+  const blockedCount = enrichedCases.filter((row) => row.is_blocked).length;
+  const draftCount = enrichedCases.filter((row) => !onboardingCaseIsClosed(row) && !row.has_started_setup).length;
+  const inProgressCount = enrichedCases.filter((row) => !onboardingCaseIsClosed(row) && row.has_started_setup && !row.ready_for_activation && !row.is_blocked).length;
+  const overdueCount = enrichedCases.filter((row) => row.is_overdue).length;
+  const startingThisWeek = enrichedCases.filter((row) => row.starting_this_week).length;
+  const pendingDocuments = hasDocuments ? countSetup("documents") : 0;
+  const pendingContract = hasContracts ? countSetup("contract") : 0;
+  const pendingUser = hasUserAccount ? countSetup("user_account") : 0;
+  const pendingPayroll = hasPayroll ? countSetup("payroll") : 0;
+  const pendingApprovals = hasApprovals ? countSetup("approvals") : 0;
+
+  const kpis = [
+    buildOnboardingDashboardKpi({ id: "total_active_cases", title: "Total Onboarding Cases", value: activeCases.length, description: "Active onboarding cases in your access scope.", tone: "info", iconKey: "users", query: { filter: "all" }, permissionRequired: "onboarding.dashboard.view" }),
+    buildOnboardingDashboardKpi({ id: "draft_not_started_cases", title: "Draft / Not Started Cases", value: draftCount, description: "Cases created but not started.", tone: "neutral", iconKey: "circle", query: { filter: "draft" } }),
+    buildOnboardingDashboardKpi({ id: "in_progress_cases", title: "In Progress Cases", value: inProgressCount, description: "Cases with setup activity underway.", tone: "info", iconKey: "progress", query: { filter: "in_progress" } }),
+    buildOnboardingDashboardKpi({ id: "ready_for_activation", title: "Ready for Activation", value: readyCount, description: "All required readiness checks pass.", tone: "success", iconKey: "check", query: { filter: "ready" } }),
+    buildOnboardingDashboardKpi({ id: "blocked_cases", title: "Blocked Cases", value: blockedCount, description: "Cases blocked by missing required setup.", tone: "danger", iconKey: "alert", query: { filter: "blocked" } }),
+    buildOnboardingDashboardKpi({ id: "overdue_cases", title: "Overdue Cases", value: overdueCount, description: "Cases past expected onboarding due date.", tone: "warning", iconKey: "calendar", query: { filter: "overdue" } }),
+    buildOnboardingDashboardKpi({ id: "starting_this_week", title: "Starting This Week", value: startingThisWeek, description: "Planned start dates in the current week.", tone: "info", iconKey: "calendar", query: { planned_start_from: weekStart, planned_start_to: weekEnd } }),
+    buildOnboardingDashboardKpi({ id: "pending_documents", title: "Pending Documents", value: pendingDocuments, description: "Required documents missing or unresolved.", tone: "warning", iconKey: "documents", query: { blocker_type: "documents" }, enabled: hasDocuments, permissionRequired: "documents.view" }),
+    buildOnboardingDashboardKpi({ id: "pending_contract_setup", title: "Pending Contract Setup", value: pendingContract, description: "Contract setup is required and incomplete.", tone: "warning", iconKey: "contract", query: { blocker_type: "contract" }, enabled: hasContracts, permissionRequired: "contracts.view" }),
+    buildOnboardingDashboardKpi({ id: "pending_user_account_setup", title: "Pending User Account Setup", value: pendingUser, description: "Login provisioning/linking is required.", tone: "warning", iconKey: "user_account", query: { blocker_type: "user_account" }, enabled: hasUserAccount, permissionRequired: "users.view" }),
+    buildOnboardingDashboardKpi({ id: "pending_payroll_setup", title: "Pending Payroll Setup", value: pendingPayroll, description: "Payroll, payment, or pension setup is incomplete.", tone: "warning", iconKey: "payroll", query: { blocker_type: "payroll" }, enabled: hasPayroll, permissionRequired: "payroll.view" }),
+    buildOnboardingDashboardKpi({ id: "pending_approvals", title: "Pending Approvals", value: pendingApprovals, description: "Activation approval workflow is still pending.", tone: "warning", iconKey: "approval", query: { blocker_type: "approvals" }, enabled: hasApprovals, permissionRequired: "onboarding.activation.view" })
+  ];
+
+  const blockerSummary = [
+    buildOnboardingDashboardBlocker({ id: "employee_data", title: "Missing required employee data", count: countSetup("employee_data"), explanation: "Core employee, contact, or job setup is incomplete.", query: { blocker_type: "employee_data" } }),
+    buildOnboardingDashboardBlocker({ id: "invalid_org_mapping", title: "Invalid Department / Job Level / Position mapping", count: enrichedCases.filter((row) => !row["primary_department_id"] || !row["primary_position_id"] || !row["job_level_id"]).length, explanation: "Organization cascade data is missing or invalid.", query: { blocker_type: "organization" } }),
+    buildOnboardingDashboardBlocker({ id: "documents", title: "Missing required documents", count: pendingDocuments, explanation: "Document compliance is required before activation.", query: { blocker_type: "documents" }, enabled: hasDocuments }),
+    buildOnboardingDashboardBlocker({ id: "contract", title: "Pending contract setup", count: pendingContract, explanation: "Contract setup is required by policy.", query: { blocker_type: "contract" }, enabled: hasContracts }),
+    buildOnboardingDashboardBlocker({ id: "payroll", title: "Pending payroll setup", count: pendingPayroll, explanation: "Payroll setup is required by policy.", query: { blocker_type: "payroll" }, enabled: hasPayroll }),
+    buildOnboardingDashboardBlocker({ id: "user_account", title: "Pending user account setup", count: pendingUser, explanation: "Login access must be provisioned, linked, or reviewed.", query: { blocker_type: "user_account" }, enabled: hasUserAccount }),
+    buildOnboardingDashboardBlocker({ id: "approvals", title: "Pending approvals", count: pendingApprovals, explanation: "Activation approval is required.", query: { blocker_type: "approvals" }, enabled: hasApprovals }),
+    buildOnboardingDashboardBlocker({ id: "assets_uniforms", title: "Pending asset/uniform setup", count: hasAssets ? countSetup("assets_uniforms") : 0, explanation: "Required assets or uniforms are not issued/reviewed.", query: { blocker_type: "assets_uniforms" }, enabled: hasAssets }),
+    buildOnboardingDashboardBlocker({ id: "policy_module", title: "Policy/module not available", count: warnings.length, explanation: "A configured onboarding summary group is unavailable.", query: { blocker_type: "policy" }, enabled: warnings.length > 0 }),
+    buildOnboardingDashboardBlocker({ id: "owner_permission", title: "No permission / assigned owner issue", count: 0, explanation: "Cases assigned outside your permissions are hidden by backend scope.", query: { blocker_type: "permission" }, enabled: true })
+  ].filter((item) => item.enabled && (item.count > 0 || ["employee_data", "owner_permission"].includes(item.id)));
+
+  const priorityActions = [
+    { id: "complete_blocked_cases", title: "Complete blocked cases", description: "Work through cases with unresolved blockers.", query: { filter: "blocked" }, tone: "danger", enabled: blockedCount > 0 },
+    { id: "review_ready_activation", title: "Review cases ready for activation", description: "Activate employees whose setup is complete.", query: { filter: "ready" }, tone: "success", enabled: readyCount > 0 },
+    { id: "upload_missing_documents", title: "Upload missing documents", description: "Resolve document blockers.", query: { blocker_type: "documents" }, tone: "warning", enabled: hasDocuments && pendingDocuments > 0 },
+    { id: "complete_contract_setup", title: "Complete contract setup", description: "Create or activate missing contracts.", query: { blocker_type: "contract" }, tone: "warning", enabled: hasContracts && pendingContract > 0 },
+    { id: "complete_user_account_setup", title: "Complete user account setup", description: "Provision or link login accounts.", query: { blocker_type: "user_account" }, tone: "warning", enabled: hasUserAccount && pendingUser > 0 },
+    { id: "complete_payroll_setup", title: "Complete payroll setup", description: "Finish payroll profile and payment setup.", query: { blocker_type: "payroll" }, tone: "warning", enabled: hasPayroll && pendingPayroll > 0 },
+    { id: "review_overdue_cases", title: "Review overdue cases", description: "Clear onboarding cases past their due date.", query: { filter: "overdue" }, tone: "warning", enabled: overdueCount > 0 },
+    { id: "activate_ready_employees", title: "Activate ready employees", description: "Open ready cases and complete activation.", query: { filter: "ready" }, tone: "success", enabled: readyCount > 0 }
+  ].filter((item) => item.enabled);
+
+  return {
+    kpis,
+    blocker_summary: blockerSummary,
+    readiness_summary: {
+      total_active: activeCases.length,
+      draft_not_started: draftCount,
+      in_progress: inProgressCount,
+      blocked: blockedCount,
+      ready_for_activation: readyCount,
+      activated: cases.filter((row) => row.onboarding_status === "ACTIVATED").length,
+      cancelled: cases.filter((row) => row.onboarding_status === "CANCELLED").length
+    },
+    upcoming_starts: { count: startingThisWeek, from: weekStart, to: weekEnd },
+    overdue_summary: { count: overdueCount, today },
+    enabled_modules: moduleStatuses,
+    permissions: {
+      documents: hasDocuments,
+      contracts: hasContracts,
+      payroll: hasPayroll,
+      user_account: hasUserAccount,
+      approvals: hasApprovals,
+      assets_uniforms: hasAssets
+    },
+    priority_actions: priorityActions,
+    warnings,
+    rows: enrichedCases.slice(0, 50),
+    cases: enrichedCases
+  };
 }
 
 async function listOffboardingCases(c: Context<AppBindings>) {
@@ -1893,8 +2168,17 @@ async function lifecycleSummary(c: Context<AppBindings>, employeeId: string) {
 onboardingRoutes.get("/settings", requireAnyPermission(["onboarding.settings.view", "onboarding.settings.manage", "settings.view"]), async (c) => ok(c, { settings: await ensureOnboardingSettings(c.env.DB) }));
 onboardingRoutes.patch("/settings", requireAnyPermission(["onboarding.settings.update", "onboarding.settings.manage", "settings.manage"]), async (c) => ok(c, { settings: await updateSettings(c, "onboarding_settings", onboardingSettingsFields) }));
 onboardingRoutes.get("/cases", requireAnyPermission(["onboarding.cases.view", "onboarding.cases.manage", "employees.view"]), async (c) => ok(c, { cases: await listOnboardingCases(c) }));
+onboardingRoutes.get("/dashboard-summary", requireAnyPermission(["onboarding.dashboard.view", "onboarding.cases.view", "dashboard.view"]), async (c) => {
+  try {
+    return ok(c, { summary: await getOnboardingDashboardSummary(c) });
+  } catch (error) {
+    console.warn("Onboarding dashboard summary failed", error);
+    return fail(c, 500, "ONBOARDING_DASHBOARD_SUMMARY_FAILED", "Onboarding dashboard summary could not be loaded.");
+  }
+});
 onboardingRoutes.get("/dashboard", requireAnyPermission(["onboarding.dashboard.view", "onboarding.cases.view", "dashboard.view"]), async (c) => {
-  const cases = await listOnboardingCases(c);
+  const summary = await getOnboardingDashboardSummary(c);
+  const cases = summary.cases as Record<string, unknown>[];
   return ok(c, {
     dashboard: {
       total_cases: cases.length,
@@ -1903,6 +2187,7 @@ onboardingRoutes.get("/dashboard", requireAnyPermission(["onboarding.dashboard.v
       pending_documents: cases.filter((row) => row.onboarding_status === "WAITING_FOR_DOCUMENTS").length,
       activated_this_month: cases.filter((row) => row.activated_at && String(row.activated_at).slice(0, 7) === new Date().toISOString().slice(0, 7)).length,
       overdue_tasks: cases.filter((row) => row.due_date && String(row.due_date) < new Date().toISOString().slice(0, 10)).length,
+      ...summary,
       rows: cases.slice(0, 20)
     }
   });
@@ -2362,7 +2647,18 @@ onboardingRoutes.post("/cases/:caseId/approve-activation", requireAnyPermission(
 onboardingRoutes.post("/cases/:caseId/activate", requireAnyPermission(["onboarding.activation.activate", "onboarding.activation.manage", "onboarding.workspace.activate"]), async (c) => {
   const result = await activateEmployeeFromOnboarding(c, c.req.param("caseId"));
   if (!result) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
-  if ("blocked" in result) return fail(c, 409, "EMPLOYEE_ACTIVATION_NOT_READY", "Employee activation is blocked by onboarding requirements.");
+  if ("blocked" in result) {
+    return c.json({
+      ok: false,
+      error: {
+        code: "EMPLOYEE_ACTIVATION_NOT_READY",
+        message: "Employee activation is blocked by onboarding requirements.",
+        fields: { activation: "Complete all required onboarding setup before activating this employee." },
+        action_errors: (result.readiness?.blocking_items ?? result.readiness?.blockers ?? []).map((item: unknown) => onboardingActionErrorMessage(item)),
+        readiness: result.readiness
+      }
+    }, 409);
+  }
   return ok(c, result);
 });
 onboardingRoutes.post("/cases/:caseId/activate-with-override", requireAnyPermission(["onboarding.activation.override", "onboarding.activation.manage"]), async (c) => {

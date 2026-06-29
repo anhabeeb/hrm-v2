@@ -945,6 +945,9 @@ export const api = {
   getOnboardingDashboard(token: string) {
     return request<{ dashboard: Record<string, unknown> }>("/api/v1/onboarding/dashboard", {}, token);
   },
+  getOnboardingDashboardSummary(token: string) {
+    return request<{ summary: Record<string, unknown> }>("/api/v1/onboarding/dashboard-summary", {}, token);
+  },
   listOnboardingAlerts(token: string) {
     return request<{ alerts: Record<string, unknown>[] }>("/api/v1/onboarding/alerts", {}, token);
   },

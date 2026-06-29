@@ -37,6 +37,7 @@
     "verify:onboarding-contract-null-fix": "node scripts/verify-onboarding-contract-null-fix.mjs",
     "verify:onboarding-document-compliance-fix": "node scripts/verify-onboarding-document-compliance-fix.mjs",
     "verify:onboarding-workspace": "node scripts/verify-onboarding-workspace.mjs",
+    "verify:onboarding-dashboard-kpis": "node scripts/verify-onboarding-dashboard-kpis.mjs",
     "verify:ui-standardization": "node scripts/verify-ui-standardization.mjs",
     "verify:module-toggle-settings": "node scripts/verify-module-toggle-settings.mjs",
     "verify:settings-toggles-tabs-layout": "node scripts/verify-settings-toggles-tabs-layout.mjs",

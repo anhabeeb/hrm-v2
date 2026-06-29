@@ -1,11 +1,13 @@
-import { CheckCircle2, Circle, FileDown, RefreshCw, ShieldAlert } from "lucide-react";
+import { AlertTriangle, BriefcaseBusiness, CalendarClock, CheckCircle2, Circle, ClipboardCheck, FileCheck2, FileDown, RefreshCw, ShieldAlert, UserPlus, UsersRound, WalletCards } from "lucide-react";
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { ExportMenu } from "../components/export/ExportMenu";
+import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, SaveFilterViewButton, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter, type ActiveFilterChip, type StandardDateRange } from "../components/filters";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
-import { FormSkeleton } from "../components/loading";
+import { CardSkeleton, FormSkeleton, TableSkeleton } from "../components/loading";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -171,7 +173,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
       } else if (mode === "lifecycle-reports") {
         setReportRows((await api.getReport(token, reportKey)).report.rows as Row[]);
       } else if (mode.includes("dashboard")) {
-        setDashboard(activeKind === "onboarding" ? (await api.getOnboardingDashboard(token)).dashboard : (await api.getOffboardingDashboard(token)).dashboard);
+        setDashboard(activeKind === "onboarding" ? (await api.getOnboardingDashboardSummary(token)).summary : (await api.getOffboardingDashboard(token)).dashboard);
       } else {
         const [employeeResult, caseResult] = await Promise.all([
           api.listEmployees(token).catch(() => ({ employees: [] })),
@@ -239,7 +241,18 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
 
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}
 
-      {mode.includes("dashboard") ? <DashboardSection data={dashboard} loading={loading} error={error} /> : null}
+      {mode.includes("dashboard") ? (
+        <DashboardSection
+          kind={activeKind}
+          data={dashboard}
+          loading={loading}
+          error={error}
+          onSelect={(id) => {
+            setSelected({ kind: activeKind, id });
+            if (activeKind === "onboarding") setSearchParams({ case_id: id });
+          }}
+        />
+      ) : null}
       {mode.includes("cases") ? (
         <CasesSection
           kind={activeKind}
@@ -275,7 +288,197 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
   );
 }
 
-function DashboardSection({ data, loading, error }: { data: Row; loading: boolean; error: string | null }) {
+type OnboardingFilterState = {
+  search: string;
+  status: string;
+  readiness: string;
+  plannedStart: StandardDateRange;
+  created: StandardDateRange;
+  department: string;
+  jobLevel: string;
+  position: string;
+  owner: string;
+  blockerType: string;
+  documentStatus: string;
+  contractStatus: string;
+  payrollStatus: string;
+  userAccountStatus: string;
+  approvalStatus: string;
+  activationStatus: string;
+};
+
+const defaultOnboardingFilters: OnboardingFilterState = {
+  search: "",
+  status: "",
+  readiness: "",
+  plannedStart: {},
+  created: {},
+  department: "",
+  jobLevel: "",
+  position: "",
+  owner: "",
+  blockerType: "",
+  documentStatus: "",
+  contractStatus: "",
+  payrollStatus: "",
+  userAccountStatus: "",
+  approvalStatus: "",
+  activationStatus: ""
+};
+
+const setupStatusOptions = ["MISSING", "BLOCKED", "WARNING", "COMPLETE", "NOT_REQUIRED"].map((value) => ({ value, label: title(value) }));
+const blockerTypeOptions = [
+  { value: "employee_data", label: "Employee Data" },
+  { value: "organization", label: "Department / Job / Position" },
+  { value: "documents", label: "Documents" },
+  { value: "contract", label: "Contract" },
+  { value: "payroll", label: "Payroll" },
+  { value: "user_account", label: "User Account" },
+  { value: "approvals", label: "Approvals" },
+  { value: "assets_uniforms", label: "Assets / Uniforms" }
+];
+
+function normalize(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function uniqueTextOptions(rows: Row[], key: string) {
+  return Array.from(new Set(rows.map((row) => text(row[key])).filter((value) => value !== "-"))).sort().map((value) => ({ value, label: value }));
+}
+
+function rowSetupStatus(row: Row, key: string) {
+  return String(asRow(row.setup_statuses)[key] ?? "");
+}
+
+function dateInRange(value: unknown, range: StandardDateRange) {
+  const date = displayText(value, "");
+  if (!date) return true;
+  if (range.from && date < range.from) return false;
+  if (range.to && date > range.to) return false;
+  return true;
+}
+
+function caseMatchesBlocker(row: Row, blockerType: string) {
+  if (!blockerType) return true;
+  if (blockerType === "overdue") return Boolean(row.is_overdue);
+  if (blockerType === "organization") return !row.primary_department_id || !row.primary_position_id || !row.job_level_id;
+  const setupKey = blockerType === "documents" ? "documents"
+    : blockerType === "contract" ? "contract"
+    : blockerType === "payroll" ? "payroll"
+    : blockerType === "user_account" ? "user_account"
+    : blockerType === "approvals" ? "approvals"
+    : blockerType === "assets_uniforms" ? "assets_uniforms"
+    : "employee_data";
+  const setupStatus = rowSetupStatus(row, setupKey);
+  const blockerTypes = Array.isArray(row.blocker_types) ? row.blocker_types.map((item) => normalize(item)) : [];
+  return !["COMPLETE", "NOT_REQUIRED"].includes(setupStatus) || blockerTypes.includes(blockerType);
+}
+
+function readinessValue(row: Row) {
+  if (row.ready_for_activation || row.activation_status === "READY") return "READY";
+  if (row.is_blocked || row.onboarding_status === "BLOCKED" || row.activation_status === "NOT_READY") return "BLOCKED";
+  if (row.onboarding_status === "ACTIVATED" || row.activation_status === "ACTIVATED") return "ACTIVATED";
+  if (row.has_started_setup) return "IN_PROGRESS";
+  return "DRAFT";
+}
+
+function filterOnboardingRows(rows: Row[], filters: OnboardingFilterState) {
+  const search = normalize(filters.search);
+  return rows.filter((row) => {
+    const haystack = [
+      row.case_number,
+      row.employee_name,
+      row.employee_name_snapshot,
+      row.employee_no,
+      row.employee_number_snapshot,
+      row.department_name,
+      row.location_name,
+      row.position_name,
+      row.job_level_name
+    ].map(normalize).join(" ");
+    if (search && !haystack.includes(search)) return false;
+    if (filters.status && row.onboarding_status !== filters.status) return false;
+    if (filters.activationStatus && row.activation_status !== filters.activationStatus) return false;
+    if (filters.readiness && readinessValue(row) !== filters.readiness) return false;
+    if (filters.department && text(row.department_name) !== filters.department) return false;
+    if (filters.jobLevel && text(row.job_level_name) !== filters.jobLevel) return false;
+    if (filters.position && text(row.position_name) !== filters.position) return false;
+    if (filters.owner && text(row.assigned_owner_name) !== filters.owner) return false;
+    if (!dateInRange(row.planned_start_date, filters.plannedStart)) return false;
+    if (!dateInRange(String(row.created_at ?? "").slice(0, 10), filters.created)) return false;
+    if (!caseMatchesBlocker(row, filters.blockerType)) return false;
+    if (filters.documentStatus && rowSetupStatus(row, "documents") !== filters.documentStatus) return false;
+    if (filters.contractStatus && rowSetupStatus(row, "contract") !== filters.contractStatus) return false;
+    if (filters.payrollStatus && rowSetupStatus(row, "payroll") !== filters.payrollStatus) return false;
+    if (filters.userAccountStatus && rowSetupStatus(row, "user_account") !== filters.userAccountStatus) return false;
+    if (filters.approvalStatus && rowSetupStatus(row, "approvals") !== filters.approvalStatus) return false;
+    return true;
+  });
+}
+
+function filterHasValues(filters: OnboardingFilterState) {
+  return Object.entries(filters).some(([, value]) => {
+    if (typeof value === "object" && value !== null) return Boolean((value as StandardDateRange).from || (value as StandardDateRange).to);
+    return Boolean(value);
+  });
+}
+
+function applyOnboardingDashboardQuery(query: Row | undefined, setFilters: (next: OnboardingFilterState) => void) {
+  const next = { ...defaultOnboardingFilters };
+  const filter = String(query?.filter ?? "");
+  if (filter === "draft") next.readiness = "DRAFT";
+  if (filter === "in_progress") next.readiness = "IN_PROGRESS";
+  if (filter === "ready") next.readiness = "READY";
+  if (filter === "blocked") next.readiness = "BLOCKED";
+  if (filter === "overdue") next.blockerType = "overdue";
+  if (query?.blocker_type) next.blockerType = String(query.blocker_type);
+  if (query?.planned_start_from || query?.planned_start_to) next.plannedStart = { from: String(query.planned_start_from ?? ""), to: String(query.planned_start_to ?? "") };
+  setFilters(next);
+}
+
+function onboardingFilterChips(filters: OnboardingFilterState, setFilter: <K extends keyof OnboardingFilterState>(key: K, value: OnboardingFilterState[K]) => void, resetRange: (key: "plannedStart" | "created") => void): ActiveFilterChip[] {
+  const chips: ActiveFilterChip[] = [];
+  const add = (key: keyof OnboardingFilterState, label: string, value: ReactNode) => chips.push({ key: String(key), label, value, onRemove: () => setFilter(key, defaultOnboardingFilters[key] as never) });
+  if (filters.search) add("search", "Search", filters.search);
+  if (filters.status) add("status", "Status", title(filters.status));
+  if (filters.readiness) add("readiness", "Readiness", title(filters.readiness));
+  if (filters.department) add("department", "Department", filters.department);
+  if (filters.jobLevel) add("jobLevel", "Job level", filters.jobLevel);
+  if (filters.position) add("position", "Position", filters.position);
+  if (filters.owner) add("owner", "HR owner", filters.owner);
+  if (filters.blockerType) add("blockerType", "Blocker", blockerTypeOptions.find((item) => item.value === filters.blockerType)?.label ?? title(filters.blockerType));
+  if (filters.documentStatus) add("documentStatus", "Documents", title(filters.documentStatus));
+  if (filters.contractStatus) add("contractStatus", "Contract", title(filters.contractStatus));
+  if (filters.payrollStatus) add("payrollStatus", "Payroll", title(filters.payrollStatus));
+  if (filters.userAccountStatus) add("userAccountStatus", "User account", title(filters.userAccountStatus));
+  if (filters.approvalStatus) add("approvalStatus", "Approvals", title(filters.approvalStatus));
+  if (filters.activationStatus) add("activationStatus", "Activation", title(filters.activationStatus));
+  if (filters.plannedStart.from || filters.plannedStart.to) chips.push({ key: "plannedStart", label: "Planned start", value: `${filters.plannedStart.from || "Any"} - ${filters.plannedStart.to || "Any"}`, onRemove: () => resetRange("plannedStart") });
+  if (filters.created.from || filters.created.to) chips.push({ key: "created", label: "Created", value: `${filters.created.from || "Any"} - ${filters.created.to || "Any"}`, onRemove: () => resetRange("created") });
+  return chips;
+}
+
+function kpiTone(tone: unknown): "neutral" | "success" | "warning" | "danger" | "info" {
+  return ["success", "warning", "danger", "info"].includes(String(tone)) ? String(tone) as "success" | "warning" | "danger" | "info" : "neutral";
+}
+
+function KpiIcon({ iconKey }: { iconKey: unknown }) {
+  const className = "h-4 w-4";
+  const key = String(iconKey ?? "");
+  if (key.includes("alert")) return <AlertTriangle className={className} />;
+  if (key.includes("calendar")) return <CalendarClock className={className} />;
+  if (key.includes("document")) return <FileCheck2 className={className} />;
+  if (key.includes("contract")) return <BriefcaseBusiness className={className} />;
+  if (key.includes("payroll")) return <WalletCards className={className} />;
+  if (key.includes("user_account")) return <UserPlus className={className} />;
+  if (key.includes("approval") || key.includes("check")) return <ClipboardCheck className={className} />;
+  return <UsersRound className={className} />;
+}
+
+function DashboardSection({ kind, data, loading, error, onSelect }: { kind: CaseKind; data: Row; loading: boolean; error: string | null; onSelect: (id: string) => void }) {
+  if (kind === "onboarding" && Array.isArray(data.kpis)) {
+    return <OnboardingDashboardSection data={data} loading={loading} error={error} onSelect={onSelect} />;
+  }
   const stats = Object.entries(data).filter(([, value]) => typeof value === "number");
   const rows = (data.rows ?? data.recent_onboarding ?? data.recent_offboarding ?? []) as Row[];
   return (
@@ -307,7 +510,186 @@ function DashboardSection({ data, loading, error }: { data: Row; loading: boolea
   );
 }
 
+function OnboardingDashboardSection({ data, loading, error, onSelect }: { data: Row; loading: boolean; error: string | null; onSelect: (id: string) => void }) {
+  const rows = asRows(data.cases ?? data.rows);
+  const enabledModules = asRow(data.enabled_modules);
+  const [filters, setFilters] = useState<OnboardingFilterState>(defaultOnboardingFilters);
+  const filtered = useMemo(() => filterOnboardingRows(rows, filters), [rows, filters]);
+  const setFilter = <K extends keyof OnboardingFilterState>(key: K, value: OnboardingFilterState[K]) => setFilters((current) => ({ ...current, [key]: value }));
+  const resetFilters = () => setFilters(defaultOnboardingFilters);
+  const resetRange = (key: "plannedStart" | "created") => setFilter(key, {});
+  const activeChips = onboardingFilterChips(filters, setFilter, resetRange);
+  const statusOptions = uniqueTextOptions(rows, "onboarding_status");
+  const activationStatusOptions = uniqueTextOptions(rows, "activation_status");
+  const departmentOptions = uniqueTextOptions(rows, "department_name");
+  const jobLevelOptions = uniqueTextOptions(rows, "job_level_name");
+  const positionOptions = uniqueTextOptions(rows, "position_name");
+  const ownerOptions = uniqueTextOptions(rows, "assigned_owner_name");
+  const visibleKpis = asRows(data.kpis).filter((item) => item.enabled !== false);
+  const blockerSummary = asRows(data.blocker_summary).filter((item) => item.enabled !== false);
+  const priorityActions = asRows(data.priority_actions).filter((item) => item.enabled !== false);
+  const exportColumns = ["case_number", "employee_no", "employee_name", "department_name", "job_level_name", "position_name", "location_name", "onboarding_status", "activation_status", "due_date", "planned_start_date"];
+
+  return (
+    <div className="space-y-4" data-onboarding-dashboard-kpis>
+      {loading ? <CardSkeleton cards={8} label="Loading onboarding KPI cards" /> : null}
+      {!loading ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
+          {visibleKpis.map((kpi) => (
+            <Button
+              key={String(kpi.id)}
+              type="button"
+              variant="actionNeutral"
+              size="sm"
+              className="h-auto w-full flex-col items-stretch justify-start rounded-lg border bg-white p-3 text-left shadow-panel transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/40"
+              onClick={() => applyOnboardingDashboardQuery(asRow(kpi.query), setFilters)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">{text(kpi.title)}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">{text(kpi.value)}</p>
+                </div>
+                <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${kpiTone(kpi.tone) === "success" ? "bg-emerald-50 text-emerald-700" : kpiTone(kpi.tone) === "warning" ? "bg-amber-50 text-amber-700" : kpiTone(kpi.tone) === "danger" ? "bg-red-50 text-red-700" : "bg-cyan-50 text-cyan-700"}`}>
+                  <KpiIcon iconKey={kpi.icon_key} />
+                </span>
+              </div>
+              <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{text(kpi.description)}</p>
+            </Button>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <Panel className="p-4" data-onboarding-blocker-readiness-summary>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">Activation Readiness</h2>
+              <p className="text-xs text-muted-foreground">Blocked-case summary grouped by setup area.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(asRow(data.readiness_summary)).map(([key, value]) => (
+                <Badge key={key} tone={key.includes("ready") ? "success" : key.includes("blocked") ? "danger" : "neutral"}>
+                  {title(key)}: {text(value)}
+                </Badge>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            {blockerSummary.map((item) => (
+              <Button key={String(item.id)} type="button" variant="actionNeutral" size="sm" className="h-auto w-full justify-start rounded-md border bg-slate-50 px-3 py-2 text-left hover:border-primary/40 hover:bg-white" onClick={() => applyOnboardingDashboardQuery(asRow(item.query), setFilters)}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium">{text(item.title)}</span>
+                  <Badge tone={Number(item.count ?? 0) > 0 ? "warning" : "neutral"}>{text(item.count)}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{text(item.explanation)}</p>
+              </Button>
+            ))}
+          </div>
+        </Panel>
+        <Panel className="p-4" data-onboarding-priority-actions>
+          <h2 className="text-sm font-semibold">Priority Actions</h2>
+          <p className="text-xs text-muted-foreground">Jump to the highest-impact onboarding work.</p>
+          <div className="mt-3 grid gap-2">
+            {priorityActions.length ? priorityActions.map((action) => (
+              <ActionTextButton key={String(action.id)} intent={kpiTone(action.tone) === "success" ? "complete" : kpiTone(action.tone) === "danger" ? "warning" : "view"} size="sm" className="justify-start" onClick={() => applyOnboardingDashboardQuery(asRow(action.query), setFilters)}>
+                {text(action.title)}
+              </ActionTextButton>
+            )) : <p className="text-sm text-muted-foreground">No urgent onboarding actions right now.</p>}
+          </div>
+        </Panel>
+      </div>
+
+      <Panel className="overflow-hidden">
+        <div className="border-b p-3">
+          <StandardFilterBar
+            search={<StandardSearchInput value={filters.search} onDebouncedChange={(value) => setFilter("search", value)} placeholder="Search employee, case, department..." />}
+            reset={<FilterResetButton onReset={resetFilters} disabled={!filterHasValues(filters)} />}
+            saveView={<SaveFilterViewButton storageKey="hrm:onboarding-dashboard-filters" value={filters} onApply={setFilters} />}
+            actions={<ExportMenu moduleName="Onboarding cases" rows={filtered} columns={exportColumns} filterSummary={activeChips.map((chip) => `${chip.label}: ${chip.value}`)} />}
+          >
+            <MoreFiltersSheet title="Onboarding filters" onReset={resetFilters}>
+              <FilterSection title="Organization">
+                <StandardSelectFilter value={filters.department} onValueChange={(value) => setFilter("department", value)} allLabel="All departments" width="department" options={departmentOptions} />
+                <StandardSelectFilter value={filters.jobLevel} onValueChange={(value) => setFilter("jobLevel", value)} allLabel="All job levels" width="jobLevel" options={jobLevelOptions} />
+                <StandardSelectFilter value={filters.position} onValueChange={(value) => setFilter("position", value)} allLabel="All positions" width="position" options={positionOptions} />
+                <StandardSelectFilter value={filters.owner} onValueChange={(value) => setFilter("owner", value)} allLabel="All HR owners" width="employee" options={ownerOptions} />
+              </FilterSection>
+              <FilterSection title="Setup blockers">
+                <StandardSelectFilter value={filters.blockerType} onValueChange={(value) => setFilter("blockerType", value)} allLabel="All blockers" width="documentType" options={blockerTypeOptions} />
+                <StandardSelectFilter value={filters.documentStatus} onValueChange={(value) => setFilter("documentStatus", value)} allLabel="Document setup" width="status" options={setupStatusOptions} />
+                {enabledModules.contracts !== false ? <StandardSelectFilter value={filters.contractStatus} onValueChange={(value) => setFilter("contractStatus", value)} allLabel="Contract setup" width="status" options={setupStatusOptions} /> : null}
+                {enabledModules.payroll !== false ? <StandardSelectFilter value={filters.payrollStatus} onValueChange={(value) => setFilter("payrollStatus", value)} allLabel="Payroll setup" width="status" options={setupStatusOptions} /> : null}
+                <StandardSelectFilter value={filters.userAccountStatus} onValueChange={(value) => setFilter("userAccountStatus", value)} allLabel="User account setup" width="status" options={setupStatusOptions} />
+                {enabledModules.approvals !== false ? <StandardSelectFilter value={filters.approvalStatus} onValueChange={(value) => setFilter("approvalStatus", value)} allLabel="Approval status" width="status" options={setupStatusOptions} /> : null}
+              </FilterSection>
+              <FilterSection title="Dates">
+                <StandardDateRangeFilter value={filters.created} onChange={(value) => setFilter("created", value)} label="Created Date Range" />
+              </FilterSection>
+            </MoreFiltersSheet>
+            <StandardSelectFilter value={filters.status} onValueChange={(value) => setFilter("status", value)} allLabel="All statuses" width="status" options={statusOptions} />
+            <StandardSelectFilter value={filters.readiness} onValueChange={(value) => setFilter("readiness", value)} allLabel="All readiness" width="status" options={["DRAFT", "IN_PROGRESS", "BLOCKED", "READY", "ACTIVATED"].map((value) => ({ value, label: title(value) }))} />
+            <StandardDateRangeFilter value={filters.plannedStart} onChange={(value) => setFilter("plannedStart", value)} label="Planned Start Date Range" />
+            <StandardSelectFilter value={filters.activationStatus} onValueChange={(value) => setFilter("activationStatus", value)} allLabel="Activation status" width="status" options={activationStatusOptions} />
+          </StandardFilterBar>
+          <ActiveFilterChips chips={activeChips} className="mt-2" />
+        </div>
+        <OnboardingCaseTable rows={filtered} loading={loading} error={error} onSelect={onSelect} />
+      </Panel>
+    </div>
+  );
+}
+
 function CasesSection({ kind, cases, loading, error, onCreate, onSelect }: { kind: CaseKind; cases: (OnboardingCase | OffboardingCase)[]; loading: boolean; error: string | null; onCreate: () => void; onSelect: (id: string) => void }) {
+  const rows = cases as unknown as Row[];
+  const [filters, setFilters] = useState<OnboardingFilterState>(defaultOnboardingFilters);
+  const setFilter = <K extends keyof OnboardingFilterState>(key: K, value: OnboardingFilterState[K]) => setFilters((current) => ({ ...current, [key]: value }));
+  const resetFilters = () => setFilters(defaultOnboardingFilters);
+  const resetRange = (key: "plannedStart" | "created") => setFilter(key, {});
+  const activeChips = onboardingFilterChips(filters, setFilter, resetRange);
+  const filtered = kind === "onboarding" ? filterOnboardingRows(rows, filters) : rows;
+  if (kind === "onboarding") {
+    return (
+      <div className="space-y-3">
+        <div className="flex justify-end">
+          <ActionTextButton intent="create" size="sm" onClick={onCreate}>Create onboarding case</ActionTextButton>
+        </div>
+        <Panel className="overflow-hidden">
+          <div className="border-b p-3">
+            <StandardFilterBar
+              search={<StandardSearchInput value={filters.search} onDebouncedChange={(value) => setFilter("search", value)} placeholder="Search employee or onboarding case..." />}
+              reset={<FilterResetButton onReset={resetFilters} disabled={!filterHasValues(filters)} />}
+              saveView={<SaveFilterViewButton storageKey="hrm:onboarding-case-filters" value={filters} onApply={setFilters} />}
+            >
+              <MoreFiltersSheet title="Onboarding case filters" onReset={resetFilters}>
+                <FilterSection title="Organization">
+                  <StandardSelectFilter value={filters.department} onValueChange={(value) => setFilter("department", value)} allLabel="All departments" width="department" options={uniqueTextOptions(rows, "department_name")} />
+                  <StandardSelectFilter value={filters.jobLevel} onValueChange={(value) => setFilter("jobLevel", value)} allLabel="All job levels" width="jobLevel" options={uniqueTextOptions(rows, "job_level_name")} />
+                  <StandardSelectFilter value={filters.position} onValueChange={(value) => setFilter("position", value)} allLabel="All positions" width="position" options={uniqueTextOptions(rows, "position_name")} />
+                  <StandardSelectFilter value={filters.owner} onValueChange={(value) => setFilter("owner", value)} allLabel="All HR owners" width="employee" options={uniqueTextOptions(rows, "assigned_owner_name")} />
+                </FilterSection>
+                <FilterSection title="Setup Readiness">
+                  <StandardSelectFilter value={filters.blockerType} onValueChange={(value) => setFilter("blockerType", value)} allLabel="All blockers" width="documentType" options={blockerTypeOptions} />
+                  <StandardSelectFilter value={filters.documentStatus} onValueChange={(value) => setFilter("documentStatus", value)} allLabel="Document setup" width="status" options={setupStatusOptions} />
+                  <StandardSelectFilter value={filters.contractStatus} onValueChange={(value) => setFilter("contractStatus", value)} allLabel="Contract setup" width="status" options={setupStatusOptions} />
+                  <StandardSelectFilter value={filters.payrollStatus} onValueChange={(value) => setFilter("payrollStatus", value)} allLabel="Payroll setup" width="status" options={setupStatusOptions} />
+                  <StandardSelectFilter value={filters.userAccountStatus} onValueChange={(value) => setFilter("userAccountStatus", value)} allLabel="User account setup" width="status" options={setupStatusOptions} />
+                  <StandardSelectFilter value={filters.approvalStatus} onValueChange={(value) => setFilter("approvalStatus", value)} allLabel="Approval status" width="status" options={setupStatusOptions} />
+                </FilterSection>
+                <FilterSection title="Dates">
+                  <StandardDateRangeFilter value={filters.created} onChange={(value) => setFilter("created", value)} label="Created Date Range" />
+                </FilterSection>
+              </MoreFiltersSheet>
+              <StandardSelectFilter value={filters.status} onValueChange={(value) => setFilter("status", value)} allLabel="All statuses" width="status" options={uniqueTextOptions(rows, "onboarding_status")} />
+              <StandardSelectFilter value={filters.readiness} onValueChange={(value) => setFilter("readiness", value)} allLabel="All readiness" width="status" options={["DRAFT", "IN_PROGRESS", "BLOCKED", "READY", "ACTIVATED"].map((value) => ({ value, label: title(value) }))} />
+              <StandardDateRangeFilter value={filters.plannedStart} onChange={(value) => setFilter("plannedStart", value)} label="Planned Start Date Range" />
+            </StandardFilterBar>
+            <ActiveFilterChips chips={activeChips} className="mt-2" />
+          </div>
+          <OnboardingCaseTable rows={filtered} loading={loading} error={error} onSelect={onSelect} />
+        </Panel>
+      </div>
+    );
+  }
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
@@ -337,6 +719,47 @@ function CasesSection({ kind, cases, loading, error, onCreate, onSelect }: { kin
         </Table>
       </DataTableFrame>
     </div>
+  );
+}
+
+function OnboardingCaseTable({ rows, loading, error, onSelect }: { rows: Row[]; loading: boolean; error: string | null; onSelect: (id: string) => void }) {
+  return (
+    <DataTableFrame loading={false} error={error} empty={!loading && rows.length === 0}>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Case</TableHead><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Job level</TableHead><TableHead>Position</TableHead><TableHead>Status</TableHead><TableHead>Readiness</TableHead><TableHead>Due</TableHead><TableHead>Setup</TableHead><TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={String(row.id)}>
+                <TableCell className="font-medium">{text(row.case_number)}</TableCell>
+                <TableCell><EmployeeIdentityCell employeeId={text(row.employee_id)} employeeName={text(row.employee_name ?? row.employee_name_snapshot)} employeeNumber={text(row.employee_no ?? row.employee_number_snapshot)} departmentName={text(row.department_name)} locationName={text(row.location_name)} size="sm" /></TableCell>
+                <TableCell>{text(row.department_name)}</TableCell>
+                <TableCell>{text(row.job_level_name)}</TableCell>
+                <TableCell>{text(row.position_name)}</TableCell>
+                <TableCell><StatusBadge value={row.onboarding_status} /></TableCell>
+                <TableCell><StatusBadge value={row.activation_status} /></TableCell>
+                <TableCell>{text(row.due_date)}</TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {["documents", "contract", "payroll", "user_account"].map((key) => {
+                      const value = rowSetupStatus(row, key);
+                      if (!value) return null;
+                      return <Badge key={key} tone={value === "COMPLETE" ? "success" : value === "NOT_REQUIRED" ? "neutral" : value === "BLOCKED" ? "danger" : "warning"}>{title(key)}: {title(value)}</Badge>;
+                    })}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right"><RowActionButton intent="view" size="sm" title="View onboarding case" onClick={() => onSelect(String(row.id))}>View</RowActionButton></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      {loading ? <TableSkeleton rows={6} columns={10} label="Loading onboarding cases" /> : rows.length === 0 ? <EmptyState title="No onboarding cases found" description="Create an onboarding case or adjust filters." /> : null}
+    </DataTableFrame>
   );
 }
 
@@ -541,7 +964,7 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
             <Panel className="p-3"><h3 className="text-sm font-semibold">Warnings</h3><List values={warnings} /></Panel>
           </div>
           <div className="flex flex-wrap gap-2">
-            <ActionTextButton intent="refresh" size="sm" onClick={() => void run(() => kind === "onboarding" ? api.refreshOnboardingTasks(token!, caseId) : api.refreshOffboardingTasks(token!, caseId))}>Refresh checklist</ActionTextButton>
+            <ActionTextButton intent="refresh" size="sm" onClick={() => void run(() => kind === "onboarding" ? api.refreshOnboardingTasks(token!, caseId) : api.refreshOffboardingTasks(token!, caseId))}>Refresh tasks</ActionTextButton>
             {kind === "onboarding" ? (
               <>
                 <ActionTextButton intent="submit" size="sm" onClick={() => void run(() => api.submitOnboardingActivation(token!, caseId))}>Submit activation</ActionTextButton>
@@ -727,6 +1150,67 @@ function OptionalSectionNotice({ workspace, sectionKey, fallbackTitle }: { works
   );
 }
 
+function taskStatusForKeys(tasks: Row[], keys: string[]) {
+  const relevant = tasks.filter((task) => keys.includes(String(task.task_key ?? "")));
+  if (!relevant.length) return "Not Required";
+  if (relevant.every((task) => completedOnboardingTaskStatuses.has(String(task.task_status ?? task.status)))) return "Complete";
+  if (relevant.some((task) => String(task.task_status ?? task.status) === "BLOCKED")) return "Blocked";
+  return "Missing";
+}
+
+function readinessStatusLabel(value: unknown) {
+  const raw = String(value ?? "");
+  if (raw === "READY" || raw === "COMPLETE" || raw === "COMPLETED") return "Complete";
+  if (raw === "NOT_REQUIRED") return "Not Required";
+  if (raw === "DISABLED") return "Disabled";
+  if (raw === "NO_PERMISSION") return "No Permission";
+  if (raw === "BLOCKED") return "Blocked";
+  if (raw === "WARNING" || raw === "IN_PROGRESS") return "Missing";
+  return raw ? title(raw) : "Missing";
+}
+
+function readinessPillTone(status: string): "neutral" | "success" | "warning" | "danger" | "info" {
+  if (status === "Complete") return "success";
+  if (status === "Blocked" || status === "No Permission") return "danger";
+  if (status === "Missing") return "warning";
+  if (status === "Not Required" || status === "Disabled") return "neutral";
+  return "info";
+}
+
+function OnboardingReadinessPills({ workspace, readiness, tasks }: { workspace: Row; readiness: Row; tasks: Row[] }) {
+  const modules = asRow(workspace.module_statuses);
+  const pillRows = [
+    { key: "employee_data", label: "Employee Data", status: taskStatusForKeys(tasks, ["personal_info", "contact_info", "job_assignment"]) },
+    { key: "documents", label: "Documents", status: modules.document_compliance === false ? "Disabled" : readinessStatusLabel(asRow(readiness.documents).status ?? taskStatusForKeys(tasks, ["documents"])) },
+    { key: "contract", label: "Contract", status: modules.contracts === false ? "Disabled" : readinessStatusLabel(asRow(readiness.contract).status ?? taskStatusForKeys(tasks, ["contract"])) },
+    { key: "payroll", label: "Payroll", status: modules.payroll === false ? "Disabled" : asRow(readiness.payroll).ready ? "Complete" : taskStatusForKeys(tasks, ["payroll_profile", "payment_method", "pension_profile"]) },
+    { key: "user_account", label: "User Account", status: modules.self_service === false ? "Disabled" : asRow(readiness.user_access).ready ? "Complete" : taskStatusForKeys(tasks, ["user_access"]) },
+    { key: "approvals", label: "Approvals", status: modules.approvals === false ? "Disabled" : taskStatusForKeys(tasks, ["activation_approval"]) },
+    ...(modules.assets_uniforms === false ? [] : [{ key: "assets_uniforms", label: "Assets / Uniforms", status: taskStatusForKeys(tasks, ["assets_uniforms"]) }])
+  ];
+  return (
+    <div className="flex flex-wrap gap-2" data-onboarding-readiness-pills>
+      {pillRows.map((pill) => (
+        <span key={pill.key} className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${readinessPillTone(pill.status) === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : readinessPillTone(pill.status) === "danger" ? "border-red-200 bg-red-50 text-red-700" : readinessPillTone(pill.status) === "warning" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+          {pill.status === "Complete" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+          <span>{pill.label}</span>
+          <span className="text-slate-500">/</span>
+          <span>{pill.status}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function onboardingReadinessState(rowCase: Row, readiness: Row, tasks: Row[]) {
+  if (rowCase.onboarding_status === "ACTIVATED" || rowCase.activation_status === "ACTIVATED") return "Activated";
+  if (readiness.can_activate === true) return "Ready for Activation";
+  const blockers = asRows(readiness.blocking_items ?? readiness.blockers);
+  if (blockers.length) return "Blocked";
+  if (tasks.some((task) => !["NOT_STARTED", "PENDING"].includes(String(task.task_status ?? task.status ?? "")))) return "In Progress";
+  return "Not Started";
+}
+
 function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { workspace: Row; caseId: string; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void }) {
   const { token } = useAuth();
   const alerts = useAlert();
@@ -758,6 +1242,7 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
   const blockers = asRows(readiness.blocking_items);
   const warnings = asRows(readiness.warning_items);
   const canActivate = readiness.can_activate === true;
+  const readinessState = onboardingReadinessState(rowCase, readiness, tasks);
   const requiredTasks = tasks.filter((task) => Boolean(task.is_required || task.required));
   const requiredComplete = requiredTasks.length > 0 && requiredTasks.every((task) => completedOnboardingTaskStatuses.has(String(task.task_status ?? task.status)));
   const taskByKey = new Map(tasks.map((task) => [String(task.task_key), task]));
@@ -779,12 +1264,18 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
               <h3 className="text-base font-semibold">{text(employee.full_name)}</h3>
               <StatusBadge value={rowCase.onboarding_status} />
               <StatusBadge value={rowCase.activation_status} />
+              <Badge tone={canActivate ? "success" : blockers.length ? "danger" : "warning"}>{readinessState}</Badge>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">{text(employee.employee_no)} / {text(employee.department_name)} / {text(employee.location_name)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Complete setup here before Employee 360 is unlocked after activation.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {text(employee.employee_no)} / Start {displayText(employee.joining_date, "Not set")} / {displayText(employee.department_name, "Department not set")} / {displayText(employee.job_level_name, "Job level not set")} / {displayText(employee.position_name, "Position not set")}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Complete required setup here before Employee 360 is unlocked after activation.</p>
+            <div className="mt-3">
+              <OnboardingReadinessPills workspace={workspace} readiness={readiness} tasks={tasks} />
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <ActionTextButton intent="refresh" size="sm" onClick={() => void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Checklist refreshed.")}>Refresh checklist</ActionTextButton>
+            <ActionTextButton intent="refresh" size="sm" onClick={() => void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Setup readiness refreshed.")}>Refresh setup</ActionTextButton>
             <ActionTextButton intent="submit" size="sm" onClick={() => void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.")}>Submit activation</ActionTextButton>
             <ActionTextButton intent="approve" size="sm" onClick={() => void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved.")}>Approve activation</ActionTextButton>
             <Button
@@ -804,7 +1295,7 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
         <aside className="lg:sticky lg:top-0 lg:max-h-[calc(90vh-11rem)] lg:overflow-y-auto">
           <nav aria-label="Onboarding setup sections" className="rounded-lg border bg-white p-2 shadow-panel">
             <div className="px-2 pb-2 pt-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Setup sections</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Required Setup</p>
               <p className="mt-1 text-xs text-muted-foreground">{canActivate ? "Ready to activate" : "Complete required validator items"}</p>
             </div>
             <div className="space-y-1">

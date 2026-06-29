@@ -14,11 +14,25 @@ export interface OnboardingCase {
   department_name?: string | null;
   location_name?: string | null;
   position_name?: string | null;
+  job_level_name?: string | null;
+  assigned_owner_name?: string | null;
+  planned_start_date?: string | null;
+  primary_department_id?: string | null;
+  primary_location_id?: string | null;
+  primary_position_id?: string | null;
+  job_level_id?: string | null;
   onboarding_status: string;
   activation_status: string;
   due_date?: string | null;
   activated_at?: string | null;
   blockers_json?: string | null;
+  blocker_types?: string[];
+  setup_statuses?: Record<string, string>;
+  has_started_setup?: boolean;
+  ready_for_activation?: boolean;
+  is_blocked?: boolean;
+  is_overdue?: boolean;
+  starting_this_week?: boolean;
   created_at: string;
 }
 
