@@ -1,5 +1,5 @@
 import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Save, Search, SlidersHorizontal, X } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Children, Fragment, isValidElement, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { SelectField } from "../ui/page-shell";
@@ -37,19 +37,19 @@ export type ActiveFilterChip = {
 };
 
 export const filterSelectMinWidths = {
-  status: "min-w-[130px] max-w-[150px]",
-  short: "min-w-[140px] max-w-[160px]",
-  department: "min-w-[170px] max-w-[210px]",
-  jobLevel: "min-w-[150px] max-w-[180px]",
-  position: "min-w-[190px] max-w-[230px]",
-  employee: "min-w-[220px] max-w-[260px]",
-  payrollPeriod: "min-w-[180px] max-w-[220px]",
-  period: "min-w-[180px] max-w-[220px]",
-  documentType: "min-w-[190px] max-w-[230px]",
-  leaveType: "min-w-[180px] max-w-[220px]",
-  dateRange: "min-w-[220px] max-w-[260px]",
-  auto: "w-auto min-w-fit max-w-[220px]",
-  default: "min-w-[150px] max-w-[180px]"
+  status: "w-full sm:w-[150px] sm:min-w-[130px] sm:max-w-[150px]",
+  short: "w-full sm:w-[160px] sm:min-w-[140px] sm:max-w-[160px]",
+  department: "w-full sm:w-[190px] sm:min-w-[170px] sm:max-w-[210px]",
+  jobLevel: "w-full sm:w-[165px] sm:min-w-[150px] sm:max-w-[180px]",
+  position: "w-full sm:w-[210px] sm:min-w-[190px] sm:max-w-[230px]",
+  employee: "w-full sm:w-[240px] sm:min-w-[220px] sm:max-w-[260px]",
+  payrollPeriod: "w-full sm:w-[200px] sm:min-w-[180px] sm:max-w-[220px]",
+  period: "w-full sm:w-[200px] sm:min-w-[180px] sm:max-w-[220px]",
+  documentType: "w-full sm:w-[210px] sm:min-w-[190px] sm:max-w-[230px]",
+  leaveType: "w-full sm:w-[200px] sm:min-w-[180px] sm:max-w-[220px]",
+  dateRange: "w-full sm:w-[240px] sm:min-w-[220px] sm:max-w-[260px]",
+  auto: "w-full sm:w-auto sm:min-w-fit sm:max-w-[220px]",
+  default: "w-full sm:w-[170px] sm:min-w-[150px] sm:max-w-[180px]"
 } as const;
 
 export type FilterWidthVariant = keyof typeof filterSelectMinWidths;
@@ -106,6 +106,36 @@ function addDays(date: Date, amount: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + amount);
   return next;
+}
+
+function flattenFilterChildren(children: ReactNode): ReactNode[] {
+  const flattened: ReactNode[] = [];
+  Children.forEach(children, (child) => {
+    if (isValidElement(child) && child.type === Fragment) {
+      flattened.push(...flattenFilterChildren((child as ReactElement<{ children?: ReactNode }>).props.children));
+      return;
+    }
+    if (child !== null && child !== undefined && child !== false) flattened.push(child);
+  });
+  return flattened;
+}
+
+function isFilterActionElement(child: ReactNode) {
+  if (!isValidElement(child)) return false;
+  return child.type === MoreFiltersSheet ||
+    child.type === FilterResetButton ||
+    child.type === SaveFilterViewButton ||
+    child.type === FilterToolbarActions;
+}
+
+function partitionFilterChildren(children: ReactNode) {
+  const leftFilters: ReactNode[] = [];
+  const rightActions: ReactNode[] = [];
+  for (const child of flattenFilterChildren(children)) {
+    if (isFilterActionElement(child)) rightActions.push(child);
+    else leftFilters.push(child);
+  }
+  return { leftFilters, rightActions };
 }
 
 function startOfQuarter(date: Date) {
@@ -231,30 +261,30 @@ export function StandardFilterBar({
   actions?: ReactNode;
   className?: string;
 }) {
+  const { leftFilters, rightActions: slottedRightActions } = partitionFilterChildren(children);
+  const rightActions = [moreFilters, reset, saveView, ...slottedRightActions, actions].filter(Boolean);
+
   return (
     <div
       data-standard-filter-bar
       className={cn("rounded-lg border bg-white px-3 py-3 shadow-panel", className)}
     >
-      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-        <div data-filter-left-group data-filter-left-filters className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between" data-filter-layout-row>
+        <div data-filter-left-group data-filter-left-filters data-left-filters className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           {search ? (
             <div data-filter-search-first className="min-w-0 sm:shrink-0">
               {search}
             </div>
           ) : null}
-          {children ? (
-            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-              {children}
+          {leftFilters.length ? (
+            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" data-filter-primary-controls>
+              {leftFilters.map((item, index) => <Fragment key={`filter-${index}`}>{item}</Fragment>)}
             </div>
           ) : null}
         </div>
-        {moreFilters || reset || saveView || actions ? (
-          <div data-filter-right-actions className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap lg:ml-auto">
-            {moreFilters}
-            {reset}
-            {saveView}
-            {actions}
+        {rightActions.length ? (
+          <div data-filter-right-actions data-right-actions data-filter-action-slot className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:flex-nowrap lg:ml-auto">
+            {rightActions.map((item, index) => <Fragment key={`filter-action-${index}`}>{item}</Fragment>)}
           </div>
         ) : null}
       </div>
@@ -360,7 +390,7 @@ export function StandardSelectFilter({
   return (
     <SelectField
       aria-label={ariaLabel ?? placeholder ?? allLabel ?? "Filter"}
-      className={cn("h-10 max-w-full truncate", filterSelectMinWidths[resolvedWidth], className)}
+      className={cn("h-10 shrink-0 truncate", filterSelectMinWidths[resolvedWidth], className)}
       disabled={disabled || loading}
       value={value}
       onValueChange={onValueChange}
@@ -430,7 +460,7 @@ export function StandardDateRangeFilter({
       <Button
         aria-expanded={open}
         aria-label={label}
-        className={cn("h-10 justify-between border bg-white px-3 text-left font-normal text-slate-700 hover:bg-slate-50", filterSelectMinWidths[widthVariant])}
+        className={cn("h-10 shrink-0 justify-between border bg-white px-3 text-left font-normal text-slate-700 hover:bg-slate-50", filterSelectMinWidths[widthVariant])}
         disabled={disabled}
         variant="outline"
         onClick={() => setOpen((current) => !current)}
