@@ -749,21 +749,21 @@ export const api = {
   getEmployeeUserAccount(token: string, employeeId: string) {
     return request<{ user_account: EmployeeUserAccount }>(`/api/v1/employees/${employeeId}/user-account`, {}, token);
   },
-  linkEmployeeExistingUser(token: string, employeeId: string, input: { user_id: string; replace_existing?: boolean; reason?: string | null }) {
+  linkEmployeeExistingUser(token: string, employeeId: string, input: { user_id: string; replace_existing?: boolean; reason?: string | null; role_ids?: string[]; access_scope_ids?: string[]; self_service_enabled?: boolean }) {
     return request<{ user_account: EmployeeUserAccount }>(
       `/api/v1/employees/${employeeId}/user-account/link-existing`,
       { method: "POST", body: JSON.stringify(input) },
       token
     );
   },
-  provisionEmployeeUserAccount(token: string, employeeId: string, input: { name?: string; email: string; username?: string | null; password?: string; status?: UserStatus; role_ids?: string[]; self_service_enabled?: boolean; replace_existing?: boolean; reason?: string | null }) {
+  provisionEmployeeUserAccount(token: string, employeeId: string, input: { name?: string; email?: string; username?: string | null; password?: string; status?: UserStatus; role_ids?: string[]; access_scope_ids?: string[]; self_service_enabled?: boolean; replace_existing?: boolean; reset_required?: boolean; email_override_reason?: string | null; reason?: string | null }) {
     return request<{ user_account: EmployeeUserAccount }>(
       `/api/v1/employees/${employeeId}/user-account/provision`,
       { method: "POST", body: JSON.stringify(input) },
       token
     );
   },
-  updateEmployeeUserAccount(token: string, employeeId: string, input: { name?: string; email?: string; username?: string | null; status?: UserStatus; role_ids?: string[]; self_service_enabled?: boolean; reason?: string | null }) {
+  updateEmployeeUserAccount(token: string, employeeId: string, input: { name?: string; email?: string; username?: string | null; status?: UserStatus; role_ids?: string[]; access_scope_ids?: string[]; self_service_enabled?: boolean; reset_required?: boolean; invite_status?: string | null; reason?: string | null }) {
     return request<{ user_account: EmployeeUserAccount }>(
       `/api/v1/employees/${employeeId}/user-account`,
       { method: "PATCH", body: JSON.stringify(input) },

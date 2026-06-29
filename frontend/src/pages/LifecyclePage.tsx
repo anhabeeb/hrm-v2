@@ -471,6 +471,8 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
   const tasks = detail?.checklist?.tasks ?? [];
   const blockers = Array.isArray(detail?.readiness?.blocking_items) ? (detail?.readiness?.blocking_items as unknown[]) : [];
   const warnings = Array.isArray(detail?.readiness?.warning_items) ? (detail?.readiness?.warning_items as unknown[]) : [];
+  const offboardingUserAccess = kind === "offboarding" ? asRow(detail?.readiness?.user_access) : {};
+  const caseEmployeeId = detail ? String((detail.case as unknown as Row).employee_id ?? "") : "";
   return (
     <Modal title={`${title(kind)} case`} onClose={onClose} wide>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -501,6 +503,15 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
             ]}
           />
           {kind === "onboarding" ? <ContractReadinessPanel contract={detail.readiness?.contract as Row | undefined} /> : null}
+          {kind === "offboarding" ? (
+            <OffboardingUserAccessPanel
+              status={offboardingUserAccess}
+              employeeId={caseEmployeeId}
+              canDeactivate={Boolean(token && caseEmployeeId && offboardingUserAccess.deactivation_required && offboardingUserAccess.status === "ACTIVE" && !offboardingUserAccess.protected_owner)}
+              askReason={askReason}
+              onDeactivate={(reason) => run(() => api.deactivateEmployeeUserForExit(token!, caseEmployeeId, { reason }))}
+            />
+          ) : null}
           <div className="grid gap-3 md:grid-cols-2">
             <Panel className="p-3"><h3 className="text-sm font-semibold">Blocking items</h3><List values={blockers} /></Panel>
             <Panel className="p-3"><h3 className="text-sm font-semibold">Warnings</h3><List values={warnings} /></Panel>
@@ -548,6 +559,54 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
         )
       )}
     </Modal>
+  );
+}
+
+function OffboardingUserAccessPanel({
+  status,
+  employeeId,
+  canDeactivate,
+  askReason,
+  onDeactivate
+}: {
+  status: Row;
+  employeeId: string;
+  canDeactivate: boolean;
+  askReason: (title: string, submit: (reason: string) => Promise<void>) => void;
+  onDeactivate: (reason: string) => Promise<void>;
+}) {
+  const deactivationStatus = text(status.deactivation_status ?? status.status ?? "NOT_REQUIRED");
+  const isReady = Boolean(status.ready);
+  return (
+    <Panel className="p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">System access deactivation</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Linked login access is reviewed during offboarding and deactivated before exit finalization when policy requires it.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge value={deactivationStatus} />
+          <Badge tone={isReady ? "success" : "warning"}>{isReady ? "Ready" : "Action needed"}</Badge>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-4">
+        <Info label="Linked user" value={status.name ? `${text(status.name)} (${text(status.email)})` : "No linked user"} />
+        <Info label="Login status" value={status.status ?? "-"} />
+        <Info label="Invite/reset" value={status.invite_status ?? "-"} />
+        <Info label="Policy" value={status.required ? status.auto_deactivation_enabled ? "Auto deactivation" : "Manual deactivation" : "Not required"} />
+      </div>
+      {status.message ? <p className="mt-3 text-xs text-muted-foreground">{text(status.message)}</p> : null}
+      {status.protected_owner ? <p className="mt-3 text-xs font-medium text-red-600">Protected Owner/Super Admin access cannot be disabled from offboarding.</p> : null}
+      {employeeId && canDeactivate ? (
+        <div className="mt-3 flex justify-end">
+          <Button size="sm" variant="danger" onClick={() => askReason("Deactivate linked user access", onDeactivate)}>
+            Deactivate linked access
+          </Button>
+        </div>
+      ) : null}
+    </Panel>
   );
 }
 
@@ -1150,22 +1209,149 @@ function AssetsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (i
 }
 
 function UserAccessWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (input: Row) => void }) {
-  const linked = asRow(asRow(workspace.sections).linked_user);
-  const [form, setForm] = useState({ deferred: true, not_required: false, reason: "User access will be handled after activation or by Employee 360 user access." });
+  const userAccount = asRow(asRow(workspace.sections).user_account);
+  const linked = asRow(userAccount.linked_user);
+  const employee = asRow(workspace.employee);
+  const employeeEmail = asRow(userAccount.employee_email);
+  const availableUsers = asRows(userAccount.available_users);
+  const availableRoles = asRows(userAccount.available_roles);
+  const availableScopes = asRows(userAccount.available_access_scopes);
+  const assignedRoles = asRows(userAccount.roles);
+  const assignedScopes = asRows(userAccount.scopes);
+  const [mode, setMode] = useState<"provision_new" | "link_existing" | "defer" | "not_required">(linked.id ? "defer" : employeeEmail.recommendation === "LINK_EXISTING_USER" ? "link_existing" : "provision_new");
+  const [roleIds, setRoleIds] = useState<string[]>(asRows(userAccount.roles).map((role) => String(role.id)));
+  const [scopeIds, setScopeIds] = useState<string[]>(asRows(userAccount.access_scope_ids).map(String));
+  const [form, setForm] = useState({
+    user_id: String(asRow(employeeEmail.matching_user).id ?? ""),
+    name: text(employee.display_name ?? employee.full_name),
+    email: String(employeeEmail.email ?? ""),
+    username: String(userAccount.suggested_username ?? ""),
+    password: "",
+    self_service_enabled: userAccount.self_service_enabled !== false,
+    reason: ""
+  });
+  function toggle(list: string[], value: string, checked: boolean) {
+    return checked ? Array.from(new Set([...list, value])) : list.filter((item) => item !== value);
+  }
+  function submit(action: "provision_new" | "link_existing" | "defer" | "not_required") {
+    if (action === "provision_new") {
+      onSave({
+        action,
+        name: form.name,
+        email: form.email,
+        username: form.username,
+        password: form.password || undefined,
+        self_service_enabled: form.self_service_enabled,
+        role_ids: roleIds,
+        access_scope_ids: scopeIds,
+        reset_required: !form.password,
+        email_override_reason: employeeEmail.email && form.email && String(form.email).toLowerCase() !== String(employeeEmail.email).toLowerCase() ? "Provision email manually overridden in onboarding workspace." : null,
+        reason: form.reason || "Provisioned from onboarding workspace."
+      });
+      return;
+    }
+    if (action === "link_existing") {
+      onSave({
+        action,
+        user_id: form.user_id,
+        self_service_enabled: form.self_service_enabled,
+        role_ids: roleIds,
+        access_scope_ids: scopeIds,
+        reason: form.reason || "Linked from onboarding workspace."
+      });
+      return;
+    }
+    onSave({ action, reason: form.reason || (action === "not_required" ? "Login is not required for this employee." : "User access setup deferred from onboarding workspace.") });
+  }
   return (
     <Panel className="p-4">
       <h3 className="text-sm font-semibold">User account / self-service access</h3>
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         <Info label="Linked account" value={linked.id ? `${text(linked.name)} (${text(linked.email)})` : "Not linked"} />
         <Info label="User status" value={linked.status ?? "Pending"} />
-        <Info label="Last login" value={linked.last_login_at ?? "Not set"} />
-        <CheckboxField label="Defer login setup" checked={form.deferred} onChange={(deferred) => setForm({ ...form, deferred })} />
-        <CheckboxField label="Login not required" checked={form.not_required} onChange={(not_required) => setForm({ ...form, not_required })} />
-        <Field label="Reason / note"><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></Field>
+        <Info label="Invite/reset" value={userAccount.invite_status ? `${text(userAccount.invite_status)}${userAccount.reset_required ? " / reset required" : ""}` : "Not set"} />
+        <Info label="Employee email" value={employeeEmail.email ?? employeeEmail.raw_email ?? "No email on file"} />
+        <Info label="Email source" value={employeeEmail.message ?? "Enter an account email to continue."} />
+        <Info label="Suggested username" value={userAccount.suggested_username ?? "Not set"} />
       </div>
-      <p className="mt-3 text-sm text-muted-foreground">Role mapping and access scopes remain the source of truth. Linked account creation can still be completed from the existing Employee User Access tools.</p>
-      <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onSave(form)}>Save user access status</ActionTextButton></div>
+      {linked.id ? (
+        <div className="mt-4 space-y-3">
+          <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            This onboarding case is linked to a real user account. Manage changes from Employee 360 or use the checklist actions below.
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <SimpleList title="Assigned roles" values={assignedRoles.map((role) => text(role.name))} />
+            <SimpleList title="Assigned user scopes" values={assignedScopes.map((scope) => `${text(scope.name)} / ${text(scope.scope_type)} / ${text(scope.module_key ?? "All modules")}`)} />
+          </div>
+          <div className="flex justify-end">
+            <ActionTextButton intent="complete" size="sm" onClick={() => onSave({ action: "complete_existing", reason: "Linked user account reviewed in onboarding workspace." })}>Mark reviewed</ActionTextButton>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          {employeeEmail.recommendation === "LINK_EXISTING_USER" && employeeEmail.matching_user ? (
+            <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+              Employee email matches an existing unlinked user. Link that account instead of creating a duplicate.
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant={mode === "provision_new" ? "primary" : "outline"} onClick={() => setMode("provision_new")}>Provision user account</Button>
+            <Button size="sm" variant={mode === "link_existing" ? "primary" : "outline"} onClick={() => setMode("link_existing")}>Link existing user</Button>
+            <Button size="sm" variant={mode === "defer" ? "primary" : "outline"} onClick={() => setMode("defer")}>Defer</Button>
+            <Button size="sm" variant={mode === "not_required" ? "primary" : "outline"} onClick={() => setMode("not_required")}>Not required</Button>
+          </div>
+          {mode === "provision_new" ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              <Field label="Name"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
+              <Field label="Email"><Input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
+              <Field label="Username"><Input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} /></Field>
+              <Field label="Temporary password"><Input type="password" value={form.password} placeholder="Leave blank for invite/reset pending" onChange={(event) => setForm({ ...form, password: event.target.value })} /></Field>
+              <CheckboxField label="Enable self-service scope" checked={form.self_service_enabled} onChange={(self_service_enabled) => setForm({ ...form, self_service_enabled })} />
+            </div>
+          ) : null}
+          {mode === "link_existing" ? (
+            <SelectField label="Existing user" value={form.user_id} onValueChange={(user_id) => setForm({ ...form, user_id })}>
+              <option value="">Select user</option>
+              {availableUsers.map((user) => <option key={String(user.id)} value={String(user.id)}>{text(user.name)} - {text(user.email)}</option>)}
+            </SelectField>
+          ) : null}
+          {(mode === "provision_new" || mode === "link_existing") ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <OnboardingRoleScopeChecklist title="Roles" rows={availableRoles} selected={roleIds} onToggle={(id, checked) => setRoleIds(toggle(roleIds, id, checked))} />
+              <OnboardingRoleScopeChecklist title="Access scopes" rows={availableScopes} selected={scopeIds} onToggle={(id, checked) => setScopeIds(toggle(scopeIds, id, checked))} />
+            </div>
+          ) : null}
+          <Field label="Reason / note"><Input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} /></Field>
+          <div className="flex justify-end">
+            <ActionTextButton intent={mode === "not_required" || mode === "defer" ? "save" : "create"} size="sm" disabled={mode === "link_existing" && !form.user_id} onClick={() => submit(mode)}>Save user access setup</ActionTextButton>
+          </div>
+        </div>
+      )}
     </Panel>
+  );
+}
+
+function SimpleList({ title: listTitle, values }: { title: string; values: string[] }) {
+  return (
+    <div className="rounded-md border">
+      <div className="border-b px-3 py-2 text-sm font-semibold">{listTitle}</div>
+      <div className="divide-y">{values.length ? values.map((value, index) => <div key={`${value}-${index}`} className="px-3 py-2 text-sm">{value}</div>) : <div className="px-3 py-3 text-sm text-muted-foreground">None.</div>}</div>
+    </div>
+  );
+}
+
+function OnboardingRoleScopeChecklist({ title: listTitle, rows, selected, onToggle }: { title: string; rows: Row[]; selected: string[]; onToggle: (id: string, checked: boolean) => void }) {
+  return (
+    <div className="rounded-md border">
+      <div className="border-b px-3 py-2 text-sm font-semibold">{listTitle}</div>
+      <div className="grid max-h-56 gap-2 overflow-y-auto p-3">
+        {rows.length ? rows.map((row) => {
+          const id = String(row.id);
+          const label = row.scope_type ? `${text(row.name)} / ${text(row.scope_type)} / ${text(row.module_key ?? "All modules")}` : text(row.name);
+          return <CheckboxField key={id} label={label} checked={selected.includes(id)} onChange={(checked) => onToggle(id, checked)} />;
+        }) : <p className="text-xs text-muted-foreground">No options available.</p>}
+      </div>
+    </div>
   );
 }
 

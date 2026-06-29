@@ -178,6 +178,7 @@ export async function getAuthenticatedSelfServiceEmployee(c: Context<AppBindings
     .prepare(
       `SELECT e.*, d.name AS department_name, p.title AS position_title, l.name AS location_name, jl.name AS job_level_name
        FROM employees e
+       INNER JOIN employee_statuses es ON es.id = e.status_id AND es.can_login = 1
        LEFT JOIN departments d ON d.id = e.primary_department_id
        LEFT JOIN positions p ON p.id = e.primary_position_id
        LEFT JOIN locations l ON l.id = e.primary_location_id

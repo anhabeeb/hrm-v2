@@ -22,10 +22,11 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { AlertBanner, CheckboxField, PageShell, ResponsiveTabs, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
+import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
-import type { EmployeeUserAccessPreview, EmployeeUserAccount, Role, UserStatus } from "../types/auth";
+import type { AccessScopeRule, EmployeeUserAccessPreview, EmployeeUserAccount, Role, UserStatus } from "../types/auth";
 import type { Employee, EmployeeContact, EmployeeContactInput, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
 import type { LifecycleSummary, LifecycleTask } from "../types/lifecycle";
 
@@ -444,11 +445,13 @@ function UserAccessPanel({
   const linked = account?.linked_user ?? null;
   const suggested = account?.suggested ?? (preview ? { suggested_role_mapping: preview.suggested_role_mapping, suggested_role: preview.suggested_role, suggested_scope: preview.suggested_scope } : null);
   const mapping = suggested?.suggested_role_mapping ?? null;
+  const employeeEmail = account?.employee_email;
+  const availableScopes = account?.available_access_scopes ?? [];
   const [linkUserId, setLinkUserId] = useState("");
   const [provision, setProvision] = useState({
     name: employee.display_name || employee.full_name,
-    email: employee.linked_user_email || "",
-    username: "",
+    email: employeeEmail?.email || employee.linked_user_email || "",
+    username: account?.suggested_username ?? "",
     password: "",
     self_service_enabled: true
   });
@@ -458,7 +461,8 @@ function UserAccessPanel({
     username: linked?.username ?? "",
     status: (linked?.status ?? "ACTIVE") as UserStatus,
     self_service_enabled: account?.self_service_enabled ?? false,
-    role_ids: account?.role_ids ?? []
+    role_ids: account?.role_ids ?? [],
+    access_scope_ids: account?.access_scope_ids ?? []
   });
   const [reason, setReason] = useState("");
   const [disableOnUnlink, setDisableOnUnlink] = useState(false);
@@ -472,9 +476,20 @@ function UserAccessPanel({
       username: linked?.username ?? "",
       status: (linked?.status ?? "ACTIVE") as UserStatus,
       self_service_enabled: account?.self_service_enabled ?? false,
-      role_ids: account?.role_ids ?? []
+      role_ids: account?.role_ids ?? [],
+      access_scope_ids: account?.access_scope_ids ?? []
     });
-  }, [account?.linked_user?.id, account?.linked_user?.updated_at, account?.self_service_enabled, account?.role_ids.join(",")]);
+  }, [account?.linked_user?.id, account?.linked_user?.updated_at, account?.self_service_enabled, account?.role_ids.join(","), account?.access_scope_ids.join(",")]);
+
+  useEffect(() => {
+    if (linked) return;
+    setProvision((current) => ({
+      ...current,
+      name: current.name || employee.display_name || employee.full_name,
+      email: current.email || employeeEmail?.email || employee.linked_user_email || "",
+      username: current.username || account?.suggested_username || ""
+    }));
+  }, [linked?.id, employeeEmail?.email, account?.suggested_username, employee.id]);
 
   if (!account && !preview) return <EmptyState title="User access loading" description="Fetching linked user roles and access scopes." />;
   const listIds = (value?: string[]) => value?.length ? value.join(", ") : "-";
@@ -505,6 +520,13 @@ function UserAccessPanel({
     }));
   }
 
+  function toggleScope(scopeId: string, checked: boolean) {
+    setUpdate((current) => ({
+      ...current,
+      access_scope_ids: checked ? Array.from(new Set([...current.access_scope_ids, scopeId])) : current.access_scope_ids.filter((id) => id !== scopeId)
+    }));
+  }
+
   async function submitProvision(event: FormEvent) {
     event.preventDefault();
     await run("provision", () => api.provisionEmployeeUserAccount(token!, employee.id, {
@@ -512,6 +534,9 @@ function UserAccessPanel({
       password: provision.password || undefined,
       status: "ACTIVE",
       role_ids: update.role_ids,
+      access_scope_ids: update.access_scope_ids,
+      reset_required: !provision.password,
+      email_override_reason: employeeEmail?.email && provision.email && provision.email.toLowerCase() !== employeeEmail.email.toLowerCase() ? "Provision email manually overridden from Employee 360 User Access." : null,
       reason: "Provisioned from Employee 360 User Access"
     }));
   }
@@ -522,7 +547,7 @@ function UserAccessPanel({
       setLocalError("Select an existing user to link.");
       return;
     }
-    await run("link", () => api.linkEmployeeExistingUser(token!, employee.id, { user_id: linkUserId, reason: "Linked from Employee 360 User Access" }));
+    await run("link", () => api.linkEmployeeExistingUser(token!, employee.id, { user_id: linkUserId, role_ids: update.role_ids, access_scope_ids: update.access_scope_ids, self_service_enabled: provision.self_service_enabled, reason: "Linked from Employee 360 User Access" }));
   }
 
   async function submitUpdate(event: FormEvent) {
@@ -537,9 +562,18 @@ function UserAccessPanel({
     <div className="space-y-4">
       {localError ? <AlertBanner tone="danger">{localError}</AlertBanner> : null}
       <div className="grid gap-3 lg:grid-cols-3">
-        <Summary title="Linked user" rows={[["Status", linked ? linked.status : "No linked user"], ["Email", linked?.email ?? "-"], ["Last login", linked?.last_login_at ?? "Never"]]} />
+        <Summary title="Linked user" rows={[["Status", account?.account_status ?? (linked ? linked.status : "No linked user")], ["Email", linked?.email ?? "-"], ["Invite/reset", account?.invite_status ? `${account.invite_status}${account.reset_required ? " / reset required" : ""}` : "-"], ["Last login", linked?.last_login_at ?? "Never"]]} />
         <Summary title="Suggested role" rows={[["Role", suggested?.suggested_role?.name ?? "-"], ["Mapping", mapping?.name ?? "-"], ["Priority", mapping ? String(mapping.priority) : "-"]]} />
         <Summary title="Suggested scope" rows={[["Scope", suggested?.suggested_scope?.scope_type ?? "-"], ["Departments", listIds(suggested?.suggested_scope?.allowed_department_ids)], ["Locations", listIds(suggested?.suggested_scope?.allowed_location_ids)], ["Manage", suggested?.suggested_scope?.can_manage ? "Yes" : "No"]]} />
+      </div>
+      <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+        <span className="font-medium">Employee email: </span>
+        <span>{employeeEmail?.email ?? employeeEmail?.raw_email ?? "No email on file"}</span>
+        {employeeEmail?.email ? <Badge tone="success" className="ml-2">Using employee email from profile</Badge> : null}
+        <span className="ml-2 text-muted-foreground">{employeeEmail?.message ?? "Provisioning will require an account email."}</span>
+        {employeeEmail?.recommendation === "LINK_EXISTING_USER" && employeeEmail.matching_user ? (
+          <Badge tone="info" className="ml-2">Existing user found: {employeeEmail.matching_user.email}</Badge>
+        ) : null}
       </div>
       <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
         Roles define permissions. Access scopes define which employee, department, and location records those permissions can reach. This section links a real login account to the selected employee profile.
@@ -559,10 +593,11 @@ function UserAccessPanel({
                 <div><Label>Name</Label><Input value={provision.name} onChange={(event) => setProvision({ ...provision, name: event.target.value })} /></div>
                 <div><Label>Email</Label><Input type="email" value={provision.email} onChange={(event) => setProvision({ ...provision, email: event.target.value })} /></div>
                 <div><Label>Username</Label><Input value={provision.username} onChange={(event) => setProvision({ ...provision, username: event.target.value })} /></div>
-                <div><Label>Temporary password</Label><Input type="password" value={provision.password} placeholder="Generated if blank" onChange={(event) => setProvision({ ...provision, password: event.target.value })} /></div>
+                <div><Label>Temporary password</Label><Input type="password" value={provision.password} placeholder="Leave blank for invite/reset pending" onChange={(event) => setProvision({ ...provision, password: event.target.value })} /></div>
               </div>
               <CheckboxField label="Enable self-service scope" checked={provision.self_service_enabled} onChange={(checked) => setProvision({ ...provision, self_service_enabled: checked })} />
               <RoleChecklist roles={roles} selected={update.role_ids} onToggle={toggleRole} />
+              <ScopeChecklist scopes={availableScopes} selected={update.access_scope_ids} onToggle={toggleScope} />
               <div className="flex justify-end"><Button type="submit" size="sm" disabled={busy === "provision"}>Provision account</Button></div>
             </form>
           </Panel>
@@ -576,6 +611,8 @@ function UserAccessPanel({
                 <option value="">Select user</option>
                 {availableUsers.map((user) => <option key={user.id} value={user.id}>{user.name} - {user.email}</option>)}
               </SelectField>
+              <RoleChecklist roles={roles} selected={update.role_ids} onToggle={toggleRole} />
+              <ScopeChecklist scopes={availableScopes} selected={update.access_scope_ids} onToggle={toggleScope} />
               <div className="flex justify-end"><Button type="submit" size="sm" disabled={busy === "link" || !linkUserId}>Link user</Button></div>
             </form>
           </Panel>
@@ -600,7 +637,9 @@ function UserAccessPanel({
             </div>
             <CheckboxField label="Ensure self-service SELF_ONLY scope" checked={update.self_service_enabled} onChange={(checked) => setUpdate({ ...update, self_service_enabled: checked })} />
             <RoleChecklist roles={roles} selected={update.role_ids} onToggle={toggleRole} />
+            <ScopeChecklist scopes={availableScopes} selected={update.access_scope_ids} onToggle={toggleScope} />
             <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={busy === "reset"} onClick={() => void run("reset", () => api.updateEmployeeUserAccount(token!, employee.id, { reset_required: true, invite_status: "RESET_REQUIRED", reason: "Reset required from Employee 360 User Access" }))}>Require reset / invite placeholder</Button>
               <Button type="submit" size="sm" disabled={busy === "update"}>Save account access</Button>
             </div>
           </form>
@@ -630,6 +669,17 @@ function UserAccessPanel({
           </div>
         </div>
       </div>
+      {account?.link_history?.length ? (
+        <div className="rounded-md border">
+          <div className="border-b px-3 py-2 text-sm font-semibold">Link history</div>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[760px]">
+              <TableHeader><TableRow><TableHead>Status</TableHead><TableHead>User</TableHead><TableHead>Linked</TableHead><TableHead>Unlinked/deactivated</TableHead><TableHead>Reason</TableHead><TableHead>Invite</TableHead></TableRow></TableHeader>
+              <TableBody>{account.link_history.map((link) => <TableRow key={link.id}><TableCell><StatusBadge value={link.status} /></TableCell><TableCell>{link.account_email_created ?? link.user_id}</TableCell><TableCell>{link.linked_at}{link.linked_by_name ? ` by ${link.linked_by_name}` : ""}</TableCell><TableCell>{link.deactivated_at ?? link.unlinked_at ?? "-"}</TableCell><TableCell>{link.deactivation_reason ?? link.unlink_reason ?? "-"}</TableCell><TableCell>{link.invite_status ?? "-"}</TableCell></TableRow>)}</TableBody>
+            </Table>
+          </div>
+        </div>
+      ) : null}
       {!linked ? <EmptyState title="No linked system user" description="Provision a login account or link an existing user before applying suggested role mapping." /> : null}
     </div>
   );
@@ -647,6 +697,25 @@ function RoleChecklist({ roles, selected, onToggle }: { roles: Role[]; selected:
             label={<span className="flex items-center gap-2">{role.name}{role.is_protected ? <Badge tone="warning">Protected</Badge> : null}</span>}
             checked={selected.includes(role.id)}
             onChange={(checked) => onToggle(role.id, checked)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScopeChecklist({ scopes, selected, onToggle }: { scopes: AccessScopeRule[]; selected: string[]; onToggle: (scopeId: string, checked: boolean) => void }) {
+  if (!scopes.length) return <p className="text-xs text-muted-foreground">Reusable access scope options are unavailable or require access scope permissions.</p>;
+  return (
+    <div className="rounded-md border">
+      <div className="border-b px-3 py-2 text-sm font-semibold">Apply reusable access scopes</div>
+      <div className="grid max-h-56 gap-2 overflow-y-auto p-3 md:grid-cols-2">
+        {scopes.map((scope) => (
+          <CheckboxField
+            key={scope.id}
+            label={<span className="flex min-w-0 flex-col"><span className="truncate">{scope.name}</span><span className="text-xs text-muted-foreground">{scope.scope_type} / {scope.module_key ?? "All modules"}</span></span>}
+            checked={selected.includes(scope.id)}
+            onChange={(checked) => onToggle(scope.id, checked)}
           />
         ))}
       </div>

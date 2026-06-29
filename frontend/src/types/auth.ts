@@ -150,11 +150,61 @@ export interface EmployeeUserAccount {
     created_at: string;
     updated_at: string;
   } | null;
+  account_status: string;
+  invite_status: "PASSWORD_SET" | "INVITE_RESET_PENDING" | "RESET_REQUIRED" | "DISABLED" | null;
+  reset_required: boolean;
+  link: {
+    id: string;
+    status: "ACTIVE" | "UNLINKED" | "DEACTIVATED";
+    linked_at: string;
+    linked_by_user_id: string | null;
+    linked_by_name: string | null;
+    self_service_enabled_snapshot: boolean;
+    invite_status: "PASSWORD_SET" | "INVITE_RESET_PENDING" | "RESET_REQUIRED" | "DISABLED";
+    reset_required: boolean;
+    employee_email_used: string | null;
+    account_email_created: string | null;
+    email_source: string | null;
+    email_override_reason: string | null;
+  } | null;
+  link_history: Array<{
+    id: string;
+    status: "ACTIVE" | "UNLINKED" | "DEACTIVATED";
+    user_id: string;
+    linked_at: string;
+    linked_by_name?: string | null;
+    unlinked_at?: string | null;
+    unlinked_by_name?: string | null;
+    unlink_reason?: string | null;
+    deactivated_at?: string | null;
+    deactivated_by_name?: string | null;
+    deactivation_reason?: string | null;
+    invite_status?: string | null;
+    account_email_created?: string | null;
+  }>;
   roles: Array<{ id: string; name: string; is_active: boolean; is_protected: boolean }>;
   role_ids: string[];
   permissions: string[];
   scopes: AccessScopeRule[];
+  access_scope_ids: string[];
   self_service_enabled: boolean;
+  employee_email: {
+    email: string | null;
+    raw_email: string | null;
+    is_valid: boolean;
+    source: string;
+    message: string;
+    recommendation: "BLOCK_DUPLICATE_LINKED_EMPLOYEE" | "ALREADY_LINKED" | "LINK_EXISTING_USER" | "PROVISION_WITH_EMPLOYEE_EMAIL" | "ENTER_EMAIL";
+    matching_user: {
+      id: string;
+      name: string;
+      email: string;
+      username: string | null;
+      status: UserStatus;
+      employee_id: string | null;
+    } | null;
+  };
+  suggested_username: string | null;
   suggested: {
     suggested_role_mapping: RoleMappingRule | null;
     suggested_role: { id: string; name: string } | null;
@@ -170,6 +220,7 @@ export interface EmployeeUserAccount {
     employee_no: string | null;
     employee_name: string | null;
   }>;
+  available_access_scopes: AccessScopeRule[];
 }
 
 export interface BootstrapStatus {

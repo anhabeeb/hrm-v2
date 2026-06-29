@@ -21,6 +21,41 @@ CREATE INDEX IF NOT EXISTS idx_users_owner_active ON users(is_owner, status);
 CREATE INDEX IF NOT EXISTS idx_users_employee_id ON users(employee_id) WHERE employee_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_employee_unique ON users(employee_id) WHERE employee_id IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS employee_user_account_links (
+  id TEXT PRIMARY KEY,
+  employee_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'UNLINKED', 'DEACTIVATED')),
+  linked_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  linked_by_user_id TEXT,
+  unlinked_at TEXT,
+  unlinked_by_user_id TEXT,
+  unlink_reason TEXT,
+  deactivated_at TEXT,
+  deactivated_by_user_id TEXT,
+  deactivation_reason TEXT,
+  self_service_enabled_snapshot INTEGER NOT NULL DEFAULT 0 CHECK (self_service_enabled_snapshot IN (0, 1)),
+  invite_status TEXT NOT NULL DEFAULT 'PASSWORD_SET' CHECK (invite_status IN ('PASSWORD_SET', 'INVITE_RESET_PENDING', 'RESET_REQUIRED', 'DISABLED')),
+  reset_required INTEGER NOT NULL DEFAULT 0 CHECK (reset_required IN (0, 1)),
+  employee_email_used TEXT,
+  account_email_created TEXT,
+  email_source TEXT,
+  email_override_reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (linked_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (unlinked_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (deactivated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_employee_user_account_links_active_employee ON employee_user_account_links(employee_id) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_employee_user_account_links_active_user ON employee_user_account_links(user_id) WHERE status = 'ACTIVE';
+CREATE INDEX IF NOT EXISTS idx_employee_user_account_links_employee ON employee_user_account_links(employee_id, linked_at);
+CREATE INDEX IF NOT EXISTS idx_employee_user_account_links_user ON employee_user_account_links(user_id, linked_at);
+CREATE INDEX IF NOT EXISTS idx_employee_user_account_links_invite ON employee_user_account_links(invite_status, reset_required);
+
 CREATE TABLE IF NOT EXISTS roles (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
