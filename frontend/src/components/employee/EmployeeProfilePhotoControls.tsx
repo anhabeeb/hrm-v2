@@ -54,9 +54,9 @@ export function EmployeeProfilePhotoControls({
         </ActionTextButton>
       ) : null}
       {canClear && employee.profile_photo_document_id ? (
-        <ActionTextButton intent="delete" size="sm" disabled={clearing} onClick={() => setClearOpen(true)}>
+        <ActionTextButton intent="delete" size="sm" loading={clearing} loadingLabel="Clearing photo" onClick={() => setClearOpen(true)}>
           <Trash2 className="h-4 w-4" />
-          {clearing ? "Clearing..." : "Clear photo"}
+          Clear photo
         </ActionTextButton>
       ) : null}
       {modalOpen ? <ProfilePhotoModal employee={employee} token={token} onClose={() => setModalOpen(false)} onSaved={onChanged} /> : null}
@@ -67,7 +67,7 @@ export function EmployeeProfilePhotoControls({
             <p className="mt-1 text-xs text-muted-foreground">The Profile Photo document will be archived, not permanently deleted.</p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setClearOpen(false)}>Cancel</Button>
-              <ActionTextButton intent="delete" size="sm" disabled={clearing} onClick={() => void clearPhoto()}>{clearing ? "Clearing..." : "Clear photo"}</ActionTextButton>
+              <ActionTextButton intent="delete" size="sm" loading={clearing} loadingLabel="Clearing photo" onClick={() => void clearPhoto()}>Clear photo</ActionTextButton>
             </div>
           </div>
         </div>

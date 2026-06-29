@@ -115,6 +115,12 @@ hasAll("frontend/src/components/ui/button.tsx", [
   "disabled={disabled || loading}"
 ], "shared Button supports loading state and duplicate-submit prevention");
 
+hasAll("frontend/src/components/ui/action-button.tsx", [
+  "extends Omit<ButtonProps, \"variant\">",
+  "ActionTextButton",
+  "<ActionButton {...props}"
+], "ActionTextButton inherits shared Button loading/loadingLabel behavior");
+
 hasAll("frontend/src/components/loading/LoadingButton.tsx", [
   "LoadingButton",
   "loading={loading}"
@@ -241,6 +247,7 @@ const loadingButtonCoverage = [
   "frontend/src/components/attendance/AttendanceDeviceModal.tsx",
   "frontend/src/components/attendance/AttendanceManualLogModal.tsx",
   "frontend/src/components/attendance/AttendanceRecordModal.tsx",
+  "frontend/src/components/attendance/AttendanceCorrectionModal.tsx",
   "frontend/src/components/employee/EmployeeDocumentsPanel.tsx",
   "frontend/src/components/employee/EmployeeProfilePhotoControls.tsx",
   "frontend/src/components/leave/LeaveRequestModal.tsx",
@@ -254,6 +261,26 @@ for (const file of loadingButtonCoverage) {
   hasAll(file, ["loading={saving}"], `${file} uses shared Button loading state for save/upload actions`);
 }
 
+hasAll("frontend/src/components/attendance/AttendanceCorrectionModal.tsx", [
+  "loading={saving}",
+  "loadingLabel=\"Submitting request\"",
+  "Submit request"
+], "AttendanceCorrectionModal uses shared submit loading behavior");
+hasNone("frontend/src/components/attendance/AttendanceCorrectionModal.tsx", [
+  "saving ? \"Submitting...\" : \"Submit request\"",
+  /disabled=\{saving\}>\{saving\s*\?\s*["'`]Submitting\.\.\./
+], "AttendanceCorrectionModal has no raw submitting text ternary");
+
+hasAll("frontend/src/components/employee/EmployeeProfilePhotoControls.tsx", [
+  "loading={clearing}",
+  "loadingLabel=\"Clearing photo\"",
+  "Clear photo"
+], "EmployeeProfilePhotoControls uses shared clear-photo loading behavior");
+hasNone("frontend/src/components/employee/EmployeeProfilePhotoControls.tsx", [
+  "clearing ? \"Clearing...\" : \"Clear photo\"",
+  /\{clearing\s*\?\s*["'`]Clearing\.\.\./
+], "EmployeeProfilePhotoControls has no raw clearing text ternary");
+
 const pageAndComponentFiles = walk("frontend/src", (file) =>
   /\.(ts|tsx)$/.test(file) &&
   !file.startsWith("frontend/src/components/loading/") &&
@@ -263,7 +290,8 @@ for (const file of pageAndComponentFiles) {
   const source = read(file);
   check(!/EmptyState\s+title=\{?["'`]Loading/i.test(source), `${file} has no EmptyState loading placeholder`);
   check(!/LoadingRow\b/.test(source), `${file} has no local LoadingRow placeholder`);
-  check(!/(Uploading|Saving|Processing|Importing)\.\.\./.test(source), `${file} has no raw ellipsis loading action text`);
+  check(!/(Uploading|Saving|Submitting|Processing|Clearing|Importing|Exporting)\.\.\./.test(source), `${file} has no raw ellipsis loading action text`);
+  check(!/\?\s*["'`](?:Uploading|Saving|Submitting|Processing|Clearing|Importing|Exporting)\.\.\.["'`]\s*:/.test(source), `${file} has no raw loading text ternary`);
 }
 
 const frontendFiles = walk("frontend/src", (file) => /\.(ts|tsx)$/.test(file));

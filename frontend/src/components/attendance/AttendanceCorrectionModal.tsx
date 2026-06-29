@@ -117,7 +117,7 @@ export function AttendanceCorrectionModal(props: {
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <Button variant="outline" type="button" onClick={props.onClose}>Cancel</Button>
-          <Button type="submit" disabled={saving}>{saving ? "Submitting..." : "Submit request"}</Button>
+          <Button type="submit" loading={saving} loadingLabel="Submitting request">Submit request</Button>
         </div>
       </form>
     </div>
