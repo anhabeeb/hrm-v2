@@ -23,6 +23,7 @@ import { EmptyState } from "../components/ui/empty-state";
 import { FormBlockingAlert } from "../components/forms/FormBlockingAlert";
 import { FormWarningAlert } from "../components/forms/FormWarningAlert";
 import { ValidationSummary } from "../components/forms/ValidationSummary";
+import { useAlert } from "../components/alerts/useAlert";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter, type ActiveFilterChip } from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Input } from "../components/ui/input";
@@ -105,6 +106,7 @@ function includesText(...values: Array<string | null | undefined>) {
 
 export function UsersAccessPage() {
   const { token, user: currentUser } = useAuth();
+  const alerts = useAlert();
   const [activeTab, setActiveTab] = useState<Tab>("users");
   const [users, setUsers] = useState<AccessUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -117,7 +119,6 @@ export function UsersAccessPage() {
   const [jobLevels, setJobLevels] = useState<OrganizationJobLevel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
 
   const [userQuery, setUserQuery] = useState("");
   const [userStatusFilter, setUserStatusFilter] = useState("ALL");
@@ -254,14 +255,13 @@ export function UsersAccessPage() {
 
   async function runAction(action: () => Promise<unknown>, successMessage: string) {
     if (!token) return;
-    setNotice("");
     setError("");
     try {
       await action();
-      setNotice(successMessage);
+      alerts.showSuccess(successMessage);
       await loadAccessData();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Action could not be completed.");
+      alerts.showApiError(caught, "Action could not be completed.");
     }
   }
 
@@ -317,7 +317,6 @@ export function UsersAccessPage() {
       />
 
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-      {notice ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</div> : null}
 
       <StandardTabs
         items={(["users", "roles", "permissions", ...(canViewMappings ? ["role_mappings" as const] : []), ...(canViewScopes ? ["access_scopes" as const] : [])] as Tab[]).map((tab) => ({ key: tab, label: MODULE_LABELS[tab] ?? tab }))}

@@ -3,6 +3,7 @@ import { ApiError, api } from "../../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateRange, validateRequiredFields, type ValidationIssue } from "../../lib/form-validation";
 import type { Employee } from "../../types/employees";
 import type { LeaveRequest, LeaveType } from "../../types/leave";
+import { useAlert } from "../alerts/useAlert";
 import { FormErrorSummary } from "../forms/FormErrorSummary";
 import { ValidatedReasonField, ValidatedSelectField, ValidatedTextField } from "../forms/validated-fields";
 import { Button } from "../ui/button";
@@ -67,6 +68,7 @@ export function LeaveRequestModal({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const validation = useFormValidation();
+  const alerts = useAlert();
   const days = useMemo(() => estimateDays(form.start_date, form.end_date, form.half_day_type), [form]);
 
   useEffect(() => {
@@ -86,6 +88,7 @@ export function LeaveRequestModal({
     const issues = validateLeaveRequestForm(form);
     validation.setIssues(issues);
     if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Leave request needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -94,12 +97,16 @@ export function LeaveRequestModal({
     try {
       const result = await api.createLeaveRequest(token, form);
       await onSaved(result.request);
+      alerts.showSuccess("Leave request created", "The request was saved and is ready for review.");
       onClose();
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
         validation.setIssues(issuesFromApi);
+        alerts.showValidationError(issuesFromApi, "Leave request cannot be submitted");
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      } else {
+        alerts.showApiError(err, "Leave request failed");
       }
       setError(err instanceof ApiError ? err.message : "Unable to create leave request.");
     } finally {

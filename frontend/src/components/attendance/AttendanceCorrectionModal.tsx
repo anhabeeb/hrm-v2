@@ -5,6 +5,7 @@ import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, v
 import type { AttendanceStatus } from "../../types/attendance";
 import type { Employee } from "../../types/employees";
 import { useOrganizationReferences } from "../../hooks/useOrganizationReferences";
+import { useAlert } from "../alerts/useAlert";
 import { EmployeeCascadeSelect } from "../organization/EmployeeCascadeSelect";
 import { FieldError } from "../forms/FieldError";
 import { FormErrorSummary } from "../forms/FormErrorSummary";
@@ -41,12 +42,14 @@ export function AttendanceCorrectionModal(props: {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const validation = useFormValidation();
+  const alerts = useAlert();
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const issues = validateAttendanceCorrectionForm({ employeeId, date, status, reason, clockIn, clockOut });
     validation.setIssues(issues);
     if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Attendance correction needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -62,12 +65,16 @@ export function AttendanceCorrectionModal(props: {
         reason
       });
       props.onSaved();
+      alerts.showSuccess("Attendance correction submitted", "The request was sent for review.");
       props.onClose();
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
         validation.setIssues(issuesFromApi);
+        alerts.showValidationError(issuesFromApi, "Attendance correction cannot be submitted");
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      } else {
+        alerts.showApiError(err, "Attendance correction failed");
       }
       setError(err instanceof ApiError ? err.message : "Unable to submit correction request.");
     } finally {

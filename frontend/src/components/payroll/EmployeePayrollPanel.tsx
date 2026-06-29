@@ -13,6 +13,7 @@ import { ApiError, api } from "../../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateDateField, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
 import type { Employee } from "../../types/employees";
 import type { EmployeePayrollProfile, EmployeePayrollSummary } from "../../types/payroll";
+import { useAlert } from "../alerts/useAlert";
 import { FormErrorSummary } from "../forms/FormErrorSummary";
 import { ValidatedReasonField, ValidatedTextField } from "../forms/validated-fields";
 import { EmployeePayrollFoundationPanels } from "./EmployeePayrollFoundationPanels";
@@ -57,6 +58,7 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
   const [salaryReason, setSalaryReason] = useState("");
   const [incrementForm, setIncrementForm] = useState<{ amount: string; effective_date: string; reason: string } | null>(null);
   const [advanceForm, setAdvanceForm] = useState<{ amount: string; payment_date: string } | null>(null);
+  const alerts = useAlert();
 
   async function load() {
     if (!token || !canView) return;
@@ -94,9 +96,12 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
       setSummary(summary ? { ...summary, profile: result.profile } : null);
       setEditing(false);
       setMessage("Payroll profile saved.");
+      alerts.showSuccess("Payroll profile saved", "Employee payroll settings were updated.");
       await load();
     } catch (err) {
       const issues = normalizeValidationIssues(err);
+      if (issues.length) alerts.showValidationError(issues, "Payroll profile cannot be saved");
+      else alerts.showApiError(err, "Payroll profile failed");
       setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to save payroll profile."));
     }
   }
@@ -110,8 +115,11 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
       await api.createEmployeeIncrement(token, employee.id, { increment_amount: amount, effective_date, reason });
       setIncrementForm(null);
       await load();
+      alerts.showSuccess("Salary increment added", "The employee increment was recorded.");
     } catch (err) {
       const issues = normalizeValidationIssues(err);
+      if (issues.length) alerts.showValidationError(issues, "Increment cannot be added");
+      else alerts.showApiError(err, "Increment failed");
       setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to add increment."));
     }
   }
@@ -124,8 +132,11 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
       await api.createPayrollAdvance(token, { employee_id: employee.id, amount, payment_date });
       setAdvanceForm(null);
       await load();
+      alerts.showSuccess("Payroll advance created", "The advance request was recorded.");
     } catch (err) {
       const issues = normalizeValidationIssues(err);
+      if (issues.length) alerts.showValidationError(issues, "Advance cannot be created");
+      else alerts.showApiError(err, "Advance failed");
       setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to add advance."));
     }
   }
@@ -182,10 +193,12 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
 
 function SalaryReasonModal({ value, onChange, onClose, onConfirm }: { value: string; onChange: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
   const validation = useFormValidation();
+  const alerts = useAlert();
   function handleSalaryReasonSubmit() {
     const issues = validateRequiredField(value, "reason", "Reason");
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Salary change needs a reason");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -196,10 +209,12 @@ function SalaryReasonModal({ value, onChange, onClose, onConfirm }: { value: str
 
 function IncrementModal({ form, onChange, onClose, onConfirm }: { form: { amount: string; effective_date: string; reason: string }; onChange: (form: { amount: string; effective_date: string; reason: string }) => void; onClose: () => void; onConfirm: () => void }) {
   const validation = useFormValidation();
+  const alerts = useAlert();
   function handleIncrementSubmit() {
     const issues = validateIncrementForm(form);
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Increment needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -210,10 +225,12 @@ function IncrementModal({ form, onChange, onClose, onConfirm }: { form: { amount
 
 function AdvanceModal({ form, onChange, onClose, onConfirm }: { form: { amount: string; payment_date: string }; onChange: (form: { amount: string; payment_date: string }) => void; onClose: () => void; onConfirm: () => void }) {
   const validation = useFormValidation();
+  const alerts = useAlert();
   function handleAdvanceSubmit() {
     const issues = validateAdvanceForm(form);
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Advance needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }

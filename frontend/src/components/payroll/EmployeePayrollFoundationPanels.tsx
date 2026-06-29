@@ -12,6 +12,7 @@ import type {
   PaymentInstitution,
   PensionScheme
 } from "../../types/payroll";
+import { useAlert } from "../alerts/useAlert";
 import { Badge } from "../ui/badge";
 import { Button, RowActionButton } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
@@ -158,6 +159,7 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const validation = useFormValidation();
+  const alerts = useAlert();
 
   useEffect(() => {
     if (!token) return;
@@ -183,12 +185,16 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
     try {
       await action();
       setMessage(success);
+      alerts.showSuccess("Payroll foundation updated", success);
       await onReload();
     } catch (err) {
       const issues = normalizeValidationIssues(err);
       if (issues.length) {
         validation.setIssues(issues);
+        alerts.showValidationError(issues, "Payroll foundation needs attention");
         setTimeout(() => focusFirstInvalidField(issues), 0);
+      } else {
+        alerts.showApiError(err, "Payroll foundation action failed");
       }
       setError(issues[0]?.message ?? (err instanceof ApiError ? err.message : "Unable to complete payroll foundation action."));
     }
@@ -199,6 +205,7 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
     const issues = validatePaymentForm(paymentForm);
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Payment method needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -217,6 +224,7 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
     const issues = validateLoanForm(loanForm);
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Bank loan needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -237,6 +245,7 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
     const issues = validatePensionForm(pensionForm);
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Pension profile needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -256,6 +265,7 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
     const issues = validateCustomDeductionForm(customDeductionForm);
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Custom deduction needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -281,6 +291,7 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
     const issues = customAction.action === "cancel" ? validateRequiredField(customAction.reason, "reason", "Reason") : [];
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Custom deduction action needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }

@@ -2,6 +2,7 @@ import { Archive, Eye, Pencil, Plus, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
+import { useAlert } from "../components/alerts/useAlert";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
@@ -82,6 +83,7 @@ function employeePrimaryRoute(employee: Employee) {
 export function EmployeesPage() {
   const { token, user } = useAuth();
   const navigate = useNavigate();
+  const alerts = useAlert();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [statuses, setStatuses] = useState<EmployeeStatusSetting[]>([]);
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
@@ -217,7 +219,11 @@ export function EmployeesPage() {
       }
       setModal(null);
       await load();
+      alerts.showSuccess(modal.mode === "create" ? "Employee created" : "Employee updated", modal.mode === "create" ? "The employee record was added." : "The employee record was saved.");
     } catch (err) {
+      const issues = normalizeValidationIssues(err);
+      if (issues.length) alerts.showValidationError(issues, "Employee form needs attention");
+      else alerts.showApiError(err, "Employee save failed");
       setError(err instanceof ApiError ? err.message : "Unable to save employee.");
       throw err;
     }
@@ -230,7 +236,9 @@ export function EmployeesPage() {
       setArchiveTarget(null);
       setArchiveReason("");
       await load();
+      alerts.showSuccess("Employee archived", `${employee.full_name} was archived.`);
     } catch (err) {
+      alerts.showApiError(err, "Employee archive failed");
       setError(err instanceof ApiError ? err.message : "Unable to archive employee.");
     }
   }
@@ -243,7 +251,9 @@ export function EmployeesPage() {
       await api.changeEmployeeStatus(token, employee.id, input);
       setStatusModalEmployee(null);
       await load();
+      alerts.showSuccess("Employee status changed", `${employee.full_name} status was updated.`);
     } catch (err) {
+      alerts.showApiError(err, "Employee status change failed");
       setStatusModalError(err instanceof ApiError ? err.message : "Unable to change employee status.");
     } finally {
       setStatusSaving(false);
@@ -469,6 +479,7 @@ function EmployeeFormModal(props: {
 }) {
   const [form, setForm] = useState<EmployeeInput>(() => toInput(props.employee));
   const validation = useFormValidation();
+  const alerts = useAlert();
   const [saving, setSaving] = useState(false);
   const update = (key: keyof EmployeeInput, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }));
   const updateCascade = (next: { locationId?: string; departmentId?: string; jobLevelId?: string; positionId?: string }) => {
@@ -484,6 +495,7 @@ function EmployeeFormModal(props: {
     const issues = validateEmployeeInputForm(form);
     validation.setIssues(issues);
     if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Employee form needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -494,6 +506,7 @@ function EmployeeFormModal(props: {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
         validation.setIssues(issuesFromApi);
+        alerts.showValidationError(issuesFromApi, "Employee form cannot be saved");
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
       }
     } finally {

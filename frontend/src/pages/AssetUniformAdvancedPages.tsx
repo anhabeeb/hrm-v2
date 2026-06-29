@@ -26,6 +26,7 @@ import type { OrganizationLocation } from "../types/organization";
 import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { FormErrorSummary } from "../components/forms/FormErrorSummary";
 import { FieldError } from "../components/forms/FieldError";
+import { useAlert } from "../components/alerts/useAlert";
 
 type ModalState =
   | { type: "type"; row?: UniformType }
@@ -58,10 +59,10 @@ function hasErrors(issues: ValidationIssue[]) {
 
 export function AssetUniformSettingsPage() {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const canManage = Boolean(user?.permissions.includes("assets.settings.manage") || user?.permissions.includes("uniforms.settings.manage"));
   const [settings, setSettings] = useState<Partial<AssetUniformSettings> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   async function load() {
     if (!token) return;
@@ -79,13 +80,12 @@ export function AssetUniformSettingsPage() {
   async function save() {
     if (!token || !settings) return;
     setError(null);
-    setNotice(null);
     try {
       const result = await api.updateAssetUniformSettings(token, settings);
       setSettings(result.settings);
-      setNotice("Settings saved.");
+      alerts.showSuccess("Settings saved.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to save settings.");
+      alerts.showApiError(err, "Unable to save settings.");
     }
   }
 
@@ -109,7 +109,6 @@ export function AssetUniformSettingsPage() {
       <Header title="Asset & Uniform Settings" description="Configure lifecycle, clearance, deduction, final settlement, self-service, and approval foundations." action={<Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</Button>} />
       <AssetsNav />
       {error ? <Alert tone="danger">{error}</Alert> : null}
-      {notice ? <Alert tone="success">{notice}</Alert> : null}
       <Panel className="p-4">
         {!settings ? <EmptyState title="No settings loaded" description="Settings will appear after loading." /> : (
           <div className="space-y-4">

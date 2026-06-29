@@ -178,7 +178,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
 
   const envelope = (await response.json()) as ApiEnvelope<T>;
   if (!response.ok || !envelope.ok || !envelope.data) {
-    if (response.status === 401 && typeof window !== "undefined") {
+    if (response.status === 401 && token && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code: envelope.error?.code ?? "UNAUTHENTICATED" } }));
     }
     throw apiErrorFromEnvelope(envelope as ApiEnvelope<unknown>, response.status);
@@ -198,7 +198,7 @@ async function multipartRequest<T>(path: string, body: FormData, token?: string 
 
   const envelope = (await response.json()) as ApiEnvelope<T>;
   if (!response.ok || !envelope.ok || !envelope.data) {
-    if (response.status === 401 && typeof window !== "undefined") {
+    if (response.status === 401 && token && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code: envelope.error?.code ?? "UNAUTHENTICATED" } }));
     }
     throw apiErrorFromEnvelope(envelope as ApiEnvelope<unknown>, response.status);

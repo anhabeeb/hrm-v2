@@ -246,11 +246,13 @@ const routeChecks = [
 for (const [file, markers, message] of routeChecks) hasAll(file, markers, message);
 
 hasAll("frontend/src/pages/LifecyclePage.tsx", [
-  "WorkspaceNoticePopup",
+  "useAlert",
+  "showSuccess",
+  "showApiError",
   "completedOnboardingTaskStatuses",
   "can_activate",
   "activation"
-], "onboarding workspace must keep popup notices and readiness-driven activation state");
+], "onboarding workspace must keep global popup notices and readiness-driven activation state");
 hasAll("frontend/src/pages/ContractsPage.tsx", ["contract_type", "requires_end_date", "requires_probation"], "contract forms must keep dynamic contract type validation markers");
 hasAll("frontend/src/pages/SelfServicePage.tsx", ["Self-service is unavailable", "profile update", "createSelfServiceProfileUpdateRequest"], "self-service UI must remain tied to guarded employee actions");
 

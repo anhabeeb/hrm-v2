@@ -4,6 +4,7 @@ import { ApiError, api } from "../../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateRange, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
 import type { DocumentType, EmployeeDocument, EmployeeDocumentVersion, MissingDocument } from "../../types/documents";
 import type { Employee } from "../../types/employees";
+import { useAlert } from "../alerts/useAlert";
 import { FormErrorSummary } from "../forms/FormErrorSummary";
 import { ValidatedFileField, ValidatedReasonField, ValidatedSelectField, ValidatedTextField } from "../forms/validated-fields";
 import { ActionTextButton } from "../ui/action-button";
@@ -63,6 +64,7 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
   const [uploadModal, setUploadModal] = useState<{ mode: "upload" | "replace" | "photo"; document?: EmployeeDocument } | null>(null);
   const [versions, setVersions] = useState<{ document: EmployeeDocument; rows: EmployeeDocumentVersion[] } | null>(null);
   const [documentAction, setDocumentAction] = useState<{ document: EmployeeDocument; name: "archive" | "restore" | "soft-delete" | "permanent-delete"; reason: string } | null>(null);
+  const alerts = useAlert();
 
   const canUpload = permissions.has("documents.upload");
   const canDownload = permissions.has("documents.download") || permissions.has("documents.sensitive.download");
@@ -98,7 +100,9 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
     try {
       const result = await api.downloadEmployeeDocument(token, employee.id, document.id);
       saveBlob(result.blob, result.filename);
+      alerts.showSuccess("Download started", "The document file is being downloaded.");
     } catch (err) {
+      alerts.showApiError(err, "Document download failed");
       setError(err instanceof ApiError ? err.message : "Unable to download document.");
     }
   }
@@ -108,7 +112,9 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
       await api.employeeDocumentAction(token, employee.id, document.id, name, reason);
       setDocumentAction(null);
       await afterChange();
+      alerts.showSuccess("Document updated", `Document ${name.replace("-", " ")} action completed.`);
     } catch (err) {
+      alerts.showApiError(err, "Document action failed");
       setError(err instanceof ApiError ? err.message : "Unable to update document.");
     }
   }
@@ -118,7 +124,9 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
       await api.permanentlyDeleteEmployeeDocument(token, employee.id, document.id, reason);
       setDocumentAction(null);
       await afterChange();
+      alerts.showSuccess("Document permanently deleted", "The document metadata and versions were removed.");
     } catch (err) {
+      alerts.showApiError(err, "Document deletion failed");
       setError(err instanceof ApiError ? err.message : "Unable to permanently delete document.");
     }
   }
@@ -128,6 +136,7 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
       const result = await api.listEmployeeDocumentVersions(token, employee.id, document.id);
       setVersions({ document, rows: result.versions });
     } catch (err) {
+      alerts.showApiError(err, "Document versions failed");
       setError(err instanceof ApiError ? err.message : "Unable to load versions.");
     }
   }
@@ -224,10 +233,12 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
 
 function DocumentActionModal({ action, onChange, onClose, onConfirm }: { action: { document: EmployeeDocument; name: "archive" | "restore" | "soft-delete" | "permanent-delete"; reason: string }; onChange: (reason: string) => void; onClose: () => void; onConfirm: () => void }) {
   const validation = useFormValidation();
+  const alerts = useAlert();
   function handleDocumentAction() {
     const issues = validateDocumentActionReason(action.reason);
     validation.setIssues(issues);
     if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Document action needs a reason");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -263,12 +274,14 @@ function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const validation = useFormValidation();
+  const alerts = useAlert();
 
   async function submit() {
     setError(null);
     const issues = validateDocumentUploadForm({ mode: state.mode, documentTypeId, file, selectedType, documentNumber, issueDate, expiryDate, reason });
     validation.setIssues(issues);
     if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Document upload needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -291,12 +304,16 @@ function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }
         await api.uploadEmployeeDocument(token, employee.id, form);
       }
       await onSaved();
+      alerts.showSuccess(state.mode === "photo" ? "Profile photo uploaded" : state.mode === "replace" ? "Document replaced" : "Document uploaded", "The employee document record was updated.");
       onClose();
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
         validation.setIssues(issuesFromApi);
+        alerts.showValidationError(issuesFromApi, "Document upload cannot be saved");
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      } else {
+        alerts.showApiError(err, "Document upload failed");
       }
       setError(err instanceof ApiError ? err.message : "Unable to upload document.");
     } finally {

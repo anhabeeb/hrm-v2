@@ -1,6 +1,7 @@
 import { Check, Eye, Plus, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAlert } from "../components/alerts/useAlert";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { LeaveRequestDetailModal } from "../components/leave/LeaveRequestDetailModal";
@@ -39,6 +40,7 @@ function tone(status: string) {
 
 export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: boolean }) {
   const { token, user } = useAuth();
+  const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("leave.view");
   const canCreate = permissions.has("leave.request") || permissions.has("leave.manage");
@@ -125,17 +127,25 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
       if (name === "submit") await api.submitLeaveRequest(token, request.id);
       if (name === "approve") await api.approveLeaveRequest(token, request.id, actionNote || null);
       if (name === "reject") {
-        if (!actionNote.trim()) return;
+        if (!actionNote.trim()) {
+          alerts.showValidationError("A note is required to reject a leave request.", "Leave action needs a note");
+          return;
+        }
         await api.rejectLeaveRequest(token, request.id, actionNote.trim());
       }
       if (name === "cancel") {
-        if (!actionNote.trim()) return;
+        if (!actionNote.trim()) {
+          alerts.showValidationError("A reason is required to cancel a leave request.", "Leave action needs a reason");
+          return;
+        }
         await api.cancelLeaveRequest(token, request.id, actionNote.trim());
       }
       setActionTarget(null);
       setActionNote("");
       await load();
+      alerts.showSuccess("Leave request updated", `${name.replace("-", " ")} action completed.`);
     } catch (err) {
+      alerts.showApiError(err, "Leave request action failed");
       setError(err instanceof ApiError ? err.message : "Unable to update leave request.");
     }
   }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { ApiError } from "../../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateRange, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
+import { useAlert } from "../alerts/useAlert";
 import { FormErrorSummary } from "../forms/FormErrorSummary";
 import { ValidatedReasonField, ValidatedSelectField, ValidatedTextField } from "../forms/validated-fields";
 import { Button } from "../ui/button";
@@ -52,11 +53,13 @@ export function RosterAssignmentModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const validation = useFormValidation();
+  const alerts = useAlert();
 
   async function submit() {
     const issues = validateRosterAssignmentForm(form, requireReason);
     validation.setIssues(issues);
     if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Roster assignment needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -64,12 +67,16 @@ export function RosterAssignmentModal({
     setError(null);
     try {
       await onSave(form);
+      alerts.showSuccess("Roster assignment saved", "The roster entry was updated.");
       onClose();
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
         validation.setIssues(issuesFromApi);
+        alerts.showValidationError(issuesFromApi, "Roster assignment cannot be saved");
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      } else {
+        alerts.showApiError(err, "Roster assignment failed");
       }
       setError(err instanceof ApiError ? err.message : "Unable to save roster assignment.");
     } finally {

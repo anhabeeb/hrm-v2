@@ -29,6 +29,7 @@ import { CheckboxField, SelectField } from "../components/ui/page-shell";
 import { FieldError } from "../components/forms/FieldError";
 import { FormErrorSummary } from "../components/forms/FormErrorSummary";
 import { ValidatedReasonField, ValidatedTextField } from "../components/forms/validated-fields";
+import { useAlert } from "../components/alerts/useAlert";
 
 type Mode =
   | "onboarding-dashboard"
@@ -635,8 +636,6 @@ function OffboardingUserAccessPanel({
 const onboardingWorkspaceTabs = ["Overview", "Employee Info", "Contacts", "Job Assignment", "Documents", "Contract", "Payroll", "Payment & Pension", "Attendance & Roster", "Assets & Uniforms", "User Access", "Checklist", "Approval Timeline"] as const;
 type OnboardingWorkspaceTab = (typeof onboardingWorkspaceTabs)[number];
 
-type WorkspaceNotice = { tone: "success" | "danger"; message: string };
-
 const onboardingWorkspaceSectionTasks: Record<OnboardingWorkspaceTab, string[]> = {
   Overview: [],
   "Employee Info": ["personal_info"],
@@ -729,32 +728,25 @@ function OptionalSectionNotice({ workspace, sectionKey, fallbackTitle }: { works
 
 function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { workspace: Row; caseId: string; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void }) {
   const { token } = useAuth();
+  const alerts = useAlert();
   const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
-  const [notice, setNotice] = useState<WorkspaceNotice | null>(null);
-  useEffect(() => {
-    if (!notice) return undefined;
-    const timeout = window.setTimeout(() => setNotice(null), 3600);
-    return () => window.clearTimeout(timeout);
-  }, [notice]);
   async function save(action: () => Promise<unknown>, success: string) {
     if (!token) return;
-    setNotice(null);
     try {
       await action();
-      setNotice({ tone: "success", message: success });
+      alerts.showSuccess(success);
       await reload();
     } catch (err) {
-      setNotice({ tone: "danger", message: err instanceof ApiError ? err.message : "Unable to save onboarding workspace section." });
+      alerts.showApiError(err, "Unable to save onboarding workspace section.");
     }
   }
   async function runWorkspaceAction(action: () => Promise<unknown>, success: string) {
     if (!token) return;
-    setNotice(null);
     try {
       await run(action);
-      setNotice({ tone: "success", message: success });
+      alerts.showSuccess(success);
     } catch (err) {
-      setNotice({ tone: "danger", message: err instanceof ApiError ? err.message : "Unable to update onboarding case." });
+      alerts.showApiError(err, "Unable to update onboarding case.");
     }
   }
   const rowCase = asRow(workspace.case);
@@ -779,7 +771,6 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
   };
   return (
     <div className="relative space-y-4">
-      {notice ? <WorkspaceNoticePopup notice={notice} /> : null}
       <div className="rounded-lg border bg-slate-50/70 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
@@ -844,20 +835,6 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
       {activeTab === "Checklist" ? <ChecklistWorkspaceTable tasks={tasks} /> : null}
           {activeTab === "Approval Timeline" ? <Timeline items={asRows(workspace.events).map((event) => ({ title: text(event.action), description: text(event.new_status ?? event.note ?? event.reason), meta: text(event.created_at) }))} /> : null}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function WorkspaceNoticePopup({ notice }: { notice: WorkspaceNotice }) {
-  const classes = notice.tone === "success"
-    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-    : "border-red-200 bg-red-50 text-red-800";
-  return (
-    <div className={`fixed right-6 top-6 z-[60] w-[min(24rem,calc(100vw-3rem))] rounded-lg border px-4 py-3 text-sm shadow-lg ${classes}`} role={notice.tone === "danger" ? "alert" : "status"} aria-live="polite">
-      <div className="flex items-start gap-2">
-        {notice.tone === "success" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />}
-        <p className="min-w-0">{notice.message}</p>
       </div>
     </div>
   );

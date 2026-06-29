@@ -13,6 +13,7 @@ import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, v
 import type { AssetAssignment, AssetAssignmentEvent, AssetCategory, AssetItem, AssetUniformClearanceSummary, UniformAssignment } from "../../types/assets";
 import type { EmployeeDocument } from "../../types/documents";
 import type { Employee } from "../../types/employees";
+import { useAlert } from "../alerts/useAlert";
 import { FormErrorSummary } from "../forms/FormErrorSummary";
 import { ValidatedReasonField, ValidatedSelectField, ValidatedTextField } from "../forms/validated-fields";
 
@@ -148,6 +149,7 @@ export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
 
 function IssueAssetModal({ employee, categories, items, onClose, onSaved }: { employee: Employee; categories: AssetCategory[]; items: AssetItem[]; onClose: () => void; onSaved: () => void }) {
   const { token } = useAuth();
+  const alerts = useAlert();
   const [assetItemId, setAssetItemId] = useState(items[0]?.id ?? "");
   const [issuedAt, setIssuedAt] = useState(new Date().toISOString().slice(0, 10));
   const [expectedReturnAt, setExpectedReturnAt] = useState("");
@@ -163,17 +165,22 @@ function IssueAssetModal({ employee, categories, items, onClose, onSaved }: { em
     ];
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Asset issue needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
     try {
       await api.issueAssetAssignment(token, { employee_id: employee.id, asset_item_id: assetItemId, issued_date: issuedAt, expected_return_date: expectedReturnAt || null, notes: notes || null });
+      alerts.showSuccess("Asset issued", "The asset assignment was created.");
       onSaved();
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
         validation.setIssues(issuesFromApi);
+        alerts.showValidationError(issuesFromApi, "Asset issue cannot be saved");
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      } else {
+        alerts.showApiError(err, "Asset issue failed");
       }
       setError(err instanceof ApiError ? err.message : "Unable to issue asset.");
     }
@@ -183,6 +190,7 @@ function IssueAssetModal({ employee, categories, items, onClose, onSaved }: { em
 
 function LifecycleModal({ row, action, onClose, onSaved }: { row: AssetAssignment; action: LifecycleAction; onClose: () => void; onSaved: () => void }) {
   const { token } = useAuth();
+  const alerts = useAlert();
   const [returnedDate, setReturnedDate] = useState(new Date().toISOString().slice(0, 10));
   const [condition, setCondition] = useState("GOOD");
   const [reason, setReason] = useState("");
@@ -198,17 +206,22 @@ function LifecycleModal({ row, action, onClose, onSaved }: { row: AssetAssignmen
     ];
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Asset action needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
     try {
       await api.assetAssignmentAction(token, row.id, action, { reason, returned_date: returnedDate, condition_on_return: condition, deduction_amount: deductionAmount ? Number(deductionAmount) : null });
+      alerts.showSuccess("Asset assignment updated", `${action.replace("-", " ")} action completed.`);
       onSaved();
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
         validation.setIssues(issuesFromApi);
+        alerts.showValidationError(issuesFromApi, "Asset action cannot be saved");
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      } else {
+        alerts.showApiError(err, "Asset action failed");
       }
       setError(err instanceof ApiError ? err.message : "Unable to update assignment.");
     }
@@ -218,6 +231,7 @@ function LifecycleModal({ row, action, onClose, onSaved }: { row: AssetAssignmen
 
 function ReplaceModal({ row, items, onClose, onSaved }: { row: AssetAssignment; items: AssetItem[]; onClose: () => void; onSaved: () => void }) {
   const { token } = useAuth();
+  const alerts = useAlert();
   const [replacementAssetItemId, setReplacementAssetItemId] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -230,17 +244,22 @@ function ReplaceModal({ row, items, onClose, onSaved }: { row: AssetAssignment; 
     ];
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Replacement needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
     try {
       await api.replaceAssetAssignment(token, row.id, { replacement_asset_item_id: replacementAssetItemId || null, reason });
+      alerts.showSuccess("Asset replaced", "The replacement asset was linked.");
       onSaved();
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
         validation.setIssues(issuesFromApi);
+        alerts.showValidationError(issuesFromApi, "Asset replacement cannot be saved");
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      } else {
+        alerts.showApiError(err, "Asset replacement failed");
       }
       setError(err instanceof ApiError ? err.message : "Unable to replace asset.");
     }
@@ -250,6 +269,7 @@ function ReplaceModal({ row, items, onClose, onSaved }: { row: AssetAssignment; 
 
 function DeductionModal({ row, onClose, onSaved }: { row: AssetAssignment; onClose: () => void; onSaved: () => void }) {
   const { token } = useAuth();
+  const alerts = useAlert();
   const [deductionId, setDeductionId] = useState(row.payroll_deduction_id ?? "");
   const [adjustmentId, setAdjustmentId] = useState("");
   const [amount, setAmount] = useState(String(row.deduction_amount ?? ""));
@@ -266,17 +286,22 @@ function DeductionModal({ row, onClose, onSaved }: { row: AssetAssignment; onClo
     ];
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Deduction link needs attention");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
     try {
       await api.linkAssetDeduction(token, row.id, { payroll_deduction_id: deductionId || null, payroll_adjustment_id: adjustmentId || null, deduction_amount: amount ? Number(amount) : null, reason });
+      alerts.showSuccess("Deduction linked", "The asset recovery record was updated.");
       onSaved();
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
         validation.setIssues(issuesFromApi);
+        alerts.showValidationError(issuesFromApi, "Deduction link cannot be saved");
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      } else {
+        alerts.showApiError(err, "Deduction link failed");
       }
       setError(err instanceof ApiError ? err.message : "Unable to link deduction.");
     }
@@ -293,6 +318,7 @@ function EventsModal({ row, onClose }: { row: AssetAssignment; onClose: () => vo
 
 function AttachmentsModal({ row, onClose }: { row: AssetAssignment; onClose: () => void }) {
   const { token } = useAuth();
+  const alerts = useAlert();
   const [attachments, setAttachments] = useState<Record<string, unknown>[]>([]);
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [documentId, setDocumentId] = useState("");
@@ -312,6 +338,7 @@ function AttachmentsModal({ row, onClose }: { row: AssetAssignment; onClose: () 
     const issues = validateRequiredField(documentId, "employee_document_id", "Document");
     validation.setIssues(issues);
     if (hasErrors(issues)) {
+      alerts.showValidationError(issues, "Attachment needs a document");
       setTimeout(() => focusFirstInvalidField(issues), 0);
       return;
     }
@@ -319,19 +346,29 @@ function AttachmentsModal({ row, onClose }: { row: AssetAssignment; onClose: () 
       await api.attachAssetDocument(token, row.id, { employee_document_id: documentId, description });
       setDescription("");
       await load();
+      alerts.showSuccess("Document attached", "The asset attachment was linked.");
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
         validation.setIssues(issuesFromApi);
+        alerts.showValidationError(issuesFromApi, "Attachment cannot be saved");
         setTimeout(() => focusFirstInvalidField(issuesFromApi), 0);
+      } else {
+        alerts.showApiError(err, "Attachment failed");
       }
       setError(err instanceof ApiError ? err.message : "Unable to attach document.");
     }
   }
   async function detach(id: string) {
     if (!token) return;
-    await api.detachAssetDocument(token, row.id, id);
-    await load();
+    try {
+      await api.detachAssetDocument(token, row.id, id);
+      await load();
+      alerts.showSuccess("Document detached", "The asset attachment was removed.");
+    } catch (err) {
+      alerts.showApiError(err, "Attachment detach failed");
+      setError(err instanceof ApiError ? err.message : "Unable to detach document.");
+    }
   }
   return <ReadDialog title="Assignment attachments" onClose={onClose}>{error ? <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}<FormErrorSummary issues={validation.issues} /><div className="mb-3 grid gap-2 md:grid-cols-3"><ValidatedSelectField field="employee_document_id" label="Document" value={documentId} issues={validation.issues} onValueChange={setDocumentId}>{documents.map((document) => <option key={document.id} value={document.id}>{document.original_filename ?? document.document_number ?? document.document_type_name ?? document.id}</option>)}</ValidatedSelectField><ValidatedTextField field="description" label="Description" value={description} issues={validation.issues} onChange={setDescription} /><div className="flex items-end"><ActionTextButton intent="create" size="sm" onClick={() => void attach()}>Attach</ActionTextButton></div></div><Table><TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Type</TableHead><TableHead>Description</TableHead><TableHead>Attached</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{attachments.map((attachment) => <TableRow key={String(attachment.id)}><TableCell>{Boolean(attachment.restricted) ? <span className="flex items-center gap-2">Restricted document <Badge tone="warning">Restricted</Badge></span> : Boolean(attachment.unavailable) ? "Unavailable document" : String(attachment.original_filename ?? attachment.document_number ?? "-")}</TableCell><TableCell>{Boolean(attachment.restricted) ? "Restricted document" : String(attachment.document_type_name ?? "-")}</TableCell><TableCell>{String(attachment.description ?? "-")}</TableCell><TableCell>{String(attachment.attached_at ?? "-")}</TableCell><TableCell className="text-right"><RowActionButton intent="delete" size="sm" title="Detach" onClick={() => void detach(String(attachment.id))}>Detach</RowActionButton></TableCell></TableRow>)}</TableBody></Table></ReadDialog>;
 }
