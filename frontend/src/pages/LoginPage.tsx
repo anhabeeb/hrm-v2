@@ -2,6 +2,7 @@ import { LogIn } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAlert } from "../components/alerts/useAlert";
+import { LoginBrandPanel } from "../components/brand/LoginBrandPanel";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -68,40 +69,46 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm rounded-lg border bg-white p-6 shadow-panel">
-        <div className="mb-6">
-          <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <LogIn className="h-5 w-5" />
+    <main className="min-h-screen bg-background">
+      <div className="mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-center gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_1px_minmax(420px,520px)] lg:gap-10 lg:px-10 lg:py-0">
+        <LoginBrandPanel />
+        <div className="hidden h-[min(560px,72vh)] w-px bg-slate-200 lg:block" aria-hidden="true" />
+        <section className="flex w-full justify-center px-2 py-4 sm:px-6 lg:px-0" aria-label="Sign in form">
+          <div className="w-full max-w-sm rounded-lg border bg-white p-6 shadow-panel">
+            <div className="mb-6">
+              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <LogIn className="h-5 w-5" />
+              </div>
+              <h1 className="text-xl font-semibold">{APP_BRANDING.loginTitle}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">{APP_BRANDING.loginSubtitle}</p>
+            </div>
+            <form className="space-y-4" onSubmit={handleSubmit}>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" aria-invalid={Boolean(emailError) || undefined} />
+                {emailError ? <p className="text-xs text-red-700">{emailError}</p> : null}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  type="password"
+                  autoComplete="current-password"
+                  aria-invalid={Boolean(passwordError) || undefined}
+                />
+                {passwordError ? <p className="text-xs text-red-700">{passwordError}</p> : null}
+              </div>
+              {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+              <Button type="submit" className="w-full" disabled={submitting} loading={submitting} loadingLabel="Signing in">
+                Sign in
+              </Button>
+            </form>
           </div>
-          <h1 className="text-xl font-semibold">{APP_BRANDING.loginTitle}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{APP_BRANDING.loginSubtitle}</p>
-        </div>
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" aria-invalid={Boolean(emailError) || undefined} />
-            {emailError ? <p className="text-xs text-red-700">{emailError}</p> : null}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              type="password"
-              autoComplete="current-password"
-              aria-invalid={Boolean(passwordError) || undefined}
-            />
-            {passwordError ? <p className="text-xs text-red-700">{passwordError}</p> : null}
-          </div>
-          {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-          <Button type="submit" className="w-full" disabled={submitting} loading={submitting} loadingLabel="Signing in">
-            Sign in
-          </Button>
-        </form>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
 
