@@ -20,6 +20,10 @@ function check(condition, message) {
   if (!condition) failures.push(message);
 }
 
+function countOccurrences(source, marker) {
+  return source.split(marker).length - 1;
+}
+
 function has(relativePath, marker, message) {
   if (!exists(relativePath)) {
     failures.push(`${relativePath}: missing file`);
@@ -70,7 +74,8 @@ if (exists(cafeLogoPath)) {
   check(fs.statSync(filePath(cafeLogoPath)).size > 30000, "Cafe Asiana logo asset looks too small or incomplete.");
 }
 
-const appPalette = ["#0F172A", "#12324F", "#0F766E", "#14B8A6", "#06B6D4"];
+const appPalette = ["#0F172A", "#12324F", "#0F766E", "#14B8A6", "#0891B2"];
+const rejectedLogoColors = ["#06B6D4", "#22D3EE", "#22C55E", "#10B981", "#84CC16"];
 
 if (exists(animationPath)) {
   const animation = read(animationPath);
@@ -80,10 +85,15 @@ if (exists(animationPath)) {
   check(animation.includes('filter="url(#appPaletteColorMatch)"'), "animated logo artwork must use the app palette color-match filter.");
   check(animation.includes('id="appPaletteMarker"'), "animated logo must include an app palette marker for review.");
   appPalette.forEach((color) => check(animation.includes(color), `animated logo missing app palette color ${color}.`));
-  check(!animation.includes("#22D3EE"), "animated logo should not retain the old bright cyan glow color.");
+  rejectedLogoColors.forEach((color) => check(!animation.includes(color), `animated logo must not retain rejected bright/green-heavy color ${color}.`));
   check(!animation.includes("0.10 0.18 0.04"), "animated logo must not retain the previous teal-heavy color matrix.");
-  check(animation.includes('flood-opacity="0.12"'), "animated logo glow should use the softer refined opacity.");
-  check(animation.includes('values="0.12;0.28;0.12"'), "animated logo glow animation should use the refined controlled pulse.");
+  check(!animation.includes("0.08 0.10 0.05"), "animated logo must not retain the previous still-too-bright color matrix.");
+  check(animation.includes("0.04 0.06 0.03"), "animated logo must use the darker premium color matrix.");
+  check(animation.includes('flood-color="#0891B2"'), "animated logo glow should use controlled cyan, not bright cyan.");
+  check(animation.includes('flood-opacity="0.08"'), "animated logo glow should use the softer refined opacity.");
+  check(animation.includes('values="0.08;0.18;0.08"'), "animated logo glow animation should use the refined controlled pulse.");
+  check(countOccurrences(animation, "#0891B2") <= 2, "controlled cyan must remain a small accent in the animated logo.");
+  check(countOccurrences(animation, "#0F172A") + countOccurrences(animation, "#12324F") >= 2, "animated logo must be anchored by deep slate/navy colors.");
 }
 
 if (exists(faviconPath)) {
@@ -93,7 +103,11 @@ if (exists(faviconPath)) {
   check(favicon.includes('filter="url(#appPaletteColorMatch)"'), "favicon artwork must use the app palette color-match filter.");
   check(favicon.includes('id="appPaletteMarker"'), "favicon must include an app palette marker for review.");
   appPalette.forEach((color) => check(favicon.includes(color), `favicon missing app palette color ${color}.`));
+  rejectedLogoColors.forEach((color) => check(!favicon.includes(color), `favicon must not retain rejected bright/green-heavy color ${color}.`));
   check(!favicon.includes("0.10 0.18 0.04"), "favicon must not retain the previous teal-heavy color matrix.");
+  check(!favicon.includes("0.08 0.10 0.05"), "favicon must not retain the previous still-too-bright color matrix.");
+  check(favicon.includes("0.04 0.06 0.03"), "favicon must use the darker premium color matrix.");
+  check(countOccurrences(favicon, "#0891B2") <= 1, "controlled cyan must remain a small accent in the favicon.");
 }
 
 has("frontend/index.html", '<link rel="icon" type="image/svg+xml" href="/brand/omnicore-favicon.svg" />', "SVG favicon link missing.");
@@ -121,7 +135,7 @@ has(brandPanelPath, "lg:max-w-[560px]", "left-side animated logo must be enlarge
 has(brandPanelPath, "xl:max-w-[600px]", "left-side animated logo must scale up on wide desktop.");
 has(brandPanelPath, "sm:max-w-[420px]", "left-side animated logo must be sized for tablet.");
 has(brandPanelPath, "max-w-[300px]", "left-side animated logo must remain usable on mobile.");
-has(brandPanelPath, "lg:min-h-[560px]", "left-side brand panel must have the larger balanced desktop presence.");
+has(brandPanelPath, "lg:min-h-[620px]", "left-side brand panel must have the larger balanced desktop presence.");
 has(brandPanelPath, "APP_BRANDING.appName", "OmniCore - HR app name must appear under the animation.");
 has(brandPanelPath, "text-slate-900", "left-side app name must use a deep slate enterprise color.");
 hasNo(brandPanelPath, "APP_BRANDING.loginSubtitle", "left-side animation description must be removed.");
@@ -139,11 +153,15 @@ has(loginPagePath, "max-w-[640px]", "right-side login card must match the left-s
 has(loginPagePath, "rounded-2xl", "right-side login card must use the same rounded container style as the left panel.");
 has(loginPagePath, "border border-slate-200", "right-side login card must use the same border style as the left panel.");
 has(loginPagePath, "shadow-panel", "right-side login card must use the same panel shadow as the left panel.");
-has(loginPagePath, "lg:min-h-[560px]", "right-side login card must match the left panel desktop height.");
+has(loginPagePath, "lg:min-h-[620px]", "right-side login card must match the left panel desktop height.");
 has(loginPagePath, "/brand/cafe-asiana-logo.jpg", "right-side login panel must show Cafe Asiana logo.");
 has(loginPagePath, 'alt="Cafe Asiana logo"', "Cafe Asiana logo alt text missing.");
-has(loginPagePath, "lg:max-h-32", "Cafe Asiana logo must be larger on desktop.");
-has(loginPagePath, "lg:max-w-[360px]", "Cafe Asiana logo must have the larger desktop width cap.");
+has(loginPagePath, "max-h-28", "Cafe Asiana logo must be larger on mobile.");
+has(loginPagePath, "max-w-[320px]", "Cafe Asiana logo must have a larger mobile width cap.");
+has(loginPagePath, "sm:max-h-36", "Cafe Asiana logo must be larger on tablet.");
+has(loginPagePath, "sm:max-w-[400px]", "Cafe Asiana logo must have a larger tablet width cap.");
+has(loginPagePath, "lg:max-h-44", "Cafe Asiana logo must be significantly larger on desktop.");
+has(loginPagePath, "lg:max-w-[460px]", "Cafe Asiana logo must have the larger desktop width cap.");
 has(loginPagePath, "Welcome to Cafe Asiana&apos;s HRM System", "right-side login panel must show the exact Cafe Asiana welcome message.");
 has(loginPagePath, "alerts.showValidationError", "login validation alert integration regressed.");
 has(loginPagePath, "alerts.showSuccess", "login success alert integration regressed.");

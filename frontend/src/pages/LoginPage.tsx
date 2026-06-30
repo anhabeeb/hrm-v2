@@ -73,13 +73,13 @@ export function LoginPage() {
         <LoginBrandPanel />
         <div className="hidden h-[min(560px,72vh)] w-px bg-slate-200 lg:block" aria-hidden="true" />
         <section className="flex w-full justify-center px-4 py-6 sm:px-6 lg:px-8" aria-label="Sign in form">
-          <div className="flex w-full max-w-[640px] items-center justify-center rounded-2xl border border-slate-200 bg-white px-8 py-10 shadow-panel sm:px-10 lg:min-h-[560px]">
-            <div className="w-full max-w-sm">
-              <div className="mb-8 flex flex-col items-center text-center">
+          <div className="flex w-full max-w-[640px] items-center justify-center rounded-2xl border border-slate-200 bg-white px-8 py-10 shadow-panel sm:px-10 lg:min-h-[620px]">
+            <div className="w-full max-w-md">
+              <div className="mb-10 flex flex-col items-center text-center">
                 <img
                   src="/brand/cafe-asiana-logo.jpg"
                   alt="Cafe Asiana logo"
-                  className="mb-5 h-auto max-h-24 w-auto max-w-[260px] object-contain sm:max-h-28 sm:max-w-[320px] lg:max-h-32 lg:max-w-[360px]"
+                  className="mb-6 h-auto max-h-28 w-auto max-w-[320px] object-contain sm:max-h-36 sm:max-w-[400px] lg:max-h-44 lg:max-w-[460px]"
                   draggable={false}
                 />
                 <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">Welcome to Cafe Asiana&apos;s HRM System</h1>
