@@ -33,7 +33,7 @@ employeeNoteCategoryRoutes.use("*", requireAuth);
 employeeNoteRoutes.use("*", requireAuth);
 auditRoutes.use("*", requireAuth);
 assetRoutes.use("*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
-employeeAssetRoutes.use("*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
+employeeAssetRoutes.use("/:employeeId/assets/*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
 
 function has(c: Context<AppBindings>, permission: string) {
   return c.get("currentUser").permissions.includes(permission);

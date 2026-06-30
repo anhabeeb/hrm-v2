@@ -1,5 +1,5 @@
 import { Archive, ArrowLeft, CheckCircle2, Pencil } from "lucide-react";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeAttendancePanel } from "../components/attendance/EmployeeAttendancePanel";
@@ -69,6 +69,11 @@ export function EmployeeProfilePage() {
   const [tabLoading, setTabLoading] = useState<Partial<Record<ProfileTab, boolean>>>({});
 
   const permissions = new Set(user?.permissions ?? []);
+  const assetsUniformsVisible = user?.module_visibility?.assets_uniforms !== false;
+  const visibleProfileTabs = useMemo(
+    () => assetsUniformsVisible ? [...profileTabs] : profileTabs.filter((tab) => tab !== "Assets & Uniforms"),
+    [assetsUniformsVisible]
+  );
   const canView = permissions.has("employees.view");
   const canArchive = permissions.has("employees.archive");
   const canStatus = permissions.has("employees.status.manage");
@@ -80,7 +85,7 @@ export function EmployeeProfilePage() {
   const canContracts = permissions.has("employees.contracts.view") || permissions.has("contracts.view");
   const canPayroll = permissions.has("employees.payroll.view") || permissions.has("payroll.view");
   const canFinalSettlement = permissions.has("employees.final_settlement.view") || permissions.has("final_settlement.view") || permissions.has("final_settlement.cases.view");
-  const canAssets = permissions.has("employees.assets.view") || permissions.has("assets.view");
+  const canAssets = assetsUniformsVisible && (permissions.has("employees.assets.view") || permissions.has("assets.view"));
   const canNotes = permissions.has("employee_notes.view");
   const canAudit = permissions.has("employees.audit.view") || permissions.has("audit.view");
   const canViewUserAccess = permissions.has("employee.user_account.view") || permissions.has("users.view") || permissions.has("role_mappings.view");
@@ -163,6 +168,10 @@ export function EmployeeProfilePage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!visibleProfileTabs.includes(activeTab)) setActiveTab("Overview");
+  }, [activeTab, visibleProfileTabs]);
 
   useEffect(() => {
     setLoadedTabs({});
@@ -323,7 +332,7 @@ export function EmployeeProfilePage() {
       <Panel className="overflow-hidden">
         <div className="border-b p-2">
           <ResponsiveTabs
-            items={profileTabs.map((tab) => ({ key: tab, label: tab }))}
+            items={visibleProfileTabs.map((tab) => ({ key: tab, label: tab }))}
             active={activeTab}
             onChange={(tab) => setActiveTab(tab as ProfileTab)}
           />

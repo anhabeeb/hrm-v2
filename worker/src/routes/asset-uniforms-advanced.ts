@@ -57,8 +57,12 @@ uniformRoutes.use("*", async (c, next) => {
   }
   return requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms")(c, next);
 });
-employeeAssetUniformRoutes.use("*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
-selfServiceAssetUniformRoutes.use("*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
+employeeAssetUniformRoutes.use("/:employeeId/assets/*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
+employeeAssetUniformRoutes.use("/:employeeId/assets-uniforms/*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
+employeeAssetUniformRoutes.use("/:employeeId/uniforms", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
+employeeAssetUniformRoutes.use("/:employeeId/uniforms/*", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
+selfServiceAssetUniformRoutes.use("/assets", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
+selfServiceAssetUniformRoutes.use("/uniforms", requireOperationalModuleMiddleware("assets_uniforms", "Assets and uniforms"));
 
 function text(value: unknown) {
   return readString(value);

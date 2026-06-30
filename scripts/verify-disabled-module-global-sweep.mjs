@@ -180,9 +180,9 @@ const operationalRouteChecks = [
     file: "worker/src/routes/assets-notes-audit.ts",
     markers: [
       /assetRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("assets_uniforms"/,
-      /employeeAssetRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("assets_uniforms"/
+      /employeeAssetRoutes\.use\("\/:employeeId\/assets\/\*",\s*requireOperationalModuleMiddleware\("assets_uniforms"/
     ],
-    area: "asset routes use central disabled-module enforcement"
+    area: "asset routes use central disabled-module enforcement without blocking employee core APIs"
   },
   {
     file: "worker/src/routes/asset-uniforms-advanced.ts",
@@ -190,12 +190,15 @@ const operationalRouteChecks = [
       /assetUniformAdvancedRoutes\.use\("\*",\s*async/,
       /uniformRoutes\.use\("\*",\s*async/,
       /requireOperationalModuleMiddleware\("assets_uniforms"/,
-      /employeeAssetUniformRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("assets_uniforms"/,
-      /selfServiceAssetUniformRoutes\.use\("\*",\s*requireOperationalModuleMiddleware\("assets_uniforms"/,
+      /employeeAssetUniformRoutes\.use\("\/:employeeId\/assets\/\*"/,
+      /employeeAssetUniformRoutes\.use\("\/:employeeId\/assets-uniforms\/\*"/,
+      /employeeAssetUniformRoutes\.use\("\/:employeeId\/uniforms"/,
+      /selfServiceAssetUniformRoutes\.use\("\/assets"/,
+      /selfServiceAssetUniformRoutes\.use\("\/uniforms"/,
       /disabledSubmoduleResponse\(c,\s*"assets_uniforms",\s*"assets"/,
       /disabledSubmoduleResponse\(c,\s*"assets_uniforms",\s*"uniforms"/
     ],
-    area: "advanced asset and uniform routes use central module/submodule enforcement"
+    area: "advanced asset and uniform routes use central module/submodule enforcement without blocking employee/self-service core APIs"
   },
   {
     file: "worker/src/routes/contracts.ts",
@@ -538,6 +541,7 @@ hasNo("frontend/src/pages/PayrollAdminPages.tsx", /<ModuleToggleHeader\b/, "indi
 
 [
   "verify:onboarding-dashboard-kpis",
+  "verify:employee-core-not-blocked-by-assets",
   "verify:dependency-security-cleanup",
   "verify:professional-app-loader",
   "verify:global-popup-alerts",

@@ -41,6 +41,7 @@ function hasErrors(issues: ValidationIssue[]) {
 export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
+  const assetsUniformsVisible = user?.module_visibility?.assets_uniforms !== false;
   const canIssue = permissions.has("assets.issue");
   const canReturn = permissions.has("assets.return");
   const canDamage = permissions.has("assets.damage");
@@ -73,7 +74,16 @@ export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
   }), [uniforms]);
 
   async function load() {
-    if (!token) return;
+    if (!token || !assetsUniformsVisible) {
+      setAssignments([]);
+      setUniforms([]);
+      setHistory([]);
+      setClearance(null);
+      setItems([]);
+      setCategories([]);
+      setError(null);
+      return;
+    }
     setError(null);
     try {
       const [summary, itemRows, categoryRows] = await Promise.all([
@@ -92,7 +102,15 @@ export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
     }
   }
 
-  useEffect(() => { void load(); }, [token, employee.id]);
+  useEffect(() => { void load(); }, [token, employee.id, assetsUniformsVisible]);
+
+  if (!assetsUniformsVisible) {
+    return (
+      <Panel className="p-4">
+        <EmptyState title="Assets & uniforms disabled" description="This optional employee section is disabled in Settings." />
+      </Panel>
+    );
+  }
 
   return (
     <div className="space-y-4">
