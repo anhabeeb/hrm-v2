@@ -74,12 +74,16 @@ has("frontend/src/config/branding.ts", 'appName: "OmniCore - HR"', "appName must
 has("frontend/src/config/branding.ts", 'appShortName: "OmniCore"', "appShortName must be OmniCore.");
 has("frontend/src/config/branding.ts", 'appModuleName: "HR"', "appModuleName must remain HR.");
 has("frontend/src/config/branding.ts", "Secure workforce, payroll, attendance, and employee operations platform.", "login subtitle copy missing.");
+has("frontend/src/config/branding.ts", 'appLogoAnimation: "/brand/omnicore-logo-animation.svg"', "branding config must expose the animated app logo.");
+has("frontend/src/config/branding.ts", 'appLogoIcon: "/brand/omnicore-favicon.svg"', "branding config must expose the app icon logo.");
+has("frontend/src/config/branding.ts", 'appLogoStatic: "/brand/omnicore-favicon.svg"', "branding config must expose the static app logo fallback.");
 has("frontend/src/config/branding.ts", 'browserTitle: "OmniCore - HR"', "browser title branding missing.");
 
 has("frontend/index.html", "<title>OmniCore - HR</title>", "browser title must use OmniCore - HR.");
 has("frontend/index.html", 'name="application-name" content="OmniCore - HR"', "application-name metadata missing.");
 has("frontend/index.html", "Enterprise HR, payroll, attendance, onboarding, and workforce operations platform.", "browser meta description missing.");
 
+has("frontend/src/components/brand/LoginBrandPanel.tsx", "APP_BRANDING.appLogoAnimation", "left-side login brand panel must use the animated logo path from branding config.");
 has("frontend/src/components/brand/LoginBrandPanel.tsx", "APP_BRANDING.appName", "left-side login brand panel must show the OmniCore - HR app name from branding config.");
 hasNo("frontend/src/components/brand/LoginBrandPanel.tsx", "APP_BRANDING.loginSubtitle", "left-side login brand panel must not show descriptive product copy under the animation.");
 has("frontend/src/pages/LoginPage.tsx", "/brand/cafe-asiana-logo.jpg", "right-side login panel must show Cafe Asiana logo.");
@@ -92,7 +96,8 @@ hasNo("frontend/src/pages/LoginPage.tsx", "HRM v2", "login page must not show le
 has("frontend/src/layouts/AppShell.tsx", "APP_BRANDING.appName", "sidebar expanded brand must use branding config.");
 has("frontend/src/layouts/AppShell.tsx", "APP_BRANDING.appShortName", "header breadcrumb must use branding short name.");
 has("frontend/src/layouts/AppShell.tsx", "APP_BRANDING.tagline", "sidebar tagline must use branding config.");
-has("frontend/src/layouts/AppShell.tsx", "OC", "collapsed sidebar initials must be clean branded initials.");
+has("frontend/src/layouts/AppShell.tsx", "APP_BRANDING.appLogoIcon", "sidebar brand mark must use the configured app logo icon.");
+hasNo("frontend/src/layouts/AppShell.tsx", ">OC<", "sidebar brand mark must not use text initials.");
 has("frontend/src/layouts/AppShell.tsx", "Command Center", "Command Center top-level navigation must remain.");
 has("frontend/src/layouts/AppShell.tsx", "OmniCore Guide", "help navigation must use OmniCore branding.");
 hasNo("frontend/src/layouts/AppShell.tsx", "HRM v2", "app shell must not show legacy product name.");
@@ -100,7 +105,10 @@ hasNo("frontend/src/layouts/AppShell.tsx", "HRM Guide", "help navigation must no
 
 has("frontend/src/components/loading/AppLoader.tsx", "APP_BRANDING.loaderTitle", "AppLoader must use branding config.");
 has("frontend/src/components/loading/AppLoader.tsx", "APP_BRANDING.appName", "AppLoader visible brand must use branding config.");
+has("frontend/src/components/loading/AppLoader.tsx", "APP_BRANDING.appLogoIcon", "AppLoader brand mark must use the configured app logo icon.");
+hasNo("frontend/src/components/loading/AppLoader.tsx", "ShieldCheck", "AppLoader must not use a generic shield as the brand mark.");
 has("frontend/src/components/loading/PageLoader.tsx", "APP_BRANDING.appName", "PageLoader copy must use branding config.");
+has("frontend/src/components/loading/PageLoader.tsx", "APP_BRANDING.appLogoIcon", "PageLoader mark must use the configured app logo icon.");
 hasNo("frontend/src/components/loading/AppLoader.tsx", "HRM v2", "AppLoader must not show legacy product name.");
 
 has("frontend/src/components/global/GlobalSearch.tsx", "APP_BRANDING.appName", "Global Search empty-state copy must use branding config.");

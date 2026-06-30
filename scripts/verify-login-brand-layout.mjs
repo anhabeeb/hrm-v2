@@ -70,7 +70,7 @@ if (exists(cafeLogoPath)) {
   check(fs.statSync(filePath(cafeLogoPath)).size > 30000, "Cafe Asiana logo asset looks too small or incomplete.");
 }
 
-const appPalette = ["#12324F", "#0F766E", "#06B6D4", "#14B8A6"];
+const appPalette = ["#0F172A", "#12324F", "#0F766E", "#14B8A6", "#06B6D4"];
 
 if (exists(animationPath)) {
   const animation = read(animationPath);
@@ -81,6 +81,9 @@ if (exists(animationPath)) {
   check(animation.includes('id="appPaletteMarker"'), "animated logo must include an app palette marker for review.");
   appPalette.forEach((color) => check(animation.includes(color), `animated logo missing app palette color ${color}.`));
   check(!animation.includes("#22D3EE"), "animated logo should not retain the old bright cyan glow color.");
+  check(!animation.includes("0.10 0.18 0.04"), "animated logo must not retain the previous teal-heavy color matrix.");
+  check(animation.includes('flood-opacity="0.12"'), "animated logo glow should use the softer refined opacity.");
+  check(animation.includes('values="0.12;0.28;0.12"'), "animated logo glow animation should use the refined controlled pulse.");
 }
 
 if (exists(faviconPath)) {
@@ -90,6 +93,7 @@ if (exists(faviconPath)) {
   check(favicon.includes('filter="url(#appPaletteColorMatch)"'), "favicon artwork must use the app palette color-match filter.");
   check(favicon.includes('id="appPaletteMarker"'), "favicon must include an app palette marker for review.");
   appPalette.forEach((color) => check(favicon.includes(color), `favicon missing app palette color ${color}.`));
+  check(!favicon.includes("0.10 0.18 0.04"), "favicon must not retain the previous teal-heavy color matrix.");
 }
 
 has("frontend/index.html", '<link rel="icon" type="image/svg+xml" href="/brand/omnicore-favicon.svg" />', "SVG favicon link missing.");
@@ -102,14 +106,22 @@ has("frontend/public/_headers", "/brand/*", "brand asset cache header missing.")
 has("frontend/public/_headers", /\/brand\/\*\s+Cache-Control:\s*public,\s*max-age=31536000,\s*immutable\s+X-Content-Type-Options:\s*nosniff/s, "brand assets must use immutable cache and nosniff.");
 has("frontend/public/_redirects", "/brand/* /brand/:splat 200", "brand asset redirect must prevent SVG/image fallback to index.html.");
 
+has("frontend/src/config/branding.ts", 'appLogoAnimation: "/brand/omnicore-logo-animation.svg"', "branding config must expose animated logo path.");
+has("frontend/src/config/branding.ts", 'appLogoIcon: "/brand/omnicore-favicon.svg"', "branding config must expose app icon logo path.");
+has("frontend/src/config/branding.ts", 'appLogoStatic: "/brand/omnicore-favicon.svg"', "branding config must expose static fallback logo path.");
+
 const brandPanelPath = "frontend/src/components/brand/LoginBrandPanel.tsx";
-has(brandPanelPath, "/brand/omnicore-logo-animation.svg", "brand panel must use the public animated logo path.");
+has(brandPanelPath, "APP_BRANDING.appLogoAnimation", "brand panel must use the configured animated logo path.");
 has(brandPanelPath, 'alt="OmniCore - HR logo"', "animated logo alt text missing.");
 has(brandPanelPath, "rounded-2xl", "animated logo must be inside a separate rounded container.");
 has(brandPanelPath, "shadow-panel", "animated logo container should use accepted panel styling.");
 has(brandPanelPath, "object-contain", "animated logo must preserve aspect ratio.");
-has(brandPanelPath, "lg:max-w-[500px]", "left-side animated logo must be enlarged on desktop.");
-has(brandPanelPath, "lg:min-h-[500px]", "left-side brand panel must have a larger desktop presence.");
+has(brandPanelPath, "max-w-[640px]", "left-side brand panel must use the balanced container width.");
+has(brandPanelPath, "lg:max-w-[560px]", "left-side animated logo must be enlarged on desktop.");
+has(brandPanelPath, "xl:max-w-[600px]", "left-side animated logo must scale up on wide desktop.");
+has(brandPanelPath, "sm:max-w-[420px]", "left-side animated logo must be sized for tablet.");
+has(brandPanelPath, "max-w-[300px]", "left-side animated logo must remain usable on mobile.");
+has(brandPanelPath, "lg:min-h-[560px]", "left-side brand panel must have the larger balanced desktop presence.");
 has(brandPanelPath, "APP_BRANDING.appName", "OmniCore - HR app name must appear under the animation.");
 has(brandPanelPath, "text-slate-900", "left-side app name must use a deep slate enterprise color.");
 hasNo(brandPanelPath, "APP_BRANDING.loginSubtitle", "left-side animation description must be removed.");
@@ -117,14 +129,21 @@ hasNo(brandPanelPath, "Enterprise HR", "left-side descriptive copy must not appe
 
 const loginPagePath = "frontend/src/pages/LoginPage.tsx";
 has(loginPagePath, "LoginBrandPanel", "login page must render LoginBrandPanel.");
-has(loginPagePath, "lg:grid-cols-[minmax(0,1fr)_1px_minmax(420px,520px)]", "desktop login layout must be left logo, separator, right form.");
+has(loginPagePath, "lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]", "desktop login layout must use balanced left/right containers with a separator.");
 has(loginPagePath, 'aria-hidden="true"', "decorative center separator must be aria-hidden.");
 has(loginPagePath, "h-[min(560px,72vh)] w-px bg-slate-200", "desktop vertical separator missing.");
 has(loginPagePath, 'aria-label="Sign in form"', "right-side sign-in form section should be labelled.");
 has(loginPagePath, "grid-cols-1", "mobile layout must stack.");
 has(loginPagePath, "lg:grid-cols", "desktop layout must switch to columns.");
+has(loginPagePath, "max-w-[640px]", "right-side login card must match the left-side balanced container width.");
+has(loginPagePath, "rounded-2xl", "right-side login card must use the same rounded container style as the left panel.");
+has(loginPagePath, "border border-slate-200", "right-side login card must use the same border style as the left panel.");
+has(loginPagePath, "shadow-panel", "right-side login card must use the same panel shadow as the left panel.");
+has(loginPagePath, "lg:min-h-[560px]", "right-side login card must match the left panel desktop height.");
 has(loginPagePath, "/brand/cafe-asiana-logo.jpg", "right-side login panel must show Cafe Asiana logo.");
 has(loginPagePath, 'alt="Cafe Asiana logo"', "Cafe Asiana logo alt text missing.");
+has(loginPagePath, "lg:max-h-32", "Cafe Asiana logo must be larger on desktop.");
+has(loginPagePath, "lg:max-w-[360px]", "Cafe Asiana logo must have the larger desktop width cap.");
 has(loginPagePath, "Welcome to Cafe Asiana&apos;s HRM System", "right-side login panel must show the exact Cafe Asiana welcome message.");
 has(loginPagePath, "alerts.showValidationError", "login validation alert integration regressed.");
 has(loginPagePath, "alerts.showSuccess", "login success alert integration regressed.");
@@ -145,6 +164,13 @@ if (exists(loginPagePath)) {
   check(rightPanel.indexOf("/brand/cafe-asiana-logo.jpg") < rightPanel.indexOf("Welcome to Cafe Asiana&apos;s HRM System"), "Cafe Asiana logo must appear above the welcome message.");
   check(rightPanel.indexOf("Welcome to Cafe Asiana&apos;s HRM System") < rightPanel.indexOf("<form"), "Cafe Asiana welcome message must appear above the login form.");
 }
+
+has("frontend/src/layouts/AppShell.tsx", "APP_BRANDING.appLogoIcon", "AppShell/sidebar must use the configured app logo icon.");
+hasNo("frontend/src/layouts/AppShell.tsx", ">OC<", "AppShell/sidebar must not use text initials as the logo.");
+has("frontend/src/components/loading/AppLoader.tsx", "APP_BRANDING.appLogoIcon", "AppLoader must use the configured app logo icon.");
+hasNo("frontend/src/components/loading/AppLoader.tsx", "ShieldCheck", "AppLoader must not use a generic shield as the brand mark.");
+has("frontend/src/components/loading/PageLoader.tsx", "APP_BRANDING.appLogoIcon", "PageLoader must use the configured app logo icon.");
+has("frontend/src/components/loading/PageLoader.tsx", "InlineSpinner", "PageLoader must retain a visible loading spinner.");
 
 if (exists("frontend/dist/index.html")) {
   has("frontend/dist/index.html", "/brand/omnicore-favicon.svg", "built index must reference SVG favicon.");

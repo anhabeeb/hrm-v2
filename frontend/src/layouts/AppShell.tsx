@@ -211,8 +211,8 @@ export function AppShell() {
         >
           <div className="flex h-full min-h-0 w-full flex-col">
             <div className="flex h-16 shrink-0 items-center border-b px-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm">
-                OC
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-white shadow-sm">
+                <img src={APP_BRANDING.appLogoIcon} alt={`${APP_BRANDING.appName} icon`} className="h-8 w-8 object-contain" draggable={false} />
               </div>
               {!collapsed ? (
                 <div className="ml-3 min-w-0">

@@ -17,8 +17,9 @@ export function PageLoader({
       aria-live="polite"
     >
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-primary/5 text-primary">
-          <InlineSpinner />
+        <div className="relative mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-primary/15 bg-white shadow-sm">
+          <img src={APP_BRANDING.appLogoIcon} alt="" className="h-7 w-7 object-contain" aria-hidden="true" draggable={false} />
+          <InlineSpinner className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full bg-white p-0.5 text-primary" />
         </div>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-slate-950">{title}</p>
