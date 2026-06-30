@@ -1,4 +1,3 @@
-import { LogIn } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAlert } from "../components/alerts/useAlert";
@@ -75,12 +74,14 @@ export function LoginPage() {
         <div className="hidden h-[min(560px,72vh)] w-px bg-slate-200 lg:block" aria-hidden="true" />
         <section className="flex w-full justify-center px-2 py-4 sm:px-6 lg:px-0" aria-label="Sign in form">
           <div className="w-full max-w-sm rounded-lg border bg-white p-6 shadow-panel">
-            <div className="mb-6">
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                <LogIn className="h-5 w-5" />
-              </div>
-              <h1 className="text-xl font-semibold">{APP_BRANDING.loginTitle}</h1>
-              <p className="mt-1 text-sm text-muted-foreground">{APP_BRANDING.loginSubtitle}</p>
+            <div className="mb-6 flex flex-col items-center text-center">
+              <img
+                src="/brand/cafe-asiana-logo.jpg"
+                alt="Cafe Asiana logo"
+                className="mb-4 h-auto max-h-24 w-auto max-w-[220px] object-contain"
+                draggable={false}
+              />
+              <h1 className="text-lg font-semibold text-slate-900">Welcome to Cafe Asiana&apos;s HRM System</h1>
             </div>
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-2">

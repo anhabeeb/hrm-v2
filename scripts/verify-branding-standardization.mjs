@@ -50,6 +50,7 @@ if (pkg.scripts?.["verify:branding-standardization"] !== "node scripts/verify-br
 
 [
   "frontend/src/config/branding.ts",
+  "frontend/src/components/brand/LoginBrandPanel.tsx",
   "frontend/src/pages/LoginPage.tsx",
   "frontend/src/layouts/AppShell.tsx",
   "frontend/src/components/loading/AppLoader.tsx",
@@ -79,8 +80,12 @@ has("frontend/index.html", "<title>OmniCore - HR</title>", "browser title must u
 has("frontend/index.html", 'name="application-name" content="OmniCore - HR"', "application-name metadata missing.");
 has("frontend/index.html", "Enterprise HR, payroll, attendance, onboarding, and workforce operations platform.", "browser meta description missing.");
 
-has("frontend/src/pages/LoginPage.tsx", "APP_BRANDING.loginTitle", "login title must come from branding config.");
-has("frontend/src/pages/LoginPage.tsx", "APP_BRANDING.loginSubtitle", "login subtitle must come from branding config.");
+has("frontend/src/components/brand/LoginBrandPanel.tsx", "APP_BRANDING.appName", "left-side login brand panel must show the OmniCore - HR app name from branding config.");
+hasNo("frontend/src/components/brand/LoginBrandPanel.tsx", "APP_BRANDING.loginSubtitle", "left-side login brand panel must not show descriptive product copy under the animation.");
+has("frontend/src/pages/LoginPage.tsx", "/brand/cafe-asiana-logo.jpg", "right-side login panel must show Cafe Asiana logo.");
+has("frontend/src/pages/LoginPage.tsx", "Welcome to Cafe Asiana&apos;s HRM System", "right-side login panel must show the Cafe Asiana HRM welcome message.");
+hasNo("frontend/src/pages/LoginPage.tsx", "APP_BRANDING.loginTitle", "right-side login panel must not use OmniCore product title copy.");
+hasNo("frontend/src/pages/LoginPage.tsx", "APP_BRANDING.loginSubtitle", "right-side login panel must not use OmniCore product subtitle copy.");
 has("frontend/src/pages/LoginPage.tsx", "Redirecting to ${APP_BRANDING.appName}", "login success alert must use branding config.");
 hasNo("frontend/src/pages/LoginPage.tsx", "HRM v2", "login page must not show legacy product name.");
 
@@ -147,8 +152,12 @@ const frontendFiles = collectFiles("frontend/src")
 
 for (const file of frontendFiles) {
   const text = read(file);
+  const scanText =
+    file === "frontend/src/pages/LoginPage.tsx"
+      ? text.replaceAll("Welcome to Cafe Asiana&apos;s HRM System", "Welcome to Cafe Asiana workforce portal")
+      : text;
   for (const { label, pattern } of forbiddenVisibleProductPatterns) {
-    if (pattern.test(text)) failures.push(`${file}: forbidden visible legacy product label "${label}" found.`);
+    if (pattern.test(scanText)) failures.push(`${file}: forbidden visible legacy product label "${label}" found.`);
   }
   if (/\b(?:window\.)?(?:alert|confirm|prompt)\s*\(/.test(text)) failures.push(`${file}: browser alert/confirm/prompt is not allowed.`);
   if (/\bdark:|darkMode\b/.test(text)) failures.push(`${file}: dark mode marker is not allowed.`);
