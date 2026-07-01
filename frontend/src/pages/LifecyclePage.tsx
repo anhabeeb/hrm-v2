@@ -1251,6 +1251,19 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
       alerts.showApiError(err, "Unable to save onboarding workspace section.");
     }
   }
+  async function saveDocumentBatch(form: FormData) {
+    if (!token) return;
+    try {
+      const result = await api.uploadOnboardingWorkspaceDocumentBatch(token, caseId, form);
+      const uploaded = Number(result.uploaded_count ?? 0);
+      alerts.showSuccess(uploaded === 1 ? "1 document uploaded." : `${uploaded} documents uploaded.`);
+      await reload();
+      return result;
+    } catch (err) {
+      alerts.showApiError(err, "Document batch upload failed.");
+      throw err;
+    }
+  }
   async function runWorkspaceAction(action: () => Promise<unknown>, success: string) {
     if (!token) return;
     try {
@@ -1343,7 +1356,7 @@ function OnboardingWorkspace({ workspace, caseId, reload, run, askReason }: { wo
       {activeTab === "Employee Info" ? <EmployeeInfoWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceEmployeeInfo(token!, caseId, input), "Employee information saved.")} /> : null}
       {activeTab === "Contacts" ? <ContactWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceContactInfo(token!, caseId, input), "Contact information saved.")} /> : null}
       {activeTab === "Job Assignment" ? <JobAssignmentWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceJobAssignment(token!, caseId, input), "Job assignment saved.")} /> : null}
-      {activeTab === "Documents" ? <DocumentsWorkspaceForm workspace={workspace} onSave={(form) => save(() => api.uploadOnboardingWorkspaceDocument(token!, caseId, form), "Document uploaded.")} /> : null}
+      {activeTab === "Documents" ? <DocumentsWorkspaceForm workspace={workspace} onSave={saveDocumentBatch} /> : null}
       {activeTab === "Contract" ? <ContractWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceContract(token!, caseId, input), "Contract draft created.")} /> : null}
       {activeTab === "Payroll" ? <PayrollWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspacePayrollProfile(token!, caseId, input), "Payroll profile saved.")} /> : null}
       {activeTab === "Payment & Pension" ? <PaymentPensionWorkspaceForm workspace={workspace} onPaymentSave={(input) => save(() => api.createOnboardingWorkspacePaymentMethod(token!, caseId, input), "Payment method saved.")} onPensionSave={(input) => save(() => api.updateOnboardingWorkspacePensionProfile(token!, caseId, input), "Pension profile saved.")} /> : null}
@@ -1508,22 +1521,110 @@ function JobAssignmentWorkspaceForm({ workspace, onSave }: { workspace: Row; onS
   );
 }
 
-function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (form: FormData) => void }) {
-  if (optionalSectionUnavailable(workspace, "documents")) return <OptionalSectionStatePanel workspace={workspace} sectionKey="documents" fallbackTitle="Documents" />;
+type DocumentBatchRow = {
+  id: string;
+  document_type_id: string;
+  file: File | null;
+  document_number: string;
+  issue_date: string;
+  expiry_date: string;
+  notes: string;
+};
+
+type DocumentBatchRowField = "document_type_id" | "file" | "document_number" | "issue_date" | "expiry_date" | "notes" | "row";
+type DocumentBatchErrorMap = Record<string, Partial<Record<DocumentBatchRowField, string>>>;
+
+function documentBatchRowId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `document-row-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createDocumentBatchRow(): DocumentBatchRow {
+  return {
+    id: documentBatchRowId(),
+    document_type_id: "",
+    file: null,
+    document_number: "",
+    issue_date: "",
+    expiry_date: "",
+    notes: ""
+  };
+}
+
+function splitDocumentTypeSetting(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  const raw = String(value ?? "").trim();
+  if (!raw || raw === "-") return [];
+  if (raw.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map((item) => String(item).trim()).filter(Boolean);
+    } catch {
+      return raw.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return raw.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function documentTypeAllowedMimeTypes(type?: Row) {
+  const configured = splitDocumentTypeSetting(type?.allowed_mime_types);
+  return configured.length ? configured : ["application/pdf", "image/jpeg", "image/png"];
+}
+
+function documentTypeAllowedExtensions(type?: Row) {
+  return splitDocumentTypeSetting(type?.allowed_file_extensions).map((extension) => extension.startsWith(".") ? extension.toLowerCase() : `.${extension.toLowerCase()}`);
+}
+
+function documentTypeMaxFileSizeBytes(type?: Row) {
+  const bytes = Number(type?.max_file_size_bytes);
+  if (Number.isFinite(bytes) && bytes > 0) return bytes;
+  const mb = Number(type?.max_file_size_mb ?? type?.max_size_mb);
+  return (Number.isFinite(mb) && mb > 0 ? mb : 10) * 1024 * 1024;
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} bytes`;
+}
+
+function documentTypeAccept(type?: Row) {
+  return [...documentTypeAllowedMimeTypes(type), ...documentTypeAllowedExtensions(type)].join(",");
+}
+
+function mimeAllowed(file: File, type?: Row) {
+  const allowed = documentTypeAllowedMimeTypes(type);
+  const extensions = documentTypeAllowedExtensions(type);
+  const fileName = file.name.toLowerCase();
+  const extensionMatch = extensions.length > 0 && extensions.some((extension) => fileName.endsWith(extension));
+  if (!file.type) return extensionMatch || allowed.length === 0;
+  const mimeMatch = allowed.some((rule) => {
+    if (rule === "*" || rule === "*/*") return true;
+    if (rule.endsWith("/*")) return file.type.startsWith(rule.slice(0, -1));
+    return file.type === rule;
+  });
+  return mimeMatch || extensionMatch;
+}
+
+function documentTypeFileRuleText(type?: Row) {
+  const mimeTypes = documentTypeAllowedMimeTypes(type).join(", ");
+  const extensions = documentTypeAllowedExtensions(type).join(", ");
+  const allowed = extensions ? `${mimeTypes}; extensions ${extensions}` : mimeTypes;
+  return `Allowed file types: ${allowed || "Default PDF/JPEG/PNG"} / Max file size: ${formatFileSize(documentTypeMaxFileSizeBytes(type))}.`;
+}
+
+function rowFieldError(errors: DocumentBatchErrorMap, rowId: string, field: DocumentBatchRowField) {
+  return errors[rowId]?.[field] ?? "";
+}
+
+function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (form: FormData) => Promise<unknown> }) {
   const refs = asRow(workspace.refs);
   const sections = asRow(workspace.sections);
   const documentTypes = asRows(refs.document_types);
   const documents = asRow(sections.documents);
   const documentWarning = typeof sections.document_type_warning === "string" ? sections.document_type_warning : "";
-  const [documentTypeId, setDocumentTypeId] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [fileError, setFileError] = useState("");
-  const [metadata, setMetadata] = useState({ document_number: "", issue_date: "", expiry_date: "", notes: "" });
-  const selectedType = documentTypes.find((type) => String(type.id) === documentTypeId);
-  const selectedAllowsMultiple = boolValue(selectedType?.allow_multiple_files);
-  const requiredNumber = boolValue(selectedType?.requires_document_number) || boolValue(selectedType?.document_number_required);
-  const requiredIssue = boolValue(selectedType?.requires_issue_date) || boolValue(selectedType?.issue_date_required);
-  const requiredExpiry = boolValue(selectedType?.requires_expiry_date) || boolValue(selectedType?.expiry_required);
+  const [rows, setRows] = useState<DocumentBatchRow[]>(() => [createDocumentBatchRow()]);
+  const [rowErrors, setRowErrors] = useState<DocumentBatchErrorMap>({});
+  const [uploading, setUploading] = useState(false);
   const employee = asRow(workspace.employee);
   const checklistRows = asRows(documents.rows);
   const typeSpecificRows = checklistRows.filter((row) => text(row.matched_employee_type_rule) !== "-");
@@ -1533,16 +1634,45 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     : typeSpecificRows.length === 0
       ? "No employee-type-specific document rule matched. Any-scope document rules still apply."
       : "";
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+
+  if (optionalSectionUnavailable(workspace, "documents")) return <OptionalSectionStatePanel workspace={workspace} sectionKey="documents" fallbackTitle="Documents" />;
+
+  function selectedType(row: DocumentBatchRow) {
+    return documentTypes.find((type) => String(type.id) === row.document_type_id);
+  }
+  function requiredNumber(type?: Row) {
+    return boolValue(type?.requires_document_number) || boolValue(type?.document_number_required);
+  }
+  function requiredIssue(type?: Row) {
+    return boolValue(type?.requires_issue_date) || boolValue(type?.issue_date_required);
+  }
+  function requiredExpiry(type?: Row) {
+    return boolValue(type?.requires_expiry_date) || boolValue(type?.expiry_required);
+  }
+  function updateRow(rowId: string, changes: Partial<DocumentBatchRow>) {
+    setRows((current) => current.map((row) => row.id === rowId ? { ...row, ...changes } : row));
+    setRowErrors((current) => ({ ...current, [rowId]: {} }));
+  }
+  function addRow() {
+    setRows((current) => [...current, createDocumentBatchRow()]);
+  }
+  function removeRow(rowId: string) {
+    setRows((current) => current.length === 1 ? current : current.filter((row) => row.id !== rowId));
+    setRowErrors((current) => {
+      const next = { ...current };
+      delete next[rowId];
+      return next;
+    });
+  }
+  function handleFileChange(rowId: string, event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files;
     if (files && files.length > 1) {
-      setFile(null);
-      setFileError("Upload one file at a time.");
+      updateRow(rowId, { file: null });
+      setRowErrors((current) => ({ ...current, [rowId]: { ...current[rowId], file: "Upload one file at a time." } }));
       event.currentTarget.value = "";
       return;
     }
-    setFile(files?.[0] ?? null);
-    setFileError("");
+    updateRow(rowId, { file: files?.[0] ?? null });
   }
   function matchedScopeLabel(row: Row) {
     const scope = asRow(row.matched_scope);
@@ -1554,39 +1684,167 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     ];
     return parts.join(" / ");
   }
-  function submit() {
-    if (!documentTypeId || !file) return;
+  function validateRows() {
+    const nextErrors: DocumentBatchErrorMap = {};
+    const singleActiveRows = new Map<string, string[]>();
+    rows.forEach((row) => {
+      const type = selectedType(row);
+      const errors: Partial<Record<DocumentBatchRowField, string>> = {};
+      if (!row.document_type_id) errors.document_type_id = "Document type is required.";
+      if (!row.file) errors.file = "File is required.";
+      if (type && row.file) {
+        if (!mimeAllowed(row.file, type)) errors.file = `File type is not allowed. ${documentTypeFileRuleText(type)}`;
+        if (row.file.size > documentTypeMaxFileSizeBytes(type)) errors.file = `File is too large. Maximum size is ${formatFileSize(documentTypeMaxFileSizeBytes(type))}.`;
+      }
+      if (type && requiredNumber(type) && !row.document_number.trim()) errors.document_number = "Document number/reference is required for this document type.";
+      if (type && requiredIssue(type) && !row.issue_date) errors.issue_date = "Issue date is required for this document type.";
+      if (type && requiredExpiry(type) && !row.expiry_date) errors.expiry_date = "Expiry date is required for this document type.";
+      if (row.issue_date && row.expiry_date && row.expiry_date < row.issue_date) errors.expiry_date = "Expiry date cannot be before issue date.";
+      if (type && !boolValue(type.allow_multiple_files)) {
+        const key = String(type.id);
+        singleActiveRows.set(key, [...(singleActiveRows.get(key) ?? []), row.id]);
+      }
+      if (Object.keys(errors).length) nextErrors[row.id] = errors;
+    });
+    for (const rowIds of singleActiveRows.values()) {
+      if (rowIds.length <= 1) continue;
+      for (const rowId of rowIds) {
+        nextErrors[rowId] = {
+          ...nextErrors[rowId],
+          document_type_id: "This document type allows only one active file. Remove duplicate rows or select a type that allows multiple files."
+        };
+      }
+    }
+    return nextErrors;
+  }
+  function serverErrorsForRows(error: unknown) {
+    const nextErrors: DocumentBatchErrorMap = {};
+    if (!(error instanceof ApiError)) return nextErrors;
+    for (const issue of error.validationErrors) {
+      const rowIndex = Number(issue.row_index ?? issue.rowIndex ?? 0);
+      const field = String(issue.field ?? "row") as DocumentBatchRowField;
+      const row = rows[rowIndex];
+      if (!row) continue;
+      nextErrors[row.id] = {
+        ...nextErrors[row.id],
+        [field]: String(issue.message ?? error.message)
+      };
+    }
+    for (const [path, messages] of Object.entries(error.fieldErrors)) {
+      const match = path.match(/^rows\.(\d+)\.([a-z_]+)$/);
+      if (!match) continue;
+      const row = rows[Number(match[1])];
+      if (!row) continue;
+      const field = match[2] as DocumentBatchRowField;
+      nextErrors[row.id] = {
+        ...nextErrors[row.id],
+        [field]: Array.isArray(messages) ? messages[0] : String(messages)
+      };
+    }
+    if (!Object.keys(nextErrors).length && rows[0]) {
+      nextErrors[rows[0].id] = { row: error.message };
+    }
+    return nextErrors;
+  }
+  async function submit() {
+    const nextErrors = validateRows();
+    setRowErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
     const form = new FormData();
-    form.set("document_type_id", documentTypeId);
-    if (file) form.set("file", file);
-    form.set("document_number", metadata.document_number);
-    form.set("issue_date", metadata.issue_date);
-    form.set("expiry_date", metadata.expiry_date);
-    form.set("notes", metadata.notes);
-    onSave(form);
+    form.set("metadata", JSON.stringify(rows.map((row) => ({
+      row_id: row.id,
+      document_type_id: row.document_type_id,
+      document_number: row.document_number,
+      issue_date: row.issue_date,
+      expiry_date: row.expiry_date,
+      notes: row.notes
+    }))));
+    rows.forEach((row, index) => {
+      if (row.file) form.set(`file_${index}`, row.file);
+    });
+    setUploading(true);
+    try {
+      await onSave(form);
+      setRows([createDocumentBatchRow()]);
+      setRowErrors({});
+    } catch (error) {
+      setRowErrors(serverErrorsForRows(error));
+    } finally {
+      setUploading(false);
+    }
   }
   return (
     <div className="grid gap-3 lg:grid-cols-[1fr_1.2fr]">
       <Panel className="p-4">
-        <h3 className="text-sm font-semibold">Upload official document</h3>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Upload official documents</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Add multiple document rows and upload the batch in one action. Upload one file at a time per row.</p>
+          </div>
+          <ActionTextButton intent="create" size="sm" onClick={addRow} disabled={uploading}>Add document</ActionTextButton>
+        </div>
         <OptionalSectionNotice workspace={workspace} sectionKey="document_types" fallbackTitle="Document upload types" />
         {documentWarning ? <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{documentWarning}</p> : null}
-        <p className="mt-2 text-xs text-muted-foreground">Upload one file at a time.</p>
-        <div className="mt-3 grid gap-3">
-          <SelectField label="Document type" required value={documentTypeId} onValueChange={setDocumentTypeId}><option value="">Select document type</option>{documentTypes.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}{type.is_sensitive ? " (Sensitive)" : ""}</option>)}</SelectField>
-          {selectedType ? (
-            <div className="space-y-1 rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
-              <p>Allowed file types: {displayText(selectedType.allowed_mime_types, "Default PDF/JPEG/PNG")} / Max file size: {displayText(selectedType.max_file_size_mb, "10")} MB.</p>
-              <p>{selectedAllowsMultiple ? "This document type allows multiple active files, but each upload is submitted one file at a time." : "This document type allows only one active file per employee. Uploading another requires replacing the existing document."}</p>
-            </div>
-          ) : null}
-          <Field label={`Document number${requiredNumber ? " *" : ""}`}><Input required={requiredNumber} value={metadata.document_number} onChange={(event) => setMetadata({ ...metadata, document_number: event.target.value })} /></Field>
-          <Field label={`Issue date${requiredIssue ? " *" : ""}`}><Input type="date" required={requiredIssue} value={metadata.issue_date} onChange={(event) => setMetadata({ ...metadata, issue_date: event.target.value })} /></Field>
-          <Field label={`Expiry date${requiredExpiry ? " *" : ""}`}><Input type="date" required={requiredExpiry} value={metadata.expiry_date} onChange={(event) => setMetadata({ ...metadata, expiry_date: event.target.value })} /></Field>
-          <Field label="Notes"><Input value={metadata.notes} onChange={(event) => setMetadata({ ...metadata, notes: event.target.value })} /></Field>
-          <Field label="File"><Input type="file" onChange={handleFileChange} />{fileError ? <p className="text-xs text-red-600">{fileError}</p> : null}</Field>
+        <div className="mt-3 space-y-3">
+          {rows.map((row, index) => {
+            const type = selectedType(row);
+            const allowsMultiple = boolValue(type?.allow_multiple_files);
+            return (
+              <div key={row.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">Document {index + 1}</p>
+                    {rowFieldError(rowErrors, row.id, "row") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "row")}</p> : null}
+                  </div>
+                  <ActionTextButton intent="remove" size="sm" disabled={rows.length === 1 || uploading} onClick={() => removeRow(row.id)}>Remove</ActionTextButton>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-6">
+                  <div className="md:col-span-3">
+                    <SelectField label="Document type" required value={row.document_type_id} onValueChange={(document_type_id) => updateRow(row.id, { document_type_id })}>
+                      <option value="">Select document type</option>
+                      {documentTypes.map((documentType) => <option key={String(documentType.id)} value={String(documentType.id)}>{text(documentType.name)}{documentType.is_sensitive ? " (Sensitive)" : ""}</option>)}
+                    </SelectField>
+                    {rowFieldError(rowErrors, row.id, "document_type_id") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "document_type_id")}</p> : null}
+                  </div>
+                  <div className="md:col-span-3">
+                    <Field label="File *">
+                      <Input type="file" accept={documentTypeAccept(type)} onChange={(event) => handleFileChange(row.id, event)} />
+                      {row.file ? <p className="text-xs text-muted-foreground">{row.file.name} / {formatFileSize(row.file.size)}</p> : null}
+                      {rowFieldError(rowErrors, row.id, "file") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "file")}</p> : null}
+                    </Field>
+                  </div>
+                  {type ? (
+                    <div className="space-y-1 rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground md:col-span-6">
+                      <p>{documentTypeFileRuleText(type)}</p>
+                      <p>{allowsMultiple ? "This document type allows multiple active files; add one row for each file." : "This document type allows only one active file. Uploading another later requires replacing the existing document."}</p>
+                    </div>
+                  ) : null}
+                  <Field label={`Document number/reference${requiredNumber(type) ? " *" : ""}`}>
+                    <Input required={requiredNumber(type)} value={row.document_number} onChange={(event) => updateRow(row.id, { document_number: event.target.value })} />
+                    {rowFieldError(rowErrors, row.id, "document_number") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "document_number")}</p> : null}
+                  </Field>
+                  <Field label={`Issue date${requiredIssue(type) ? " *" : ""}`}>
+                    <Input type="date" required={requiredIssue(type)} value={row.issue_date} onChange={(event) => updateRow(row.id, { issue_date: event.target.value })} />
+                    {rowFieldError(rowErrors, row.id, "issue_date") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "issue_date")}</p> : null}
+                  </Field>
+                  <Field label={`Expiry date${requiredExpiry(type) ? " *" : ""}`}>
+                    <Input type="date" required={requiredExpiry(type)} value={row.expiry_date} onChange={(event) => updateRow(row.id, { expiry_date: event.target.value })} />
+                    {rowFieldError(rowErrors, row.id, "expiry_date") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "expiry_date")}</p> : null}
+                  </Field>
+                  <div className="md:col-span-3">
+                    <Field label="Notes"><Input value={row.notes} onChange={(event) => updateRow(row.id, { notes: event.target.value })} /></Field>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div className="mt-4 flex justify-end"><ActionTextButton intent="upload" size="sm" disabled={!documentTypeId || !file} onClick={submit}>Upload document</ActionTextButton></div>
+        <div className="mt-4 flex justify-end">
+          <ActionTextButton intent="upload" size="sm" disabled={uploading} onClick={() => void submit()}>
+            {uploading ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+            Upload documents
+          </ActionTextButton>
+        </div>
       </Panel>
       <Panel className="p-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">

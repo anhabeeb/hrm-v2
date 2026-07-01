@@ -58,16 +58,20 @@ const documentComplianceText = read(documentComplianceRoute);
 const payrollFoundationsText = read(payrollFoundationsRoute);
 const seedText = read(seed);
 
-includes(lifecyclePage, "Upload one file at a time.", "onboarding document upload explains single-file submission");
-includes(lifecyclePage, "This document type allows multiple active files, but each upload is submitted one file at a time.", "multiple-active document type helper is visible");
-includes(lifecyclePage, "This document type allows only one active file per employee. Uploading another requires replacing the existing document.", "single-active document type helper is visible");
+includes(lifecyclePage, "Add multiple document rows and upload the batch in one action.", "onboarding document upload supports batch submission");
+includes(lifecyclePage, "Upload one file at a time per row.", "onboarding document upload keeps each row single-file");
+includes(lifecyclePage, "This document type allows multiple active files; add one row for each file.", "multiple-active document type helper is visible");
+includes(lifecyclePage, "This document type allows only one active file. Uploading another later requires replacing the existing document.", "single-active document type helper is visible");
 includes(lifecyclePage, "handleFileChange", "file selection uses a validation handler");
 includes(lifecyclePage, "files.length > 1", "file handler blocks multiple selections defensively");
-includes(lifecyclePage, "disabled={!documentTypeId || !file}", "upload button requires document type and file");
+includes(lifecyclePage, "validateRows", "upload button runs field-level batch validation before submit");
+includes(lifecyclePage, "form.set(\"metadata\"", "batch upload sends document metadata array");
+includes(lifecyclePage, "form.set(`file_${index}`", "batch upload sends indexed files");
+includes(lifecyclePage, "uploadOnboardingWorkspaceDocumentBatch", "onboarding workspace uses batch document upload API");
 
-const documentUploadBlock = blockAfter(lifecyclePage, "function DocumentsWorkspaceForm", 5200);
+const documentUploadBlock = blockAfter(lifecyclePage, "function DocumentsWorkspaceForm", 15000);
 check(`${lifecyclePage}: document upload input must remain single-file`, !/<Input[^>]+type="file"[^>]+multiple/.test(documentUploadBlock));
-check(`${lifecyclePage}: onboarding document form must not imply bulk upload`, !/bulk upload/i.test(documentUploadBlock));
+check(`${lifecyclePage}: onboarding document form must use multi-row batch upload`, /Add document/.test(documentUploadBlock) && /Upload documents/.test(documentUploadBlock));
 
 includes(lifecyclePage, "Employee type:", "document checklist shows employee type badge");
 includes(lifecyclePage, "Required documents are based on the employee type, employment type, department, position, and location configured in Document Required Rules.", "document checklist explains required rule matching");
@@ -98,6 +102,11 @@ const complianceFunction = blockAfter(documentComplianceRoute, "export async fun
 check(`${documentComplianceRoute}: required document logic must not hardcode Visa/Work Permit/Passport/ID Card lists`, !/(VISA|WORK_PERMIT|PASSPORT|ID_CARD)/.test(complianceFunction));
 
 includes(lifecycleRoute, "calculateEmployeeDocumentCompliance", "onboarding document checklist uses compliance helper");
+includes(lifecycleRoute, '"/cases/:caseId/documents/batch"', "onboarding batch document upload route exists");
+includes(lifecycleRoute, "parseDocumentBatchMetadata", "onboarding batch document route parses metadata");
+includes(lifecycleRoute, "DOCUMENT_BATCH_VALIDATION_FAILED", "onboarding batch document route returns row-level validation errors");
+includes(lifecycleRoute, "DUPLICATE_DOCUMENT_TYPE_IN_BATCH", "onboarding batch document route blocks duplicate single-active document rows");
+includes(lifecycleRoute, "cleanupEmployeeDocumentUploads", "onboarding batch document route cleans up partial saved documents");
 includes(lifecycleRoute, "getOnboardingDocumentBlockers", "activation document blockers use onboarding checklist");
 includes(lifecycleRoute, "documentsEnabled", "documents module enabled state is checked");
 includes(lifecycleRoute, "complianceModuleEnabled", "document compliance module enabled state is checked");

@@ -112,6 +112,50 @@ interface VersionRow {
   created_at: string;
 }
 
+export type EmployeeDocumentUploadParts = {
+  employeeId: string;
+  documentTypeId: string;
+  file: File;
+  document_number?: string | null;
+  issue_date?: string | null;
+  expiry_date?: string | null;
+  notes?: string | null;
+  replaceDocumentId?: string | null;
+  reason_for_replacement?: string | null;
+  defaultReplacementReason?: string | null;
+  skipAccessCheck?: boolean;
+};
+
+export type PreparedEmployeeDocumentUpload = {
+  employeeId: string;
+  type: DocumentTypeRow;
+  file: File;
+  meta: {
+    document_number: string | null;
+    issue_date: string | null;
+    expiry_date: string | null;
+  };
+  notes: string | null;
+  replaceDocumentId?: string | null;
+  documentId: string | null;
+  oldDocument: EmployeeDocumentRow | null;
+  versionNo: number;
+  reason: string | null;
+};
+
+export type EmployeeDocumentUploadResult = {
+  document: ReturnType<typeof maskDocument> | null;
+  documentId: string;
+  versionId: string;
+  r2Key: string;
+  createdNewDocument: boolean;
+};
+
+type DocumentUploadValidationIssue = {
+  code: string;
+  message: string;
+};
+
 const EMPLOYEE_TYPES = new Set(["LOCAL", "FOREIGN", "OTHER"]);
 const EMPLOYMENT_TYPES = new Set(["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]);
 const RETENTION_MODES = new Set(["FOREVER", "YEARS_AFTER_UPLOAD", "YEARS_AFTER_EXPIRY", "YEARS_AFTER_EXIT", "CUSTOM"]);
@@ -322,25 +366,35 @@ function fileFromBody(body: Record<string, unknown>) {
   return file instanceof File ? file : null;
 }
 
+function validateMetadataIssue(type: DocumentTypeRow, input: { document_number?: string | null; issue_date?: string | null; expiry_date?: string | null }): DocumentUploadValidationIssue | null {
+  if (type.requires_document_number === 1 && !input.document_number) return { code: "DOCUMENT_NUMBER_REQUIRED", message: "Document number is required for this document type." };
+  if (type.requires_issue_date === 1 && !input.issue_date) return { code: "ISSUE_DATE_REQUIRED", message: "Issue date is required for this document type." };
+  if (type.requires_expiry_date === 1 && !input.expiry_date) return { code: "EXPIRY_DATE_REQUIRED", message: "Expiry date is required for this document type." };
+  if (input.issue_date && input.expiry_date && input.expiry_date < input.issue_date) return { code: "INVALID_DATES", message: "Expiry date cannot be before issue date." };
+  return null;
+}
+
 function validateMetadata(c: Context<AppBindings>, type: DocumentTypeRow, input: { document_number?: string | null; issue_date?: string | null; expiry_date?: string | null }) {
-  if (type.requires_document_number === 1 && !input.document_number) return fail(c, 400, "DOCUMENT_NUMBER_REQUIRED", "Document number is required for this document type.");
-  if (type.requires_issue_date === 1 && !input.issue_date) return fail(c, 400, "ISSUE_DATE_REQUIRED", "Issue date is required for this document type.");
-  if (type.requires_expiry_date === 1 && !input.expiry_date) return fail(c, 400, "EXPIRY_DATE_REQUIRED", "Expiry date is required for this document type.");
-  if (input.issue_date && input.expiry_date && input.expiry_date < input.issue_date) return fail(c, 400, "INVALID_DATES", "Expiry date cannot be before issue date.");
+  const issue = validateMetadataIssue(type, input);
+  return issue ? fail(c, 400, issue.code, issue.message) : null;
+}
+
+function validateFileIssue(type: DocumentTypeRow, file: File): DocumentUploadValidationIssue | null {
+  const allowed = safeJsonArray(type.allowed_file_types_json);
+  const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+  if (allowed.length && !allowed.includes(file.type) && !allowed.includes(extension)) {
+    return { code: "INVALID_FILE_TYPE", message: "File type is not allowed for this document type." };
+  }
+  const maxBytes = type.max_file_size_mb * 1024 * 1024;
+  if (file.size > maxBytes) {
+    return { code: "FILE_TOO_LARGE", message: `File exceeds ${type.max_file_size_mb} MB.` };
+  }
   return null;
 }
 
 function validateFile(c: Context<AppBindings>, type: DocumentTypeRow, file: File) {
-  const allowed = safeJsonArray(type.allowed_file_types_json);
-  const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
-  if (allowed.length && !allowed.includes(file.type) && !allowed.includes(extension)) {
-    return fail(c, 400, "INVALID_FILE_TYPE", "File type is not allowed for this document type.");
-  }
-  const maxBytes = type.max_file_size_mb * 1024 * 1024;
-  if (file.size > maxBytes) {
-    return fail(c, 400, "FILE_TOO_LARGE", `File exceeds ${type.max_file_size_mb} MB.`);
-  }
-  return null;
+  const issue = validateFileIssue(type, file);
+  return issue ? fail(c, 400, issue.code, issue.message) : null;
 }
 
 function addDateRange(c: Context<AppBindings>, conditions: string[], params: BindValue[], queryPrefix: string, column: string) {
@@ -773,14 +827,127 @@ async function createDocumentVersion(c: Context<AppBindings>, input: { employeeI
   const hash = await sha256Hex(buffer);
   await c.env.DOCUMENTS_BUCKET.put(key, buffer, { httpMetadata: { contentType: input.file.type || "application/octet-stream" } });
   const id = crypto.randomUUID();
-  await c.env.DB.prepare(
-    `INSERT INTO employee_document_versions
-     (id, employee_document_id, version_no, r2_key, original_filename, file_mime_type, file_size_bytes, file_hash, uploaded_by_user_id, reason_for_replacement, is_current)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-  ).bind(id, input.documentId, input.versionNo, key, input.file.name, input.file.type || "application/octet-stream", input.file.size, hash, c.get("currentUser").id, input.reason ?? null).run();
-  await c.env.DB.prepare("UPDATE employee_document_versions SET is_current = 0 WHERE employee_document_id = ? AND id != ?").bind(input.documentId, id).run();
-  await c.env.DB.prepare("UPDATE employee_documents SET current_version_id = ?, updated_at = ?, updated_by_user_id = ? WHERE id = ?").bind(id, new Date().toISOString(), c.get("currentUser").id, input.documentId).run();
-  return id;
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO employee_document_versions
+       (id, employee_document_id, version_no, r2_key, original_filename, file_mime_type, file_size_bytes, file_hash, uploaded_by_user_id, reason_for_replacement, is_current)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+    ).bind(id, input.documentId, input.versionNo, key, input.file.name, input.file.type || "application/octet-stream", input.file.size, hash, c.get("currentUser").id, input.reason ?? null).run();
+    await c.env.DB.prepare("UPDATE employee_document_versions SET is_current = 0 WHERE employee_document_id = ? AND id != ?").bind(input.documentId, id).run();
+    await c.env.DB.prepare("UPDATE employee_documents SET current_version_id = ?, updated_at = ?, updated_by_user_id = ? WHERE id = ?").bind(id, new Date().toISOString(), c.get("currentUser").id, input.documentId).run();
+    return { id, key };
+  } catch (error) {
+    await c.env.DOCUMENTS_BUCKET.delete(key).catch(() => undefined);
+    throw error;
+  }
+}
+
+function documentUploadIssueResponse(c: Context<AppBindings>, issue: DocumentUploadValidationIssue, status: 400 | 404 | 409 = 400) {
+  return fail(c, status, issue.code, issue.message);
+}
+
+export async function prepareEmployeeDocumentUpload(c: Context<AppBindings>, input: EmployeeDocumentUploadParts): Promise<{ prepared: PreparedEmployeeDocumentUpload | null; response: Response | null }> {
+  const employeeId = input.employeeId;
+  if (!input.skipAccessCheck && !(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "manage"))) {
+    return { prepared: null, response: fail(c, 404, "NOT_FOUND", "Employee was not found.") };
+  }
+  const employee = await ensureEmployee(c.env.DB, employeeId);
+  if (!employee) return { prepared: null, response: fail(c, 404, "NOT_FOUND", "Employee was not found.") };
+  if (!input.file) return { prepared: null, response: fail(c, 400, "FILE_REQUIRED", "File is required.") };
+  if (!input.documentTypeId) return { prepared: null, response: fail(c, 400, "DOCUMENT_TYPE_REQUIRED", "Document type is required.") };
+  const type = await getType(c.env.DB, input.documentTypeId);
+  if (!type || type.is_active !== 1) return { prepared: null, response: fail(c, 400, "INVALID_DOCUMENT_TYPE", "Document type was not found or is inactive.") };
+  const meta = {
+    document_number: optionalString(input.document_number),
+    issue_date: optionalString(input.issue_date),
+    expiry_date: optionalString(input.expiry_date)
+  };
+  const metaIssue = validateMetadataIssue(type, meta);
+  if (metaIssue) return { prepared: null, response: documentUploadIssueResponse(c, metaIssue) };
+  const fileIssue = validateFileIssue(type, input.file);
+  if (fileIssue) return { prepared: null, response: documentUploadIssueResponse(c, fileIssue) };
+
+  const replaceDocumentId = input.replaceDocumentId ?? null;
+  let oldDocument: EmployeeDocumentRow | null = null;
+  let documentId: string | null = replaceDocumentId;
+  let versionNo = 1;
+  const reason = optionalString(input.reason_for_replacement) ?? input.defaultReplacementReason ?? null;
+
+  if (replaceDocumentId) {
+    oldDocument = await getDocument(c.env.DB, replaceDocumentId, employeeId);
+    if (!oldDocument) return { prepared: null, response: fail(c, 404, "NOT_FOUND", "Document was not found.") };
+    if (oldDocument.status !== "ACTIVE") return { prepared: null, response: fail(c, 409, "DOCUMENT_NOT_ACTIVE", "Archived or soft-deleted documents must be restored before replacement.") };
+    if (!reason) return { prepared: null, response: fail(c, 400, "REPLACEMENT_REASON_REQUIRED", "Replacement reason is required.") };
+    const last = await c.env.DB.prepare("SELECT MAX(version_no) AS version_no FROM employee_document_versions WHERE employee_document_id = ?").bind(replaceDocumentId).first<{ version_no: number }>();
+    versionNo = (last?.version_no ?? 0) + 1;
+  } else {
+    if (type.allow_multiple_files !== 1) {
+      const duplicate = await c.env.DB.prepare("SELECT id FROM employee_documents WHERE employee_id = ? AND document_type_id = ? AND status = 'ACTIVE'").bind(employeeId, type.id).first<{ id: string }>();
+      if (duplicate) return { prepared: null, response: fail(c, 409, "DUPLICATE_DOCUMENT", "This document type does not allow multiple active files for the same employee.") };
+    }
+    documentId = crypto.randomUUID();
+  }
+
+  return {
+    prepared: {
+      employeeId,
+      type,
+      file: input.file,
+      meta,
+      notes: optionalString(input.notes),
+      replaceDocumentId,
+      documentId,
+      oldDocument,
+      versionNo,
+      reason
+    },
+    response: null
+  };
+}
+
+export async function savePreparedEmployeeDocumentUpload(c: Context<AppBindings>, prepared: PreparedEmployeeDocumentUpload): Promise<EmployeeDocumentUploadResult> {
+  const replacing = Boolean(prepared.replaceDocumentId);
+  const documentId = prepared.documentId ?? crypto.randomUUID();
+  let insertedDocument = false;
+  try {
+    if (!replacing) {
+      await c.env.DB.prepare(
+        `INSERT INTO employee_documents
+         (id, employee_id, document_type_id, category_id, document_number, issue_date, expiry_date, is_sensitive, notes, created_by_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(documentId, prepared.employeeId, prepared.type.id, prepared.type.category_id, prepared.meta.document_number, prepared.meta.issue_date, prepared.meta.expiry_date, prepared.type.is_sensitive, prepared.notes, c.get("currentUser").id).run();
+      insertedDocument = true;
+    }
+    const version = await createDocumentVersion(c, { employeeId: prepared.employeeId, documentId, file: prepared.file, versionNo: prepared.versionNo, reason: prepared.reason });
+    await c.env.DB.prepare("UPDATE employee_documents SET document_number = ?, issue_date = ?, expiry_date = ?, notes = ?, updated_at = ?, updated_by_user_id = ? WHERE id = ?").bind(prepared.meta.document_number, prepared.meta.issue_date, prepared.meta.expiry_date, prepared.notes, new Date().toISOString(), c.get("currentUser").id, documentId).run();
+    const doc = await getDocument(c.env.DB, documentId, prepared.employeeId);
+    await auditDocument(c, { action: replacing ? "document.replaced" : "document.uploaded", entityType: "document", entityId: documentId, oldValue: prepared.oldDocument, newValue: doc, reason: prepared.reason });
+    await publishDocument(c, replacing ? "document.replaced" : "document.uploaded", documentId, replacing ? "replaced" : "uploaded");
+    await refreshDocumentComplianceQuietly(c, prepared.employeeId, documentId);
+    return {
+      document: doc ? maskDocument(doc, hasPermission(c, "documents.sensitive.view")) : null,
+      documentId,
+      versionId: version.id,
+      r2Key: version.key,
+      createdNewDocument: !replacing
+    };
+  } catch (error) {
+    if (insertedDocument && !replacing) {
+      await cleanupEmployeeDocumentUploads(c, [{ documentId }]);
+    }
+    throw error;
+  }
+}
+
+export async function cleanupEmployeeDocumentUploads(c: Context<AppBindings>, uploads: Array<{ documentId: string }>) {
+  for (const upload of uploads) {
+    const versions = await c.env.DB.prepare("SELECT r2_key FROM employee_document_versions WHERE employee_document_id = ?").bind(upload.documentId).all<{ r2_key: string }>();
+    for (const version of versions.results) {
+      if (version.r2_key) await c.env.DOCUMENTS_BUCKET.delete(version.r2_key).catch(() => undefined);
+    }
+    await c.env.DB.prepare("DELETE FROM employee_document_versions WHERE employee_document_id = ?").bind(upload.documentId).run();
+    await c.env.DB.prepare("DELETE FROM employee_documents WHERE id = ?").bind(upload.documentId).run();
+  }
 }
 
 export async function uploadEmployeeDocument(c: Context<AppBindings>, replaceDocumentId?: string, forcedTypeId?: string, defaultReplacementReason?: string, forcedEmployeeId?: string) {
@@ -796,48 +963,21 @@ export async function uploadEmployeeDocument(c: Context<AppBindings>, replaceDoc
   if (!file) return fail(c, 400, "FILE_REQUIRED", "File is required.");
   const typeId = forcedTypeId ?? (replaceDocumentId ? (await getDocument(c.env.DB, replaceDocumentId, employeeId))?.document_type_id : readString(body.document_type_id));
   if (!typeId) return fail(c, 400, "DOCUMENT_TYPE_REQUIRED", "Document type is required.");
-  const type = await getType(c.env.DB, typeId);
-  if (!type || type.is_active !== 1) return fail(c, 400, "INVALID_DOCUMENT_TYPE", "Document type was not found or is inactive.");
-  const meta = {
-    document_number: optionalString(body.document_number),
-    issue_date: optionalString(body.issue_date),
-    expiry_date: optionalString(body.expiry_date)
-  };
-  const metaError = validateMetadata(c, type, meta);
-  if (metaError) return metaError;
-  const fileError = validateFile(c, type, file);
-  if (fileError) return fileError;
-
-  let documentId = replaceDocumentId;
-  let oldDocument: EmployeeDocumentRow | null = null;
-  let versionNo = 1;
-  if (replaceDocumentId) {
-    oldDocument = await getDocument(c.env.DB, replaceDocumentId, employeeId);
-    if (!oldDocument) return fail(c, 404, "NOT_FOUND", "Document was not found.");
-    if (oldDocument.status !== "ACTIVE") return fail(c, 409, "DOCUMENT_NOT_ACTIVE", "Archived or soft-deleted documents must be restored before replacement.");
-    const reason = optionalString(body.reason_for_replacement) ?? defaultReplacementReason;
-    if (!reason) return fail(c, 400, "REPLACEMENT_REASON_REQUIRED", "Replacement reason is required.");
-    const last = await c.env.DB.prepare("SELECT MAX(version_no) AS version_no FROM employee_document_versions WHERE employee_document_id = ?").bind(replaceDocumentId).first<{ version_no: number }>();
-    versionNo = (last?.version_no ?? 0) + 1;
-  } else {
-    if (type.allow_multiple_files !== 1) {
-      const duplicate = await c.env.DB.prepare("SELECT id FROM employee_documents WHERE employee_id = ? AND document_type_id = ? AND status = 'ACTIVE'").bind(employeeId, type.id).first<{ id: string }>();
-      if (duplicate) return fail(c, 409, "DUPLICATE_DOCUMENT", "This document type does not allow multiple active files for the same employee.");
-    }
-    documentId = crypto.randomUUID();
-    await c.env.DB.prepare(
-      `INSERT INTO employee_documents
-       (id, employee_id, document_type_id, category_id, document_number, issue_date, expiry_date, is_sensitive, notes, created_by_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(documentId, employeeId, type.id, type.category_id, meta.document_number, meta.issue_date, meta.expiry_date, type.is_sensitive, optionalString(body.notes), c.get("currentUser").id).run();
-  }
-  await createDocumentVersion(c, { employeeId, documentId: documentId!, file, versionNo, reason: optionalString(body.reason_for_replacement) ?? defaultReplacementReason });
-  await c.env.DB.prepare("UPDATE employee_documents SET document_number = ?, issue_date = ?, expiry_date = ?, notes = ?, updated_at = ?, updated_by_user_id = ? WHERE id = ?").bind(meta.document_number, meta.issue_date, meta.expiry_date, optionalString(body.notes), new Date().toISOString(), c.get("currentUser").id, documentId).run();
-  const doc = await getDocument(c.env.DB, documentId!, employeeId);
-  await auditDocument(c, { action: replaceDocumentId ? "document.replaced" : "document.uploaded", entityType: "document", entityId: documentId!, oldValue: oldDocument, newValue: doc, reason: optionalString(body.reason_for_replacement) });
-  await publishDocument(c, replaceDocumentId ? "document.replaced" : "document.uploaded", documentId!, replaceDocumentId ? "replaced" : "uploaded");
-  await refreshDocumentComplianceQuietly(c, employeeId, documentId);
-  return ok(c, { document: doc ? maskDocument(doc, hasPermission(c, "documents.sensitive.view")) : null }, replaceDocumentId ? 200 : 201);
+  const prepared = await prepareEmployeeDocumentUpload(c, {
+    employeeId,
+    documentTypeId: typeId,
+    file,
+    document_number: readString(body.document_number),
+    issue_date: readString(body.issue_date),
+    expiry_date: readString(body.expiry_date),
+    notes: readString(body.notes),
+    replaceDocumentId,
+    reason_for_replacement: readString(body.reason_for_replacement),
+    defaultReplacementReason
+  });
+  if (prepared.response || !prepared.prepared) return prepared.response ?? fail(c, 400, "INVALID_DOCUMENT_UPLOAD", "Document upload could not be prepared.");
+  const saved = await savePreparedEmployeeDocumentUpload(c, prepared.prepared);
+  return ok(c, { document: saved.document }, replaceDocumentId ? 200 : 201);
 }
 
 employeeDocumentRoutes.post("/:employeeId/documents/upload", requirePermission("documents.upload"), (c) => uploadEmployeeDocument(c));

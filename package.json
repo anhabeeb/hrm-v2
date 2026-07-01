@@ -37,6 +37,7 @@
     "verify:onboarding-contract-null-fix": "node scripts/verify-onboarding-contract-null-fix.mjs",
     "verify:onboarding-document-compliance-fix": "node scripts/verify-onboarding-document-compliance-fix.mjs",
     "verify:onboarding-document-payroll-validation": "node scripts/verify-onboarding-document-payroll-validation.mjs",
+    "verify:onboarding-batch-document-upload": "node scripts/verify-onboarding-batch-document-upload.mjs",
     "verify:onboarding-workspace": "node scripts/verify-onboarding-workspace.mjs",
     "verify:onboarding-dashboard-kpis": "node scripts/verify-onboarding-dashboard-kpis.mjs",
     "verify:disabled-module-global-sweep": "node scripts/verify-disabled-module-global-sweep.mjs",

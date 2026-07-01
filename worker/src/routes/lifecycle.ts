@@ -13,7 +13,7 @@ import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { isEmail, normalizeEmail, readString } from "../utils/validation";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
-import { uploadEmployeeDocument } from "./documents";
+import { cleanupEmployeeDocumentUploads, prepareEmployeeDocumentUpload, savePreparedEmployeeDocumentUpload, uploadEmployeeDocument, type EmployeeDocumentUploadResult, type PreparedEmployeeDocumentUpload } from "./documents";
 
 type BindValue = string | number | null;
 type LifecycleCaseType = "ONBOARDING" | "OFFBOARDING";
@@ -2371,10 +2371,186 @@ onboardingRoutes.patch("/cases/:caseId/job-assignment", requireAnyPermission([..
   return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
 });
 
+type OnboardingDocumentBatchMetadata = {
+  row_id?: string | null;
+  document_type_id?: string | null;
+  document_number?: string | null;
+  issue_date?: string | null;
+  expiry_date?: string | null;
+  notes?: string | null;
+};
+
+type OnboardingDocumentBatchError = {
+  row_index: number;
+  field: string;
+  code: string;
+  message: string;
+};
+
+function batchValidationResponse(c: Context<AppBindings>, errors: OnboardingDocumentBatchError[]) {
+  const fieldErrors: Record<string, string> = {};
+  for (const error of errors) {
+    fieldErrors[`rows.${error.row_index}.${error.field}`] = error.message;
+  }
+  return c.json({
+    ok: false,
+    error: {
+      code: "DOCUMENT_BATCH_VALIDATION_FAILED",
+      message: "Review the highlighted document rows before uploading.",
+      validation_errors: errors,
+      field_errors: fieldErrors
+    }
+  }, 400);
+}
+
+function parseDocumentBatchMetadata(body: Record<string, unknown>): { metadata: OnboardingDocumentBatchMetadata[]; error: string | null } {
+  const raw = optionalText(body.metadata) ?? optionalText(body.documents_metadata_json) ?? optionalText(body.documents);
+  if (!raw) return { metadata: [], error: null };
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return { metadata: [], error: "Document metadata must be an array." };
+    return { metadata: parsed as OnboardingDocumentBatchMetadata[], error: null };
+  } catch {
+    return { metadata: [], error: "Document metadata is not valid JSON." };
+  }
+}
+
+async function responseToBatchError(response: Response, rowIndex: number, field = "row"): Promise<OnboardingDocumentBatchError> {
+  try {
+    const payload = await response.clone().json() as { error?: { code?: string; message?: string } };
+    return {
+      row_index: rowIndex,
+      field,
+      code: payload.error?.code ?? "DOCUMENT_UPLOAD_INVALID",
+      message: payload.error?.message ?? "This document row is invalid."
+    };
+  } catch {
+    return { row_index: rowIndex, field, code: "DOCUMENT_UPLOAD_INVALID", message: "This document row is invalid." };
+  }
+}
+
+async function ensureOnboardingDocumentUploadEnabled(c: Context<AppBindings>, caseId: string) {
+  if (!(await isModuleEnabled(c.env.DB, "documents"))) {
+    await setOnboardingTaskState(c, caseId, "documents", "NOT_REQUIRED", "Documents module is disabled.");
+    return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, caseId) });
+  }
+  if (!(await ensureOnboardingModuleEnabled(c, "documents", "document_compliance"))) {
+    return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, caseId) });
+  }
+  return null;
+}
+
+onboardingRoutes.post("/cases/:caseId/documents/batch", requireAnyPermission(["onboarding.workspace.documents.upload", "documents.upload", "onboarding.cases.manage"]), async (c) => {
+  const caseId = c.req.param("caseId");
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  const disabledResponse = await ensureOnboardingDocumentUploadEnabled(c, caseId);
+  if (disabledResponse) return disabledResponse;
+
+  let body: Record<string, unknown>;
+  try {
+    body = await c.req.parseBody();
+  } catch {
+    return fail(c, 400, "INVALID_FORM", "Multipart form data is required.");
+  }
+
+  const parsed = parseDocumentBatchMetadata(body);
+  if (parsed.error) {
+    return batchValidationResponse(c, [{ row_index: 0, field: "row", code: "INVALID_DOCUMENT_BATCH_METADATA", message: parsed.error }]);
+  }
+  if (!parsed.metadata.length) {
+    return batchValidationResponse(c, [{ row_index: 0, field: "document_type_id", code: "DOCUMENT_BATCH_EMPTY", message: "Add at least one document row." }]);
+  }
+
+  const employeeId = String(gate.row.employee_id);
+  const validationErrors: OnboardingDocumentBatchError[] = [];
+  const preparedEntries: Array<{ rowIndex: number; prepared: PreparedEmployeeDocumentUpload }> = [];
+
+  for (const [rowIndex, row] of parsed.metadata.entries()) {
+    const documentTypeId = optionalText(row.document_type_id);
+    const fileValue = body[`file_${rowIndex}`];
+    const file = fileValue instanceof File ? fileValue : null;
+    if (!documentTypeId) {
+      validationErrors.push({ row_index: rowIndex, field: "document_type_id", code: "DOCUMENT_TYPE_REQUIRED", message: "Document type is required." });
+      continue;
+    }
+    if (!file) {
+      validationErrors.push({ row_index: rowIndex, field: "file", code: "FILE_REQUIRED", message: "File is required." });
+      continue;
+    }
+    const prepared = await prepareEmployeeDocumentUpload(c, {
+      employeeId,
+      documentTypeId,
+      file,
+      document_number: row.document_number,
+      issue_date: row.issue_date,
+      expiry_date: row.expiry_date,
+      notes: row.notes,
+      defaultReplacementReason: "Uploaded from onboarding workspace batch",
+      skipAccessCheck: true
+    });
+    if (prepared.response || !prepared.prepared) {
+      validationErrors.push(await responseToBatchError(prepared.response ?? fail(c, 400, "INVALID_DOCUMENT_UPLOAD", "Document upload could not be prepared."), rowIndex));
+      continue;
+    }
+    preparedEntries.push({ rowIndex, prepared: prepared.prepared });
+  }
+
+  const singleActiveTypeRows = new Map<string, number[]>();
+  for (const entry of preparedEntries) {
+    if (entry.prepared.type.allow_multiple_files === 1) continue;
+    const rows = singleActiveTypeRows.get(entry.prepared.type.id) ?? [];
+    rows.push(entry.rowIndex);
+    singleActiveTypeRows.set(entry.prepared.type.id, rows);
+  }
+  for (const rows of singleActiveTypeRows.values()) {
+    if (rows.length <= 1) continue;
+    for (const rowIndex of rows) {
+      validationErrors.push({
+        row_index: rowIndex,
+        field: "document_type_id",
+        code: "DUPLICATE_DOCUMENT_TYPE_IN_BATCH",
+        message: "This document type allows only one active file. Remove duplicate rows or select a document type that allows multiple files."
+      });
+    }
+  }
+
+  if (validationErrors.length) return batchValidationResponse(c, validationErrors);
+
+  const uploaded: EmployeeDocumentUploadResult[] = [];
+  try {
+    for (const entry of preparedEntries) {
+      uploaded.push(await savePreparedEmployeeDocumentUpload(c, entry.prepared));
+    }
+  } catch (error) {
+    await cleanupEmployeeDocumentUploads(c, uploaded.map((item) => ({ documentId: item.documentId })));
+    console.error("onboarding document batch upload failed", error);
+    return fail(c, 500, "DOCUMENT_BATCH_UPLOAD_FAILED", "Document batch upload failed before completion. No batch documents were kept.");
+  }
+
+  const blockers = await getOnboardingDocumentBlockers(c, caseId);
+  await setOnboardingTaskState(c, caseId, "documents", blockers.length ? "IN_PROGRESS" : "COMPLETED", `${uploaded.length} document(s) uploaded from onboarding workspace.`);
+  await auditLifecycle(c, "onboarding.workspace.documents_batch_uploaded", "employee", employeeId, null, {
+    case_id: caseId,
+    uploaded_count: uploaded.length,
+    document_ids: uploaded.map((item) => item.documentId)
+  });
+  await refreshWorkspaceReadiness(c, caseId, "documents", "onboarding.workspace.documents_batch_uploaded");
+
+  return ok(c, {
+    uploaded_count: uploaded.length,
+    failed_count: 0,
+    documents: uploaded.map((item) => item.document),
+    readiness: await getEmployeeOnboardingReadiness(c, caseId),
+    workspace: await loadOnboardingWorkspace(c, caseId)
+  }, 201);
+});
+
 onboardingRoutes.post("/cases/:caseId/documents", requireAnyPermission(["onboarding.workspace.documents.upload", "documents.upload", "onboarding.cases.manage"]), async (c) => {
   const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "manage");
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
-  if (!(await ensureOnboardingModuleEnabled(c, "documents", "document_compliance"))) return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const disabledResponse = await ensureOnboardingDocumentUploadEnabled(c, c.req.param("caseId"));
+  if (disabledResponse) return disabledResponse;
   const response = await uploadEmployeeDocument(c, undefined, undefined, "Uploaded from onboarding workspace", String(gate.row.employee_id));
   if (response.status < 400) {
     const blockers = await getOnboardingDocumentBlockers(c, c.req.param("caseId"));

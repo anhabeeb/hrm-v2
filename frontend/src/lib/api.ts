@@ -972,6 +972,9 @@ export const api = {
   uploadOnboardingWorkspaceDocument(token: string, caseId: string, form: FormData) {
     return multipartRequest<{ document: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/documents`, form, token);
   },
+  uploadOnboardingWorkspaceDocumentBatch(token: string, caseId: string, form: FormData) {
+    return multipartRequest<{ uploaded_count: number; failed_count: number; documents: Record<string, unknown>[]; readiness: Record<string, unknown>; workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/documents/batch`, form, token);
+  },
   createOnboardingWorkspaceContract(token: string, caseId: string, input: Record<string, unknown>) {
     return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/contracts`, { method: "POST", body: JSON.stringify(input) }, token);
   },

@@ -47,7 +47,8 @@ type NavGroup = {
   items: NavItem[];
 };
 
-const SIDEBAR_OPEN_GROUP_STATE_KEY = "hrm-v2-sidebar-open-group";
+const SIDEBAR_GROUP_STATE_KEY = "hrm-v2-sidebar-open-group";
+const SIDEBAR_OPEN_GROUP_STATE_KEY = SIDEBAR_GROUP_STATE_KEY;
 
 const topLevelNavItems: NavItem[] = [
   { label: "Command Center", to: "/", icon: LayoutDashboard, permission: "dashboard.view" }
@@ -185,6 +186,7 @@ export function AppShell() {
     ];
   }, [moduleVisibility, permissions, selfServiceVisible, visibleGroups]);
   const activeGroupLabel = useMemo(() => resolveActiveSidebarGroup(location.pathname, sidebarGroups), [location.pathname, sidebarGroups]);
+  const activeGroupLabels = useMemo(() => new Set(activeGroupLabel ? [activeGroupLabel] : []), [activeGroupLabel]);
   const title = routeTitle(location.pathname);
 
   useEffect(() => {
@@ -266,7 +268,7 @@ export function AppShell() {
                           onClick={() => toggleGroup(group.label)}
                           className={cn(
                             "mb-1 flex h-8 w-full items-center justify-between rounded-md px-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800",
-                            activeGroupLabel === group.label && "bg-primary/5 text-primary"
+                            activeGroupLabels.has(group.label) && "bg-primary/5 text-primary"
                           )}
                           aria-expanded={expanded}
                         >
