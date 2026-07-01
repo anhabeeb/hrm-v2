@@ -84,6 +84,17 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
     if (form) setForm({ ...form, [key]: value });
   }
 
+  function updatePaymentMethod(value: EmployeePayrollProfile["payment_method"]) {
+    if (!form) return;
+    setForm({
+      ...form,
+      payment_method: value,
+      bank_name: value === "BANK_TRANSFER" ? form.bank_name : null,
+      bank_account_no: value === "BANK_TRANSFER" ? form.bank_account_no : null,
+      bank_account_name: value === "BANK_TRANSFER" ? form.bank_account_name : null
+    });
+  }
+
   async function saveProfile(reason?: string) {
     if (!token || !form) return;
     const salaryChanged = summary?.profile.basic_salary !== form.basic_salary;
@@ -145,6 +156,7 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
   if (!canView) return <Panel><EmptyState title="Payroll unavailable" description="Your account needs employees.payroll.view or payroll.view permission." /></Panel>;
   if (loading) return <Panel><FormSkeleton fields={8} label="Loading payroll profile" /></Panel>;
   if (!summary || !form) return <Panel><EmptyState title="No payroll profile" description="Payroll defaults could not be loaded for this employee." /></Panel>;
+  const profileBankTransfer = form.payment_method === "BANK_TRANSFER";
 
   return (
     <div className="space-y-4">
@@ -158,11 +170,12 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
         <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label="Basic salary"><Input disabled={!editing} type="number" min={0} value={form.basic_salary} onChange={(event) => update("basic_salary", Number(event.target.value))} /></Field>
           <Field label="Currency"><Input disabled={!editing} value={form.currency} onChange={(event) => update("currency", event.target.value)} /></Field>
-          <SelectField label="Payment method" disabled={!editing} value={form.payment_method} onValueChange={(value) => update("payment_method", value as EmployeePayrollProfile["payment_method"])}><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></SelectField>
+          <SelectField label="Payment method" disabled={!editing} value={form.payment_method} onValueChange={(value) => updatePaymentMethod(value as EmployeePayrollProfile["payment_method"])}><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></SelectField>
           <SelectField label="Daily rate mode" disabled={!editing} value={form.daily_rate_mode} onValueChange={(value) => update("daily_rate_mode", value as EmployeePayrollProfile["daily_rate_mode"])}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></SelectField>
-          <Field label="Bank name"><Input disabled={!editing} value={form.bank_name ?? ""} onChange={(event) => update("bank_name", event.target.value || null)} /></Field>
-          <Field label="Bank account no"><Input disabled={!editing} value={form.bank_account_no ?? ""} onChange={(event) => update("bank_account_no", event.target.value || null)} /></Field>
-          <Field label="Bank account name"><Input disabled={!editing} value={form.bank_account_name ?? ""} onChange={(event) => update("bank_account_name", event.target.value || null)} /></Field>
+          {form.payment_method === "CASH" ? <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground md:col-span-2">Cash payment does not require bank details. Detailed bank transfer accounts are managed in Employee payment methods.</div> : null}
+          {profileBankTransfer ? <Field label="Bank name"><Input disabled={!editing} value={form.bank_name ?? ""} onChange={(event) => update("bank_name", event.target.value || null)} /></Field> : null}
+          {profileBankTransfer ? <Field label="Bank account no"><Input disabled={!editing} value={form.bank_account_no ?? ""} onChange={(event) => update("bank_account_no", event.target.value || null)} /></Field> : null}
+          {profileBankTransfer ? <Field label="Bank account name"><Input disabled={!editing} value={form.bank_account_name ?? ""} onChange={(event) => update("bank_account_name", event.target.value || null)} /></Field> : null}
           <Field label="Advance limit"><Input disabled={!editing} type="number" min={0} value={form.advance_limit_amount ?? ""} onChange={(event) => update("advance_limit_amount", event.target.value ? Number(event.target.value) : null)} /></Field>
           <Toggle disabled={!editing} label="Payroll included" checked={Boolean(form.payroll_included)} onChange={(value) => update("payroll_included", value)} />
           <Toggle disabled={!editing} label="Overtime eligible" checked={Boolean(form.overtime_eligible)} onChange={(value) => update("overtime_eligible", value)} />

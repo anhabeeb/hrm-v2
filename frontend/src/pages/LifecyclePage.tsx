@@ -1,5 +1,5 @@
 import { AlertTriangle, BriefcaseBusiness, CalendarClock, CheckCircle2, Circle, ClipboardCheck, FileCheck2, FileDown, RefreshCw, ShieldAlert, UserPlus, UsersRound, WalletCards } from "lucide-react";
-import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, type ChangeEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { ExportMenu } from "../components/export/ExportMenu";
@@ -1086,6 +1086,32 @@ function asRows(value: unknown): Row[] {
   return Array.isArray(value) ? value as Row[] : [];
 }
 
+function boolValue(value: unknown) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function employeeTypeLabel(value: unknown) {
+  const raw = text(value);
+  return raw === "-" ? "Other" : title(raw);
+}
+
+function paymentMethodLabel(value: string) {
+  if (value === "BANK_TRANSFER") return "Bank Transfer";
+  if (value === "CHEQUE" || value === "CHEQUE_PLACEHOLDER") return "Cheque";
+  if (value === "MOBILE_WALLET_PLACEHOLDER") return "Mobile Wallet";
+  return title(value);
+}
+
+function bankInstitutionLabel(institution: Row) {
+  const code = text(institution.code);
+  const name = text(institution.name);
+  return code && name ? `${code} - ${name}` : name || code;
+}
+
+function activeBankInstitutions(rows: Row[]) {
+  return rows.filter((institution) => text(institution.type) === "BANK" && text(institution.status) === "ACTIVE" && boolValue(institution.is_active));
+}
+
 function isDisabledModule(workspace: Row, key: string) {
   const statuses = asRow(workspace.module_statuses);
   return statuses[key] === false;
@@ -1491,12 +1517,45 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
   const documentWarning = typeof sections.document_type_warning === "string" ? sections.document_type_warning : "";
   const [documentTypeId, setDocumentTypeId] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState("");
   const [metadata, setMetadata] = useState({ document_number: "", issue_date: "", expiry_date: "", notes: "" });
   const selectedType = documentTypes.find((type) => String(type.id) === documentTypeId);
-  const requiredNumber = Boolean(selectedType?.requires_document_number || selectedType?.document_number_required);
-  const requiredIssue = Boolean(selectedType?.requires_issue_date || selectedType?.issue_date_required);
-  const requiredExpiry = Boolean(selectedType?.requires_expiry_date || selectedType?.expiry_required);
+  const selectedAllowsMultiple = boolValue(selectedType?.allow_multiple_files);
+  const requiredNumber = boolValue(selectedType?.requires_document_number) || boolValue(selectedType?.document_number_required);
+  const requiredIssue = boolValue(selectedType?.requires_issue_date) || boolValue(selectedType?.issue_date_required);
+  const requiredExpiry = boolValue(selectedType?.requires_expiry_date) || boolValue(selectedType?.expiry_required);
+  const employee = asRow(workspace.employee);
+  const checklistRows = asRows(documents.rows);
+  const typeSpecificRows = checklistRows.filter((row) => text(row.matched_employee_type_rule) !== "-");
+  const checklistMessage = typeof documents.message === "string" ? documents.message : "";
+  const noRulesMessage = checklistRows.length === 0
+    ? "No required document rules are configured for this employee."
+    : typeSpecificRows.length === 0
+      ? "No employee-type-specific document rule matched. Any-scope document rules still apply."
+      : "";
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files;
+    if (files && files.length > 1) {
+      setFile(null);
+      setFileError("Upload one file at a time.");
+      event.currentTarget.value = "";
+      return;
+    }
+    setFile(files?.[0] ?? null);
+    setFileError("");
+  }
+  function matchedScopeLabel(row: Row) {
+    const scope = asRow(row.matched_scope);
+    const parts = [
+      `Employment: ${displayText(scope.employment_type, "Any")}`,
+      `Department: ${displayText(scope.department, "Any")}`,
+      `Position: ${displayText(scope.position, "Any")}`,
+      `Location: ${displayText(scope.location, "Any")}`
+    ];
+    return parts.join(" / ");
+  }
   function submit() {
+    if (!documentTypeId || !file) return;
     const form = new FormData();
     form.set("document_type_id", documentTypeId);
     if (file) form.set("file", file);
@@ -1512,23 +1571,37 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
         <h3 className="text-sm font-semibold">Upload official document</h3>
         <OptionalSectionNotice workspace={workspace} sectionKey="document_types" fallbackTitle="Document upload types" />
         {documentWarning ? <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{documentWarning}</p> : null}
+        <p className="mt-2 text-xs text-muted-foreground">Upload one file at a time.</p>
         <div className="mt-3 grid gap-3">
           <SelectField label="Document type" required value={documentTypeId} onValueChange={setDocumentTypeId}><option value="">Select document type</option>{documentTypes.map((type) => <option key={String(type.id)} value={String(type.id)}>{text(type.name)}{type.is_sensitive ? " (Sensitive)" : ""}</option>)}</SelectField>
-          {selectedType ? <p className="text-xs text-muted-foreground">Allowed files: {displayText(selectedType.allowed_mime_types, "Default PDF/JPEG/PNG")} / Max size: {displayText(selectedType.max_file_size_mb, "10")} MB / Multiple: {selectedType.allow_multiple_files ? "Yes" : "No"}</p> : null}
+          {selectedType ? (
+            <div className="space-y-1 rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+              <p>Allowed file types: {displayText(selectedType.allowed_mime_types, "Default PDF/JPEG/PNG")} / Max file size: {displayText(selectedType.max_file_size_mb, "10")} MB.</p>
+              <p>{selectedAllowsMultiple ? "This document type allows multiple active files, but each upload is submitted one file at a time." : "This document type allows only one active file per employee. Uploading another requires replacing the existing document."}</p>
+            </div>
+          ) : null}
           <Field label={`Document number${requiredNumber ? " *" : ""}`}><Input required={requiredNumber} value={metadata.document_number} onChange={(event) => setMetadata({ ...metadata, document_number: event.target.value })} /></Field>
           <Field label={`Issue date${requiredIssue ? " *" : ""}`}><Input type="date" required={requiredIssue} value={metadata.issue_date} onChange={(event) => setMetadata({ ...metadata, issue_date: event.target.value })} /></Field>
           <Field label={`Expiry date${requiredExpiry ? " *" : ""}`}><Input type="date" required={requiredExpiry} value={metadata.expiry_date} onChange={(event) => setMetadata({ ...metadata, expiry_date: event.target.value })} /></Field>
           <Field label="Notes"><Input value={metadata.notes} onChange={(event) => setMetadata({ ...metadata, notes: event.target.value })} /></Field>
-          <Field label="File"><Input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></Field>
+          <Field label="File"><Input type="file" onChange={handleFileChange} />{fileError ? <p className="text-xs text-red-600">{fileError}</p> : null}</Field>
         </div>
         <div className="mt-4 flex justify-end"><ActionTextButton intent="upload" size="sm" disabled={!documentTypeId || !file} onClick={submit}>Upload document</ActionTextButton></div>
       </Panel>
       <Panel className="p-4">
-        <h3 className="text-sm font-semibold">Required document checklist</h3>
-        <DataTableFrame empty={asRows(documents.rows).length === 0}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Required document checklist</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Required documents are based on the employee type, employment type, department, position, and location configured in Document Required Rules.</p>
+          </div>
+          <Badge tone="info">Employee type: {employeeTypeLabel(employee.employee_type)}</Badge>
+        </div>
+        {checklistMessage ? <p className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">{checklistMessage}</p> : null}
+        {noRulesMessage ? <p className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">{noRulesMessage}</p> : null}
+        <DataTableFrame empty={checklistRows.length === 0}>
           <Table>
-            <TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Status</TableHead><TableHead>Uploaded</TableHead><TableHead>Expiry</TableHead></TableRow></TableHeader>
-            <TableBody>{asRows(documents.rows).map((row) => <TableRow key={String(row.document_type_id ?? row.id)}><TableCell>{text(row.document_type_name)}</TableCell><TableCell><StatusBadge value={row.requirement_status ?? row.compliance_status} /></TableCell><TableCell>{row.missing ? "Missing" : "Uploaded"}</TableCell><TableCell>{text(row.expiry_date)}</TableCell></TableRow>)}</TableBody>
+            <TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Status</TableHead><TableHead>Uploaded</TableHead><TableHead>Expiry</TableHead><TableHead>Rule</TableHead><TableHead>Matched scope</TableHead></TableRow></TableHeader>
+            <TableBody>{checklistRows.map((row) => <TableRow key={String(row.document_type_id ?? row.id)}><TableCell>{text(row.document_type_name)}</TableCell><TableCell><StatusBadge value={row.requirement_status ?? row.compliance_status} /></TableCell><TableCell>{row.missing ? "Missing" : "Uploaded"}</TableCell><TableCell>{text(asRow(row.document).expiry_date ?? row.expiry_date)}</TableCell><TableCell>{displayText(row.matched_employee_type_label, "Any")}</TableCell><TableCell className="max-w-80 text-xs text-muted-foreground">{matchedScopeLabel(row)}</TableCell></TableRow>)}</TableBody>
           </Table>
         </DataTableFrame>
       </Panel>
@@ -1605,9 +1678,42 @@ function PayrollWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (
 function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }: { workspace: Row; onPaymentSave: (input: Row) => void; onPensionSave: (input: Row) => void }) {
   const refs = asRow(workspace.refs);
   const sections = asRow(workspace.sections);
-  const [payment, setPayment] = useState({ payment_method_type: "CASH", payment_institution_id: "", bank_account_name: "", bank_account_number: "", currency: "MVR", is_primary: true, notes: "" });
+  const existingPayment = asRows(sections.payment_methods).find((method) => boolValue(method.is_primary)) ?? asRows(sections.payment_methods)[0] ?? {};
+  const activeBanks = activeBankInstitutions(asRows(refs.payment_institutions));
+  const [payment, setPayment] = useState({
+    payment_method_type: text(existingPayment.payment_method_type) === "-" ? "CASH" : text(existingPayment.payment_method_type) || "CASH",
+    payment_institution_id: text(existingPayment.payment_institution_id) === "-" ? "" : text(existingPayment.payment_institution_id),
+    bank_account_name: text(existingPayment.bank_account_name) === "-" ? "" : text(existingPayment.bank_account_name),
+    bank_account_number: "",
+    currency: text(existingPayment.currency) === "-" ? "MVR" : text(existingPayment.currency) || "MVR",
+    is_primary: true,
+    notes: ""
+  });
+  const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
   const pensionProfile = asRow(sections.pension_profile);
   const [pension, setPension] = useState({ pension_scheme_id: text(pensionProfile.pension_scheme_id) === "-" ? "" : text(pensionProfile.pension_scheme_id), enrollment_status: text(pensionProfile.enrollment_status) === "-" ? "ENROLLED" : text(pensionProfile.enrollment_status), pension_member_id: "", registration_number: "", effective_date: new Date().toISOString().slice(0, 10), notes: "" });
+  const isBankTransfer = payment.payment_method_type === "BANK_TRANSFER";
+  function changePaymentMethod(payment_method_type: string) {
+    const normalized = payment_method_type === "CHEQUE" ? "CHEQUE_PLACEHOLDER" : payment_method_type;
+    setPaymentErrors({});
+    setPayment({
+      ...payment,
+      payment_method_type: normalized,
+      payment_institution_id: normalized === "BANK_TRANSFER" ? payment.payment_institution_id : "",
+      bank_account_name: normalized === "BANK_TRANSFER" ? payment.bank_account_name : "",
+      bank_account_number: normalized === "BANK_TRANSFER" ? payment.bank_account_number : ""
+    });
+  }
+  function savePaymentMethod() {
+    const nextErrors: Record<string, string> = {};
+    if (!payment.payment_method_type) nextErrors.payment_method_type = "Payment method is required.";
+    if (isBankTransfer && !payment.payment_institution_id) nextErrors.payment_institution_id = "Bank transfer requires an active bank.";
+    if (isBankTransfer && !payment.bank_account_name.trim()) nextErrors.bank_account_name = "Bank transfer requires account name.";
+    if (isBankTransfer && !payment.bank_account_number.trim()) nextErrors.bank_account_number = "Bank transfer requires account number.";
+    setPaymentErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+    onPaymentSave(isBankTransfer ? payment : { ...payment, payment_institution_id: "", bank_account_name: "", bank_account_number: "" });
+  }
   return (
     <div className="grid gap-3 lg:grid-cols-2">
       <Panel className="p-4">
@@ -1616,13 +1722,16 @@ function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }
           <>
             <OptionalSectionNotice workspace={workspace} sectionKey="payment_institutions" fallbackTitle="Payroll payment institutions" />
             <div className="mt-3 grid gap-3">
-              <SelectField label="Method" value={payment.payment_method_type} onValueChange={(payment_method_type) => setPayment({ ...payment, payment_method_type })}>{["CASH", "BANK_TRANSFER", "CHEQUE_PLACEHOLDER", "MOBILE_WALLET_PLACEHOLDER", "OTHER"].map((value) => <option key={value} value={value}>{title(value)}</option>)}</SelectField>
-              <SelectField label="Payment institution" value={payment.payment_institution_id} onValueChange={(payment_institution_id) => setPayment({ ...payment, payment_institution_id })}><option value="">None</option>{asRows(refs.payment_institutions).map((institution) => <option key={String(institution.id)} value={String(institution.id)}>{text(institution.name)}</option>)}</SelectField>
-              <Field label="Account name"><Input value={payment.bank_account_name} onChange={(event) => setPayment({ ...payment, bank_account_name: event.target.value })} /></Field>
-              <Field label="Account number"><Input value={payment.bank_account_number} onChange={(event) => setPayment({ ...payment, bank_account_number: event.target.value })} /></Field>
+              <SelectField label="Method" value={payment.payment_method_type} onValueChange={changePaymentMethod}>{["CASH", "BANK_TRANSFER", "CHEQUE_PLACEHOLDER", "MOBILE_WALLET_PLACEHOLDER", "OTHER"].map((value) => <option key={value} value={value}>{paymentMethodLabel(value)}</option>)}</SelectField>
+              {paymentErrors.payment_method_type ? <p className="text-xs text-red-600">{paymentErrors.payment_method_type}</p> : null}
+              {payment.payment_method_type === "CASH" ? <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Cash payment does not require bank details.</p> : null}
+              {isBankTransfer ? <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">Bank transfer requires bank, account name, and account number.</p> : null}
+              {isBankTransfer ? <Field label="Bank *"><SelectField value={payment.payment_institution_id} onValueChange={(payment_institution_id) => { setPayment({ ...payment, payment_institution_id }); setPaymentErrors({ ...paymentErrors, payment_institution_id: "" }); }}><option value="">Select active bank</option>{activeBanks.map((institution) => <option key={String(institution.id)} value={String(institution.id)}>{bankInstitutionLabel(institution)}</option>)}</SelectField>{paymentErrors.payment_institution_id ? <p className="text-xs text-red-600">{paymentErrors.payment_institution_id}</p> : null}</Field> : null}
+              {isBankTransfer ? <Field label="Account name *"><Input value={payment.bank_account_name} onChange={(event) => { setPayment({ ...payment, bank_account_name: event.target.value }); setPaymentErrors({ ...paymentErrors, bank_account_name: "" }); }} />{paymentErrors.bank_account_name ? <p className="text-xs text-red-600">{paymentErrors.bank_account_name}</p> : null}</Field> : null}
+              {isBankTransfer ? <Field label="Account number *"><Input value={payment.bank_account_number} onChange={(event) => { setPayment({ ...payment, bank_account_number: event.target.value }); setPaymentErrors({ ...paymentErrors, bank_account_number: "" }); }} />{paymentErrors.bank_account_number ? <p className="text-xs text-red-600">{paymentErrors.bank_account_number}</p> : null}</Field> : null}
               <Field label="Currency"><Input value={payment.currency} onChange={(event) => setPayment({ ...payment, currency: event.target.value })} /></Field>
             </div>
-            <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onPaymentSave(payment)}>Save payment method</ActionTextButton></div>
+            <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={savePaymentMethod}>Save payment method</ActionTextButton></div>
           </>
         )}
       </Panel>

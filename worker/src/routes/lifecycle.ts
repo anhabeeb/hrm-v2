@@ -786,6 +786,19 @@ async function getOnboardingWorkspaceDocumentTypes(c: Context<AppBindings>) {
   }
 }
 
+async function getActiveBankPaymentInstitution(db: D1Database, institutionId: string | null) {
+  if (!institutionId) return null;
+  return db
+    .prepare("SELECT id, code, name, type, is_active, status FROM payment_institutions WHERE id = ? AND is_active = 1 AND status = 'ACTIVE' AND type = 'BANK'")
+    .bind(institutionId)
+    .first<Record<string, unknown>>();
+}
+
+function normalizeDetailedPaymentMethodType(value: unknown) {
+  const methodType = (optionalText(value) ?? "CASH").toUpperCase();
+  return methodType === "CHEQUE" ? "CHEQUE_PLACEHOLDER" : methodType;
+}
+
 async function getOnboardingWorkspaceUserAccount(c: Context<AppBindings>, employee: Record<string, unknown>) {
   const employeeId = String(employee.id);
   const linkedUser = employee.user_id
@@ -867,7 +880,7 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     loadOptionalOnboardingWorkspaceSection(c, { key: "contract_settings", label: "Contract settings", moduleKey: "contracts", moduleStatuses, permissions: ["contracts.settings.view", "contracts.view", "onboarding.workspace.contracts.create", "onboarding.cases.manage"], fallback: null as Record<string, unknown> | null, run: () => c.env.DB.prepare("SELECT * FROM contract_settings ORDER BY created_at LIMIT 1").first<Record<string, unknown>>() }),
     loadOptionalOnboardingWorkspaceSection(c, { key: "payroll_profile", label: "Payroll profile", moduleKey: "payroll", moduleStatuses, permissions: ["employees.payroll.view", "employees.payroll.update", "onboarding.workspace.payroll.update", "payroll.view", "payroll.manage", "onboarding.cases.manage"], fallback: null as Record<string, unknown> | null, run: () => c.env.DB.prepare("SELECT * FROM employee_payroll_profiles WHERE employee_id = ?").bind(employeeId).first<Record<string, unknown>>() }),
     loadOptionalOnboardingWorkspaceSection(c, { key: "payment_methods", label: "Payment methods", moduleKey: "payment_methods", moduleStatuses, permissions: ["employees.payment_methods.view", "employees.payment_methods.manage", "onboarding.workspace.payment_methods.update", "payroll.payment_methods.view", "payroll.payment_methods.manage", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT * FROM employee_payment_methods WHERE employee_id = ? AND status != 'ARCHIVED' ORDER BY is_primary DESC, created_at DESC").bind(employeeId).all<Record<string, unknown>>() }),
-    loadOptionalOnboardingWorkspaceSection(c, { key: "payment_institutions", label: "Payroll payment institutions", moduleKey: "payment_institutions", moduleStatuses, permissions: ["payroll.payment_institutions.view", "payroll.payment_institutions.manage", "onboarding.workspace.payment_methods.update", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT id, code, name, type, is_active, status FROM payment_institutions WHERE is_active = 1 AND status = 'ACTIVE' ORDER BY display_order, name").all<Record<string, unknown>>() }),
+    loadOptionalOnboardingWorkspaceSection(c, { key: "payment_institutions", label: "Payroll payment institutions", moduleKey: "payment_institutions", moduleStatuses, permissions: ["payroll.payment_institutions.view", "payroll.payment_institutions.manage", "onboarding.workspace.payment_methods.update", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT id, code, name, type, is_active, status FROM payment_institutions WHERE is_active = 1 AND status = 'ACTIVE' AND type = 'BANK' ORDER BY display_order, name").all<Record<string, unknown>>() }),
     loadOptionalOnboardingWorkspaceSection(c, { key: "pension_profile", label: "Pension profile", moduleKey: "pension", moduleStatuses, permissions: ["employees.pension_profiles.view", "employees.pension_profiles.update", "employees.pension_profiles.manage", "onboarding.workspace.pension.update", "onboarding.cases.manage"], fallback: null as Record<string, unknown> | null, run: () => c.env.DB.prepare("SELECT epp.*, ps.scheme_name, ps.scheme_code FROM employee_pension_profiles epp LEFT JOIN pension_schemes ps ON ps.id = epp.pension_scheme_id WHERE epp.employee_id = ? AND epp.status != 'ARCHIVED' ORDER BY epp.effective_date DESC LIMIT 1").bind(employeeId).first<Record<string, unknown>>() }),
     loadOptionalOnboardingWorkspaceSection(c, { key: "pension_schemes", label: "Pension schemes", moduleKey: "pension", moduleStatuses, permissions: ["payroll.pension_schemes.view", "payroll.pension_schemes.manage", "onboarding.workspace.pension.update", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT * FROM pension_schemes WHERE status = 'ACTIVE' ORDER BY scheme_name").all<Record<string, unknown>>() }),
     loadOptionalOnboardingWorkspaceSection(c, { key: "biometric_mappings", label: "ZKTeco / biometric attendance", moduleKey: "zkteco_attendance", moduleStatuses, permissions: ["attendance.devices.view", "attendance.devices.manage", "attendance.manage", "onboarding.workspace.attendance.update", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare("SELECT * FROM employee_biometric_mappings WHERE employee_id = ? AND status != 'ARCHIVED' ORDER BY is_primary DESC, created_at DESC").bind(employeeId).all<Record<string, unknown>>() }),
@@ -1106,6 +1119,19 @@ async function waiveOffboardingTask(c: Context<AppBindings>, taskId: string, rea
 export async function getOnboardingDocumentChecklist(c: Context<AppBindings>, caseId: string) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return { rows: [], status: "NOT_FOUND", message: "Onboarding case was not found.", warnings: [] };
+  const documentsEnabled = await isModuleEnabled(c.env.DB, "documents");
+  const complianceModuleEnabled = await isModuleEnabled(c.env.DB, "document_compliance");
+  if (!documentsEnabled || !complianceModuleEnabled) {
+    return {
+      rows: [],
+      required_documents: [],
+      missing_documents: [],
+      status: "DISABLED",
+      compliance_status: "DISABLED",
+      message: !documentsEnabled ? "Documents module is disabled." : "Document Compliance module is disabled.",
+      warnings: []
+    };
+  }
   try {
     const compliance = await calculateEmployeeDocumentCompliance(c.env.DB, String(gate.row.employee_id));
     if (!compliance) return { rows: [], status: "NOT_FOUND", message: "Employee document compliance could not be loaded.", warnings: [{ type: "DOCUMENT", message: "Document compliance could not be loaded." }] };
@@ -1139,6 +1165,22 @@ export async function getOnboardingDocumentChecklist(c: Context<AppBindings>, ca
         requirement_status: item.waived ? "WAIVED" : "REQUIRED",
         current_employee_document_id: item.document?.id ?? null,
         matched_required_rule_id: item.matched_rule_id,
+        matched_employee_type_rule: item.matched_employee_type_rule ?? null,
+        matched_employee_type_label: item.matched_employee_type_rule ?? "ANY",
+        matched_employment_type_rule: item.matched_employment_type_rule ?? null,
+        matched_department_id: item.matched_department_id ?? null,
+        matched_department_name: item.matched_department_name ?? null,
+        matched_position_id: item.matched_position_id ?? null,
+        matched_position_title: item.matched_position_title ?? null,
+        matched_location_id: item.matched_location_id ?? null,
+        matched_location_name: item.matched_location_name ?? null,
+        matched_scope: {
+          employee_type: item.matched_employee_type_rule ?? "ANY",
+          employment_type: item.matched_employment_type_rule ?? "ANY",
+          department: item.matched_department_name ?? "Any",
+          position: item.matched_position_title ?? "Any",
+          location: item.matched_location_name ?? "Any"
+        },
         status: item.status,
         missing: item.missing,
         waived: item.waived,
@@ -1336,8 +1378,21 @@ export async function getOnboardingPayrollReadiness(c: Context<AppBindings>, cas
 
 export async function getOnboardingPaymentMethodStatus(c: Context<AppBindings>, caseId: string) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
-  const count = gate ? await c.env.DB.prepare("SELECT COUNT(*) AS total FROM employee_payment_methods WHERE employee_id = ? AND status = 'ACTIVE'").bind(String(gate.row.employee_id)).first<{ total: number }>() : { total: 0 };
-  return { ready: Number(count?.total ?? 0) > 0, active_payment_methods: Number(count?.total ?? 0) };
+  const rows = gate ? await c.env.DB.prepare(
+    `SELECT epm.*, pi.id AS active_bank_id
+       FROM employee_payment_methods epm
+       LEFT JOIN payment_institutions pi ON pi.id = epm.payment_institution_id AND pi.is_active = 1 AND pi.status = 'ACTIVE' AND pi.type = 'BANK'
+      WHERE epm.employee_id = ? AND epm.status = 'ACTIVE'
+      ORDER BY epm.is_primary DESC, epm.created_at DESC`
+  ).bind(String(gate.row.employee_id)).all<Record<string, unknown>>() : { results: [] };
+  const active = rows.results;
+  const complete = active.some((method) => {
+    const methodType = String(method.payment_method_type ?? "");
+    if (methodType === "CASH") return true;
+    if (methodType === "BANK_TRANSFER") return Boolean(method.active_bank_id && optionalText(method.bank_account_name) && optionalText(method.bank_account_number_encrypted_or_plain_placeholder));
+    return true;
+  });
+  return { ready: complete, active_payment_methods: active.length };
 }
 
 export async function getOnboardingPensionStatus(c: Context<AppBindings>, caseId: string) {
@@ -2373,6 +2428,9 @@ onboardingRoutes.patch("/cases/:caseId/payroll-profile", requireAnyPermission(["
   const employeeId = String(gate.row.employee_id);
   const salary = numberOrNull(body.basic_salary) ?? 0;
   if (salary < 0) return fail(c, 400, "PAYROLL_PROFILE_INVALID", "Basic salary cannot be negative.");
+  const profilePaymentMethod = (optionalText(body.payment_method) ?? "CASH").toUpperCase();
+  const normalizedProfilePaymentMethod = ["CASH", "BANK_TRANSFER", "CHEQUE", "OTHER"].includes(profilePaymentMethod) ? profilePaymentMethod : "CASH";
+  const profileStoresBankDetails = normalizedProfilePaymentMethod === "BANK_TRANSFER";
   const existing = await c.env.DB.prepare("SELECT id FROM employee_payroll_profiles WHERE employee_id = ?").bind(employeeId).first<{ id: string }>();
   const profileId = existing?.id ?? id("employee_payroll_profile");
   await c.env.DB.prepare(
@@ -2386,7 +2444,7 @@ onboardingRoutes.patch("/cases/:caseId/payroll-profile", requireAnyPermission(["
        benefits_eligible = excluded.benefits_eligible, advance_eligible = excluded.advance_eligible,
        missed_day_deduction_enabled = excluded.missed_day_deduction_enabled, leave_deduction_enabled = excluded.leave_deduction_enabled,
        daily_rate_mode = excluded.daily_rate_mode, effective_from = excluded.effective_from, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
-  ).bind(profileId, employeeId, salary, optionalText(body.currency) ?? "MVR", optionalText(body.payment_method) ?? "CASH", optionalText(body.bank_name), optionalText(body.bank_account_no), optionalText(body.bank_account_name), asSqlBool(body.payroll_included ?? true), asSqlBool(body.overtime_eligible), asSqlBool(body.benefits_eligible), asSqlBool(body.advance_eligible), asSqlBool(body.missed_day_deduction_enabled ?? true), asSqlBool(body.leave_deduction_enabled ?? true), optionalText(body.daily_rate_mode) ?? "FIXED_30_DAYS", optionalText(body.effective_from) ?? new Date().toISOString().slice(0, 10)).run();
+  ).bind(profileId, employeeId, salary, optionalText(body.currency) ?? "MVR", normalizedProfilePaymentMethod, profileStoresBankDetails ? optionalText(body.bank_name) : null, profileStoresBankDetails ? optionalText(body.bank_account_no) : null, profileStoresBankDetails ? optionalText(body.bank_account_name) : null, asSqlBool(body.payroll_included ?? true), asSqlBool(body.overtime_eligible), asSqlBool(body.benefits_eligible), asSqlBool(body.advance_eligible), asSqlBool(body.missed_day_deduction_enabled ?? true), asSqlBool(body.leave_deduction_enabled ?? true), optionalText(body.daily_rate_mode) ?? "FIXED_30_DAYS", optionalText(body.effective_from) ?? new Date().toISOString().slice(0, 10)).run();
   await setOnboardingTaskState(c, c.req.param("caseId"), "payroll_profile", "COMPLETED", "Payroll profile saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.payroll_profile_saved", "employee_payroll_profile", profileId, null, body);
   return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
@@ -2398,13 +2456,15 @@ onboardingRoutes.post("/cases/:caseId/payment-methods", requireAnyPermission(["o
   if (!(await ensureOnboardingModuleEnabled(c, "payment_method", "payment_methods"))) return ok(c, { not_required: true, workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
   const body = await readBody(c);
   const employeeId = String(gate.row.employee_id);
-  const methodType = (optionalText(body.payment_method_type) ?? "CASH").toUpperCase();
+  const methodType = normalizeDetailedPaymentMethodType(body.payment_method_type);
   if (!["BANK_TRANSFER", "CASH", "CHEQUE_PLACEHOLDER", "MOBILE_WALLET_PLACEHOLDER", "OTHER"].includes(methodType)) return fail(c, 400, "PAYMENT_METHOD_INVALID", "A valid payment method type is required.");
-  const institutionId = optionalText(body.payment_institution_id);
-  const institution = institutionId ? await c.env.DB.prepare("SELECT * FROM payment_institutions WHERE id = ? AND is_active = 1 AND status = 'ACTIVE'").bind(institutionId).first<Record<string, unknown>>() : null;
-  if (institutionId && !institution) return fail(c, 400, "PAYMENT_INSTITUTION_INVALID", "Selected payment institution is not active.");
-  const accountNumber = optionalText(body.bank_account_number);
-  if (methodType === "BANK_TRANSFER" && (!institutionId || !optionalText(body.bank_account_name) || !accountNumber)) return fail(c, 400, "PAYMENT_METHOD_INVALID", "Bank transfer requires institution, account name, and account number.");
+  const bankTransfer = methodType === "BANK_TRANSFER";
+  const institutionId = bankTransfer ? optionalText(body.payment_institution_id) : null;
+  const institution = bankTransfer ? await getActiveBankPaymentInstitution(c.env.DB, institutionId) : null;
+  if (bankTransfer && !institution) return fail(c, 400, "PAYMENT_INSTITUTION_INVALID", "Bank transfer requires an active bank institution.");
+  const accountName = bankTransfer ? optionalText(body.bank_account_name) : null;
+  const accountNumber = bankTransfer ? optionalText(body.bank_account_number) : null;
+  if (bankTransfer && (!accountName || !accountNumber)) return fail(c, 400, "PAYMENT_METHOD_INVALID", "Bank transfer requires bank, account name, and account number.");
   await c.env.DB.prepare("UPDATE employee_payment_methods SET is_primary = 0 WHERE employee_id = ? AND status = 'ACTIVE'").bind(employeeId).run();
   const methodId = id("employee_payment_method");
   await c.env.DB.prepare(
@@ -2413,7 +2473,7 @@ onboardingRoutes.post("/cases/:caseId/payment-methods", requireAnyPermission(["o
       bank_account_number_encrypted_or_plain_placeholder, bank_account_number_masked, is_primary, allocation_type,
       allocation_percentage, allocation_amount, currency, effective_date, notes, created_by_user_id, updated_by_user_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(methodId, employeeId, methodType, institutionId, institution?.name ?? optionalText(body.bank_name_snapshot), optionalText(body.bank_account_name), accountNumber, maskAccount(accountNumber), optionalText(body.allocation_type) ?? "FULL", numberOrNull(body.allocation_percentage), numberOrNull(body.allocation_amount), optionalText(body.currency) ?? "MVR", optionalText(body.effective_date) ?? new Date().toISOString().slice(0, 10), optionalText(body.notes), c.get("currentUser").id, c.get("currentUser").id).run();
+  ).bind(methodId, employeeId, methodType, institutionId, institution ? `${String(institution.code)} - ${String(institution.name)}` : null, accountName, accountNumber, maskAccount(accountNumber), optionalText(body.allocation_type) ?? "FULL", numberOrNull(body.allocation_percentage), numberOrNull(body.allocation_amount), optionalText(body.currency) ?? "MVR", optionalText(body.effective_date) ?? new Date().toISOString().slice(0, 10), optionalText(body.notes), c.get("currentUser").id, c.get("currentUser").id).run();
   await setOnboardingTaskState(c, c.req.param("caseId"), "payment_method", "COMPLETED", "Payment method saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.payment_method_saved", "employee_payment_method", methodId, null, body);
   return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) }, 201);

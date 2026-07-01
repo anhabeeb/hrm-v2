@@ -730,6 +730,7 @@ INSERT OR IGNORE INTO document_types (
   ('doc_type_visa', 'doc_cat_immigration', 'VISA', 'Visa', 'Visa document', 1, 1, 90, '["application/pdf","image/jpeg","image/png"]', 10, 0, 1, 0, 1, 30),
   ('doc_type_id_card', 'doc_cat_identity', 'ID_CARD', 'ID Card', 'National ID card or similar identity record', 1, 1, 60, '["application/pdf","image/jpeg","image/png"]', 10, 0, 1, 0, 1, 40),
   ('doc_type_employment_contract', 'doc_cat_employment', 'EMPLOYMENT_CONTRACT', 'Employment Contract', 'Signed employment contract', 1, 1, 30, '["application/pdf","image/jpeg","image/png"]', 10, 1, 0, 0, 0, 50),
+  ('doc_type_emergency_contact_form', 'doc_cat_employment', 'EMERGENCY_CONTACT_FORM', 'Emergency Contact Form', 'Emergency contact acknowledgement or contact form', 0, 1, 30, '["application/pdf","image/jpeg","image/png"]', 10, 1, 0, 0, 0, 55),
   ('doc_type_medical', 'doc_cat_medical', 'MEDICAL_DOCUMENT', 'Medical Document', 'Medical certificate or health document', 1, 1, 30, '["application/pdf","image/jpeg","image/png"]', 10, 1, 1, 0, 0, 60),
   ('doc_type_police_report', 'doc_cat_identity', 'POLICE_REPORT', 'Police Report', 'Police clearance or report', 1, 1, 30, '["application/pdf","image/jpeg","image/png"]', 10, 1, 1, 0, 0, 70),
   ('doc_type_profile_photo', 'doc_cat_profile_photo', 'PROFILE_PHOTO', 'Profile Photo', 'Employee profile photo', 0, 1, 0, '["image/jpeg","image/png","image/webp"]', 5, 0, 0, 0, 0, 80),
@@ -760,7 +761,7 @@ SET expiry_required = requires_expiry_date,
     employee_download_allowed = 0,
     sensitivity_level = CASE WHEN is_sensitive = 1 THEN 'SENSITIVE' ELSE 'NORMAL' END,
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-WHERE code IN ('PASSPORT', 'WORK_PERMIT', 'VISA', 'ID_CARD', 'EMPLOYMENT_CONTRACT', 'MEDICAL_DOCUMENT', 'POLICE_REPORT', 'INSURANCE', 'DRIVING_LICENSE', 'EDUCATION_CERTIFICATE', 'TRAINING_CERTIFICATE', 'PROFILE_PHOTO');
+WHERE code IN ('PASSPORT', 'WORK_PERMIT', 'VISA', 'ID_CARD', 'EMPLOYMENT_CONTRACT', 'EMERGENCY_CONTACT_FORM', 'MEDICAL_DOCUMENT', 'POLICE_REPORT', 'INSURANCE', 'DRIVING_LICENSE', 'EDUCATION_CERTIFICATE', 'TRAINING_CERTIFICATE', 'PROFILE_PHOTO');
 
 UPDATE document_types
 SET expiring_soon_days = 180,
@@ -838,6 +839,18 @@ INSERT OR IGNORE INTO document_compliance_settings (
   1, 0, 0,
   1, 1, '{"seeded_prompt":"15"}'
 );
+
+INSERT OR IGNORE INTO document_required_rules (
+  id, document_type_id, employee_type, employment_type, department_id, position_id, location_id,
+  custom_condition_json, is_required, rule_priority
+) VALUES
+  ('doc_required_rule_any_employment_contract', 'doc_type_employment_contract', NULL, NULL, NULL, NULL, NULL, '{"default_scope":"ANY"}', 1, 10),
+  ('doc_required_rule_any_profile_photo', 'doc_type_profile_photo', NULL, NULL, NULL, NULL, NULL, '{"default_scope":"ANY"}', 1, 20),
+  ('doc_required_rule_any_emergency_contact_form', 'doc_type_emergency_contact_form', NULL, NULL, NULL, NULL, NULL, '{"default_scope":"ANY"}', 1, 30),
+  ('doc_required_rule_local_id_card', 'doc_type_id_card', 'LOCAL', NULL, NULL, NULL, NULL, '{"default_scope":"LOCAL"}', 1, 40),
+  ('doc_required_rule_foreign_passport', 'doc_type_passport', 'FOREIGN', NULL, NULL, NULL, NULL, '{"default_scope":"FOREIGN"}', 1, 40),
+  ('doc_required_rule_foreign_visa', 'doc_type_visa', 'FOREIGN', NULL, NULL, NULL, NULL, '{"default_scope":"FOREIGN"}', 1, 50),
+  ('doc_required_rule_foreign_work_permit', 'doc_type_work_permit', 'FOREIGN', NULL, NULL, NULL, NULL, '{"default_scope":"FOREIGN"}', 1, 60);
 
 INSERT OR IGNORE INTO leave_types (id, code, name, description, is_paid_default, is_statutory, is_active, sort_order) VALUES
   ('leave_type_annual', 'ANNUAL_LEAVE', 'Annual Leave', 'Paid annual leave entitlement.', 1, 1, 1, 10),

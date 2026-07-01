@@ -94,6 +94,17 @@ function validatePaymentForm(form: PaymentForm): ValidationIssue[] {
   ];
 }
 
+function institutionLabel(institution: PaymentInstitution) {
+  return institution.code ? `${institution.code} - ${institution.name}` : institution.name;
+}
+
+function paymentTypeLabel(value: string) {
+  if (value === "BANK_TRANSFER") return "Bank transfer";
+  if (value === "CHEQUE_PLACEHOLDER" || value === "CHEQUE") return "Cheque";
+  if (value === "MOBILE_WALLET_PLACEHOLDER") return "Mobile wallet";
+  return value.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function validateLoanForm(form: LoanForm): ValidationIssue[] {
   return [
     ...validateRequiredField(form.payment_institution_id, "payment_institution_id", "Bank"),
@@ -170,7 +181,7 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
     ]);
   }, [token, canViewPaymentInstitutions, canViewPensionSchemes, canViewCustomDeductionTemplates]);
 
-  const activeInstitutions = useMemo(() => institutions.filter((institution) => institution.status !== "ARCHIVED"), [institutions]);
+  const activeBanks = useMemo(() => institutions.filter((institution) => institution.status === "ACTIVE" && Boolean(institution.is_active) && institution.type === "BANK"), [institutions]);
   const paymentMethods = summary.payment_methods ?? [];
   const bankLoans = summary.bank_loans ?? [];
   const bankLoanPayments = summary.bank_loan_payments ?? [];
@@ -370,8 +381,8 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
         </div>
       </Panel> : <DisabledPayrollPanel icon={<ReceiptText className="h-4 w-4" />} title="Custom deductions" />}
 
-      {paymentForm ? <PaymentMethodModal form={paymentForm} institutions={activeInstitutions} issues={validation.issues} onChange={setPaymentForm} onClose={() => setPaymentForm(null)} onConfirm={() => void savePayment()} /> : null}
-      {loanForm ? <LoanModal form={loanForm} institutions={activeInstitutions.filter((institution) => institution.type === "BANK")} issues={validation.issues} onChange={setLoanForm} onClose={() => setLoanForm(null)} onConfirm={() => void saveLoan()} /> : null}
+      {paymentForm ? <PaymentMethodModal form={paymentForm} institutions={activeBanks} issues={validation.issues} onChange={setPaymentForm} onClose={() => setPaymentForm(null)} onConfirm={() => void savePayment()} /> : null}
+      {loanForm ? <LoanModal form={loanForm} institutions={activeBanks} issues={validation.issues} onChange={setLoanForm} onClose={() => setLoanForm(null)} onConfirm={() => void saveLoan()} /> : null}
       {pensionForm ? <PensionModal form={pensionForm} schemes={schemes} issues={validation.issues} onChange={setPensionForm} onClose={() => setPensionForm(null)} onConfirm={() => void savePension()} /> : null}
       {customDeductionForm ? <CustomDeductionModal form={customDeductionForm} templates={customTemplates} issues={validation.issues} onChange={setCustomDeductionForm} onClose={() => setCustomDeductionForm(null)} onConfirm={() => void saveCustomDeduction()} /> : null}
       {customAction ? <Modal title={`${customAction.action} custom deduction`} issues={validation.issues} onClose={() => setCustomAction(null)} onConfirm={() => void runCustomAction()}>
@@ -469,9 +480,21 @@ function defaultCustomDeductionForm(templates: CustomDeductionTemplate[]): Custo
 
 function PaymentMethodModal({ form, institutions, issues, onChange, onClose, onConfirm }: { form: PaymentForm; institutions: PaymentInstitution[]; issues: ValidationIssue[]; onChange: (form: PaymentForm) => void; onClose: () => void; onConfirm: () => void }) {
   const isBank = form.payment_method_type === "BANK_TRANSFER";
+  function changeType(payment_method_type: string) {
+    const normalized = payment_method_type === "CHEQUE" ? "CHEQUE_PLACEHOLDER" : payment_method_type;
+    onChange({
+      ...form,
+      payment_method_type: normalized,
+      payment_institution_id: normalized === "BANK_TRANSFER" ? form.payment_institution_id : "",
+      bank_account_name: normalized === "BANK_TRANSFER" ? form.bank_account_name : "",
+      bank_account_number: normalized === "BANK_TRANSFER" ? form.bank_account_number : ""
+    });
+  }
   return <Modal title="Payment method" issues={issues} onClose={onClose} onConfirm={onConfirm}>
-    <Select label="Type" field="payment_method_type" issues={issues} value={form.payment_method_type} onChange={(value) => onChange({ ...form, payment_method_type: value })} options={[["BANK_TRANSFER", "Bank transfer"], ["CASH", "Cash"], ["CHEQUE_PLACEHOLDER", "Cheque placeholder"], ["MOBILE_WALLET_PLACEHOLDER", "Mobile wallet placeholder"], ["OTHER", "Other"]]} />
-    {isBank ? <Select label="Bank/payment institution" field="payment_institution_id" issues={issues} value={form.payment_institution_id} onChange={(value) => onChange({ ...form, payment_institution_id: value })} options={[["", "Select institution"], ...institutions.map((institution) => [institution.id, institution.name] as [string, string])]} /> : null}
+    <Select label="Type" field="payment_method_type" issues={issues} value={form.payment_method_type} onChange={changeType} options={[["BANK_TRANSFER", paymentTypeLabel("BANK_TRANSFER")], ["CASH", paymentTypeLabel("CASH")], ["CHEQUE_PLACEHOLDER", paymentTypeLabel("CHEQUE_PLACEHOLDER")], ["MOBILE_WALLET_PLACEHOLDER", paymentTypeLabel("MOBILE_WALLET_PLACEHOLDER")], ["OTHER", paymentTypeLabel("OTHER")]]} />
+    {form.payment_method_type === "CASH" ? <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground md:col-span-2">Cash payment does not require bank details.</p> : null}
+    {isBank ? <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 md:col-span-2">Bank transfer requires bank, account name, and account number.</p> : null}
+    {isBank ? <Select label="Bank" field="payment_institution_id" issues={issues} value={form.payment_institution_id} onChange={(value) => onChange({ ...form, payment_institution_id: value })} options={[["", "Select active bank"], ...institutions.map((institution) => [institution.id, institutionLabel(institution)] as [string, string])]} /> : null}
     {isBank ? <Field label="Account name" field="bank_account_name" issues={issues}><Input name="bank_account_name" data-validation-field="bank_account_name" value={form.bank_account_name} onChange={(event) => onChange({ ...form, bank_account_name: event.target.value })} /></Field> : null}
     {isBank ? <Field label="Account number" field="bank_account_number" issues={issues}><Input name="bank_account_number" data-validation-field="bank_account_number" value={form.bank_account_number} onChange={(event) => onChange({ ...form, bank_account_number: event.target.value })} /></Field> : null}
     {form.payment_method_type === "CASH" ? <Field label="Cash note" field="cash_collection_note" issues={issues}><Input name="cash_collection_note" data-validation-field="cash_collection_note" value={form.cash_collection_note} onChange={(event) => onChange({ ...form, cash_collection_note: event.target.value })} /></Field> : null}
@@ -512,7 +535,7 @@ function CustomDeductionModal({ form, templates, issues, onChange, onClose, onCo
 
 function LoanModal({ form, institutions, issues, onChange, onClose, onConfirm }: { form: LoanForm; institutions: PaymentInstitution[]; issues: ValidationIssue[]; onChange: (form: LoanForm) => void; onClose: () => void; onConfirm: () => void }) {
   return <Modal title="Bank loan deduction" issues={issues} onClose={onClose} onConfirm={onConfirm}>
-    <Select label="Bank" field="payment_institution_id" issues={issues} value={form.payment_institution_id} onChange={(value) => onChange({ ...form, payment_institution_id: value })} options={[["", "Select bank"], ...institutions.map((institution) => [institution.id, institution.name] as [string, string])]} />
+    <Select label="Bank" field="payment_institution_id" issues={issues} value={form.payment_institution_id} onChange={(value) => onChange({ ...form, payment_institution_id: value })} options={[["", "Select bank"], ...institutions.map((institution) => [institution.id, institutionLabel(institution)] as [string, string])]} />
     <Field label="Loan reference" field="loan_reference_number" issues={issues}><Input name="loan_reference_number" data-validation-field="loan_reference_number" value={form.loan_reference_number} onChange={(event) => onChange({ ...form, loan_reference_number: event.target.value })} /></Field>
     <Field label="Monthly installment" field="monthly_installment_amount" issues={issues}><Input name="monthly_installment_amount" data-validation-field="monthly_installment_amount" type="number" value={form.monthly_installment_amount} onChange={(event) => onChange({ ...form, monthly_installment_amount: event.target.value })} /></Field>
     <Field label="Original amount" field="original_loan_amount" issues={issues}><Input name="original_loan_amount" data-validation-field="original_loan_amount" type="number" value={form.original_loan_amount} onChange={(event) => onChange({ ...form, original_loan_amount: event.target.value })} /></Field>

@@ -94,6 +94,14 @@ type RequiredDocumentRow = {
   document_type_name: string;
   document_type_code: string;
   category_name: string | null;
+  matched_employee_type_rule: string | null;
+  matched_employment_type_rule: string | null;
+  matched_department_id: string | null;
+  matched_department_name: string | null;
+  matched_position_id: string | null;
+  matched_position_title: string | null;
+  matched_location_id: string | null;
+  matched_location_name: string | null;
   is_required: number;
   rule_priority: number;
   is_sensitive: number;
@@ -480,12 +488,19 @@ export async function getRequiredDocumentsForEmployee(db: Env["DB"], employeeId:
   const rows = await db.prepare(
     `SELECT rr.id AS matched_rule_id, dt.id AS document_type_id, dt.name AS document_type_name,
       dt.code AS document_type_code, dc.name AS category_name, rr.is_required, rr.rule_priority,
+      rr.employee_type AS matched_employee_type_rule, rr.employment_type AS matched_employment_type_rule,
+      rr.department_id AS matched_department_id, rd.name AS matched_department_name,
+      rr.position_id AS matched_position_id, rp.title AS matched_position_title,
+      rr.location_id AS matched_location_id, rl.name AS matched_location_name,
       dt.is_sensitive, dt.expiry_required, dt.issue_date_required, dt.document_number_required,
       dt.blocks_employee_activation, dt.creates_payroll_warning, dt.creates_final_settlement_warning,
       dt.expiring_soon_days, dt.urgent_expiring_days
      FROM document_required_rules rr
      JOIN document_types dt ON dt.id = rr.document_type_id AND dt.is_active = 1
      LEFT JOIN document_categories dc ON dc.id = dt.category_id
+     LEFT JOIN departments rd ON rd.id = rr.department_id
+     LEFT JOIN positions rp ON rp.id = rr.position_id
+     LEFT JOIN locations rl ON rl.id = rr.location_id
      WHERE rr.is_active = 1
        AND (rr.employee_type IS NULL OR rr.employee_type = ?)
        AND (rr.employment_type IS NULL OR rr.employment_type = ?)

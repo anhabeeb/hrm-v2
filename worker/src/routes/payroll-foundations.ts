@@ -687,6 +687,15 @@ async function readInstitution(c: Context<AppBindings>, id: string) {
   return c.env.DB.prepare("SELECT * FROM payment_institutions WHERE id = ?").bind(id).first<Row>();
 }
 
+async function readActiveBankInstitution(c: Context<AppBindings>, id: string) {
+  return c.env.DB.prepare("SELECT * FROM payment_institutions WHERE id = ? AND is_active = 1 AND status = 'ACTIVE' AND type = 'BANK'").bind(id).first<Row>();
+}
+
+function normalizePaymentMethodType(value: unknown) {
+  const methodType = text(value).toUpperCase() || "CASH";
+  return methodType === "CHEQUE" ? "CHEQUE_PLACEHOLDER" : methodType;
+}
+
 async function loanEligibilitySnapshot(c: Context<AppBindings>, employeeId: string, institutionId: string | null, paymentMethods?: Row[]) {
   const settings = await c.env.DB.prepare("SELECT * FROM payroll_settings WHERE id = 'payroll_settings_default'").first<Row>();
   const methods = paymentMethods ?? (await getEmployeePaymentMethods(c.env.DB, employeeId, false));
@@ -1019,13 +1028,14 @@ employeePayrollFoundationRoutes.post("/:employeeId/payment-methods", async (c) =
   const employeeId = c.req.param("employeeId");
   if (!(await canManageEmployeePayrollFoundation(c, employeeId))) return fail(c, 404, "NOT_FOUND", "Employee payment methods were not found.");
   const body = await c.req.json<Row>();
-  const methodType = text(body.payment_method_type);
+  const methodType = normalizePaymentMethodType(body.payment_method_type);
   if (!["BANK_TRANSFER", "CASH", "CHEQUE_PLACEHOLDER", "MOBILE_WALLET_PLACEHOLDER", "OTHER"].includes(methodType)) return fail(c, 400, "VALIDATION_ERROR", "A valid payment method type is required.");
   if (methodType === "BANK_TRANSFER" && (!text(body.payment_institution_id) || !text(body.bank_account_name) || !text(body.bank_account_number))) return fail(c, 400, "VALIDATION_ERROR", "Bank transfer requires bank/payment institution, account name, and account number.");
-  const institution = text(body.payment_institution_id) ? await readInstitution(c, text(body.payment_institution_id)) : null;
-  if (text(body.payment_institution_id) && (!institution || text(institution.status) === "ARCHIVED")) return fail(c, 400, "VALIDATION_ERROR", "Selected payment institution is not active.");
+  const institution = methodType === "BANK_TRANSFER" ? await readActiveBankInstitution(c, text(body.payment_institution_id)) : null;
+  if (methodType === "BANK_TRANSFER" && !institution) return fail(c, 400, "VALIDATION_ERROR", "Bank transfer requires an active bank institution.");
   const id = crypto.randomUUID();
-  const accountNumber = text(body.bank_account_number);
+  const accountName = methodType === "BANK_TRANSFER" ? text(body.bank_account_name) : "";
+  const accountNumber = methodType === "BANK_TRANSFER" ? text(body.bank_account_number) : "";
   if (bool(body.is_primary, false)) await c.env.DB.prepare("UPDATE employee_payment_methods SET is_primary = 0 WHERE employee_id = ? AND status = 'ACTIVE'").bind(employeeId).run();
   await c.env.DB
     .prepare(
@@ -1037,7 +1047,7 @@ employeePayrollFoundationRoutes.post("/:employeeId/payment-methods", async (c) =
         created_by_user_id, updated_by_user_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(id, employeeId, methodType, institution?.id ?? null, institution?.name ?? (text(body.bank_name_snapshot) || null), text(body.bank_account_name) || null, accountNumber || null, maskAccount(accountNumber), text(body.iban_or_swift_placeholder) || null, text(body.wallet_provider) || null, text(body.wallet_number) || null, text(body.cheque_payee_name) || null, text(body.cash_collection_location_id) || null, text(body.cash_collection_note) || null, bool(body.is_primary, false) ? 1 : 0, text(body.allocation_type) || "FULL", body.allocation_percentage ?? null, body.allocation_amount ?? null, text(body.currency) || "MVR", text(body.effective_date) || now().slice(0, 10), text(body.notes) || null, c.get("currentUser").id, c.get("currentUser").id)
+    .bind(id, employeeId, methodType, institution?.id ?? null, institution ? `${text(institution.code)} - ${text(institution.name)}` : null, accountName || null, accountNumber || null, maskAccount(accountNumber), methodType === "BANK_TRANSFER" ? text(body.iban_or_swift_placeholder) || null : null, text(body.wallet_provider) || null, text(body.wallet_number) || null, text(body.cheque_payee_name) || null, methodType === "CASH" ? text(body.cash_collection_location_id) || null : null, methodType === "CASH" ? text(body.cash_collection_note) || null : null, bool(body.is_primary, false) ? 1 : 0, text(body.allocation_type) || "FULL", body.allocation_percentage ?? null, body.allocation_amount ?? null, text(body.currency) || "MVR", text(body.effective_date) || now().slice(0, 10), text(body.notes) || null, c.get("currentUser").id, c.get("currentUser").id)
     .run();
   const methods = await getEmployeePaymentMethods(c.env.DB, employeeId, true);
   await audit(c, "employee.payment_method.created", "employee_payment_method", id, { newValue: methods.find((method) => method.id === id) });
@@ -1051,16 +1061,16 @@ employeePayrollFoundationRoutes.patch("/:employeeId/payment-methods/:methodId", 
   if (!old) return fail(c, 404, "NOT_FOUND", "Employee payment method was not found.");
   const body = await c.req.json<Row>();
   if (bool(body.is_primary, Boolean(old.is_primary))) await c.env.DB.prepare("UPDATE employee_payment_methods SET is_primary = 0 WHERE employee_id = ? AND id != ? AND status = 'ACTIVE'").bind(employeeId, old.id).run();
-  const methodType = text(body.payment_method_type) || text(old.payment_method_type);
+  const methodType = normalizePaymentMethodType(hasInput(body, "payment_method_type") ? body.payment_method_type : old.payment_method_type);
   if (!["BANK_TRANSFER", "CASH", "CHEQUE_PLACEHOLDER", "MOBILE_WALLET_PLACEHOLDER", "OTHER"].includes(methodType)) return fail(c, 400, "VALIDATION_ERROR", "A valid payment method type is required.");
-  const requestedInstitutionId = hasInput(body, "payment_institution_id") ? text(body.payment_institution_id) : text(old.payment_institution_id);
-  const institution = requestedInstitutionId ? await readInstitution(c, requestedInstitutionId) : null;
-  if (requestedInstitutionId && (!institution || text(institution.status) === "ARCHIVED" || !bool(institution.is_active, true))) return fail(c, 400, "VALIDATION_ERROR", "Selected payment institution is not active.");
-  const accountName = hasInput(body, "bank_account_name") ? text(body.bank_account_name) : text(old.bank_account_name);
-  const accountNumber = text(body.bank_account_number) || text(old.bank_account_number_encrypted_or_plain_placeholder);
+  const requestedInstitutionId = methodType === "BANK_TRANSFER" ? (hasInput(body, "payment_institution_id") ? text(body.payment_institution_id) : text(old.payment_institution_id)) : "";
+  const institution = methodType === "BANK_TRANSFER" && requestedInstitutionId ? await readActiveBankInstitution(c, requestedInstitutionId) : null;
+  if (methodType === "BANK_TRANSFER" && !institution) return fail(c, 400, "VALIDATION_ERROR", "Bank transfer requires an active bank institution.");
+  const accountName = methodType === "BANK_TRANSFER" ? (hasInput(body, "bank_account_name") ? text(body.bank_account_name) : text(old.bank_account_name)) : "";
+  const accountNumber = methodType === "BANK_TRANSFER" ? (text(body.bank_account_number) || text(old.bank_account_number_encrypted_or_plain_placeholder)) : "";
   if (methodType === "BANK_TRANSFER" && (!requestedInstitutionId || !accountName || !accountNumber)) return fail(c, 400, "VALIDATION_ERROR", "Bank transfer requires bank/payment institution, account name, and account number.");
   const savedInstitutionId = methodType === "BANK_TRANSFER" ? requestedInstitutionId : null;
-  const bankNameSnapshot = institution?.name ?? (savedInstitutionId ? text(old.bank_name_snapshot) || null : null);
+  const bankNameSnapshot = institution ? `${text(institution.code)} - ${text(institution.name)}` : (savedInstitutionId ? text(old.bank_name_snapshot) || null : null);
   await c.env.DB
     .prepare(
       `UPDATE employee_payment_methods SET payment_method_type = ?, payment_institution_id = ?, bank_name_snapshot = ?, bank_account_name = ?, bank_account_number_encrypted_or_plain_placeholder = ?,
@@ -1068,7 +1078,7 @@ employeePayrollFoundationRoutes.patch("/:employeeId/payment-methods/:methodId", 
         cash_collection_note = ?, is_primary = ?, allocation_type = ?, allocation_percentage = ?, allocation_amount = ?, currency = ?,
         status = ?, effective_date = ?, end_date = ?, notes = ?, updated_by_user_id = ?, updated_at = ? WHERE id = ? AND employee_id = ?`
     )
-    .bind(methodType, savedInstitutionId || null, bankNameSnapshot, accountName || null, accountNumber || null, maskAccount(accountNumber), text(body.wallet_provider) || old.wallet_provider, text(body.wallet_number) || old.wallet_number, text(body.cheque_payee_name) || old.cheque_payee_name, text(body.cash_collection_location_id) || old.cash_collection_location_id, text(body.cash_collection_note) || old.cash_collection_note, bool(body.is_primary, Boolean(old.is_primary)) ? 1 : 0, text(body.allocation_type) || old.allocation_type, body.allocation_percentage ?? old.allocation_percentage, body.allocation_amount ?? old.allocation_amount, text(body.currency) || old.currency, text(body.status) || old.status, text(body.effective_date) || old.effective_date, text(body.end_date) || old.end_date, text(body.notes) || old.notes, c.get("currentUser").id, now(), old.id, employeeId)
+    .bind(methodType, savedInstitutionId || null, bankNameSnapshot, accountName || null, accountNumber || null, maskAccount(accountNumber), methodType === "BANK_TRANSFER" ? text(body.wallet_provider) || old.wallet_provider : text(body.wallet_provider) || null, text(body.wallet_number) || old.wallet_number, text(body.cheque_payee_name) || old.cheque_payee_name, methodType === "CASH" ? text(body.cash_collection_location_id) || old.cash_collection_location_id : null, methodType === "CASH" ? text(body.cash_collection_note) || old.cash_collection_note : null, bool(body.is_primary, Boolean(old.is_primary)) ? 1 : 0, text(body.allocation_type) || old.allocation_type, body.allocation_percentage ?? old.allocation_percentage, body.allocation_amount ?? old.allocation_amount, text(body.currency) || old.currency, text(body.status) || old.status, text(body.effective_date) || old.effective_date, text(body.end_date) || old.end_date, text(body.notes) || old.notes, c.get("currentUser").id, now(), old.id, employeeId)
     .run();
   const method = (await getEmployeePaymentMethods(c.env.DB, employeeId, true)).find((row) => row.id === old.id);
   await audit(c, "employee.payment_method.updated", "employee_payment_method", String(old.id), { oldValue: old, newValue: method });
