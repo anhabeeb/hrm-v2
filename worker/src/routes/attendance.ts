@@ -48,6 +48,16 @@ function num(value: unknown, fallback: number | null = null) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function optionalInteger(value: unknown, fallback: number | null = null) {
+  if (value === undefined) return fallback;
+  if (value === null) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return Number.NaN;
+  if (!Number.isInteger(parsed)) return Number.NaN;
+  return parsed;
+}
+
 function bool(value: unknown, fallback = false) {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value === 1;
@@ -335,6 +345,13 @@ async function getSettings(c: Context<AppBindings>) {
     ).run();
     settings = await c.env.DB.prepare("SELECT * FROM attendance_settings WHERE id = 'attendance_settings_default'").first<Record<string, unknown>>();
   }
+  await c.env.DB.prepare(
+    `UPDATE attendance_settings
+     SET monthly_attendance_lock_day = NULL
+     WHERE monthly_attendance_lock_day IS NOT NULL
+       AND (monthly_attendance_lock_day < 1 OR monthly_attendance_lock_day > 31 OR monthly_attendance_lock_day != CAST(monthly_attendance_lock_day AS INTEGER))`
+  ).run();
+  settings = await c.env.DB.prepare("SELECT * FROM attendance_settings WHERE id = 'attendance_settings_default'").first<Record<string, unknown>>();
   return settings!;
 }
 
@@ -1148,7 +1165,7 @@ attendanceRoutes.patch("/settings", requirePermission("attendance.settings.manag
     require_reason_for_correction_review: bool(body.require_reason_for_correction_review, Boolean(old.require_reason_for_correction_review ?? 1)),
     overtime_tracking_enabled: bool(body.overtime_tracking_enabled, Boolean(old.overtime_tracking_enabled ?? 0)),
     lock_after_payroll_finalized: bool(body.lock_after_payroll_finalized, Boolean(old.lock_after_payroll_finalized ?? 1)),
-    monthly_attendance_lock_day: num(body.monthly_attendance_lock_day, old.monthly_attendance_lock_day == null ? null : Number(old.monthly_attendance_lock_day)),
+    monthly_attendance_lock_day: optionalInteger(body.monthly_attendance_lock_day, old.monthly_attendance_lock_day == null ? null : Number(old.monthly_attendance_lock_day)),
     default_absent_status: normalizeAttendanceStatus(body.default_absent_status ?? old.default_absent_status ?? "ABSENT", "ABSENT"),
     attendance_source_options_json: readString(body.attendance_source_options_json ?? old.attendance_source_options_json) || '["DEVICE","MANUAL","MANUAL_IMPORT","API","BRIDGE"]',
     payroll_deduction_enabled: bool(body.payroll_deduction_enabled, Boolean(old.payroll_deduction_enabled))
@@ -1169,7 +1186,7 @@ attendanceRoutes.patch("/settings", requirePermission("attendance.settings.manag
   if (input.standard_work_minutes_per_day < 0 || input.late_grace_minutes < 0 || input.early_checkout_grace_minutes < 0) return fail(c, 400, "VALIDATION_ERROR", "Attendance setting minute values cannot be negative.");
   if (!["FIXED_SHIFT", "ROSTER_BASED", "FLEXIBLE"].includes(input.default_workday_mode)) return fail(c, 400, "VALIDATION_ERROR", "Default workday mode is invalid.");
   if (!LOG_SOURCES.has(input.default_attendance_source)) return fail(c, 400, "VALIDATION_ERROR", "Default attendance source is invalid.");
-  if (input.monthly_attendance_lock_day != null && (input.monthly_attendance_lock_day < 1 || input.monthly_attendance_lock_day > 31)) return fail(c, 400, "VALIDATION_ERROR", "Monthly attendance lock day must be between 1 and 31.");
+  if (input.monthly_attendance_lock_day != null && (!Number.isInteger(input.monthly_attendance_lock_day) || input.monthly_attendance_lock_day < 1 || input.monthly_attendance_lock_day > 31)) return fail(c, 400, "VALIDATION_ERROR", "Monthly attendance lock day must be between 1 and 31.");
   await c.env.DB.prepare(
     `UPDATE attendance_settings SET module_enabled = ?, default_workday_mode = ?, standard_work_minutes_per_day = ?, default_shift_start_time = ?, default_shift_end_time = ?,
      late_grace_minutes = ?, early_checkout_grace_minutes = ?, weekly_off_days_json = ?, mark_absent_if_no_punch = ?, missed_punch_requires_correction = ?,

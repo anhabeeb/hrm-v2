@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import {
   auditReportPath,
+  attendanceMonthlyLockDayInvalidWhere,
   defaultExpressionForColumn,
   findLegacyManualRepairFiles,
   generatedRepairPath,
@@ -99,6 +100,18 @@ function addMissingIndexStatements(report) {
   return statements.length ? ["-- Recreate missing indexes", ...statements] : [];
 }
 
+function dataRepairStatements(report) {
+  const statements = [];
+  const needsAttendanceLockDayRepair = (report.data_repair_issues ?? []).some((issue) => issue.table === "attendance_settings" && issue.column === "monthly_attendance_lock_day");
+  if (needsAttendanceLockDayRepair) {
+    statements.push(
+      "-- Repair invalid optional monthly attendance lock day values",
+      `UPDATE ${quoteIdent("attendance_settings")} SET ${quoteIdent("monthly_attendance_lock_day")} = NULL WHERE ${attendanceMonthlyLockDayInvalidWhere}`
+    );
+  }
+  return statements;
+}
+
 function main() {
   const schema = parseSchema();
   const legacyFiles = findLegacyManualRepairFiles();
@@ -129,6 +142,8 @@ function main() {
   for (const tableName of report.missing_tables ?? []) {
     statements.push(...createMissingTableStatements(schema, tableName));
   }
+
+  statements.push(...dataRepairStatements(report));
 
   const rebuildOrder = Object.keys(rebuildRules).filter((tableName) => report.tables_requiring_rebuild?.includes(tableName));
   for (const tableName of rebuildOrder) {

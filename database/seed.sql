@@ -926,6 +926,11 @@ INSERT OR IGNORE INTO attendance_settings (
   'attendance_settings_default', 480, '09:00', '18:00', 10, 10, '["FRIDAY"]', 1, 1, 0
 );
 
+UPDATE attendance_settings
+SET monthly_attendance_lock_day = NULL
+WHERE monthly_attendance_lock_day IS NOT NULL
+  AND (monthly_attendance_lock_day < 1 OR monthly_attendance_lock_day > 31 OR monthly_attendance_lock_day != CAST(monthly_attendance_lock_day AS INTEGER));
+
 INSERT OR IGNORE INTO attendance_device_settings (
   id, zkteco_csv_import_enabled, zkteco_local_bridge_enabled, zkteco_push_adms_enabled,
   auto_match_by_biometric_user_id, auto_match_by_employee_no, auto_normalize_after_import,

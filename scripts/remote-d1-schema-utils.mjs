@@ -127,6 +127,8 @@ export const codeRequiredColumns = {
   }
 };
 
+export const attendanceMonthlyLockDayInvalidWhere = "monthly_attendance_lock_day IS NOT NULL AND (monthly_attendance_lock_day < 1 OR monthly_attendance_lock_day > 31 OR monthly_attendance_lock_day != CAST(monthly_attendance_lock_day AS INTEGER))";
+
 const constraintStarts = new Set(["PRIMARY", "UNIQUE", "FOREIGN", "CHECK", "CONSTRAINT"]);
 
 export function readText(filePath) {

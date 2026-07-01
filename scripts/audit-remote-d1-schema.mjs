@@ -1,6 +1,7 @@
 import {
   analyzeCheckCompatibility,
   auditReportPath,
+  attendanceMonthlyLockDayInvalidWhere,
   codeRequiredColumns,
   extractRowsFromWrangler,
   findLegacyManualRepairFiles,
@@ -77,6 +78,7 @@ async function main() {
   const missingIndexes = [];
   const checkIssues = [];
   const tablesRequiringRebuild = [];
+  const dataRepairIssues = [];
 
   for (const [tableName, tableDef] of Object.entries(schema.tables)) {
     const remote = remoteTables[tableName];
@@ -130,6 +132,21 @@ async function main() {
 
   const staleRepairTables = Object.keys(remoteTables).filter((name) => name.endsWith("_old_repair"));
   const blockers = seedBlockers(remoteTables);
+
+  if (remoteTables.attendance_settings?.columns?.monthly_attendance_lock_day) {
+    const rows = remoteRows(`SELECT COUNT(*) AS invalid_count FROM attendance_settings WHERE ${attendanceMonthlyLockDayInvalidWhere};`);
+    const invalidCount = Number(rows[0]?.invalid_count ?? 0);
+    if (invalidCount > 0) {
+      dataRepairIssues.push({
+        table: "attendance_settings",
+        column: "monthly_attendance_lock_day",
+        invalid_count: invalidCount,
+        repair: "SET NULL",
+        reason: "monthly_attendance_lock_day must be null or an integer between 1 and 31."
+      });
+    }
+  }
+
   const report = {
     generated_at: new Date().toISOString(),
     required_table_count: Object.keys(schema.tables).length,
@@ -139,6 +156,7 @@ async function main() {
     missing_indexes: missingIndexes,
     check_constraint_issues: checkIssues,
     tables_requiring_rebuild: [...new Set(tablesRequiringRebuild)],
+    data_repair_issues: dataRepairIssues,
     stale_repair_tables: staleRepairTables,
     seed_blockers: blockers,
     remote_tables: remoteTables
@@ -152,6 +170,7 @@ async function main() {
   console.log(`Missing indexes: ${missingIndexes.length}`);
   console.log(`CHECK issues: ${checkIssues.length}`);
   console.log(`Tables requiring rebuild: ${report.tables_requiring_rebuild.join(", ") || "none"}`);
+  console.log(`Data repairs: ${dataRepairIssues.length}`);
   console.log(`Seed blockers: ${blockers.length}`);
   console.log(`Report saved: database/remote_schema_audit_report.json`);
 }

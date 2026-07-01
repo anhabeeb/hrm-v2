@@ -47,6 +47,7 @@ function main() {
   assertNoFailures((report.missing_tables ?? []).length === 0, failures, `Missing required tables: ${(report.missing_tables ?? []).join(", ")}`);
   assertNoFailures((report.missing_columns ?? []).length === 0, failures, `Missing required columns: ${(report.missing_columns ?? []).map((item) => `${item.table}.${item.column}`).join(", ")}`);
   assertNoFailures((report.check_constraint_issues ?? []).length === 0, failures, `Old/incompatible CHECK constraints: ${(report.check_constraint_issues ?? []).map((item) => `${item.table}.${item.column}`).join(", ")}`);
+  assertNoFailures((report.data_repair_issues ?? []).length === 0, failures, `Data repairs required: ${(report.data_repair_issues ?? []).map((item) => `${item.table}.${item.column}`).join(", ")}`);
   assertNoFailures((report.seed_blockers ?? []).length === 0, failures, `Seed blockers: ${(report.seed_blockers ?? []).map((item) => `${item.table}.${item.column}`).join(", ")}`);
   assertNoFailures((report.stale_repair_tables ?? []).length === 0, failures, `Stale repair tables exist: ${(report.stale_repair_tables ?? []).join(", ")}`);
 

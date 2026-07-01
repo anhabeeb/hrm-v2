@@ -51,12 +51,17 @@ export function AttendanceSettingsPage() {
 
   async function save() {
     if (!token || !settings) return;
+    const normalizedLockDay = normalizeMonthlyAttendanceLockDay(settings.monthly_attendance_lock_day);
+    if (normalizedLockDay != null && (!Number.isInteger(normalizedLockDay) || normalizedLockDay < 1 || normalizedLockDay > 31)) {
+      setError("Monthly attendance lock day must be between 1 and 31.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
       const weekly = weeklyOff.split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
-      const result = await api.updateAttendanceSettings(token, { ...settings, weekly_off_days_json: JSON.stringify(weekly) });
+      const result = await api.updateAttendanceSettings(token, { ...settings, monthly_attendance_lock_day: normalizedLockDay, weekly_off_days_json: JSON.stringify(weekly) });
       setSettings(result.settings);
       setMessage("Attendance settings saved.");
     } catch (err) {
@@ -106,7 +111,7 @@ export function AttendanceSettingsPage() {
                 {["ABSENT", "MISSING_PUNCH", "PENDING_CORRECTION"].map((item) => <option key={item} value={item}>{item}</option>)}
               </SelectField>
             </Field>
-            <Field label="Monthly attendance lock day"><Input type="number" min="1" max="31" disabled={controlsDisabled} value={settings.monthly_attendance_lock_day ?? ""} onChange={(event) => update("monthly_attendance_lock_day", event.target.value === "" ? null : Number(event.target.value))} /></Field>
+            <Field label="Monthly attendance lock day"><Input type="number" min="1" max="31" step="1" disabled={controlsDisabled} value={settings.monthly_attendance_lock_day ?? ""} onChange={(event) => update("monthly_attendance_lock_day", event.target.value === "" ? null : Number(event.target.value))} /></Field>
             <Field label="Allowed attendance sources"><Input disabled={controlsDisabled} value={settings.attendance_source_options_json ?? ""} onChange={(event) => update("attendance_source_options_json", event.target.value)} /></Field>
             <Toggle label="Mark absent if no punch" checked={Boolean(settings.mark_absent_if_no_punch)} disabled={controlsDisabled} onChange={(checked) => update("mark_absent_if_no_punch", checked)} />
             <Toggle label="Missed punch requires correction" checked={Boolean(settings.missed_punch_requires_correction)} disabled={controlsDisabled} onChange={(checked) => update("missed_punch_requires_correction", checked)} />
@@ -128,6 +133,11 @@ export function AttendanceSettingsPage() {
       </Panel>
     </PageShell>
   );
+}
+
+function normalizeMonthlyAttendanceLockDay(value: unknown) {
+  if (value === "" || value === null || value === undefined) return null;
+  return Number(value);
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
