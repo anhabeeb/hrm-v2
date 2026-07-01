@@ -85,12 +85,16 @@ for (const priorityId of [
   has(dashboardRoute, priorityId, `Required priority KPI ${priorityId} is missing.`);
 }
 
-has(dashboardPage, "OmniCore Command Center", "Command Center header title is missing.");
-has(dashboardPage, "Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators.", "Command Center subtitle must match the required copy.");
+has(dashboardPage, "CommandCenterHeader", "Command Center must use a dedicated welcome-first header container.");
 has(dashboardPage, "CommandCenterWelcome", "Command Center welcome message component is missing.");
 has(dashboardPage, "resolveCommandCenterWelcome", "Command Center welcome resolver is missing.");
 has(dashboardPage, "Welcome, {name}", "Command Center welcome message must render the resolved user name.");
 has(dashboardPage, "title={title}", "Command Center welcome message must render the resolved user title/designation.");
+before(dashboardPage, "<CommandCenterWelcome name={welcome.name} title={welcome.title} />", "<PriorityKpiIconStrip actions={priorityActions} />", "Command Center welcome message must appear before priority KPI icons.");
+has(dashboardPage, "text-2xl", "Command Center welcome message must be visually prominent.");
+has(dashboardPage, "sm:text-3xl", "Command Center welcome message must scale larger on wider screens.");
+hasNo(dashboardPage, "OmniCore Command Center", "Old Command Center title must not appear in the Command Center header.");
+hasNo(dashboardPage, "Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators.", "Old Command Center enterprise overview description must not appear in the header.");
 has(dashboardPage, "user?.employee_full_name", "Command Center welcome must prefer linked employee full name.");
 has(dashboardPage, "user?.employee_position_title", "Command Center welcome must prefer linked employee position title.");
 has(dashboardPage, "user?.employee_job_title", "Command Center welcome must support linked employee job title fallback.");

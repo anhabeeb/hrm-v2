@@ -47,7 +47,7 @@ type NavGroup = {
   items: NavItem[];
 };
 
-const SIDEBAR_GROUP_STATE_KEY = "hrm-v2-sidebar-groups";
+const SIDEBAR_OPEN_GROUP_STATE_KEY = "hrm-v2-sidebar-open-group";
 
 const topLevelNavItems: NavItem[] = [
   { label: "Command Center", to: "/", icon: LayoutDashboard, permission: "dashboard.view" }
@@ -130,16 +130,20 @@ function routeMatchesItem(pathname: string, item: NavItem) {
   return pathname === item.to || pathname.startsWith(`${item.to}/`);
 }
 
-function readSidebarGroupState() {
-  if (typeof window === "undefined") return {};
+function readSidebarOpenGroupState() {
+  if (typeof window === "undefined") return null;
   try {
-    const saved = window.localStorage.getItem(SIDEBAR_GROUP_STATE_KEY);
-    if (!saved) return {};
+    const saved = window.localStorage.getItem(SIDEBAR_OPEN_GROUP_STATE_KEY);
+    if (!saved) return null;
     const parsed = JSON.parse(saved);
-    return parsed && typeof parsed === "object" ? parsed as Record<string, boolean> : {};
+    return typeof parsed === "string" && parsed.trim() ? parsed : null;
   } catch {
-    return {};
+    return null;
   }
+}
+
+function resolveActiveSidebarGroup(pathname: string, groups: NavGroup[]) {
+  return groups.find((group) => group.items.some((item) => routeMatchesItem(pathname, item)))?.label ?? null;
 }
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -155,7 +159,7 @@ export function AppShell() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => readSidebarGroupState());
+  const [openGroup, setOpenGroup] = useState<string | null>(() => readSidebarOpenGroupState());
   const permissions = useMemo(() => {
     const next = new Set(user?.permissions ?? []);
     if (user?.is_owner) next.add("admin.help.view");
@@ -180,23 +184,24 @@ export function AppShell() {
       }
     ];
   }, [moduleVisibility, permissions, selfServiceVisible, visibleGroups]);
-  const activeGroupLabels = useMemo(() => new Set(
-    sidebarGroups
-      .filter((group) => group.items.some((item) => routeMatchesItem(location.pathname, item)))
-      .map((group) => group.label)
-  ), [location.pathname, sidebarGroups]);
+  const activeGroupLabel = useMemo(() => resolveActiveSidebarGroup(location.pathname, sidebarGroups), [location.pathname, sidebarGroups]);
   const title = routeTitle(location.pathname);
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(SIDEBAR_GROUP_STATE_KEY, JSON.stringify(expandedGroups));
+      if (openGroup) window.localStorage.setItem(SIDEBAR_OPEN_GROUP_STATE_KEY, JSON.stringify(openGroup));
+      else window.localStorage.removeItem(SIDEBAR_OPEN_GROUP_STATE_KEY);
     } catch {
       // Storage can be unavailable in strict browser modes; the sidebar still works without persistence.
     }
-  }, [expandedGroups]);
+  }, [openGroup]);
+
+  useEffect(() => {
+    setOpenGroup(activeGroupLabel);
+  }, [activeGroupLabel]);
 
   const toggleGroup = (label: string) => {
-    setExpandedGroups((current) => ({ ...current, [label]: !(current[label] ?? true) }));
+    setOpenGroup((current) => (current === label && activeGroupLabel !== label ? null : label));
   };
 
   return (
@@ -251,7 +256,7 @@ export function AppShell() {
                   </div>
                 ) : null}
                 {sidebarGroups.map((group) => {
-                  const expanded = collapsed || activeGroupLabels.has(group.label) || (expandedGroups[group.label] ?? true);
+                  const expanded = collapsed || openGroup === group.label;
                   const groupContent = (
                     <div key={group.label} className="rounded-lg">
                       {!collapsed ? (
@@ -261,7 +266,7 @@ export function AppShell() {
                           onClick={() => toggleGroup(group.label)}
                           className={cn(
                             "mb-1 flex h-8 w-full items-center justify-between rounded-md px-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800",
-                            activeGroupLabels.has(group.label) && "bg-primary/5 text-primary"
+                            activeGroupLabel === group.label && "bg-primary/5 text-primary"
                           )}
                           aria-expanded={expanded}
                         >

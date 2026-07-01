@@ -32,10 +32,9 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "..
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { CardSkeleton } from "../components/loading/CardSkeleton";
-import { DashboardWidget, PageHeader, PageShell, WarningPanel } from "../components/ui/page-shell";
+import { DashboardWidget, PageShell, WarningPanel } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Tooltip } from "../components/ui/tooltip";
-import { APP_BRANDING } from "../config/branding";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/useAuth";
@@ -282,16 +281,9 @@ export function DashboardPage() {
 
   return (
     <PageShell>
-      <PageHeader
-        title="OmniCore Command Center"
-        eyebrow={APP_BRANDING.appName}
-        description={
-          <div className="space-y-1">
-            <CommandCenterWelcome name={welcome.name} title={welcome.title} />
-            <p>Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators.</p>
-          </div>
-        }
-        actions={
+      <section className="CommandCenterHeader box-border flex w-full max-w-none min-w-0 flex-col gap-4 rounded-lg border bg-white px-4 py-4 shadow-panel lg:flex-row lg:items-start lg:justify-between">
+        <CommandCenterWelcome name={welcome.name} title={welcome.title} />
+        <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 lg:justify-end">
           <div className="flex min-w-0 items-center gap-2">
             <PriorityKpiIconStrip actions={priorityActions} />
             <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
@@ -299,8 +291,8 @@ export function DashboardPage() {
               Refresh
             </Button>
           </div>
-        }
-      />
+        </div>
+      </section>
 
       {error ? <WarningPanel tone="danger">{error}</WarningPanel> : null}
 
@@ -376,10 +368,10 @@ export function DashboardPage() {
 function CommandCenterWelcome({ name, title }: { name: string; title: string }) {
   return (
     <div className="CommandCenterWelcome min-w-0">
-      <p className="truncate text-sm font-semibold text-slate-900" title={`Welcome, ${name}`}>
+      <p className="truncate text-2xl font-semibold leading-tight tracking-tight text-slate-950 sm:text-3xl lg:text-4xl" title={`Welcome, ${name}`}>
         Welcome, {name}
       </p>
-      <p className="truncate text-xs font-medium text-muted-foreground" title={title}>
+      <p className="mt-1 truncate text-sm font-medium text-muted-foreground sm:text-base" title={title}>
         {title}
       </p>
     </div>
