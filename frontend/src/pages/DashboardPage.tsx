@@ -39,6 +39,7 @@ import { APP_BRANDING } from "../config/branding";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/useAuth";
+import type { AuthUser } from "../types/auth";
 
 type DashboardTone = "neutral" | "success" | "warning" | "danger" | "info";
 
@@ -193,8 +194,57 @@ function chunkKpis<T>(items: T[], size = KPI_ROW_SIZE) {
   return chunks;
 }
 
+function cleanWelcomeText(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text || /^(undefined|null|\[object object\])$/i.test(text)) return "";
+  return text;
+}
+
+function titleCaseToken(value: string) {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatRoleDisplayName(value: unknown) {
+  const text = cleanWelcomeText(value);
+  if (!text) return "";
+  return /^[A-Z0-9_-]+$/.test(text) ? titleCaseToken(text) : text;
+}
+
+function emailPrefix(value: unknown) {
+  const text = cleanWelcomeText(value);
+  if (!text.includes("@")) return "";
+  return titleCaseToken(text.split("@")[0] ?? "");
+}
+
+function resolveCommandCenterWelcome(user: AuthUser | null) {
+  const name = [
+    user?.employee_full_name,
+    user?.employee_display_name,
+    user?.name,
+    user?.username,
+    emailPrefix(user?.email)
+  ].map(cleanWelcomeText).find(Boolean) ?? "User";
+
+  const roleTitle = (user?.roles ?? []).map(formatRoleDisplayName).find(Boolean);
+  const title = [
+    user?.employee_position_title,
+    user?.employee_job_title,
+    user?.employee_designation,
+    user?.employee_role_title,
+    roleTitle,
+    user?.is_owner ? "Owner" : ""
+  ].map(cleanWelcomeText).find(Boolean) ?? "Team Member";
+
+  return { name, title };
+}
+
 export function DashboardPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [summary, setSummary] = useState<CommandCenterSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -219,6 +269,7 @@ export function DashboardPage() {
 
   const groups = useMemo(() => asGroups(summary), [summary]);
   const priorityActions = useMemo(() => summary?.priority_actions ?? [], [summary]);
+  const welcome = useMemo(() => resolveCommandCenterWelcome(user), [user]);
 
   useEffect(() => {
     setOpenGroup((current) => {
@@ -234,7 +285,12 @@ export function DashboardPage() {
       <PageHeader
         title="OmniCore Command Center"
         eyebrow={APP_BRANDING.appName}
-        description="Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators."
+        description={
+          <div className="space-y-1">
+            <CommandCenterWelcome name={welcome.name} title={welcome.title} />
+            <p>Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators.</p>
+          </div>
+        }
         actions={
           <div className="flex min-w-0 items-center gap-2">
             <PriorityKpiIconStrip actions={priorityActions} />
@@ -314,6 +370,19 @@ export function DashboardPage() {
         </div>
       ) : null}
     </PageShell>
+  );
+}
+
+function CommandCenterWelcome({ name, title }: { name: string; title: string }) {
+  return (
+    <div className="CommandCenterWelcome min-w-0">
+      <p className="truncate text-sm font-semibold text-slate-900" title={`Welcome, ${name}`}>
+        Welcome, {name}
+      </p>
+      <p className="truncate text-xs font-medium text-muted-foreground" title={title}>
+        {title}
+      </p>
+    </div>
   );
 }
 

@@ -133,7 +133,7 @@ export function PageHeader({
           </div>
         ) : null}
         <h1 className="truncate text-xl font-semibold tracking-tight text-slate-950">{title}</h1>
-        {description ? <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p> : null}
+        {description ? <div className="mt-1 text-sm leading-6 text-muted-foreground">{description}</div> : null}
         {moduleStatus ? <div className="mt-2 text-sm text-muted-foreground">{moduleStatus}</div> : null}
         </div>
       </div>

@@ -34,6 +34,8 @@ const tooltipComponent = "frontend/src/components/ui/tooltip.tsx";
 const api = "frontend/src/lib/api.ts";
 const appRoutes = "frontend/src/routes/AppRoutes.tsx";
 const loginPage = "frontend/src/pages/LoginPage.tsx";
+const authTypes = "frontend/src/types/auth.ts";
+const userDb = "worker/src/db/users.ts";
 
 has(appShell, "topLevelNavItems", "Command Center must be modeled as a top-level sidebar item.");
 has(appShell, "Command Center", "Sidebar must label the first item Command Center.");
@@ -85,6 +87,29 @@ for (const priorityId of [
 
 has(dashboardPage, "OmniCore Command Center", "Command Center header title is missing.");
 has(dashboardPage, "Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators.", "Command Center subtitle must match the required copy.");
+has(dashboardPage, "CommandCenterWelcome", "Command Center welcome message component is missing.");
+has(dashboardPage, "resolveCommandCenterWelcome", "Command Center welcome resolver is missing.");
+has(dashboardPage, "Welcome, {name}", "Command Center welcome message must render the resolved user name.");
+has(dashboardPage, "title={title}", "Command Center welcome message must render the resolved user title/designation.");
+has(dashboardPage, "user?.employee_full_name", "Command Center welcome must prefer linked employee full name.");
+has(dashboardPage, "user?.employee_position_title", "Command Center welcome must prefer linked employee position title.");
+has(dashboardPage, "user?.employee_job_title", "Command Center welcome must support linked employee job title fallback.");
+has(dashboardPage, "user?.employee_designation", "Command Center welcome must support linked employee designation fallback.");
+has(dashboardPage, "user?.employee_role_title", "Command Center welcome must support linked employee role title fallback.");
+has(dashboardPage, "formatRoleDisplayName", "Command Center welcome must format account role display names.");
+has(dashboardPage, "titleCaseToken", "Command Center welcome must format raw role codes before display.");
+has(dashboardPage, "emailPrefix", "Command Center welcome must only use email prefix as a late name fallback.");
+has(dashboardPage, "?? \"User\"", "Command Center welcome name fallback must be User.");
+has(dashboardPage, "?? \"Team Member\"", "Command Center welcome title fallback must be Team Member.");
+has(dashboardPage, "undefined|null|\\[object object\\]", "Command Center welcome must guard against undefined/null/object display values.");
+hasNo(dashboardPage, "SUPER_ADMIN", "Command Center welcome must not hardcode or render raw SUPER_ADMIN role codes.");
+hasNo(dashboardPage, "Welcome, {user", "Command Center welcome must not directly render raw auth user values.");
+has(authTypes, "employee_full_name?: string | null", "Auth user type must expose linked employee full name for the welcome message.");
+has(authTypes, "employee_position_title?: string | null", "Auth user type must expose linked employee position title for the welcome message.");
+has(userDb, "getLinkedEmployeeDisplayProfile", "Backend auth user mapping must load linked employee display profile.");
+has(userDb, "LEFT JOIN positions p ON p.id = e.primary_position_id", "Backend auth user mapping must load linked employee position title.");
+has(userDb, "employee_full_name", "Backend auth user mapping must return employee full name.");
+has(userDb, "employee_position_title", "Backend auth user mapping must return employee position title.");
 has(dashboardPage, "CommandCenterKpiCard", "KPI card component marker is missing.");
 has(dashboardPage, "PriorityKpiIconStrip", "Priority KPI icon strip component is missing.");
 has(dashboardPage, "<PriorityKpiIconStrip actions={priorityActions} />", "Priority KPI icon strip must be rendered in the Command Center header actions.");

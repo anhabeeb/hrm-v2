@@ -9,6 +9,19 @@ interface PermissionRow {
   key: string;
 }
 
+interface UserDisplayProfileRow {
+  full_name: string | null;
+  display_name: string | null;
+  position_title: string | null;
+  job_level_name: string | null;
+}
+
+function cleanDisplayText(value: string | null | undefined) {
+  const text = String(value ?? "").trim();
+  if (!text || /^(undefined|null|\[object object\])$/i.test(text)) return null;
+  return text;
+}
+
 export function toSafeUser(user: DbUser): SafeUser {
   return {
     id: user.id,
@@ -74,11 +87,41 @@ export async function getPermissionsForUser(db: Env["DB"], userId: string) {
   return rows.results.map((row) => row.key);
 }
 
+async function getLinkedEmployeeDisplayProfile(db: Env["DB"], user: DbUser) {
+  const profile = await db
+    .prepare(
+      `SELECT e.full_name, e.display_name, p.title AS position_title, jl.name AS job_level_name
+       FROM employees e
+       LEFT JOIN positions p ON p.id = e.primary_position_id
+       LEFT JOIN job_levels jl ON jl.id = e.job_level_id
+       WHERE e.archived_at IS NULL
+         AND ((? IS NOT NULL AND e.id = ?) OR e.user_id = ?)
+       ORDER BY CASE WHEN e.id = ? THEN 0 ELSE 1 END
+       LIMIT 1`
+    )
+    .bind(user.employee_id, user.employee_id, user.id, user.employee_id)
+    .first<UserDisplayProfileRow>();
+
+  if (!profile) return null;
+  const positionTitle = cleanDisplayText(profile.position_title);
+  const jobLevelName = cleanDisplayText(profile.job_level_name);
+  return {
+    employee_full_name: cleanDisplayText(profile.full_name),
+    employee_display_name: cleanDisplayText(profile.display_name),
+    employee_position_title: positionTitle,
+    employee_job_title: positionTitle,
+    employee_designation: positionTitle,
+    employee_role_title: jobLevelName
+  };
+}
+
 export async function toAuthUser(db: Env["DB"], user: DbUser): Promise<AuthUser> {
   const roles = await getRolesForUser(db, user.id);
   const permissions = await getPermissionsForUser(db, user.id);
+  const employeeDisplayProfile = await getLinkedEmployeeDisplayProfile(db, user);
   return {
     ...toSafeUser(user),
+    ...employeeDisplayProfile,
     roles,
     permissions,
     module_visibility: await getModuleVisibilityForUser(db, { permissions, is_owner: user.is_owner === 1 })

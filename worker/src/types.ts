@@ -30,6 +30,12 @@ export interface SafeUser {
   status: UserStatus;
   is_owner: boolean;
   employee_id: string | null;
+  employee_full_name?: string | null;
+  employee_display_name?: string | null;
+  employee_position_title?: string | null;
+  employee_job_title?: string | null;
+  employee_designation?: string | null;
+  employee_role_title?: string | null;
   last_login_at: string | null;
   created_at: string;
   updated_at: string;
