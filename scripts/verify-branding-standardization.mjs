@@ -120,8 +120,9 @@ hasNo("worker/src/db/permissions.ts", /\bHRM\s+(?:search|notification|data|acces
 hasNo("database/seed.sql", /\bHRM\s+(?:configuration guide|guide content|search|notification|data)\b/i, "Seeded user-facing permission descriptions must not use HRM as the product brand.");
 hasNo("database/seed.sql", /\bnot implemented in HRM v2\b/i, "Seeded document instructions must use OmniCore - HR or phase wording instead of HRM v2.");
 
-has("frontend/src/pages/DashboardPage.tsx", "APP_BRANDING.appShortName", "Command Center header must use OmniCore branding from config.");
-has("frontend/src/pages/DashboardPage.tsx", "Command Center", "Command Center label must remain visible.");
+has("frontend/src/pages/DashboardPage.tsx", "<section className=\"CommandCenterHeader", "Command Center page must use its dedicated welcome-first header.");
+has("frontend/src/pages/DashboardPage.tsx", "<CommandCenterWelcome name={welcome.name} title={welcome.title} />", "Command Center header must show the logged-in user's welcome message.");
+hasNo("frontend/src/pages/DashboardPage.tsx", "APP_BRANDING", "Command Center page header must not use OmniCore branding in place of the welcome heading.");
 has("frontend/src/pages/AdminHelpGuidePage.tsx", "APP_BRANDING.appName", "Admin help page must use branding config.");
 has("frontend/src/features/admin-help/hrmGuideContent.ts", "APP_BRANDING.appName", "Admin help content must use branding config.");
 

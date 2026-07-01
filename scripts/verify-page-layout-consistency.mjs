@@ -146,9 +146,9 @@ hasNo(appShell, /mx-auto\s+w-full\s+max-w|max-w-\[(?:1480|1680)px\]|max-w-screen
   "ResponsiveTableWrapper"
 ].forEach((marker) => has("frontend/src/components/ui/data-table.tsx", marker, `data table frame marker missing: ${marker}`));
 
-has("frontend/src/pages/DashboardPage.tsx", "APP_BRANDING.appShortName", "Command Center header must use branding config");
-has("frontend/src/pages/DashboardPage.tsx", "Command Center", "Command Center header reference marker missing");
-has("frontend/src/pages/DashboardPage.tsx", "PageHeader", "Dashboard must use shared PageHeader");
+has("frontend/src/pages/DashboardPage.tsx", "<section className=\"CommandCenterHeader", "Command Center must use the dedicated welcome-first header section");
+has("frontend/src/pages/DashboardPage.tsx", "<CommandCenterWelcome name={welcome.name} title={welcome.title} />", "Command Center welcome must be the header's primary content");
+hasNo("frontend/src/pages/DashboardPage.tsx", "APP_BRANDING", "Command Center page header must not use app branding in place of the welcome heading");
 has("frontend/src/pages/DashboardPage.tsx", "PageShell", "Dashboard must use shared PageShell");
 hasNo("frontend/src/pages/DashboardPage.tsx", /max-w-(?:3xl|4xl|5xl|6xl|7xl|screen-xl)|\bcontainer\b|\bw-fit\b|\binline-block\b|centered|commandCenterContainer|dashboardContentClassName|PageShell\b[^>]*(?:variant|size)=["'](?:centered|narrow)/i, "Command Center must not use a centered or narrow page wrapper");
 has("frontend/src/pages/DashboardPage.tsx", "CommandCenterKpiGrid", "Dashboard KPI cards must use the dedicated centered KPI grid wrapper");
@@ -281,7 +281,12 @@ const explicitShellHeaderPages = [
 explicitShellHeaderPages.forEach((file) => {
   requireFile(file);
   has(file, shellPattern, "explicit module page must use shared PageShell/PageLayout family");
-  has(file, headerPattern, "explicit module page must use shared PageHeader family");
+  if (file === "frontend/src/pages/DashboardPage.tsx") {
+    has(file, "<section className=\"CommandCenterHeader", "Dashboard must use the approved welcome-first Command Center header");
+    has(file, "<CommandCenterWelcome name={welcome.name} title={welcome.title} />", "Dashboard Command Center header must render the welcome component first");
+  } else {
+    has(file, headerPattern, "explicit module page must use shared PageHeader family");
+  }
 });
 
 [

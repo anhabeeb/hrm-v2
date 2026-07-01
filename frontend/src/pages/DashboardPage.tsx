@@ -32,10 +32,9 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "..
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { CardSkeleton } from "../components/loading/CardSkeleton";
-import { DashboardWidget, PageHeader, PageShell, WarningPanel } from "../components/ui/page-shell";
+import { DashboardWidget, PageShell, WarningPanel } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Tooltip } from "../components/ui/tooltip";
-import { APP_BRANDING } from "../config/branding";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/useAuth";
@@ -282,20 +281,16 @@ export function DashboardPage() {
 
   return (
     <PageShell>
-      <PageHeader
-        title={`${APP_BRANDING.appShortName} Command Center`}
-        description={<CommandCenterWelcome name={welcome.name} title={welcome.title} />}
-        className="CommandCenterHeader"
-        actions={
-          <div className="flex min-w-0 items-center gap-2">
-            <PriorityKpiIconStrip actions={priorityActions} />
-            <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-              Refresh
-            </Button>
-          </div>
-        }
-      />
+      <section className="CommandCenterHeader box-border flex w-full max-w-none min-w-0 flex-col gap-4 rounded-lg border bg-white px-4 py-4 shadow-panel lg:flex-row lg:items-center lg:justify-between">
+        <CommandCenterWelcome name={welcome.name} title={welcome.title} />
+        <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
+          <PriorityKpiIconStrip actions={priorityActions} />
+          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
+      </section>
       {error ? <WarningPanel tone="danger">{error}</WarningPanel> : null}
 
       {loading ? <CommandCenterSkeleton /> : null}
