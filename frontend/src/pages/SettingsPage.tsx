@@ -4,7 +4,8 @@ import { NavLink } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
-import { PageHeader, PageShell } from "../components/ui/page-shell";
+import { Input } from "../components/ui/input";
+import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Switch } from "../components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -26,6 +27,16 @@ type ToggleDefinition = {
   managePermissions: string[];
   defaultEnabled?: boolean;
 };
+
+type AttendanceDisableMode = "IMMEDIATE" | "NEXT_PAYROLL_PERIOD" | "SELECTED_DATE";
+type AttendanceDisableRequest = {
+  toggle: ToggleDefinition;
+  reason: string;
+  effectiveMode: AttendanceDisableMode;
+  effectiveDate: string;
+};
+
+const PAYROLL_ATTENDANCE_DISABLED_NOTICE = "Attendance module is disabled. Payroll will not use attendance records, late penalties, absences, missed punches, or attendance-based days worked. Use manual payroll adjustments or payroll import inputs if deductions are required.";
 
 const settingsRows = [
   { key: "bootstrap.completed", scope: "System", status: "Protected" },
@@ -70,6 +81,7 @@ export function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [attendanceDisableRequest, setAttendanceDisableRequest] = useState<AttendanceDisableRequest | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -98,10 +110,10 @@ export function SettingsPage() {
     return [...MANAGE_SETTINGS, ...keys].some((permission) => permissions.has(permission));
   }
 
-  async function saveToggle(toggle: ToggleDefinition, nextEnabled: boolean) {
+  async function saveToggle(toggle: ToggleDefinition, nextEnabled: boolean, metadata: SettingsRecord = {}) {
     if (!token || !canManage(toggle.managePermissions)) return;
     const current = settings[toggle.section] ?? {};
-    const next = { ...current, [toggle.keyName]: boolPayload(nextEnabled) };
+    const next = { ...current, [toggle.keyName]: boolPayload(nextEnabled), ...metadata };
     const oldSettings = settings[toggle.section] ?? null;
     setSettings((previous) => ({ ...previous, [toggle.section]: next }));
     setSavingKey(`${toggle.section}.${toggle.keyName}`);
@@ -160,6 +172,40 @@ export function SettingsPage() {
     } finally {
       setSavingKey(null);
     }
+  }
+
+  function handleToggle(toggle: ToggleDefinition, nextEnabled: boolean) {
+    const isAttendanceMainToggle = toggle.section === "attendance" && toggle.keyName === "module_enabled";
+    if (isAttendanceMainToggle && !nextEnabled) {
+      setAttendanceDisableRequest({
+        toggle,
+        reason: "",
+        effectiveMode: "IMMEDIATE",
+        effectiveDate: new Date().toISOString().slice(0, 10)
+      });
+      return;
+    }
+    void saveToggle(toggle, nextEnabled);
+  }
+
+  function confirmAttendanceDisable() {
+    if (!attendanceDisableRequest) return;
+    const reason = attendanceDisableRequest.reason.trim();
+    if (!reason) {
+      alerts.showError("Reason required", "Please enter a reason before disabling Attendance.");
+      return;
+    }
+    if (attendanceDisableRequest.effectiveMode === "SELECTED_DATE" && !attendanceDisableRequest.effectiveDate) {
+      alerts.showError("Effective date required", "Please choose an effective date before disabling Attendance.");
+      return;
+    }
+    const effectiveDate = attendanceDisableRequest.effectiveMode === "SELECTED_DATE" ? attendanceDisableRequest.effectiveDate : new Date().toISOString().slice(0, 10);
+    void saveToggle(attendanceDisableRequest.toggle, false, {
+      module_disable_reason: reason,
+      module_disable_effective_mode: attendanceDisableRequest.effectiveMode,
+      module_disable_effective_date: effectiveDate
+    });
+    setAttendanceDisableRequest(null);
   }
 
   const attendanceMain: ToggleDefinition = {
@@ -233,7 +279,7 @@ export function SettingsPage() {
           { ...rosterMain, keyName: "copy_previous_week_enabled", label: "Weekly Rosters", description: "Controls weekly roster copy, planning, and roster matrix workflow." },
           { ...rosterMain, keyName: "bulk_assignment_enabled", label: "Shift Templates", description: "Controls shift template and bulk assignment workflow availability." },
           { ...rosterMain, keyName: "manager_team_roster_visibility_enabled", label: "Roster Reports", description: "Controls manager/team roster visibility and roster reporting surfaces." }
-        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={saveToggle} loading={loading} />}
+        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={handleToggle} loading={loading} />}
       />
 
       <SettingsRow
@@ -253,7 +299,7 @@ export function SettingsPage() {
           { ...attendanceMain, keyName: "allow_employee_correction_requests", label: "Corrections", description: "Controls attendance correction requests, review, approval, and correction audit workflow." },
           { section: "attendanceDevices", keyName: "zkteco_local_bridge_enabled", label: "ZKTeco Devices", description: "Controls ZKTeco device registry, biometric mappings, attendance imports, and device diagnostics.", managePermissions: ["attendance.devices.manage", "attendance.settings.manage"], defaultEnabled: true },
           { section: "attendanceDevices", keyName: "zkteco_csv_import_enabled", label: "Imports", description: "Controls attendance CSV imports, raw logs, unmatched punch review, and import diagnostics.", managePermissions: ["attendance.devices.manage", "attendance.settings.manage"], defaultEnabled: true }
-        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={saveToggle} loading={loading} />}
+        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={handleToggle} loading={loading} />}
       />
 
       <SettingsRow
@@ -273,7 +319,7 @@ export function SettingsPage() {
           { ...payrollMain, keyName: "payroll_adjustments_enabled", label: "Adjustments", description: "Controls payroll adjustment placeholders, review, approval, and adjustment audit workflow." },
           { ...payrollMain, keyName: "payroll_reports_enabled", label: "Reports", description: "Controls payroll reports, payroll exports, compliance summaries, and payroll history reporting." },
           { section: "finalSettlement", keyName: "final_settlement_enabled", label: "Final Settlement", description: "Controls exit payroll, final settlement cases, clearance checks, and settlement register workflow.", managePermissions: ["final_settlement.settings.manage", "final_settlement.settings.update"] }
-        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={saveToggle} loading={loading} />}
+        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={handleToggle} loading={loading} />}
       />
 
       <SettingsRow
@@ -285,7 +331,7 @@ export function SettingsPage() {
           { ...documentMain, keyName: "renewal_workflow_enabled", label: "Renewals", description: "Controls document renewal cases, renewal workflow, and renewal tracking." },
           { ...documentMain, keyName: "expiry_alerts_enabled", label: "Expiry Alerts", description: "Controls document expiry alerts, urgent warnings, and compliance alerting." },
           { ...documentMain, keyName: "missing_required_document_alerts_enabled", label: "Required Docs", description: "Controls missing required document alerts and checklist compliance warnings." }
-        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={saveToggle} loading={loading} />}
+        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={handleToggle} loading={loading} />}
       />
 
       <SettingsRow
@@ -297,7 +343,7 @@ export function SettingsPage() {
           { ...contractsMain, keyName: "contract_expiry_alerts_enabled", label: "Alerts", description: "Controls contract expiry alerts, probation warnings, and renewal reminders." },
           { ...contractsMain, keyName: "require_contract_approval_before_activation", label: "Approvals", description: "Controls whether contract approval is required before employee activation." },
           { ...contractsMain, keyName: "auto_create_end_of_contract_settlement_case", label: "Renewals", description: "Controls end-of-contract settlement and renewal workflow handoff." }
-        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={saveToggle} loading={loading} />}
+        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={handleToggle} loading={loading} />}
       />
 
       <SettingsRow
@@ -309,7 +355,7 @@ export function SettingsPage() {
           { section: "assets", keyName: "uniform_module_enabled", label: "Uniforms", description: "Controls uniform stock, uniform assignment, uniform returns, and uniform clearance workflow.", managePermissions: ["assets.settings.manage", "assets.settings.update"] },
           { ...assetsMain, keyName: "allow_payroll_deduction_for_lost_damaged_items", label: "Deductions", description: "Controls lost/damaged asset payroll deduction eligibility and deduction review." },
           { ...assetsMain, keyName: "default_asset_clearance_required_before_final_settlement", label: "Clearance", description: "Controls whether asset clearance is required before final settlement." }
-        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={saveToggle} loading={loading} />}
+        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={handleToggle} loading={loading} />}
       />
 
       <SettingsRow
@@ -320,7 +366,7 @@ export function SettingsPage() {
         toggles={<SettingsToggleGroup main={{ section: "onboarding", keyName: "onboarding_enabled", label: "Onboarding", description: "Controls employee onboarding cases, setup workspace, activation readiness, and onboarding task workflow.", managePermissions: ["onboarding.settings.manage", "onboarding.settings.update"] }} submodules={[
           { section: "offboarding", keyName: "offboarding_enabled", label: "Offboarding", description: "Controls employee offboarding cases, exit tasks, clearance, and offboarding lifecycle workflow.", managePermissions: ["offboarding.settings.manage", "offboarding.settings.update"] },
           { section: "approvals", keyName: "approval_workflows_enabled", label: "Approvals", description: "Controls central approval workflows, delegation, escalation, and approval notifications.", managePermissions: ["approvals.settings.manage"] }
-        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={saveToggle} loading={loading} />}
+        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={handleToggle} loading={loading} />}
       />
 
       <SettingsRow
@@ -343,7 +389,7 @@ export function SettingsPage() {
           { ...selfServiceMain, keyName: "contracts_enabled", label: "Contracts", description: "Controls employee contract visibility inside self-service." },
           { ...selfServiceMain, keyName: "assets_enabled", label: "Assets", description: "Controls employee asset and uniform visibility inside self-service." },
           { ...selfServiceMain, keyName: "approvals_enabled", label: "Approvals", description: "Controls employee approval request visibility and self-service approval timeline." }
-        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={saveToggle} loading={loading} />}
+        ]} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={handleToggle} loading={loading} />}
       />
 
       <SettingsRow
@@ -359,6 +405,15 @@ export function SettingsPage() {
         description="CSV templates, import batches, validation preview, exports, backup guidance, QA, smoke, and deployment readiness."
         to="/settings/admin/imports"
       />
+
+      {attendanceDisableRequest ? (
+        <AttendanceDisableDialog
+          request={attendanceDisableRequest}
+          onChange={setAttendanceDisableRequest}
+          onClose={() => setAttendanceDisableRequest(null)}
+          onConfirm={confirmAttendanceDisable}
+        />
+      ) : null}
 
       <Panel className="overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-3">
@@ -421,27 +476,96 @@ function SettingsRow({ icon, title, description, to, toggles }: { icon: ReactNod
   );
 }
 
+function AttendanceDisableDialog({ request, onChange, onClose, onConfirm }: { request: AttendanceDisableRequest; onChange: (request: AttendanceDisableRequest) => void; onClose: () => void; onConfirm: () => void }) {
+  const reasonMissing = !request.reason.trim();
+  const dateMissing = request.effectiveMode === "SELECTED_DATE" && !request.effectiveDate;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
+      <div className="w-full max-w-xl overflow-hidden rounded-lg border bg-white shadow-xl">
+        <div className="border-b px-4 py-3">
+          <h2 className="text-sm font-semibold text-slate-950">Disable Attendance module</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Choose when this change should take effect and record why Attendance is being disabled.</p>
+        </div>
+        <div className="space-y-4 p-4">
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {PAYROLL_ATTENDANCE_DISABLED_NOTICE}
+          </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            Attendance can be disabled during the current month. If the selected effective date falls inside an active/open payroll period, review payroll before saving. Dates before locked payroll periods should not be used.
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1.5 text-sm">
+              <span className="font-medium text-slate-700">Effective timing</span>
+              <SelectField
+                value={request.effectiveMode}
+                onChange={(event) => onChange({ ...request, effectiveMode: event.target.value as AttendanceDisableMode })}
+              >
+                <option value="IMMEDIATE">Immediately</option>
+                <option value="NEXT_PAYROLL_PERIOD">Next payroll period</option>
+                <option value="SELECTED_DATE">Selected effective date</option>
+              </SelectField>
+            </label>
+            <label className="space-y-1.5 text-sm">
+              <span className="font-medium text-slate-700">Effective date</span>
+              <Input
+                type="date"
+                disabled={request.effectiveMode !== "SELECTED_DATE"}
+                value={request.effectiveDate}
+                onChange={(event) => onChange({ ...request, effectiveDate: event.target.value })}
+              />
+              {dateMissing ? <span className="text-xs text-red-600">Effective date is required.</span> : null}
+            </label>
+          </div>
+          <label className="space-y-1.5 text-sm">
+            <span className="font-medium text-slate-700">Reason <span className="text-red-600">*</span></span>
+            <Input
+              value={request.reason}
+              placeholder="Reason required for disabling Attendance"
+              onChange={(event) => onChange({ ...request, reason: event.target.value })}
+            />
+            {reasonMissing ? <span className="text-xs text-red-600">Reason is required.</span> : null}
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 border-t px-4 py-3">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" variant="danger" disabled={reasonMissing || dateMissing} onClick={onConfirm}>Disable Attendance</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function submoduleParentDisabledReason(main: ToggleDefinition, toggle: ToggleDefinition, settings: SettingsMap) {
+  const parentEnabled = isEnabled(settings[main.section], main.keyName, main.defaultEnabled ?? true);
+  const isChildOfMain =
+    toggle.section === main.section ||
+    (main.section === "attendance" && toggle.section === "attendanceDevices") ||
+    (main.section === "payroll" && toggle.section === "finalSettlement");
+  return isChildOfMain && !parentEnabled ? main.label : null;
+}
+
 function SettingsToggleGroup({ main, submodules, settings, savingKey, canManage, onToggle, loading }: { main: ToggleDefinition; submodules?: ToggleDefinition[]; settings: SettingsMap; savingKey: string | null; canManage: (permissions: string[]) => boolean; onToggle: (toggle: ToggleDefinition, nextEnabled: boolean) => void; loading: boolean }) {
   return (
     <div className="SettingsToggleGroup flex min-w-0 flex-wrap items-center justify-end gap-2">
       <ModuleTogglePill toggle={main} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={onToggle} loading={loading} />
       {submodules?.length ? <span className="px-1 text-slate-300">|</span> : null}
       {submodules?.map((toggle) => (
-        <ModuleTogglePill key={`${toggle.section}.${toggle.keyName}`} toggle={toggle} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={onToggle} loading={loading} />
+        <ModuleTogglePill key={`${toggle.section}.${toggle.keyName}`} toggle={toggle} settings={settings} savingKey={savingKey} canManage={canManage} onToggle={onToggle} loading={loading} parentDisabledLabel={submoduleParentDisabledReason(main, toggle, settings)} />
       ))}
     </div>
   );
 }
 
-function ModuleTogglePill({ toggle, settings, savingKey, canManage, onToggle, loading }: { toggle: ToggleDefinition; settings: SettingsMap; savingKey: string | null; canManage: (permissions: string[]) => boolean; onToggle: (toggle: ToggleDefinition, nextEnabled: boolean) => void; loading: boolean }) {
+function ModuleTogglePill({ toggle, settings, savingKey, canManage, onToggle, loading, parentDisabledLabel }: { toggle: ToggleDefinition; settings: SettingsMap; savingKey: string | null; canManage: (permissions: string[]) => boolean; onToggle: (toggle: ToggleDefinition, nextEnabled: boolean) => void; loading: boolean; parentDisabledLabel?: string | null }) {
   const enabled = isEnabled(settings[toggle.section], toggle.keyName, toggle.defaultEnabled ?? true);
   const allowed = canManage(toggle.managePermissions);
   const busy = savingKey === `${toggle.section}.${toggle.keyName}`;
   const missingSettings = !settings[toggle.section];
-  const disabled = loading || busy || !allowed || missingSettings;
+  const disabled = loading || busy || !allowed || missingSettings || Boolean(parentDisabledLabel);
   const description = (
     <>
       <span>{toggle.description}</span>
+      {parentDisabledLabel ? <span className="mt-1 block font-medium text-amber-700">Disabled because {parentDisabledLabel} is disabled.</span> : null}
       {!allowed ? <span className="mt-1 block font-medium text-amber-700">Read only: you do not have permission to change this setting.</span> : null}
       {missingSettings ? <span className="mt-1 block font-medium text-amber-700">Status could not be loaded for this setting.</span> : null}
     </>
@@ -449,7 +573,10 @@ function ModuleTogglePill({ toggle, settings, savingKey, canManage, onToggle, lo
 
   return (
     <Tooltip content={description}>
-      <span className={cn("ModuleTogglePill inline-flex h-8 items-center gap-2 rounded-md border bg-white px-2 text-xs shadow-sm", enabled ? "border-emerald-200 text-emerald-800" : "border-slate-200 text-slate-600")}>
+      <span className={cn(
+        "ModuleTogglePill inline-flex h-8 items-center gap-2 rounded-md border px-2 text-xs shadow-sm",
+        parentDisabledLabel ? "border-slate-200 bg-slate-100 text-slate-400" : enabled ? "border-emerald-200 bg-white text-emerald-800" : "border-slate-200 bg-white text-slate-600"
+      )}>
         <span className="whitespace-nowrap font-medium">{toggle.label}</span>
         <Switch checked={enabled} disabled={disabled} aria-label={`${enabled ? "Disable" : "Enable"} ${toggle.label}`} onCheckedChange={(nextEnabled) => onToggle(toggle, nextEnabled)} />
       </span>

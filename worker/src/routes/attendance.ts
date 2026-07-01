@@ -25,6 +25,8 @@ const RAW_SOURCES = new Set(["DEVICE", "MANUAL_IMPORT", "CSV_IMPORT", "API", "BR
 const PUNCH_TYPES = new Set(["IN", "OUT", "BREAK_IN", "BREAK_OUT", "UNKNOWN"]);
 const DEVICE_TYPES = new Set(["BIOMETRIC", "MANUAL_IMPORT", "API", "BRIDGE", "PUSH_ADMS", "OTHER"]);
 const DEVICE_STATUSES = new Set(["ACTIVE", "INACTIVE", "DISABLED", "ARCHIVED"]);
+const ATTENDANCE_DISABLE_EFFECTIVE_MODES = new Set(["IMMEDIATE", "NEXT_PAYROLL_PERIOD", "SELECTED_DATE"]);
+const ATTENDANCE_DISABLE_PAYROLL_WARNING = "Attendance module is disabled. Payroll will not use attendance records, late penalties, absences, missed punches, or attendance-based days worked. Use manual payroll adjustments or payroll import inputs if deductions are required.";
 
 export const attendanceRoutes = new Hono<AppBindings>();
 export const employeeAttendanceRoutes = new Hono<AppBindings>();
@@ -1151,6 +1153,19 @@ attendanceRoutes.patch("/settings", requirePermission("attendance.settings.manag
     attendance_source_options_json: readString(body.attendance_source_options_json ?? old.attendance_source_options_json) || '["DEVICE","MANUAL","MANUAL_IMPORT","API","BRIDGE"]',
     payroll_deduction_enabled: bool(body.payroll_deduction_enabled, Boolean(old.payroll_deduction_enabled))
   };
+  const disablingAttendance = bool(old.module_enabled, true) && !input.module_enabled;
+  const disableReason = optionalString(body.module_disable_reason ?? body.reason);
+  const disableEffectiveMode = readString(body.module_disable_effective_mode ?? body.effective_date_mode ?? "IMMEDIATE").toUpperCase();
+  const disableEffectiveDate = optionalString(body.module_disable_effective_date ?? body.effective_date) ?? new Date().toISOString().slice(0, 10);
+  if (disablingAttendance) {
+    if (!disableReason) return fail(c, 400, "REASON_REQUIRED", "Reason is required when disabling Attendance.");
+    if (!ATTENDANCE_DISABLE_EFFECTIVE_MODES.has(disableEffectiveMode)) return fail(c, 400, "VALIDATION_ERROR", "Attendance disable effective date option is invalid.");
+    if (disableEffectiveMode === "SELECTED_DATE" && Number.isNaN(Date.parse(disableEffectiveDate))) return fail(c, 400, "VALIDATION_ERROR", "A valid attendance disable effective date is required.");
+    const lockedPayrollPeriod = await c.env.DB.prepare("SELECT period_month, period_year, end_date FROM payroll_periods WHERE status IN ('LOCKED', 'FINALIZED', 'FINALIZED_PLACEHOLDER') AND end_date >= ? ORDER BY end_date DESC LIMIT 1").bind(disableEffectiveDate).first<Record<string, unknown>>();
+    if (disableEffectiveMode === "SELECTED_DATE" && lockedPayrollPeriod) {
+      return fail(c, 423, "PAYROLL_PERIOD_LOCKED", "Selected effective date overlaps or precedes a locked payroll period. Choose a safe future date.");
+    }
+  }
   if (input.standard_work_minutes_per_day < 0 || input.late_grace_minutes < 0 || input.early_checkout_grace_minutes < 0) return fail(c, 400, "VALIDATION_ERROR", "Attendance setting minute values cannot be negative.");
   if (!["FIXED_SHIFT", "ROSTER_BASED", "FLEXIBLE"].includes(input.default_workday_mode)) return fail(c, 400, "VALIDATION_ERROR", "Default workday mode is invalid.");
   if (!LOG_SOURCES.has(input.default_attendance_source)) return fail(c, 400, "VALIDATION_ERROR", "Default attendance source is invalid.");
@@ -1169,7 +1184,22 @@ attendanceRoutes.patch("/settings", requirePermission("attendance.settings.manag
     input.payroll_impact_enabled ? 1 : 0, input.default_attendance_source, input.allow_manager_team_corrections ? 1 : 0, input.require_reason_for_correction_review ? 1 : 0, input.overtime_tracking_enabled ? 1 : 0,
     input.lock_after_payroll_finalized ? 1 : 0, input.monthly_attendance_lock_day, input.default_absent_status, input.attendance_source_options_json, input.payroll_deduction_enabled ? 1 : 0, new Date().toISOString()
   ).run();
-  await auditAttendance(c, { action: "attendance.settings.updated", entityType: "attendance_settings", entityId: "attendance_settings_default", oldValue: old, newValue: input });
+  await auditAttendance(c, {
+    action: disablingAttendance ? "attendance.settings.disabled" : "attendance.settings.updated",
+    entityType: "attendance_settings",
+    entityId: "attendance_settings_default",
+    oldValue: old,
+    newValue: {
+      ...input,
+      disable_metadata: disablingAttendance ? {
+        reason: disableReason,
+        effective_mode: disableEffectiveMode,
+        effective_date: disableEffectiveDate,
+        payroll_warning: ATTENDANCE_DISABLE_PAYROLL_WARNING
+      } : null
+    },
+    reason: disablingAttendance ? disableReason : undefined
+  });
   await publishAttendance(c, "attendance.changed", "attendance_settings_default", "settings_updated", "attendance_settings");
   return ok(c, { settings: await getSettings(c) });
 });

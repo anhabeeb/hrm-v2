@@ -9,7 +9,7 @@ import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
-import { disabledModuleResponse, requireOperationalModuleEnabled, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
+import { disabledModuleResponse, isOperationalModuleEnabled, requireOperationalModuleEnabled, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 import {
   calculatePayrollPensionContribution,
@@ -58,6 +58,7 @@ const COMPONENT_TYPES = new Set(["EARNING", "DEDUCTION", "INFO", "EMPLOYER_COST"
 const COMPONENT_CATEGORIES = new Set(["BASIC", "ALLOWANCE", "BENEFIT", "OVERTIME", "ADVANCE", "ATTENDANCE", "LEAVE", "OTHER", "SALARY", "DEDUCTION", "ADJUSTMENT"]);
 const CALCULATION_TYPES = new Set(["FIXED", "VARIABLE", "PERCENTAGE", "FIXED_AMOUNT", "PERCENTAGE_OF_BASIC", "PERCENTAGE_OF_GROSS", "DAILY_RATE", "HOURLY_RATE", "FORMULA_PLACEHOLDER", "MANUAL"]);
 const PAYMENT_METHODS = new Set(["CASH", "BANK_TRANSFER", "CHEQUE", "OTHER"]);
+const PAYROLL_ATTENDANCE_DISABLED_NOTICE = "Attendance module is disabled. Payroll will not use attendance records, late penalties, absences, missed punches, or attendance-based days worked. Use manual payroll adjustments or payroll import inputs if deductions are required.";
 const DAILY_RATE_MODES = new Set(["CALENDAR_DAYS", "WORKING_DAYS", "FIXED_30_DAYS"]);
 const BANK_LOAN_INSUFFICIENT_SALARY_MODES = new Set(["WARN_ONLY", "PARTIAL_DEDUCTION", "SKIP_AND_MARK_FAILED", "BLOCK_PAYROLL", "REQUIRE_OVERRIDE"]);
 const BANK_LOAN_MINIMUM_NET_THRESHOLD_TYPES = new Set(["PERCENTAGE_OF_NET_SALARY", "FIXED_AMOUNT"]);
@@ -611,10 +612,51 @@ async function getScopedRun(c: Context<AppBindings>, id: string, action: "view" 
     .first<Record<string, unknown>>();
 }
 
+function emptyPayrollAttendanceSummary(reason = PAYROLL_ATTENDANCE_DISABLED_NOTICE) {
+  return {
+    days_worked: 0,
+    absent_days: 0,
+    late_days: 0,
+    missed_punch_days: 0,
+    payroll_impact_days: 0,
+    payroll_impact_minutes: 0,
+    payroll_impact_reason: null,
+    correction_statuses: null,
+    locked_for_payroll_days: 0,
+    missed_dates: null,
+    disabled: true,
+    disabled_reason: reason
+  };
+}
+
+async function getPayrollAttendanceSummaryForRun(c: Context<AppBindings>, employeeId: string, startDate: string, endDate: string, attendanceEnabledForPayroll: boolean) {
+  if (!attendanceEnabledForPayroll) return emptyPayrollAttendanceSummary();
+  return c.env.DB
+    .prepare(
+      `SELECT
+        SUM(CASE WHEN status = 'PRESENT' THEN 1 ELSE 0 END) AS days_worked,
+        SUM(CASE WHEN status = 'ABSENT' THEN 1 ELSE 0 END) AS absent_days,
+        SUM(CASE WHEN status = 'LATE' THEN 1 ELSE 0 END) AS late_days,
+        SUM(CASE WHEN missed_punch = 1 THEN 1 ELSE 0 END) AS missed_punch_days,
+        SUM(COALESCE(payroll_impact_days, 0)) AS payroll_impact_days,
+        SUM(COALESCE(payroll_impact_minutes, 0)) AS payroll_impact_minutes,
+        GROUP_CONCAT(CASE WHEN payroll_impact_status IS NOT NULL THEN payroll_impact_reason ELSE NULL END) AS payroll_impact_reason,
+        GROUP_CONCAT(CASE WHEN correction_status IS NOT NULL THEN correction_status ELSE NULL END) AS correction_statuses,
+        SUM(CASE WHEN locked_for_payroll = 1 THEN 1 ELSE 0 END) AS locked_for_payroll_days,
+        GROUP_CONCAT(CASE WHEN status = 'ABSENT' OR missed_punch = 1 THEN attendance_date ELSE NULL END) AS missed_dates
+       FROM attendance_daily_records
+       WHERE employee_id = ? AND attendance_date BETWEEN ? AND ?`
+    )
+    .bind(employeeId, startDate, endDate)
+    .first<Record<string, unknown>>();
+}
+
 async function recalculateRun(c: Context<AppBindings>, run: Record<string, unknown>, mode: "generate" | "recalculate") {
   const period = await getPeriod(c, String(run.payroll_period_id));
   if (!period) return { error: "Payroll period was not found." };
   const settings = await getSettings(c);
+  const attendanceEnabledForPayroll = await isOperationalModuleEnabled(c.env.DB, "attendance");
+  const attendanceDisabledNotice = attendanceEnabledForPayroll ? null : PAYROLL_ATTENDANCE_DISABLED_NOTICE;
   const runId = String(run.id);
   await c.env.DB.prepare("UPDATE payroll_runs SET status = 'CALCULATING', updated_at = ? WHERE id = ?").bind(isoNow(), runId).run();
   await c.env.DB.prepare("UPDATE payroll_periods SET status = 'CALCULATING', updated_at = ? WHERE id = ?").bind(isoNow(), period.id).run();
@@ -656,24 +698,7 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
     const basicSalary = Number(employee.basic_salary ?? 0);
     const excluded = !profileIncluded || !statusIncluded;
 
-    const attendance = await c.env.DB
-      .prepare(
-        `SELECT
-          SUM(CASE WHEN status = 'PRESENT' THEN 1 ELSE 0 END) AS days_worked,
-          SUM(CASE WHEN status = 'ABSENT' THEN 1 ELSE 0 END) AS absent_days,
-          SUM(CASE WHEN status = 'LATE' THEN 1 ELSE 0 END) AS late_days,
-          SUM(CASE WHEN missed_punch = 1 THEN 1 ELSE 0 END) AS missed_punch_days,
-          SUM(COALESCE(payroll_impact_days, 0)) AS payroll_impact_days,
-          SUM(COALESCE(payroll_impact_minutes, 0)) AS payroll_impact_minutes,
-          GROUP_CONCAT(CASE WHEN payroll_impact_status IS NOT NULL THEN payroll_impact_reason ELSE NULL END) AS payroll_impact_reason,
-          GROUP_CONCAT(CASE WHEN correction_status IS NOT NULL THEN correction_status ELSE NULL END) AS correction_statuses,
-          SUM(CASE WHEN locked_for_payroll = 1 THEN 1 ELSE 0 END) AS locked_for_payroll_days,
-          GROUP_CONCAT(CASE WHEN status = 'ABSENT' OR missed_punch = 1 THEN attendance_date ELSE NULL END) AS missed_dates
-         FROM attendance_daily_records
-         WHERE employee_id = ? AND attendance_date BETWEEN ? AND ?`
-      )
-      .bind(employee.id, startDate, endDate)
-      .first<Record<string, unknown>>();
+    const attendance = await getPayrollAttendanceSummaryForRun(c, String(employee.id), startDate, endDate, attendanceEnabledForPayroll);
     const leave = await c.env.DB
       .prepare(
         `SELECT COUNT(*) AS leave_days,
@@ -715,7 +740,7 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
     const unpaidLeaveDays = Number(leave?.unpaid_leave_days ?? 0);
     const dailyRateDivisor = employee.daily_rate_mode === "CALENDAR_DAYS" ? daysInPeriod : employee.daily_rate_mode === "WORKING_DAYS" ? Math.max(1, Number(roster?.scheduled_work_days ?? daysInPeriod)) : 30;
     const dailyRate = dailyRateDivisor > 0 ? basicSalary / dailyRateDivisor : 0;
-    const attendanceDeductions = bool(settings.include_attendance_deductions, true) && bool(employee.missed_day_deduction_enabled, true) ? Number((dailyRate * absentDays).toFixed(2)) : 0;
+    const attendanceDeductions = attendanceEnabledForPayroll && bool(settings.include_attendance_deductions, true) && bool(employee.missed_day_deduction_enabled, true) ? Number((dailyRate * absentDays).toFixed(2)) : 0;
     const leaveDeductions = bool(settings.include_leave_deductions, true) && bool(employee.leave_deduction_enabled, true) ? Number((dailyRate * unpaidLeaveDays).toFixed(2)) : 0;
     const advanceDeductions = advances.reduce((sum, advance) => sum + Number(advance.amount ?? 0), 0);
     const fixedDeductions = deductions.reduce((sum, deduction) => sum + Number(deduction.amount ?? 0), 0);
@@ -742,6 +767,9 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
       mode,
       daily_rate: dailyRate,
       daily_rate_divisor: dailyRateDivisor,
+      attendance_module_enabled: attendanceEnabledForPayroll,
+      attendance_disabled_notice: attendanceDisabledNotice,
+      payroll_warnings: [attendanceDisabledNotice].filter(Boolean),
       attendance,
       leave,
       roster,
@@ -824,7 +852,7 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
       }
     }
     if (advanceDeductions > 0) await insertLine(c, runEmployeeId, advanceComponent?.id ?? null, "DEDUCTION", "ADVANCE", "Advance payments", advanceDeductions, "ADVANCE", null, null, advances);
-    if (attendanceDeductions > 0) await insertLine(c, runEmployeeId, absenceComponent?.id ?? null, "DEDUCTION", "ATTENDANCE", "Attendance absence deduction", attendanceDeductions, "ATTENDANCE", null, null, attendance);
+    if (attendanceEnabledForPayroll && attendanceDeductions > 0) await insertLine(c, runEmployeeId, absenceComponent?.id ?? null, "DEDUCTION", "ATTENDANCE", "Attendance absence deduction", attendanceDeductions, "ATTENDANCE", null, null, attendance);
     if (leaveDeductions > 0) await insertLine(c, runEmployeeId, leaveComponent?.id ?? null, "DEDUCTION", "LEAVE", "Unpaid leave deduction", leaveDeductions, "LEAVE", null, null, leave);
     for (const deduction of deductions) await insertLine(c, runEmployeeId, deduction.payroll_component_id ? String(deduction.payroll_component_id) : otherComponent?.id ?? null, "DEDUCTION", "OTHER", String(deduction.reason), Number(deduction.amount), "MANUAL", "payroll_deduction", String(deduction.id), deduction);
     for (const adjustment of adjustments) await insertLine(c, runEmployeeId, null, adjustment.adjustment_type as ComponentType, "OTHER", String(adjustment.reason), Number(adjustment.amount), "MANUAL", "payroll_adjustment", String(adjustment.id), adjustment);
@@ -2349,7 +2377,17 @@ payrollRoutes.get("/reports/allowances-deductions", requireAnyPermission(["payro
   const rows = (await c.env.DB.prepare(`SELECT prli.line_type, prli.category, prli.description, SUM(prli.amount) AS amount FROM payroll_result_line_items prli INNER JOIN payroll_employee_results pre ON pre.id = prli.payroll_run_employee_id INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE ${conditions.join(" AND ")} GROUP BY prli.line_type, prli.category, prli.description ORDER BY prli.line_type, prli.category`).bind(...params).all()).results;
   return ok(c, { reports: rows });
 });
-payrollRoutes.get("/reports/attendance-deductions", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => ok(c, { reports: (await getPayrollHistorySummary(c)).filter((row) => Number(row.attendance_deductions ?? 0) > 0) }));
+payrollRoutes.get("/reports/attendance-deductions", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => {
+  const attendanceEnabledForPayroll = await isOperationalModuleEnabled(c.env.DB, "attendance");
+  if (!attendanceEnabledForPayroll) {
+    return ok(c, {
+      reports: [],
+      attendance_module_enabled: false,
+      attendance_disabled_notice: PAYROLL_ATTENDANCE_DISABLED_NOTICE
+    });
+  }
+  return ok(c, { reports: (await getPayrollHistorySummary(c)).filter((row) => Number(row.attendance_deductions ?? 0) > 0) });
+});
 payrollRoutes.get("/reports/leave-deductions", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => ok(c, { reports: (await getPayrollHistorySummary(c)).filter((row) => Number(row.leave_deductions ?? 0) > 0) }));
 payrollRoutes.get("/reports/advance-deductions", requireAnyPermission(["payroll.reports.view", "payroll.history.view", "payroll.view"]), async (c) => ok(c, { reports: (await getPayrollHistorySummary(c)).filter((row) => Number(row.advance_deductions ?? 0) > 0) }));
 
@@ -2358,6 +2396,7 @@ payrollRoutes.get("/dashboard", requireAnyPermission(["payroll.view", "payroll.p
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "payroll", "view", "e");
   const globalSummary = canUseGlobalPayrollRunSummary(c, scope);
   const scopedEmployeeSql = `SELECT e.id FROM employees e WHERE ${scope.sql}`;
+  const attendanceEnabledForPayroll = await isOperationalModuleEnabled(c.env.DB, "attendance");
   const draftRunsSql = globalSummary
     ? "(SELECT COUNT(*) FROM payroll_runs WHERE status = 'DRAFT')"
     : "(SELECT COUNT(DISTINCT pr.id) FROM payroll_runs pr INNER JOIN payroll_employee_results pre ON pre.payroll_run_id = pr.id WHERE pr.status = 'DRAFT' AND pre.employee_id IN (SELECT id FROM scoped_employees))";
@@ -2367,6 +2406,9 @@ payrollRoutes.get("/dashboard", requireAnyPermission(["payroll.view", "payroll.p
   const paidRunsSql = globalSummary
     ? "(SELECT COUNT(*) FROM payroll_runs WHERE status = 'FINALIZED_PLACEHOLDER')"
     : "(SELECT COUNT(DISTINCT pr.id) FROM payroll_runs pr INNER JOIN payroll_employee_results pre ON pre.payroll_run_id = pr.id WHERE pr.status = 'FINALIZED_PLACEHOLDER' AND pre.employee_id IN (SELECT id FROM scoped_employees))";
+  const attendanceCandidatesSql = attendanceEnabledForPayroll
+    ? "(SELECT COUNT(*) FROM attendance_daily_records WHERE employee_id IN (SELECT id FROM scoped_employees) AND status = 'ABSENT')"
+    : "0";
   const row = await c.env.DB.prepare(`WITH scoped_employees AS (${scopedEmployeeSql}) SELECT
     (SELECT status FROM payroll_periods ORDER BY period_year DESC, period_month DESC LIMIT 1) AS current_payroll_period_status,
     ${draftRunsSql} AS draft_payroll_runs,
@@ -2375,7 +2417,7 @@ payrollRoutes.get("/dashboard", requireAnyPermission(["payroll.view", "payroll.p
     (SELECT COALESCE(SUM(pre.net_salary), 0) FROM payroll_employee_results pre INNER JOIN payroll_runs pr ON pr.id = pre.payroll_run_id INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE pre.employee_id IN (SELECT id FROM scoped_employees) AND pp.id = (SELECT id FROM payroll_periods ORDER BY period_year DESC, period_month DESC LIMIT 1)) AS total_payroll_amount_current_period,
     (SELECT COUNT(*) FROM payroll_advance_payments WHERE employee_id IN (SELECT id FROM scoped_employees) AND status IN ('REQUESTED', 'APPROVED')) AS advance_payments_pending,
     (SELECT COUNT(*) FROM employee_payroll_profiles WHERE employee_id IN (SELECT id FROM scoped_employees) AND payroll_included = 0) AS employees_excluded_from_payroll,
-    (SELECT COUNT(*) FROM attendance_daily_records WHERE employee_id IN (SELECT id FROM scoped_employees) AND status = 'ABSENT') AS attendance_deduction_candidates,
+    ${attendanceCandidatesSql} AS attendance_deduction_candidates,
     (SELECT COUNT(*) FROM leave_request_days lrd INNER JOIN leave_requests lr ON lr.id = lrd.leave_request_id LEFT JOIN leave_policies lp ON lp.id = lr.policy_id WHERE lr.employee_id IN (SELECT id FROM scoped_employees) AND lr.status = 'APPROVED' AND lp.salary_deduction_mode != 'NONE') AS leave_deduction_candidates,
     (SELECT COUNT(*) FROM payroll_employee_results WHERE employee_id IN (SELECT id FROM scoped_employees) AND status = 'HELD') AS payroll_holds`).bind(...scope.params).first();
   return ok(c, {
@@ -2387,7 +2429,9 @@ payrollRoutes.get("/dashboard", requireAnyPermission(["payroll.view", "payroll.p
     current_period_net_total: Number(row?.total_payroll_amount_current_period ?? 0),
     pending_advances: Number(row?.advance_payments_pending ?? 0),
     employees_excluded_from_payroll: Number(row?.employees_excluded_from_payroll ?? 0),
-    attendance_deduction_candidates: Number(row?.attendance_deduction_candidates ?? 0),
+    attendance_module_enabled: attendanceEnabledForPayroll,
+    attendance_disabled_notice: attendanceEnabledForPayroll ? null : PAYROLL_ATTENDANCE_DISABLED_NOTICE,
+    attendance_deduction_candidates: attendanceEnabledForPayroll ? Number(row?.attendance_deduction_candidates ?? 0) : 0,
     leave_deduction_candidates: Number(row?.leave_deduction_candidates ?? 0),
     payroll_holds: Number(row?.payroll_holds ?? 0)
   });

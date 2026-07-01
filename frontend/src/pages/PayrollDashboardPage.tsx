@@ -42,6 +42,7 @@ export function PayrollDashboardPage() {
 
   if (!canView) return <Panel><EmptyState title="Payroll unavailable" description="Your account needs payroll.view permission." /></Panel>;
 
+  const attendanceModuleEnabled = dashboard?.attendance_module_enabled !== false;
   const metrics = [
     { label: "Current period net", value: money(dashboard?.current_period_net_total), icon: <Banknote className="h-4 w-4" />, tone: "info" as const },
     { label: "Draft runs", value: dashboard?.draft_runs ?? 0, icon: <Clock3 className="h-4 w-4" />, tone: "warning" as const },
@@ -49,7 +50,7 @@ export function PayrollDashboardPage() {
     { label: "Finalized placeholders", value: dashboard?.paid_runs ?? 0, icon: <WalletCards className="h-4 w-4" />, tone: "neutral" as const },
     { label: "Pending advances", value: dashboard?.pending_advances ?? 0, icon: <AlertCircle className="h-4 w-4" />, tone: "warning" as const },
     { label: "Excluded employees", value: dashboard?.employees_excluded_from_payroll ?? 0, icon: <FileWarning className="h-4 w-4" />, tone: "danger" as const },
-    { label: "Attendance candidates", value: dashboard?.attendance_deduction_candidates ?? 0, icon: <CalendarDays className="h-4 w-4" />, tone: "info" as const },
+    ...(attendanceModuleEnabled ? [{ label: "Attendance candidates", value: dashboard?.attendance_deduction_candidates ?? 0, icon: <CalendarDays className="h-4 w-4" />, tone: "info" as const }] : []),
     { label: "Payroll holds", value: dashboard?.payroll_holds ?? 0, icon: <PauseCircle className="h-4 w-4" />, tone: "warning" as const }
   ];
 
@@ -65,6 +66,11 @@ export function PayrollDashboardPage() {
       {loading ? <Panel><CardSkeleton cards={6} label="Loading payroll dashboard" /></Panel> : null}
       {!loading && dashboard ? (
         <>
+          {!attendanceModuleEnabled ? (
+            <WarningPanel tone="warning">
+              {dashboard.attendance_disabled_notice ?? "Attendance module is disabled. Payroll will not use attendance records, late penalties, absences, missed punches, or attendance-based days worked. Use manual payroll adjustments or payroll import inputs if deductions are required."}
+            </WarningPanel>
+          ) : null}
           <MetricGrid>
             {metrics.map((metric) => <StatCard key={metric.label} label={metric.label} value={metric.value} icon={metric.icon} tone={metric.tone} />)}
           </MetricGrid>

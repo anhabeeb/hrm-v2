@@ -617,6 +617,8 @@ export interface PayrollDashboard {
   current_period_net_total: number;
   pending_advances: number;
   employees_excluded_from_payroll: number;
+  attendance_module_enabled?: boolean;
+  attendance_disabled_notice?: string | null;
   attendance_deduction_candidates: number;
   leave_deduction_candidates: number;
   payroll_holds: number;

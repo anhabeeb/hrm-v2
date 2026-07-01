@@ -39,6 +39,7 @@
     "verify:onboarding-workspace": "node scripts/verify-onboarding-workspace.mjs",
     "verify:onboarding-dashboard-kpis": "node scripts/verify-onboarding-dashboard-kpis.mjs",
     "verify:disabled-module-global-sweep": "node scripts/verify-disabled-module-global-sweep.mjs",
+    "verify:main-module-submodule-dependencies": "node scripts/verify-main-module-submodule-dependencies.mjs",
     "verify:employee-core-not-blocked-by-assets": "node scripts/verify-employee-core-not-blocked-by-assets.mjs",
     "verify:ui-standardization": "node scripts/verify-ui-standardization.mjs",
     "verify:module-toggle-settings": "node scripts/verify-module-toggle-settings.mjs",

@@ -176,15 +176,20 @@ export function disabledModulePayload(moduleKey: string, moduleLabel?: string) {
   };
 }
 
-export function disabledSubmodulePayload(moduleKey: string, submoduleKey: string, submoduleLabel?: string) {
+export function disabledSubmodulePayload(moduleKey: string, submoduleKey: string, submoduleLabel?: string, options: { parentDisabled?: boolean } = {}) {
   const label = submoduleLabel || submoduleKey.replace(/_/g, " ");
+  const moduleLabel = moduleKey.replace(/_/g, " ");
   return {
     code: SUBMODULE_DISABLED_RESPONSE_MODEL,
-    message: `${label.charAt(0).toUpperCase()}${label.slice(1)} is disabled.`,
+    message: options.parentDisabled
+      ? `${label.charAt(0).toUpperCase()}${label.slice(1)} is disabled because ${moduleLabel} is disabled.`
+      : `${label.charAt(0).toUpperCase()}${label.slice(1)} is disabled.`,
     module: moduleKey,
     submodule: submoduleKey,
+    parent_disabled: Boolean(options.parentDisabled),
+    parent_module: options.parentDisabled ? moduleKey : null,
     state: "Disabled",
-    guidance: SETTINGS_MODULE_REENABLE_ALLOWED
+    guidance: options.parentDisabled ? `Enable ${moduleLabel} from Settings to use this feature.` : SETTINGS_MODULE_REENABLE_ALLOWED
   };
 }
 
@@ -193,8 +198,8 @@ export function disabledModuleResponse(c: Context<AppBindings>, moduleKey: strin
   return c.json({ ok: false, error: payload }, 403);
 }
 
-export function disabledSubmoduleResponse(c: Context<AppBindings>, moduleKey: string, submoduleKey: string, submoduleLabel?: string) {
-  const payload = disabledSubmodulePayload(moduleKey, submoduleKey, submoduleLabel);
+export function disabledSubmoduleResponse(c: Context<AppBindings>, moduleKey: string, submoduleKey: string, submoduleLabel?: string, options: { parentDisabled?: boolean } = {}) {
+  const payload = disabledSubmodulePayload(moduleKey, submoduleKey, submoduleLabel, options);
   return c.json({ ok: false, error: payload }, 403);
 }
 
@@ -238,12 +243,27 @@ export async function isOperationalSubmoduleEnabled(db: Env["DB"], moduleKey: st
   }
 }
 
+export async function getOperationalSubmoduleState(db: Env["DB"], moduleKey: string, submoduleKey: string | null | undefined): Promise<{ enabled: boolean; parentDisabled: boolean; module: string; submodule: string }> {
+  const normalizedModule = normalizeOperationalModuleKey(moduleKey);
+  const normalizedSubmodule = normalizeOperationalModuleKey(submoduleKey);
+  if (!(await isOperationalModuleEnabled(db, normalizedModule))) {
+    return { enabled: false, parentDisabled: true, module: normalizedModule, submodule: normalizedSubmodule };
+  }
+  return {
+    enabled: await isOperationalSubmoduleEnabled(db, normalizedModule, normalizedSubmodule),
+    parentDisabled: false,
+    module: normalizedModule,
+    submodule: normalizedSubmodule
+  };
+}
+
 export async function requireOperationalModuleEnabled(c: Context<AppBindings>, moduleKey: string, moduleLabel?: string) {
   return (await isOperationalModuleEnabled(c.env.DB, moduleKey)) ? null : disabledModuleResponse(c, normalizeOperationalModuleKey(moduleKey), moduleLabel);
 }
 
 export async function requireOperationalSubmoduleEnabled(c: Context<AppBindings>, moduleKey: string, submoduleKey: string, submoduleLabel?: string) {
-  return (await isOperationalSubmoduleEnabled(c.env.DB, moduleKey, submoduleKey)) ? null : disabledSubmoduleResponse(c, normalizeOperationalModuleKey(moduleKey), submoduleKey, submoduleLabel);
+  const state = await getOperationalSubmoduleState(c.env.DB, moduleKey, submoduleKey);
+  return state.enabled ? null : disabledSubmoduleResponse(c, state.module, state.submodule, submoduleLabel, { parentDisabled: state.parentDisabled });
 }
 
 export function requireOperationalModuleMiddleware(moduleKey: string, moduleLabel?: string): MiddlewareHandler<AppBindings> {

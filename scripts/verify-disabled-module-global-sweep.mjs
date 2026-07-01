@@ -59,6 +59,7 @@ function requireScript(scriptName) {
 });
 
 requireScript("verify:disabled-module-global-sweep");
+requireScript("verify:main-module-submodule-dependencies");
 
 hasAll("worker/src/utils/module-enforcement.ts", [
   "MODULE_DISABLED_RESPONSE_MODEL",

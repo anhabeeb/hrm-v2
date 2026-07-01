@@ -453,6 +453,7 @@ export function PayrollSettingsPage() {
   }
   if (!canView) return <Panel><EmptyState title="Payroll settings unavailable" description="Your account needs payroll settings permission." /></Panel>;
   const moduleEnabled = Boolean(settings?.module_enabled ?? true);
+  const attendanceModuleEnabled = user?.module_visibility?.attendance !== false;
   return <div className="space-y-4">
     <PayrollPageHeader title="Payroll Settings" description="General payroll, bank-loan, pension, payment, and deduction-priority controls.">{canManageSettings ? <Button size="sm" disabled={!moduleEnabled} onClick={() => void save()}>Save settings</Button> : null}</PayrollPageHeader>
     <ErrorMessage error={error} />
@@ -477,12 +478,17 @@ export function PayrollSettingsPage() {
     <Panel className="p-4">
       {!settings ? <FormSkeleton fields={12} label="Loading payroll settings" /> : <ModuleSettingsBody disabled={!moduleEnabled}><div className="space-y-5">
         <SettingsSection title="General Payroll" description="Base calculation and module switches.">
+          {!attendanceModuleEnabled ? (
+            <div className="md:col-span-2 xl:col-span-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Attendance module is disabled. Payroll will not use attendance records, late penalties, absences, missed punches, or attendance-based days worked. Use manual payroll adjustments or payroll import inputs if deductions are required.
+            </div>
+          ) : null}
           <Field label="Default currency"><Input disabled={!canManageSettings} value={settings.default_currency} onChange={(event) => update("default_currency", event.target.value)} /></Field>
           <Field label="Daily rate mode"><SelectField disabled={!canManageSettings} className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={settings.default_daily_rate_mode} onChange={(event) => update("default_daily_rate_mode", event.target.value as PayrollSettings["default_daily_rate_mode"])}><option value="CALENDAR_DAYS">Calendar days</option><option value="WORKING_DAYS">Working days</option><option value="FIXED_30_DAYS">Fixed 30 days</option></SelectField></Field>
           <Field label="Payment day"><Input disabled={!canManageSettings} type="number" min={1} max={31} value={settings.default_salary_payment_day ?? ""} onChange={(event) => update("default_salary_payment_day", event.target.value ? Number(event.target.value) : null)} /></Field>
           <Toggle disabled={!canManageSettings} label="Allow negative net salary" checked={Boolean(settings.allow_negative_net_salary)} onChange={(value) => update("allow_negative_net_salary", value)} />
           <Toggle disabled={!canManageSettings} label="Require approval before paid" checked={Boolean(settings.require_approval_before_paid)} onChange={(value) => update("require_approval_before_paid", value)} />
-          <Toggle disabled={!canManageSettings} label="Include attendance deductions" checked={Boolean(settings.include_attendance_deductions)} onChange={(value) => update("include_attendance_deductions", value)} />
+          <Toggle disabled={!canManageSettings || !attendanceModuleEnabled} label="Include attendance deductions" checked={Boolean(settings.include_attendance_deductions) && attendanceModuleEnabled} onChange={(value) => update("include_attendance_deductions", value)} />
           <Toggle disabled={!canManageSettings} label="Include leave deductions" checked={Boolean(settings.include_leave_deductions)} onChange={(value) => update("include_leave_deductions", value)} />
           <Toggle disabled={!canManageSettings || !Boolean(settings.employee_advances_enabled ?? true)} label="Include advance deductions" checked={Boolean(settings.include_advance_deductions)} onChange={(value) => update("include_advance_deductions", value)} />
           <Toggle disabled={!canManageSettings} label="Include roster scheduled days" checked={Boolean(settings.include_roster_scheduled_days)} onChange={(value) => update("include_roster_scheduled_days", value)} />
@@ -608,13 +614,23 @@ export function PayrollReportsPage() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const attendanceModuleEnabled = user?.module_visibility?.attendance !== false;
+  const reportOptions = ["department", "location", "advance", ...(attendanceModuleEnabled ? ["attendance"] : []), "leave", "custom-deductions", "custom-deduction-shortfalls", "employee-history", "final-settlement"];
   const filters = useMemo(() => ({ report, payroll_period_id: periodId, department_id: departmentId, location_id: locationId, search }), [report, periodId, departmentId, locationId, search]);
   async function load() {
     if (!token || !canView) return;
+    if (!attendanceModuleEnabled && report === "attendance") {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true); setError(null);
     try { const [result, refs] = await Promise.all([api.getPayrollReports(token, filters), loadReferenceData(token)]); setRows(result.reports); setPeriods(refs.periods); setDepartments(refs.departments); setLocations(refs.locations); setJobLevels(refs.jobLevels); setPositions(refs.positions); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to load payroll reports."); } finally { setLoading(false); }
   }
-  useEffect(() => { void load(); }, [token, canView, filters]);
+  useEffect(() => { void load(); }, [token, canView, filters, attendanceModuleEnabled]);
+  useEffect(() => {
+    if (!attendanceModuleEnabled && report === "attendance") setReport("summary");
+  }, [attendanceModuleEnabled, report]);
   async function exportCsv() {
     if (!token) return;
     try { const download = await api.exportPayrollReportCsv(token, filters); const url = URL.createObjectURL(download.blob); const link = document.createElement("a"); link.href = url; link.download = download.filename || `payroll-${report}.csv`; link.click(); URL.revokeObjectURL(url); alerts.showSuccess("Payroll report exported", "Payroll report CSV was downloaded."); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to export payroll report."); alerts.showApiError(err, "Unable to export payroll report."); }
@@ -626,7 +642,7 @@ export function PayrollReportsPage() {
     ...payrollOrgFilterChips({ departments, locations, jobLevels, positions, departmentId, locationId, jobLevelId, positionId, setDepartmentId, setLocationId, setJobLevelId, setPositionId })
   ], [departmentId, departments, jobLevelId, jobLevels, locationId, locations, periodId, periods, positionId, positions, report, search]);
   if (!canView) return <Panel><EmptyState title="Payroll reports unavailable" description="Your account needs payroll.reports.view permission." /></Panel>;
-  return <PayrollTablePageLayout title="Payroll Reports" description="Filter and export payroll summaries with the same visible criteria." error={error} loading={loading} empty={rows.length === 0} emptyTitle="No report rows" chips={chips} onReset={() => { setReport("summary"); setPeriodId(""); setDepartmentId(""); setLocationId(""); setJobLevelId(""); setPositionId(""); setSearch(""); }} filters={<><SearchInput value={search} onChange={setSearch} /><StandardSelectFilter value={report} onValueChange={setReport} allLabel="Summary" width="documentType" options={["department", "location", "advance", "attendance", "leave", "custom-deductions", "custom-deduction-shortfalls", "employee-history", "final-settlement"].map((item) => ({ value: item, label: item.replace(/-/g, " ") }))} /><StandardSelectFilter value={periodId} onValueChange={setPeriodId} allLabel="All periods" width="payrollPeriod" options={periods.map((period) => ({ value: period.id, label: `${period.period_month}/${period.period_year}` }))} /><MoreFiltersSheet title="Payroll report filters" onReset={() => { setDepartmentId(""); setLocationId(""); setJobLevelId(""); setPositionId(""); }}><FilterSection title="Organization"><PayrollOrgFilter departments={departments} locations={locations} jobLevels={jobLevels} positions={positions} departmentId={departmentId} locationId={locationId} jobLevelId={jobLevelId} positionId={positionId} onChange={(next) => { setDepartmentId(next.departmentId); setLocationId(next.locationId); setJobLevelId(next.jobLevelId); setPositionId(next.positionId); }} /></FilterSection></MoreFiltersSheet></>} exportRows={rows} exportColumns={Object.keys(rows[0] ?? { report: "", value: "" })} action={canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}>
+  return <PayrollTablePageLayout title="Payroll Reports" description="Filter and export payroll summaries with the same visible criteria." error={error} loading={loading} empty={rows.length === 0} emptyTitle="No report rows" chips={chips} onReset={() => { setReport("summary"); setPeriodId(""); setDepartmentId(""); setLocationId(""); setJobLevelId(""); setPositionId(""); setSearch(""); }} filters={<><SearchInput value={search} onChange={setSearch} /><StandardSelectFilter value={report} onValueChange={setReport} allLabel="Summary" width="documentType" options={reportOptions.map((item) => ({ value: item, label: item.replace(/-/g, " ") }))} /><StandardSelectFilter value={periodId} onValueChange={setPeriodId} allLabel="All periods" width="payrollPeriod" options={periods.map((period) => ({ value: period.id, label: `${period.period_month}/${period.period_year}` }))} /><MoreFiltersSheet title="Payroll report filters" onReset={() => { setDepartmentId(""); setLocationId(""); setJobLevelId(""); setPositionId(""); }}><FilterSection title="Organization"><PayrollOrgFilter departments={departments} locations={locations} jobLevels={jobLevels} positions={positions} departmentId={departmentId} locationId={locationId} jobLevelId={jobLevelId} positionId={positionId} onChange={(next) => { setDepartmentId(next.departmentId); setLocationId(next.locationId); setJobLevelId(next.jobLevelId); setPositionId(next.positionId); }} /></FilterSection></MoreFiltersSheet></>} exportRows={rows} exportColumns={Object.keys(rows[0] ?? { report: "", value: "" })} action={canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}>
     <TableHeader><TableRow>{Object.keys(rows[0] ?? { report: "", value: "" }).map((key) => <TableHead key={key}>{key}</TableHead>)}</TableRow></TableHeader>
     <TableBody>{rows.map((row, index) => <TableRow key={index}>{Object.keys(rows[0] ?? row).map((key) => <TableCell key={key}>{String(row[key] ?? "-")}</TableCell>)}</TableRow>)}</TableBody>
   </PayrollTablePageLayout>;

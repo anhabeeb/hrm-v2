@@ -9,7 +9,7 @@ import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { TableSkeleton } from "../components/loading";
 import { Panel } from "../components/ui/panel";
-import { InputField, PageHeader, PageShell } from "../components/ui/page-shell";
+import { InputField, PageHeader, PageShell, WarningPanel } from "../components/ui/page-shell";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -26,6 +26,18 @@ function normalizeResultStatus(status: string) {
   if (status === "APPROVED") return "APPROVED_PLACEHOLDER";
   if (status === "PAID") return "FINALIZED_PLACEHOLDER";
   return status;
+}
+
+const PAYROLL_ATTENDANCE_DISABLED_NOTICE = "Attendance module is disabled. Payroll will not use attendance records, late penalties, absences, missed punches, or attendance-based days worked. Use manual payroll adjustments or payroll import inputs if deductions are required.";
+
+function attendanceNoticeFromCalculation(employee: PayrollRunEmployee) {
+  if (!employee.calculation_json) return null;
+  try {
+    const calculation = JSON.parse(employee.calculation_json) as { attendance_module_enabled?: boolean; attendance_disabled_notice?: string | null };
+    return calculation.attendance_module_enabled === false ? calculation.attendance_disabled_notice ?? PAYROLL_ATTENDANCE_DISABLED_NOTICE : null;
+  } catch {
+    return null;
+  }
 }
 
 export function PayrollRunDetailPage() {
@@ -147,6 +159,7 @@ export function PayrollRunDetailPage() {
   }
 
   if (!canView) return <PageShell><Panel><EmptyState title="Payroll run unavailable" description="Your account needs payroll.view permission." /></Panel></PageShell>;
+  const attendanceDisabledNotice = employees.map(attendanceNoticeFromCalculation).find(Boolean) ?? (user?.module_visibility?.attendance === false ? PAYROLL_ATTENDANCE_DISABLED_NOTICE : null);
 
   return (
     <PageShell>
@@ -164,6 +177,7 @@ export function PayrollRunDetailPage() {
       />
       <PayrollNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      {attendanceDisabledNotice ? <WarningPanel tone="warning">{attendanceDisabledNotice}</WarningPanel> : null}
       {run ? <Panel className="p-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0 space-y-1"><div className="flex min-w-0 flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">Approval and finalization</h2><StatusBadge value={run.status} /></div><p className="text-xs text-muted-foreground">Approval history is immutable. Finalized payroll locks frozen result snapshots for payslips and payment register preparation.</p></div>
