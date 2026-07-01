@@ -78,9 +78,32 @@ hasAll("frontend/src/components/alerts/AlertProvider.tsx", [
   "hrm-v2-session-expired",
   "showSessionExpired",
   "showApiError",
-  "defaultAutoDismissMs",
+  "getAlertDuration",
   "alertDedupeKey"
 ], "global alert provider handles session, API errors, auto-dismiss, and dedupe");
+hasAll("frontend/src/components/alerts/AlertProvider.tsx", [
+  "alertTimers",
+  "scheduledDurations",
+  "window.setTimeout",
+  "window.clearTimeout",
+  "clearAlertTimer",
+  "setAlerts((current) => current.filter((item) => item.id !== alert.id))"
+], "global alert provider removes popup alerts from state/DOM after per-alert timeout");
+hasAll("frontend/src/components/alerts/AlertProvider.tsx", [
+  "clearAlertTimer(id)",
+  "setAlerts((current) => current.filter((alert) => alert.id !== id))"
+], "manual close clears the timer and removes the alert immediately");
+hasAll("frontend/src/components/alerts/AlertProvider.tsx", [
+  "alreadyScheduledForDuration",
+  "scheduledDurations.current.get(alert.id) === duration",
+  "if (alreadyScheduledForDuration) continue;"
+], "existing popup alert timeout does not reset on unrelated rerenders");
+hasAll("frontend/src/components/alerts/AlertProvider.tsx", [
+  "persistent: input.persistent === true",
+  "autoDismissMs: getAlertDuration(input)",
+  "type: \"loading\", title, message, persistent: true"
+], "persistent popup behavior is explicit and normal alerts receive normalized durations");
+check(!read("frontend/src/components/alerts/AlertProvider.tsx").includes("autoDismissMs: null"), "global alert provider does not make popups permanent through null duration");
 
 hasAll("frontend/src/components/alerts/AlertViewport.tsx", [
   "createPortal",
@@ -122,6 +145,20 @@ hasAll("frontend/src/lib/alert-utils.ts", [
   "status >= 500",
   "isModuleDisabledError"
 ], "API error mapping sanitizes internals and handles required status categories");
+hasAll("frontend/src/lib/alert-utils.ts", [
+  "getAlertDuration",
+  "alert.persistent === true",
+  "Number(alert.durationMs ?? alert.duration ?? alert.autoDismissMs)",
+  "Number.isFinite(explicit) && explicit > 0",
+  "Math.min(Math.max(explicit, 1000), 30000)",
+  "return defaultAutoDismissMs(alert.type)"
+], "alert duration handling clamps invalid/missing values to safe finite defaults");
+hasAll("frontend/src/lib/alert-utils.ts", [
+  "if (type === \"success\") return 3500",
+  "if (type === \"info\") return 4000",
+  "if (type === \"warning\" || type === \"validation\") return 6000",
+  "if (type === \"error\" || type === \"permission\" || type === \"module-disabled\" || type === \"session-expired\") return 7000"
+], "success/info/warning/error popup defaults are finite and auto-dismissable");
 
 const app = read("frontend/src/app/App.tsx");
 check((app.match(/<AlertProvider>/g) ?? []).length === 1, "App mounts exactly one global AlertProvider");
@@ -176,6 +213,21 @@ has("frontend/src/components/forms/FieldError.tsx", "FieldError", "field-level e
 has("frontend/src/components/forms/ValidationSummary.tsx", "ValidationSummary", "validation summary component remains available");
 
 const frontendFiles = walk("frontend/src", (file) => /\.(ts|tsx)$/.test(file));
+const demoAlertPatterns = [
+  /Error Area/i,
+  /Warning Area/i,
+  /Alert Area/i,
+  /Demo alert/i,
+  /Test alert/i,
+  /Debug alert/i,
+  /Global alert test/i,
+  /warning demo/i,
+  /error demo/i,
+  /alert playground/i,
+  /sample warning/i,
+  /sample error/i,
+  /sample test/i
+];
 const legacyPatterns = [
   /\buseToast\b/,
   /\bshowToast\b/,
@@ -190,6 +242,9 @@ const legacyPatterns = [
 ];
 for (const file of frontendFiles) {
   const source = read(file);
+  for (const pattern of demoAlertPatterns) {
+    check(!pattern.test(source), `${file} has no production demo/debug alert area marker ${pattern}`);
+  }
   for (const pattern of legacyPatterns) {
     check(!pattern.test(source), `${file} does not use legacy toast/local popup marker ${pattern}`);
   }

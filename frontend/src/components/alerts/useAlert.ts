@@ -24,7 +24,10 @@ export interface PopupAlertInput {
   title: string;
   message?: string;
   action?: PopupAlertAction;
-  autoDismissMs?: number | null;
+  autoDismissMs?: number | string | null;
+  durationMs?: number | string | null;
+  duration?: number | string | null;
+  persistent?: boolean;
   dismissible?: boolean;
   dedupeKey?: string;
 }
@@ -32,6 +35,7 @@ export interface PopupAlertInput {
 export interface PopupAlert extends PopupAlertInput {
   id: string;
   createdAt: number;
+  autoDismissMs: number | null;
 }
 
 export interface AlertContextValue {

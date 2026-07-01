@@ -148,13 +148,22 @@ export function mapApiErrorToAlert(error: unknown, fallbackTitle = "Request fail
 }
 
 export function defaultAutoDismissMs(type: PopupAlertType) {
-  if (type === "success") return 4200;
-  if (type === "info") return 5200;
-  if (type === "warning") return 8000;
-  if (type === "validation") return 8000;
-  if (type === "permission" || type === "module-disabled" || type === "session-expired") return 9000;
-  if (type === "loading") return null;
-  return 10000;
+  if (type === "success") return 3500;
+  if (type === "info") return 4000;
+  if (type === "warning" || type === "validation") return 6000;
+  if (type === "error" || type === "permission" || type === "module-disabled" || type === "session-expired") return 7000;
+  return 4000;
+}
+
+export function getAlertDuration(alert: Pick<PopupAlertInput, "type" | "autoDismissMs" | "durationMs" | "duration" | "persistent">) {
+  if (alert.persistent === true) return null;
+
+  const explicit = Number(alert.durationMs ?? alert.duration ?? alert.autoDismissMs);
+  if (Number.isFinite(explicit) && explicit > 0) {
+    return Math.min(Math.max(explicit, 1000), 30000);
+  }
+
+  return defaultAutoDismissMs(alert.type);
 }
 
 export function alertDedupeKey(input: PopupAlertInput) {
