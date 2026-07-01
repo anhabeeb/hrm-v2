@@ -52,6 +52,7 @@
     "verify:navigation-tabs": "node scripts/verify-navigation-tab-consistency.mjs",
     "verify:shadcn-navigation-tabs": "node scripts/verify-shadcn-navigation-tabs.mjs",
     "verify:global-search-notifications": "node scripts/verify-global-search-notifications.mjs",
+    "verify:header-search-layout": "node scripts/verify-header-search-layout.mjs",
     "verify:performance-optimization": "node scripts/verify-performance-optimization.mjs",
     "verify:client-side-speed-polish": "node scripts/verify-client-side-speed-polish.mjs",
     "verify:branding-standardization": "node scripts/verify-branding-standardization.mjs",

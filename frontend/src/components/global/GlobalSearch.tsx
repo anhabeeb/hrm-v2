@@ -122,8 +122,8 @@ export function GlobalSearch() {
   }
 
   return (
-    <div className="relative">
-      <div className="hidden xl:block">
+    <div className="relative min-w-0">
+      <div className="hidden lg:block">
         <Search className="pointer-events-none absolute left-3 top-2.5 z-10 h-4 w-4 text-muted-foreground" />
         <Input
           ref={inputRef}
@@ -135,11 +135,11 @@ export function GlobalSearch() {
           }}
           placeholder="Search employees, payroll, documents..."
           aria-label="Global search"
-          className="h-9 w-[280px] bg-slate-50 pl-9 pr-16"
+          className="h-9 w-[280px] max-w-[calc(100vw-20rem)] bg-slate-50 pl-9 pr-16 xl:w-[420px] 2xl:w-[480px]"
         />
         <span className="pointer-events-none absolute right-2 top-2 rounded border bg-white px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Ctrl K</span>
       </div>
-      <Button variant="outline" size="icon" className="xl:hidden" title="Search" onClick={() => {
+      <Button variant="outline" size="icon" className="lg:hidden" title="Search" onClick={() => {
         setOpen(true);
         window.setTimeout(() => inputRef.current?.focus(), 0);
       }}>
