@@ -1662,6 +1662,53 @@ CREATE TABLE IF NOT EXISTS employee_document_versions (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_employee_document_versions_unique ON employee_document_versions(employee_document_id, version_no);
 CREATE INDEX IF NOT EXISTS idx_employee_document_versions_current ON employee_document_versions(employee_document_id, is_current);
 
+CREATE TABLE IF NOT EXISTS document_upload_sessions (
+  id TEXT PRIMARY KEY,
+  batch_id TEXT,
+  client_row_id TEXT,
+  upload_mode TEXT NOT NULL DEFAULT 'worker_proxy' CHECK (upload_mode IN ('worker_proxy', 'direct_r2')),
+  status TEXT NOT NULL DEFAULT 'PREPARED' CHECK (status IN ('PREPARED', 'UPLOADING', 'UPLOADED', 'COMPLETING', 'COMPLETED', 'FAILED', 'EXPIRED', 'CLEANED_UP')),
+  context_type TEXT NOT NULL DEFAULT 'employee_document' CHECK (context_type IN ('employee_document', 'onboarding_document')),
+  onboarding_case_id TEXT,
+  employee_id TEXT NOT NULL,
+  document_type_id TEXT NOT NULL,
+  document_id TEXT NOT NULL,
+  version_no INTEGER NOT NULL DEFAULT 1,
+  r2_key TEXT NOT NULL,
+  original_filename TEXT NOT NULL,
+  file_mime_type TEXT NOT NULL,
+  file_size_bytes INTEGER NOT NULL,
+  file_hash TEXT,
+  document_number TEXT,
+  issue_date TEXT,
+  expiry_date TEXT,
+  notes TEXT,
+  replace_document_id TEXT,
+  reason_for_replacement TEXT,
+  validation_snapshot_json TEXT,
+  error_code TEXT,
+  error_message TEXT,
+  created_by_user_id TEXT,
+  completed_document_id TEXT,
+  completed_version_id TEXT,
+  expires_at TEXT NOT NULL,
+  uploaded_at TEXT,
+  completed_at TEXT,
+  failed_at TEXT,
+  cleaned_up_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (document_type_id) REFERENCES document_types(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (completed_document_id) REFERENCES employee_documents(id) ON DELETE SET NULL,
+  FOREIGN KEY (completed_version_id) REFERENCES employee_document_versions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_upload_sessions_actor_status ON document_upload_sessions(created_by_user_id, status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_document_upload_sessions_batch ON document_upload_sessions(batch_id, employee_id);
+CREATE INDEX IF NOT EXISTS idx_document_upload_sessions_expiry ON document_upload_sessions(status, expires_at);
+
 CREATE TABLE IF NOT EXISTS document_required_rules (
   id TEXT PRIMARY KEY,
   document_type_id TEXT NOT NULL,

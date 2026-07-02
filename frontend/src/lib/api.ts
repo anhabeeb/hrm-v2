@@ -137,7 +137,7 @@ import { invalidateReferenceDataCache } from "./referenceDataCache";
 import { createApiRequestId, recordApiRequestTiming } from "./performance";
 import { invalidateReferenceQueries } from "./queryClient";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 const API_REQUEST_TIMEOUT_MS = 30000;
 const inflightGetRequests = new Map<string, Promise<unknown>>();
 

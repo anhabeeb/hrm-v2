@@ -8,7 +8,7 @@ import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
 import { refreshComplianceAfterDocumentChange, resolveDocumentAlertForRenewedDocument } from "./document-compliance";
 import type { AppBindings } from "../types";
-import { fail, getClientIp, ok } from "../utils/http";
+import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 
@@ -20,7 +20,7 @@ const DOCUMENT_CATEGORY_COLUMNS = "id, name, description, sort_order, is_active,
 const DOCUMENT_TYPE_LIST_COLUMNS = `
   dt.id, dt.category_id, dc.name AS category_name, dt.code, dt.name, dt.description,
   dt.is_sensitive, dt.is_active, dt.expiring_soon_days, dt.allowed_file_types_json,
-  dt.max_file_size_mb, dt.allow_multiple_files, dt.requires_expiry_date,
+  dt.allowed_mime_types, dt.max_file_size_mb, dt.allow_multiple_files, dt.requires_expiry_date,
   dt.requires_issue_date, dt.requires_document_number, dt.retention_rule_json,
   dt.sort_order, dt.created_at, dt.updated_at
 `;
@@ -46,6 +46,7 @@ interface DocumentTypeRow {
   is_active: number;
   expiring_soon_days: number;
   allowed_file_types_json: string;
+  allowed_mime_types?: string | null;
   max_file_size_mb: number;
   allow_multiple_files: number;
   requires_expiry_date: number;
@@ -160,6 +161,70 @@ export type EmployeeDocumentUploadResult = {
   createdNewDocument: boolean;
 };
 
+type PreparedDocumentUploadSessionRow = {
+  id: string;
+  batch_id: string | null;
+  client_row_id: string | null;
+  upload_mode: "worker_proxy" | "direct_r2";
+  status: "PREPARED" | "UPLOADING" | "UPLOADED" | "COMPLETING" | "COMPLETED" | "FAILED" | "EXPIRED" | "CLEANED_UP";
+  context_type: "employee_document" | "onboarding_document";
+  onboarding_case_id: string | null;
+  employee_id: string;
+  document_type_id: string;
+  document_id: string;
+  version_no: number;
+  r2_key: string;
+  original_filename: string;
+  file_mime_type: string;
+  file_size_bytes: number;
+  file_hash: string | null;
+  document_number: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  notes: string | null;
+  replace_document_id: string | null;
+  reason_for_replacement: string | null;
+  validation_snapshot_json: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_by_user_id: string | null;
+  completed_document_id: string | null;
+  completed_version_id: string | null;
+  expires_at: string;
+  uploaded_at: string | null;
+  completed_at: string | null;
+  failed_at: string | null;
+  cleaned_up_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DocumentUploadPrepareRow = {
+  client_row_id?: string | null;
+  document_type_id?: string | null;
+  file_name?: string | null;
+  mime_type?: string | null;
+  file_size?: number | null;
+  issue_date?: string | null;
+  expiry_date?: string | null;
+  document_number?: string | null;
+  reference?: string | null;
+  notes?: string | null;
+  checksum?: string | null;
+};
+
+export type DocumentUploadPrepareContext = {
+  employeeId: string;
+  onboardingCaseId?: string | null;
+  contextType?: "employee_document" | "onboarding_document";
+  skipAccessCheck?: boolean;
+};
+
+type DocumentUploadCompleteResult = EmployeeDocumentUploadResult & {
+  uploadId: string;
+  clientRowId: string | null;
+};
+
 type DocumentUploadValidationIssue = {
   code: string;
   message: string;
@@ -210,6 +275,40 @@ function safeJsonArray(value: string) {
   } catch {
     return [];
   }
+}
+
+function uploadSessionExpiry(minutes = 20) {
+  return new Date(Date.now() + minutes * 60_000).toISOString();
+}
+
+function isExpiredIso(value: string | null | undefined) {
+  return Boolean(value && value < new Date().toISOString());
+}
+
+function uploadEndpoint(c: Context<AppBindings>, uploadId: string) {
+  const url = new URL(c.req.url);
+  return `${url.origin}/api/v1/documents/uploads/${uploadId}/file`;
+}
+
+function safeDocumentUploadLog(event: string, input: Record<string, unknown>) {
+  console.warn(JSON.stringify({
+    level: "warn",
+    event,
+    upload_id: input.upload_id ?? null,
+    batch_id: input.batch_id ?? null,
+    request_id: cSafeRequestId(input),
+    message: input.message ?? null,
+    timestamp: new Date().toISOString()
+  }));
+}
+
+function cSafeRequestId(input: Record<string, unknown>) {
+  const value = input.request_id;
+  return typeof value === "string" ? value : null;
+}
+
+function requestIdFromContext(c: Context<AppBindings>) {
+  return c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? null;
 }
 
 function toCategory(row: DocumentCategoryRow) {
@@ -351,7 +450,7 @@ async function getDocument(db: AppBindings["Bindings"]["DB"], id: string, employ
 }
 
 async function ensureEmployee(db: AppBindings["Bindings"]["DB"], employeeId: string) {
-  return db.prepare("SELECT id, full_name, employee_no FROM employees WHERE id = ?").bind(employeeId).first<{ id: string; full_name: string; employee_no: string }>();
+  return db.prepare("SELECT id, full_name, employee_no, employee_type, employment_type FROM employees WHERE id = ?").bind(employeeId).first<{ id: string; full_name: string; employee_no: string; employee_type?: string | null; employment_type?: string | null }>();
 }
 
 async function ensureReason(c: Context<AppBindings>, body: Record<string, unknown>) {
@@ -388,10 +487,18 @@ function validateMetadata(c: Context<AppBindings>, type: DocumentTypeRow, input:
   return issue ? fail(c, 400, issue.code, issue.message) : null;
 }
 
-function validateFileIssue(type: DocumentTypeRow, file: File): DocumentUploadValidationIssue | null {
-  const allowed = safeJsonArray(type.allowed_file_types_json);
+function documentTypeUploadRules(type: DocumentTypeRow) {
+  const legacy = safeJsonArray(type.allowed_file_types_json || "[]");
+  const mime = type.allowed_mime_types ? safeJsonArray(type.allowed_mime_types) : [];
+  return Array.from(new Set([...mime, ...legacy]));
+}
+
+function validateFileMetadataIssue(type: DocumentTypeRow, file: { name: string; type: string; size: number }): DocumentUploadValidationIssue | null {
+  const allowed = documentTypeUploadRules(type);
   const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
-  if (allowed.length && !allowed.includes(file.type) && !allowed.includes(extension)) {
+  const mime = file.type || "application/octet-stream";
+  const matchesMime = allowed.some((rule) => rule === mime || rule === "*/*" || (rule.endsWith("/*") && mime.startsWith(rule.slice(0, -1))));
+  if (allowed.length && !matchesMime && !allowed.includes(extension)) {
     return { code: "INVALID_FILE_TYPE", message: "File type is not allowed for this document type." };
   }
   const maxBytes = type.max_file_size_mb * 1024 * 1024;
@@ -399,6 +506,10 @@ function validateFileIssue(type: DocumentTypeRow, file: File): DocumentUploadVal
     return { code: "FILE_TOO_LARGE", message: `File exceeds ${type.max_file_size_mb} MB.` };
   }
   return null;
+}
+
+function validateFileIssue(type: DocumentTypeRow, file: File): DocumentUploadValidationIssue | null {
+  return validateFileMetadataIssue(type, { name: file.name, type: file.type, size: file.size });
 }
 
 function validateFile(c: Context<AppBindings>, type: DocumentTypeRow, file: File) {
@@ -818,6 +929,91 @@ documentRoutes.get("/dashboard", requirePermission("documents.view"), async (c) 
   });
 });
 
+documentRoutes.post("/uploads/prepare", requirePermission("documents.upload"), async (c) => {
+  const startedAt = Date.now();
+  const body = await readJsonBody(c.req.raw);
+  const employeeId = readString(body.employee_id);
+  if (!employeeId) return fail(c, 400, "EMPLOYEE_REQUIRED", "Employee is required before preparing document uploads.");
+  const rows = Array.isArray(body.rows) ? (body.rows as DocumentUploadPrepareRow[]) : [];
+  const response = await prepareDocumentUploadSessions(c, { employeeId, contextType: "employee_document" }, rows);
+  safeDocumentUploadLog("document.upload.prepare_timing", {
+    request_id: requestIdFromContext(c),
+    employee_id: employeeId,
+    row_count: rows.length,
+    duration_ms: Date.now() - startedAt
+  });
+  return response;
+});
+
+documentRoutes.post("/uploads/complete", requirePermission("documents.upload"), async (c) => {
+  const startedAt = Date.now();
+  const body = await readJsonBody(c.req.raw);
+  const uploadIds = Array.isArray(body.upload_ids) ? body.upload_ids.map((value) => optionalString(value)).filter(Boolean) as string[] : [];
+  const result = await completeDocumentUploadSessions(c, uploadIds);
+  safeDocumentUploadLog("document.upload.complete_timing", {
+    request_id: requestIdFromContext(c),
+    upload_count: uploadIds.length,
+    completed_count: result.completed_count,
+    failed_count: result.failed_count,
+    duration_ms: Date.now() - startedAt
+  });
+  return ok(c, result, result.completed_count > 0 ? 200 : 400);
+});
+
+documentRoutes.post("/uploads/:uploadId/file", requirePermission("documents.upload"), async (c) => {
+  const startedAt = Date.now();
+  const uploadId = c.req.param("uploadId");
+  const session = await getUploadSessionForActor(c, uploadId);
+  if (!session) return fail(c, 404, "DOCUMENT_UPLOAD_NOT_FOUND", "Prepared upload was not found.");
+  if (isExpiredIso(session.expires_at)) {
+    await markUploadSessionFailed(c, session, "DOCUMENT_UPLOAD_EXPIRED", "Prepared upload expired.", false);
+    return fail(c, 410, "DOCUMENT_UPLOAD_EXPIRED", "Prepared upload expired. Prepare the upload again.");
+  }
+  if (!["PREPARED", "UPLOADING"].includes(session.status)) {
+    return fail(c, 409, "DOCUMENT_UPLOAD_INVALID_STATUS", "This upload cannot receive a file in its current status.");
+  }
+  const body = await parseMultipart(c);
+  if (!body) return fail(c, 400, "INVALID_FORM", "Multipart form data is required.");
+  const file = fileFromBody(body);
+  if (!file) return fail(c, 400, "FILE_REQUIRED", "File is required.");
+  const type = await getType(c.env.DB, session.document_type_id);
+  if (!type || type.is_active !== 1) {
+    await markUploadSessionFailed(c, session, "INVALID_DOCUMENT_TYPE", "Document type was not found or is inactive.");
+    return fail(c, 400, "INVALID_DOCUMENT_TYPE", "Document type was not found or is inactive.");
+  }
+  const fileIssue = validateFileIssue(type, file);
+  if (fileIssue) return documentUploadIssueResponse(c, fileIssue);
+  if (file.name !== session.original_filename || file.size !== session.file_size_bytes) {
+    return fail(c, 400, "DOCUMENT_UPLOAD_FILE_MISMATCH", "Uploaded file does not match the prepared upload metadata.");
+  }
+  await c.env.DB.prepare("UPDATE document_upload_sessions SET status = 'UPLOADING', updated_at = ? WHERE id = ?").bind(nowIso(), session.id).run();
+  try {
+    const buffer = await file.arrayBuffer();
+    const hash = await sha256Hex(buffer);
+    await c.env.DOCUMENTS_BUCKET.put(session.r2_key, buffer, { httpMetadata: { contentType: file.type || session.file_mime_type || "application/octet-stream" } });
+    const uploadedAt = nowIso();
+    await c.env.DB.prepare(
+      "UPDATE document_upload_sessions SET status = 'UPLOADED', file_hash = ?, uploaded_at = ?, updated_at = ? WHERE id = ?"
+    ).bind(hash, uploadedAt, uploadedAt, session.id).run();
+    safeDocumentUploadLog("document.upload.file_timing", {
+      request_id: requestIdFromContext(c),
+      upload_id: session.id,
+      batch_id: session.batch_id,
+      duration_ms: Date.now() - startedAt
+    });
+    return ok(c, { upload_id: session.id, status: "UPLOADED", uploaded_at: uploadedAt });
+  } catch (error) {
+    await markUploadSessionFailed(c, session, "DOCUMENT_UPLOAD_FILE_FAILED", "File upload failed before it could be committed.", true);
+    safeDocumentUploadLog("document.upload.file_failed", {
+      request_id: requestIdFromContext(c),
+      upload_id: session.id,
+      batch_id: session.batch_id,
+      message: error instanceof Error ? error.message : String(error)
+    });
+    return fail(c, 500, "DOCUMENT_UPLOAD_FILE_FAILED", "File upload failed. Please retry this row.");
+  }
+});
+
 employeeDocumentRoutes.get("/:employeeId/documents", requirePermission("documents.view"), async (c) => {
   const employeeId = routeParam(c, "employeeId");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "view"))) {
@@ -855,6 +1051,368 @@ function documentUploadIssueResponse(c: Context<AppBindings>, issue: DocumentUpl
   return fail(c, status, issue.code, issue.message);
 }
 
+function safeUploadRowError(rowIndex: number, field: string, issue: DocumentUploadValidationIssue) {
+  return { row_index: rowIndex, field, code: issue.code, message: issue.message };
+}
+
+async function validateDocumentEmployeeCompatibility(db: D1Database, employee: Awaited<ReturnType<typeof ensureEmployee>>, type: DocumentTypeRow): Promise<DocumentUploadValidationIssue | null> {
+  if (!employee) return { code: "EMPLOYEE_NOT_FOUND", message: "Employee was not found." };
+  const specificRules = await db
+    .prepare("SELECT employee_type FROM document_required_rules WHERE document_type_id = ? AND is_active = 1 AND employee_type IS NOT NULL")
+    .bind(type.id)
+    .all<{ employee_type: string }>();
+  if (!specificRules.results.length) return null;
+  if (specificRules.results.some((rule) => rule.employee_type === employee.employee_type)) return null;
+  return {
+    code: "DOCUMENT_EMPLOYEE_TYPE_INCOMPATIBLE",
+    message: "This document type is not configured for the employee type. Review Document Required Rules or select a matching document type."
+  };
+}
+
+async function validatePreparedUploadRow(c: Context<AppBindings>, employee: Awaited<ReturnType<typeof ensureEmployee>>, row: DocumentUploadPrepareRow, rowIndex: number) {
+  const documentTypeId = optionalString(row.document_type_id);
+  const fileName = optionalString(row.file_name);
+  const mimeType = optionalString(row.mime_type) ?? "application/octet-stream";
+  const fileSize = Number(row.file_size ?? 0);
+  if (!documentTypeId) return { error: safeUploadRowError(rowIndex, "document_type_id", { code: "DOCUMENT_TYPE_REQUIRED", message: "Document type is required." }) };
+  if (!fileName) return { error: safeUploadRowError(rowIndex, "file", { code: "FILE_REQUIRED", message: "File is required." }) };
+  if (!Number.isFinite(fileSize) || fileSize <= 0) return { error: safeUploadRowError(rowIndex, "file", { code: "FILE_SIZE_REQUIRED", message: "File size is required." }) };
+  const type = await getType(c.env.DB, documentTypeId);
+  if (!type || type.is_active !== 1) return { error: safeUploadRowError(rowIndex, "document_type_id", { code: "INVALID_DOCUMENT_TYPE", message: "Document type was not found or is inactive." }) };
+  const meta = {
+    document_number: optionalString(row.document_number ?? row.reference),
+    issue_date: optionalString(row.issue_date),
+    expiry_date: optionalString(row.expiry_date)
+  };
+  const metaIssue = validateMetadataIssue(type, meta);
+  if (metaIssue) return { error: safeUploadRowError(rowIndex, metaIssue.code === "DOCUMENT_NUMBER_REQUIRED" ? "document_number" : metaIssue.code === "ISSUE_DATE_REQUIRED" ? "issue_date" : "expiry_date", metaIssue) };
+  const fileIssue = validateFileMetadataIssue(type, { name: fileName, type: mimeType, size: fileSize });
+  if (fileIssue) return { error: safeUploadRowError(rowIndex, "file", fileIssue) };
+  const compatibilityIssue = await validateDocumentEmployeeCompatibility(c.env.DB, employee, type);
+  if (compatibilityIssue) return { error: safeUploadRowError(rowIndex, "document_type_id", compatibilityIssue) };
+  return { type, meta, fileName, mimeType, fileSize };
+}
+
+export async function prepareDocumentUploadSessions(c: Context<AppBindings>, context: DocumentUploadPrepareContext, rows: DocumentUploadPrepareRow[]) {
+  if (!rows.length) {
+    return c.json({ ok: false, error: { code: "DOCUMENT_UPLOAD_PREPARE_EMPTY", message: "Add at least one document row.", validation_errors: [safeUploadRowError(0, "row", { code: "DOCUMENT_UPLOAD_PREPARE_EMPTY", message: "Add at least one document row." })] } }, 400);
+  }
+  if (!context.skipAccessCheck && !(await canAccessEmployee(c.env.DB, c.get("currentUser"), context.employeeId, "documents", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const employee = await ensureEmployee(c.env.DB, context.employeeId);
+  if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+
+  const errors: Array<{ row_index: number; field: string; code: string; message: string }> = [];
+  const preparedRows: Array<{
+    rowIndex: number;
+    row: DocumentUploadPrepareRow;
+    type: DocumentTypeRow;
+    meta: { document_number: string | null; issue_date: string | null; expiry_date: string | null };
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+  }> = [];
+
+  for (const [rowIndex, row] of rows.entries()) {
+    const validated = await validatePreparedUploadRow(c, employee, row, rowIndex);
+    if ("error" in validated) {
+      if (validated.error) errors.push(validated.error);
+      continue;
+    }
+    preparedRows.push({ rowIndex, row, type: validated.type, meta: validated.meta, fileName: validated.fileName, mimeType: validated.mimeType, fileSize: validated.fileSize });
+  }
+
+  const singleActiveTypes = new Map<string, number[]>();
+  for (const item of preparedRows) {
+    if (item.type.allow_multiple_files === 1) continue;
+    const existing = await c.env.DB.prepare("SELECT id FROM employee_documents WHERE employee_id = ? AND document_type_id = ? AND status = 'ACTIVE'").bind(context.employeeId, item.type.id).first<{ id: string }>();
+    if (existing) {
+      errors.push(safeUploadRowError(item.rowIndex, "document_type_id", { code: "DUPLICATE_DOCUMENT", message: "This document type does not allow multiple active files for the same employee." }));
+    }
+    singleActiveTypes.set(item.type.id, [...(singleActiveTypes.get(item.type.id) ?? []), item.rowIndex]);
+  }
+  for (const rowIndexes of singleActiveTypes.values()) {
+    if (rowIndexes.length <= 1) continue;
+    for (const rowIndex of rowIndexes) {
+      errors.push(safeUploadRowError(rowIndex, "document_type_id", { code: "DUPLICATE_DOCUMENT_TYPE_IN_BATCH", message: "This document type allows only one active file. Remove duplicate rows or select a document type that allows multiple files." }));
+    }
+  }
+
+  if (errors.length) {
+    return c.json({
+      ok: false,
+      error: {
+        code: "DOCUMENT_UPLOAD_PREPARE_VALIDATION_FAILED",
+        message: "Review the highlighted document rows before uploading.",
+        validation_errors: errors,
+        field_errors: Object.fromEntries(errors.map((error) => [`rows.${error.row_index}.${error.field}`, [error.message]]))
+      }
+    }, 400);
+  }
+
+  const batchId = `document_upload_batch_${crypto.randomUUID()}`;
+  const expiresAt = uploadSessionExpiry();
+  const uploads = [];
+  for (const item of preparedRows) {
+    const uploadId = `document_upload_${crypto.randomUUID()}`;
+    const documentId = crypto.randomUUID();
+    const key = `employees/${context.employeeId}/documents/${documentId}/v1-${sanitizeFileName(item.fileName)}`;
+    const snapshot = {
+      document_type_id: item.type.id,
+      document_type_code: item.type.code,
+      allowed_mime_types: documentTypeUploadRules(item.type),
+      max_file_size_mb: item.type.max_file_size_mb,
+      allow_multiple_files: item.type.allow_multiple_files === 1
+    };
+    await c.env.DB.prepare(
+      `INSERT INTO document_upload_sessions
+       (id, batch_id, client_row_id, upload_mode, status, context_type, onboarding_case_id,
+        employee_id, document_type_id, document_id, version_no, r2_key, original_filename,
+        file_mime_type, file_size_bytes, file_hash, document_number, issue_date, expiry_date,
+        notes, reason_for_replacement, validation_snapshot_json, created_by_user_id, expires_at)
+       VALUES (?, ?, ?, 'worker_proxy', 'PREPARED', ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      uploadId,
+      batchId,
+      optionalString(item.row.client_row_id) ?? `row_${item.rowIndex}`,
+      context.contextType ?? "employee_document",
+      context.onboardingCaseId ?? null,
+      context.employeeId,
+      item.type.id,
+      documentId,
+      key,
+      item.fileName,
+      item.mimeType,
+      item.fileSize,
+      optionalString(item.row.checksum),
+      item.meta.document_number,
+      item.meta.issue_date,
+      item.meta.expiry_date,
+      optionalString(item.row.notes),
+      "Uploaded from accelerated document upload flow",
+      JSON.stringify(snapshot),
+      c.get("currentUser").id,
+      expiresAt
+    ).run();
+    uploads.push({
+      client_row_id: optionalString(item.row.client_row_id) ?? `row_${item.rowIndex}`,
+      upload_id: uploadId,
+      upload_mode: "worker_proxy",
+      upload_url: uploadEndpoint(c, uploadId),
+      required_headers: { Authorization: "Bearer token", "X-Request-ID": "generated by client" },
+      object_key: key,
+      pending_object_reference: key,
+      expires_at: expiresAt,
+      max_file_size: item.type.max_file_size_mb * 1024 * 1024,
+      allowed_mime_types: documentTypeUploadRules(item.type)
+    });
+  }
+
+  runDocumentBackgroundTask(c, cleanupStalePendingDocumentUploads(c), "document.upload.cleanup_stale", { batch_id: batchId });
+  return ok(c, { batch_id: batchId, mode: "worker_proxy", direct_r2_available: false, uploads });
+}
+
+async function getUploadSessionForActor(c: Context<AppBindings>, uploadId: string) {
+  const session = await c.env.DB.prepare("SELECT * FROM document_upload_sessions WHERE id = ?").bind(uploadId).first<PreparedDocumentUploadSessionRow>();
+  if (!session) return null;
+  const actor = c.get("currentUser");
+  if (!actor.is_owner && session.created_by_user_id && session.created_by_user_id !== actor.id) return null;
+  return session;
+}
+
+async function markUploadSessionFailed(c: Context<AppBindings>, session: PreparedDocumentUploadSessionRow, code: string, message: string, cleanupObject = false) {
+  if (cleanupObject && session.r2_key) {
+    await c.env.DOCUMENTS_BUCKET.delete(session.r2_key).catch((error) => {
+      safeDocumentUploadLog("document.upload.cleanup_failed", { upload_id: session.id, batch_id: session.batch_id, message: error instanceof Error ? error.message : String(error) });
+    });
+  }
+  await c.env.DB.prepare("UPDATE document_upload_sessions SET status = 'FAILED', error_code = ?, error_message = ?, failed_at = ?, updated_at = ? WHERE id = ?")
+    .bind(code, message, nowIso(), nowIso(), session.id)
+    .run();
+}
+
+async function createDocumentVersionFromUploadedObject(c: Context<AppBindings>, session: PreparedDocumentUploadSessionRow) {
+  const versionId = crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO employee_document_versions
+     (id, employee_document_id, version_no, r2_key, original_filename, file_mime_type, file_size_bytes, file_hash, uploaded_by_user_id, reason_for_replacement, is_current)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+  ).bind(versionId, session.document_id, session.version_no, session.r2_key, session.original_filename, session.file_mime_type, session.file_size_bytes, session.file_hash, c.get("currentUser").id, session.reason_for_replacement).run();
+  await c.env.DB.prepare("UPDATE employee_document_versions SET is_current = 0 WHERE employee_document_id = ? AND id != ?").bind(session.document_id, versionId).run();
+  await c.env.DB.prepare("UPDATE employee_documents SET current_version_id = ?, updated_at = ?, updated_by_user_id = ? WHERE id = ?").bind(versionId, nowIso(), c.get("currentUser").id, session.document_id).run();
+  return versionId;
+}
+
+async function commitUploadedDocumentSession(c: Context<AppBindings>, session: PreparedDocumentUploadSessionRow): Promise<DocumentUploadCompleteResult> {
+  if (isExpiredIso(session.expires_at)) {
+    await markUploadSessionFailed(c, session, "DOCUMENT_UPLOAD_EXPIRED", "Prepared upload expired.", true);
+    throw new Error("DOCUMENT_UPLOAD_EXPIRED");
+  }
+  if (session.status !== "UPLOADED") throw new Error("DOCUMENT_UPLOAD_NOT_UPLOADED");
+  const object = await c.env.DOCUMENTS_BUCKET.head(session.r2_key);
+  if (!object) {
+    await markUploadSessionFailed(c, session, "DOCUMENT_UPLOAD_OBJECT_MISSING", "Uploaded object was not found.");
+    throw new Error("DOCUMENT_UPLOAD_OBJECT_MISSING");
+  }
+  const employee = await ensureEmployee(c.env.DB, session.employee_id);
+  const type = await getType(c.env.DB, session.document_type_id);
+  if (!employee || !type || type.is_active !== 1) {
+    await markUploadSessionFailed(c, session, "DOCUMENT_UPLOAD_REFERENCE_INVALID", "Employee or document type was not found.");
+    throw new Error("DOCUMENT_UPLOAD_REFERENCE_INVALID");
+  }
+  const meta = { document_number: session.document_number, issue_date: session.issue_date, expiry_date: session.expiry_date };
+  const metaIssue = validateMetadataIssue(type, meta);
+  if (metaIssue) {
+    await markUploadSessionFailed(c, session, metaIssue.code, metaIssue.message, true);
+    throw new Error(metaIssue.code);
+  }
+  const fileIssue = validateFileMetadataIssue(type, { name: session.original_filename, type: session.file_mime_type, size: session.file_size_bytes });
+  if (fileIssue) {
+    await markUploadSessionFailed(c, session, fileIssue.code, fileIssue.message, true);
+    throw new Error(fileIssue.code);
+  }
+  const compatibilityIssue = await validateDocumentEmployeeCompatibility(c.env.DB, employee, type);
+  if (compatibilityIssue) {
+    await markUploadSessionFailed(c, session, compatibilityIssue.code, compatibilityIssue.message, true);
+    throw new Error(compatibilityIssue.code);
+  }
+  if (type.allow_multiple_files !== 1) {
+    const duplicate = await c.env.DB.prepare("SELECT id FROM employee_documents WHERE employee_id = ? AND document_type_id = ? AND status = 'ACTIVE'").bind(session.employee_id, type.id).first<{ id: string }>();
+    if (duplicate) {
+      await markUploadSessionFailed(c, session, "DUPLICATE_DOCUMENT", "This document type does not allow multiple active files for the same employee.", true);
+      throw new Error("DUPLICATE_DOCUMENT");
+    }
+  }
+
+  await c.env.DB.prepare("UPDATE document_upload_sessions SET status = 'COMPLETING', updated_at = ? WHERE id = ?").bind(nowIso(), session.id).run();
+  let insertedDocument = false;
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO employee_documents
+       (id, employee_id, document_type_id, category_id, document_number, issue_date, expiry_date, is_sensitive, notes, created_by_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(session.document_id, session.employee_id, type.id, type.category_id, session.document_number, session.issue_date, session.expiry_date, type.is_sensitive, session.notes, c.get("currentUser").id).run();
+    insertedDocument = true;
+    const versionId = await createDocumentVersionFromUploadedObject(c, session);
+    const doc = await getDocument(c.env.DB, session.document_id, session.employee_id);
+    await auditDocument(c, { action: "document.uploaded", entityType: "document", entityId: session.document_id, oldValue: null, newValue: doc, reason: session.reason_for_replacement });
+    await publishDocument(c, "document.uploaded", session.document_id, "uploaded");
+    await c.env.DB.prepare("UPDATE document_upload_sessions SET status = 'COMPLETED', completed_document_id = ?, completed_version_id = ?, completed_at = ?, updated_at = ? WHERE id = ?")
+      .bind(session.document_id, versionId, nowIso(), nowIso(), session.id)
+      .run();
+    runDocumentBackgroundTask(c, refreshComplianceAfterDocumentChange(c.env.DB, session.employee_id, session.document_id), "document.upload.background_compliance_refresh", { upload_id: session.id, batch_id: session.batch_id });
+    return {
+      uploadId: session.id,
+      clientRowId: session.client_row_id,
+      document: doc ? maskDocument(doc, hasPermission(c, "documents.sensitive.view")) : null,
+      documentId: session.document_id,
+      versionId,
+      r2Key: session.r2_key,
+      createdNewDocument: true
+    };
+  } catch (error) {
+    if (insertedDocument) {
+      await cleanupEmployeeDocumentUploads(c, [{ documentId: session.document_id }]);
+    } else {
+      await c.env.DOCUMENTS_BUCKET.delete(session.r2_key).catch(() => undefined);
+    }
+    await markUploadSessionFailed(c, session, "DOCUMENT_UPLOAD_COMMIT_FAILED", "Document upload could not be committed.");
+    throw error;
+  }
+}
+
+export async function completeDocumentUploadSessions(c: Context<AppBindings>, uploadIds: string[], expectedContext?: { employeeId?: string | null; onboardingCaseId?: string | null }) {
+  if (!uploadIds.length) {
+    return {
+      completed_count: 0,
+      failed_count: 1,
+      documents: [],
+      results: [{ upload_id: null, status: "FAILED", code: "DOCUMENT_UPLOAD_COMPLETE_EMPTY", message: "No uploaded document rows were provided." }],
+      recalculation_status: "not_queued"
+    };
+  }
+  const documents: Array<ReturnType<typeof maskDocument> | null> = [];
+  const results: Array<Record<string, unknown>> = [];
+  for (const uploadId of uploadIds) {
+    const session = await getUploadSessionForActor(c, uploadId);
+    if (!session) {
+      results.push({ upload_id: uploadId, status: "FAILED", code: "DOCUMENT_UPLOAD_NOT_FOUND", message: "Prepared upload was not found." });
+      continue;
+    }
+    if (expectedContext?.employeeId && session.employee_id !== expectedContext.employeeId) {
+      results.push({ upload_id: uploadId, client_row_id: session.client_row_id, status: "FAILED", code: "DOCUMENT_UPLOAD_CONTEXT_MISMATCH", message: "Prepared upload does not belong to this employee." });
+      continue;
+    }
+    if (expectedContext?.onboardingCaseId && session.onboarding_case_id !== expectedContext.onboardingCaseId) {
+      results.push({ upload_id: uploadId, client_row_id: session.client_row_id, status: "FAILED", code: "DOCUMENT_UPLOAD_CONTEXT_MISMATCH", message: "Prepared upload does not belong to this onboarding case." });
+      continue;
+    }
+    try {
+      const completed = await commitUploadedDocumentSession(c, session);
+      documents.push(completed.document);
+      results.push({
+        upload_id: completed.uploadId,
+        client_row_id: completed.clientRowId,
+        status: "UPLOADED",
+        document_id: completed.documentId,
+        version_id: completed.versionId
+      });
+    } catch (error) {
+      results.push({
+        upload_id: uploadId,
+        client_row_id: session.client_row_id,
+        status: "FAILED",
+        code: error instanceof Error ? error.message : "DOCUMENT_UPLOAD_COMPLETE_FAILED",
+        message: "Document upload could not be committed. Retry this row or use the fallback batch upload."
+      });
+    }
+  }
+  const completedCount = results.filter((result) => result.status === "UPLOADED").length;
+  return {
+    completed_count: completedCount,
+    failed_count: results.length - completedCount,
+    documents: documents.filter(Boolean),
+    results,
+    recalculation_status: completedCount > 0 ? "queued" : "not_queued"
+  };
+}
+
+function runDocumentBackgroundTask(c: Context<AppBindings>, task: Promise<unknown>, label: string, meta: Record<string, unknown>) {
+  const safeTask = task.catch((error) => {
+    safeDocumentUploadLog(label, {
+      ...meta,
+      request_id: c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? null,
+      message: error instanceof Error ? error.message : String(error)
+    });
+  });
+  const executionCtx = (c as unknown as { executionCtx?: ExecutionContext }).executionCtx;
+  if (executionCtx) executionCtx.waitUntil(safeTask);
+  else void safeTask;
+}
+
+export async function cleanupStalePendingDocumentUploads(c: Context<AppBindings>, limit = 25) {
+  const rows = await c.env.DB.prepare(
+    `SELECT * FROM document_upload_sessions
+     WHERE status IN ('PREPARED', 'UPLOADING', 'UPLOADED', 'FAILED') AND expires_at < ?
+     ORDER BY expires_at ASC
+     LIMIT ?`
+  ).bind(new Date().toISOString(), limit).all<PreparedDocumentUploadSessionRow>();
+  let cleaned = 0;
+  for (const row of rows.results) {
+    if (["UPLOADED", "FAILED"].includes(row.status)) {
+      await c.env.DOCUMENTS_BUCKET.delete(row.r2_key).catch((error) => {
+        safeDocumentUploadLog("document.upload.orphan_cleanup_failed", { upload_id: row.id, batch_id: row.batch_id, message: error instanceof Error ? error.message : String(error) });
+      });
+    }
+    await c.env.DB.prepare("UPDATE document_upload_sessions SET status = 'CLEANED_UP', cleaned_up_at = ?, updated_at = ? WHERE id = ?")
+      .bind(nowIso(), nowIso(), row.id)
+      .run();
+    cleaned += 1;
+  }
+  return { cleaned };
+}
+
 export async function prepareEmployeeDocumentUpload(c: Context<AppBindings>, input: EmployeeDocumentUploadParts): Promise<{ prepared: PreparedEmployeeDocumentUpload | null; response: Response | null }> {
   const employeeId = input.employeeId;
   if (!input.skipAccessCheck && !(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "manage"))) {
@@ -866,6 +1424,8 @@ export async function prepareEmployeeDocumentUpload(c: Context<AppBindings>, inp
   if (!input.documentTypeId) return { prepared: null, response: fail(c, 400, "DOCUMENT_TYPE_REQUIRED", "Document type is required.") };
   const type = await getType(c.env.DB, input.documentTypeId);
   if (!type || type.is_active !== 1) return { prepared: null, response: fail(c, 400, "INVALID_DOCUMENT_TYPE", "Document type was not found or is inactive.") };
+  const compatibilityIssue = await validateDocumentEmployeeCompatibility(c.env.DB, employee, type);
+  if (compatibilityIssue) return { prepared: null, response: documentUploadIssueResponse(c, compatibilityIssue) };
   const meta = {
     document_number: optionalString(input.document_number),
     issue_date: optionalString(input.issue_date),

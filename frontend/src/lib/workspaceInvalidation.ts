@@ -9,6 +9,7 @@ export type WorkspaceSlice =
   | "job-assignment"
   | "documents"
   | "document-checklist"
+  | "employee-document-summary"
   | "readiness"
   | "contract"
   | "payroll"

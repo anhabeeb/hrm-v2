@@ -22,10 +22,12 @@ import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Timeline } from "../components/ui/timeline";
 import { useAuth } from "../hooks/useAuth";
+import { useDocumentUploadBatch } from "../hooks/useDocumentUploadBatch";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { useWorkspaceMutation } from "../hooks/useWorkspaceMutation";
 import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
 import { ApiError, api } from "../lib/api";
+import type { CompleteDocumentUploadsResult } from "../lib/documentUploadApi";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateField, validateRequiredField } from "../lib/form-validation";
 import { queryKeys } from "../lib/queryKeys";
 import { applyWorkspacePayload, invalidateOnboardingWorkspaceSlices, workspaceScope, type WorkspaceSlice } from "../lib/workspaceInvalidation";
@@ -1399,6 +1401,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const alerts = useAlert();
   const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+  const [readinessUpdating, setReadinessUpdating] = useState(false);
   const scope = useMemo(() => workspaceScope(token, user), [token, user]);
   const workspaceMutation = useWorkspaceMutation<OnboardingWorkspaceMutationResult, { action: () => Promise<unknown>; slices: WorkspaceSlice[] }>({
     mutationFn: async (variables) => variables.action() as Promise<OnboardingWorkspaceMutationResult>,
@@ -1411,6 +1414,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
     if (!token) return;
     try {
       await workspaceMutation.mutateAsync({ action, slices });
+      setReadinessUpdating(false);
       alerts.showSuccess(success);
     } catch (err) {
       alerts.showApiError(err, "Unable to save onboarding workspace section.");
@@ -1423,6 +1427,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       const uploaded = Number(result.uploaded_count ?? 0);
       applyWorkspacePayload(scope, caseId, result as OnboardingWorkspaceMutationResult);
       invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: ["documents", "document-checklist", "readiness"] });
+      setReadinessUpdating(Boolean((result as Record<string, unknown>).readiness_updating ?? true));
       alerts.showSuccess(uploaded === 1 ? "1 document uploaded." : `${uploaded} documents uploaded.`);
       return result;
     } catch (err) {
@@ -1474,9 +1479,9 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       return { label: "Approve activation", intent: "approve" as const, disabled: false, title: "Approve the submitted onboarding activation.", run: () => runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved.") };
     }
     if (approvalRequired && activationStatus !== "APPROVED") {
-      return { label: "Submit activation", intent: "submit" as const, disabled: !canActivate, title: canActivate ? "Submit onboarding activation for approval." : "Complete required onboarding items before submitting activation.", run: () => runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.") };
+      return { label: "Submit activation", intent: "submit" as const, disabled: !canActivate || readinessUpdating, title: readinessUpdating ? "Readiness is updating after the latest save. Refresh readiness before activation." : canActivate ? "Submit onboarding activation for approval." : "Complete required onboarding items before submitting activation.", run: () => runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.") };
     }
-    return { label: "Activate Employee", intent: "confirm" as const, disabled: !canActivate, title: canActivate ? "Activate employee." : "Complete required onboarding items before activation.", run: () => runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.") };
+    return { label: "Activate Employee", intent: "confirm" as const, disabled: !canActivate || readinessUpdating, title: readinessUpdating ? "Readiness is updating after the latest save. Refresh readiness before activation." : canActivate ? "Activate employee." : "Complete required onboarding items before activation.", run: () => runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.") };
   })();
   return (
     <div className="OnboardingEmployeePopupLayout flex h-full min-h-0 flex-col overflow-hidden bg-slate-50" data-onboarding-employee-popup-layout>
@@ -1539,7 +1544,11 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       {activeTab === "Employee Info" ? <EmployeeInfoWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceEmployeeInfo(token!, caseId, input), "Employee information saved.", ["employee-info", "readiness"])} /> : null}
       {activeTab === "Contacts" ? <ContactWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceContactInfo(token!, caseId, input), "Contact information saved.", ["contacts", "readiness"])} /> : null}
       {activeTab === "Job Assignment" ? <JobAssignmentWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceJobAssignment(token!, caseId, input), "Job assignment saved.", ["job-assignment", "documents", "document-checklist", "readiness"])} /> : null}
-      {activeTab === "Documents" ? <DocumentsWorkspaceForm workspace={workspace} onSave={saveDocumentBatch} /> : null}
+      {activeTab === "Documents" ? <DocumentsWorkspaceForm workspace={workspace} caseId={caseId} token={token} onSave={saveDocumentBatch} onAcceleratedResult={(result) => {
+        invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: ["documents", "document-checklist", "readiness"] });
+        setReadinessUpdating(Boolean(result.readiness_updating || result.recalculation_status === "queued"));
+        alerts.showSuccess(result.completed_count === 1 ? "1 document uploaded. Updating readiness..." : `${result.completed_count} documents uploaded. Updating readiness...`);
+      }} /> : null}
       {activeTab === "Contract" ? <ContractWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceContract(token!, caseId, input), "Contract draft created.", ["contract", "readiness"])} /> : null}
       {activeTab === "Payroll" ? <PayrollWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspacePayrollProfile(token!, caseId, input), "Payroll profile saved.", ["payroll", "readiness"])} /> : null}
       {activeTab === "Payment & Pension" ? <PaymentPensionWorkspaceForm workspace={workspace} onPaymentSave={(input) => save(() => api.createOnboardingWorkspacePaymentMethod(token!, caseId, input), "Payment method saved.", ["payment-methods", "payroll", "readiness"])} onPensionSave={(input) => save(() => api.updateOnboardingWorkspacePensionProfile(token!, caseId, input), "Pension profile saved.", ["pension", "payroll", "readiness"])} /> : null}
@@ -1593,7 +1602,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <Button variant="outline" size="sm" aria-expanded={moreActionsOpen} onClick={() => setMoreActionsOpen((value) => !value)}>More actions</Button>
               {moreActionsOpen ? (
                 <div className="absolute bottom-full right-0 z-20 mb-2 w-56 rounded-md border bg-white p-1.5 shadow-lg">
-                  <ActionTextButton intent="refresh" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Setup readiness refreshed.", ["document-checklist", "readiness"]); }}>Refresh readiness</ActionTextButton>
+                  <ActionTextButton intent="refresh" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Setup readiness refreshed.", ["document-checklist", "readiness"]).then(() => setReadinessUpdating(false)); }}>Refresh readiness</ActionTextButton>
                   <ActionTextButton intent="submit" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted."); }}>Submit activation</ActionTextButton>
                   <ActionTextButton intent="approve" size="sm" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved."); }}>Approve activation</ActionTextButton>
                   <Button size="sm" variant="danger" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); askReason("Activate with override", (reason) => runWorkspaceAction(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason), "Employee activated with override.")); }}>Override activation</Button>
@@ -1851,7 +1860,7 @@ function rowFieldError(errors: DocumentBatchErrorMap, rowId: string, field: Docu
   return errors[rowId]?.[field] ?? "";
 }
 
-function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (form: FormData) => Promise<unknown> }) {
+function DocumentsWorkspaceForm({ workspace, caseId, token, onSave, onAcceleratedResult }: { workspace: Row; caseId: string; token?: string | null; onSave: (form: FormData) => Promise<unknown>; onAcceleratedResult: (result: CompleteDocumentUploadsResult) => void }) {
   const refs = asRow(workspace.refs);
   const sections = asRow(workspace.sections);
   const documentTypes = asRows(refs.document_types);
@@ -1860,6 +1869,8 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
   const [rows, setRows] = useState<DocumentBatchRow[]>(() => [createDocumentBatchRow()]);
   const [rowErrors, setRowErrors] = useState<DocumentBatchErrorMap>({});
   const [uploading, setUploading] = useState(false);
+  const uploadBatch = useDocumentUploadBatch({ token, caseId, onCompleted: onAcceleratedResult });
+  const uploadBusy = uploading || uploadBatch.isUploading;
   const employee = asRow(workspace.employee);
   const checklistRows = asRows(documents.rows);
   const typeSpecificRows = checklistRows.filter((row) => text(row.matched_employee_type_rule) !== "-");
@@ -1885,6 +1896,7 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     return boolValue(type?.requires_expiry_date) || boolValue(type?.expiry_required);
   }
   function updateRow(rowId: string, changes: Partial<DocumentBatchRow>) {
+    if (uploadBatch.isRowActive(rowId)) return;
     setRows((current) => current.map((row) => row.id === rowId ? { ...row, ...changes } : row));
     setRowErrors((current) => ({ ...current, [rowId]: {} }));
   }
@@ -1892,6 +1904,7 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     setRows((current) => [...current, createDocumentBatchRow()]);
   }
   function removeRow(rowId: string) {
+    if (uploadBatch.isRowActive(rowId) || uploadBatch.rowState(rowId).status === "Uploaded") return;
     setRows((current) => current.length === 1 ? current : current.filter((row) => row.id !== rowId));
     setRowErrors((current) => {
       const next = { ...current };
@@ -1919,10 +1932,10 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     ];
     return parts.join(" / ");
   }
-  function validateRows() {
+  function validateRows(selectedRows = rows) {
     const nextErrors: DocumentBatchErrorMap = {};
     const singleActiveRows = new Map<string, string[]>();
-    rows.forEach((row) => {
+    selectedRows.forEach((row) => {
       const type = selectedType(row);
       const errors: Partial<Record<DocumentBatchRowField, string>> = {};
       if (!row.document_type_id) errors.document_type_id = "Document type is required.";
@@ -1952,13 +1965,13 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     }
     return nextErrors;
   }
-  function serverErrorsForRows(error: unknown) {
+  function serverErrorsForRows(error: unknown, submittedRows = rows) {
     const nextErrors: DocumentBatchErrorMap = {};
     if (!(error instanceof ApiError)) return nextErrors;
     for (const issue of error.validationErrors) {
       const rowIndex = Number(issue.row_index ?? issue.rowIndex ?? 0);
       const field = String(issue.field ?? "row") as DocumentBatchRowField;
-      const row = rows[rowIndex];
+      const row = submittedRows[rowIndex];
       if (!row) continue;
       nextErrors[row.id] = {
         ...nextErrors[row.id],
@@ -1968,7 +1981,7 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     for (const [path, messages] of Object.entries(error.fieldErrors)) {
       const match = path.match(/^rows\.(\d+)\.([a-z_]+)$/);
       if (!match) continue;
-      const row = rows[Number(match[1])];
+      const row = submittedRows[Number(match[1])];
       if (!row) continue;
       const field = match[2] as DocumentBatchRowField;
       nextErrors[row.id] = {
@@ -1981,12 +1994,9 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     }
     return nextErrors;
   }
-  async function submit() {
-    const nextErrors = validateRows();
-    setRowErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
+  function buildBatchForm(batchRows: DocumentBatchRow[]) {
     const form = new FormData();
-    form.set("metadata", JSON.stringify(rows.map((row) => ({
+    form.set("metadata", JSON.stringify(batchRows.map((row) => ({
       row_id: row.id,
       document_type_id: row.document_type_id,
       document_number: row.document_number,
@@ -1994,16 +2004,25 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
       expiry_date: row.expiry_date,
       notes: row.notes
     }))));
-    rows.forEach((row, index) => {
+    batchRows.forEach((row, index) => {
       if (row.file) form.set(`file_${index}`, row.file);
     });
+    return form;
+  }
+  async function submit(rowIds?: string[]) {
+    if (uploadBusy) return;
+    const submittedRows = rowIds?.length ? rows.filter((row) => rowIds.includes(row.id)) : rows;
+    const nextErrors = validateRows(submittedRows);
+    setRowErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+    const form = buildBatchForm(submittedRows);
     setUploading(true);
     try {
-      await onSave(form);
-      setRows([createDocumentBatchRow()]);
+      await uploadBatch.uploadRows({ rows: submittedRows, fallbackForm: form, fallbackBatchUpload: onSave });
+      if (!rowIds?.length) setRows([createDocumentBatchRow()]);
       setRowErrors({});
     } catch (error) {
-      setRowErrors(serverErrorsForRows(error));
+      setRowErrors(serverErrorsForRows(error, submittedRows));
     } finally {
       setUploading(false);
     }
@@ -2016,7 +2035,7 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
             <h3 className="text-sm font-semibold">Upload official documents</h3>
             <p className="mt-1 max-w-2xl text-xs text-muted-foreground">Add multiple document rows and upload them together. Each row accepts one file.</p>
           </div>
-          <ActionTextButton intent="create" size="sm" className="shrink-0" onClick={addRow} disabled={uploading}>Add document</ActionTextButton>
+          <ActionTextButton intent="create" size="sm" className="shrink-0" onClick={addRow} disabled={uploadBusy}>Add document</ActionTextButton>
         </div>
         <OptionalSectionNotice workspace={workspace} sectionKey="document_types" fallbackTitle="Document upload types" />
         {documentWarning ? <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{documentWarning}</p> : null}
@@ -2024,6 +2043,9 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
           {rows.map((row, index) => {
             const type = selectedType(row);
             const allowsMultiple = boolValue(type?.allow_multiple_files);
+            const uploadState = uploadBatch.rowState(row.id);
+            const rowActive = uploadBatch.isRowActive(row.id);
+            const canRemoveRow = rows.length > 1 && !rowActive && ["Pending", "Failed", "Retry"].includes(uploadState.status);
             return (
               <div key={row.id} className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-4">
                 <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2031,11 +2053,26 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
                     <p className="text-sm font-semibold">Document {index + 1}</p>
                     {rowFieldError(rowErrors, row.id, "row") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "row")}</p> : null}
                   </div>
-                  <ActionTextButton intent="remove" size="sm" className="shrink-0" disabled={rows.length === 1 || uploading} onClick={() => removeRow(row.id)}>Remove</ActionTextButton>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge tone={uploadState.status === "Uploaded" ? "success" : uploadState.status === "Failed" ? "danger" : rowActive ? "info" : "neutral"}>{uploadState.status}</Badge>
+                    {uploadState.status === "Failed" ? <ActionTextButton intent="refresh" size="sm" onClick={() => void submit([row.id])}>Retry</ActionTextButton> : null}
+                    <ActionTextButton intent="remove" size="sm" disabled={!canRemoveRow} onClick={() => removeRow(row.id)}>Remove</ActionTextButton>
+                  </div>
                 </div>
+                {rowActive || uploadState.status === "Uploaded" || uploadState.status === "Failed" ? (
+                  <div className="mt-3 rounded-md border bg-slate-50 p-2">
+                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                      <span>{uploadState.message ?? (rowActive ? "Uploading and processing this document row." : uploadState.status)}</span>
+                      <span className="shrink-0">{uploadState.progress}%</span>
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div className={`h-full rounded-full ${uploadState.status === "Failed" ? "bg-red-500" : uploadState.status === "Uploaded" ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${Math.max(0, Math.min(100, uploadState.progress))}%` }} />
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-4 grid min-w-0 max-w-full gap-3 xl:grid-cols-2">
                   <div className="min-w-0">
-                    <SelectField label="Document type" required value={row.document_type_id} onValueChange={(document_type_id) => updateRow(row.id, { document_type_id })}>
+                    <SelectField label="Document type" required disabled={rowActive} value={row.document_type_id} onValueChange={(document_type_id) => updateRow(row.id, { document_type_id })}>
                       <option value="">Select document type</option>
                       {documentTypes.map((documentType) => <option key={String(documentType.id)} value={String(documentType.id)}>{text(documentType.name)}{documentType.is_sensitive ? " (Sensitive)" : ""}</option>)}
                     </SelectField>
@@ -2043,7 +2080,7 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
                   </div>
                   <div className="min-w-0">
                     <Field label="File *">
-                      <Input className="max-w-full file:max-w-full" type="file" accept={documentTypeAccept(type)} onChange={(event) => handleFileChange(row.id, event)} />
+                      <Input disabled={rowActive} className="max-w-full file:max-w-full" type="file" accept={documentTypeAccept(type)} onChange={(event) => handleFileChange(row.id, event)} />
                       {row.file ? <p className="min-w-0 truncate text-xs text-muted-foreground" title={row.file.name}>{row.file.name} / {formatFileSize(row.file.size)}</p> : null}
                       {rowFieldError(rowErrors, row.id, "file") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "file")}</p> : null}
                     </Field>
@@ -2052,25 +2089,25 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
                 <div className="mt-3 grid min-w-0 max-w-full gap-3 xl:grid-cols-3">
                   <div className="min-w-0">
                     <Field label={`Document number/reference${requiredNumber(type) ? " *" : ""}`}>
-                      <Input required={requiredNumber(type)} value={row.document_number} onChange={(event) => updateRow(row.id, { document_number: event.target.value })} />
+                      <Input disabled={rowActive} required={requiredNumber(type)} value={row.document_number} onChange={(event) => updateRow(row.id, { document_number: event.target.value })} />
                       {rowFieldError(rowErrors, row.id, "document_number") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "document_number")}</p> : null}
                     </Field>
                   </div>
                   <div className="min-w-0">
                     <Field label={`Issue date${requiredIssue(type) ? " *" : ""}`}>
-                      <Input type="date" required={requiredIssue(type)} value={row.issue_date} onChange={(event) => updateRow(row.id, { issue_date: event.target.value })} />
+                      <Input disabled={rowActive} type="date" required={requiredIssue(type)} value={row.issue_date} onChange={(event) => updateRow(row.id, { issue_date: event.target.value })} />
                       {rowFieldError(rowErrors, row.id, "issue_date") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "issue_date")}</p> : null}
                     </Field>
                   </div>
                   <div className="min-w-0">
                     <Field label={`Expiry date${requiredExpiry(type) ? " *" : ""}`}>
-                      <Input type="date" required={requiredExpiry(type)} value={row.expiry_date} onChange={(event) => updateRow(row.id, { expiry_date: event.target.value })} />
+                      <Input disabled={rowActive} type="date" required={requiredExpiry(type)} value={row.expiry_date} onChange={(event) => updateRow(row.id, { expiry_date: event.target.value })} />
                       {rowFieldError(rowErrors, row.id, "expiry_date") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "expiry_date")}</p> : null}
                     </Field>
                   </div>
                 </div>
                 <div className="mt-3 min-w-0">
-                  <Field label="Notes"><Input value={row.notes} onChange={(event) => updateRow(row.id, { notes: event.target.value })} /></Field>
+                  <Field label="Notes"><Input disabled={rowActive} value={row.notes} onChange={(event) => updateRow(row.id, { notes: event.target.value })} /></Field>
                 </div>
                 {type ? (
                   <div className="mt-3 min-w-0 space-y-1 rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
@@ -2082,9 +2119,10 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
             );
           })}
         </div>
+        {uploadBatch.readinessUpdating ? <p className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">Saved. Updating readiness in the background. Activation stays locked until readiness refreshes.</p> : null}
         <div className="mt-4 flex justify-end">
-          <ActionTextButton intent="upload" size="sm" disabled={uploading} onClick={() => void submit()}>
-            {uploading ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+          <ActionTextButton intent="upload" size="sm" disabled={uploadBusy} onClick={() => void submit()}>
+            {uploadBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
             Upload documents
           </ActionTextButton>
         </div>

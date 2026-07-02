@@ -49,7 +49,7 @@ const wrangler = "worker/wrangler.toml";
 const password = "worker/src/auth/password.ts";
 
 const lifecyclePageText = read(lifecyclePage);
-const documentFormBlock = blockAfter(lifecyclePage, "function DocumentsWorkspaceForm", 11000);
+const documentFormBlock = blockAfter(lifecyclePage, "function DocumentsWorkspaceForm", 26000);
 const lifecycleRouteText = read(lifecycleRoute);
 const batchRouteBlock = blockAfter(lifecycleRoute, 'onboardingRoutes.post("/cases/:caseId/documents/batch"', 9000);
 const documentsRouteText = read(documentsRoute);
@@ -74,7 +74,7 @@ includes(lifecyclePage, "requiredExpiry(type)", "expiry date is required when do
 includes(lifecyclePage, "expiry_date < row.issue_date", "expiry date cannot be before issue date");
 includes(lifecyclePage, "This document type allows only one active file. Remove duplicate rows", "frontend blocks duplicate single-active document rows before upload");
 check(`${lifecyclePage}: file inputs must remain single-file per row`, !/<Input[^>]+type="file"[^>]+multiple/.test(documentFormBlock));
-check(`${lifecyclePage}: submit button must be disabled while uploading`, /disabled=\{uploading\}/.test(documentFormBlock));
+check(`${lifecyclePage}: submit button must be disabled while uploading`, /disabled=\{uploading\}/.test(documentFormBlock) || /disabled=\{uploadBusy\}/.test(documentFormBlock));
 check(`${lifecyclePage}: upload button must not use raw loading text`, !/Uploading\.\.\./.test(documentFormBlock));
 
 includes(lifecycleRoute, '"/cases/:caseId/documents/batch"', "backend batch route exists");

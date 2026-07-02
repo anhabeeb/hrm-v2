@@ -68,7 +68,7 @@ const footerBlock = blockAfter(lifecyclePage, "<footer className=\"onboarding-po
 const footerVisibleStart = lifecycleText.indexOf("data-onboarding-footer-visible-actions");
 const footerVisibleEnd = footerVisibleStart >= 0 ? lifecycleText.indexOf("{moreActionsOpen ?", footerVisibleStart) : -1;
 const footerVisibleActionsBlock = footerVisibleStart >= 0 && footerVisibleEnd > footerVisibleStart ? lifecycleText.slice(footerVisibleStart, footerVisibleEnd) : "";
-const documentFormBlock = blockAfter(lifecyclePage, "function DocumentsWorkspaceForm", 17000);
+const documentFormBlock = blockAfter(lifecyclePage, "function DocumentsWorkspaceForm", 26000);
 const paymentPensionBlock = blockAfter(lifecyclePage, "function PaymentPensionWorkspaceForm", 12000);
 
 includes(lifecyclePage, "wide={kind === \"onboarding\"}", "onboarding case modal must request the large workspace shell");
@@ -143,7 +143,6 @@ check(`${lifecyclePage}: right employee info must not contain readiness/missing/
 check(`${lifecyclePage}: right employee info value rows must truncate long fields`, employeeInfoBlock.includes("OnboardingEmployeeSummaryRow") && lifecycleText.includes("title={display}") && lifecycleText.includes("grid min-w-0"));
 
 for (const marker of [
-  "DocumentsWorkspaceForm workspace={workspace} onSave={saveDocumentBatch}",
   "PaymentPensionWorkspaceForm",
   "PayrollWorkspaceForm",
   "JobAssignmentWorkspaceForm",
@@ -152,6 +151,7 @@ for (const marker of [
 ]) {
   check(`${lifecyclePage}: main workspace must preserve ${marker}`, workspaceBlock.includes(marker));
 }
+check(`${lifecyclePage}: main workspace must preserve DocumentsWorkspaceForm save path`, workspaceBlock.includes("DocumentsWorkspaceForm workspace={workspace}") && workspaceBlock.includes("onSave={saveDocumentBatch}"));
 
 for (const marker of [
   "onboardingReadinessRows(workspace, readiness, tasks)",

@@ -69,7 +69,7 @@ includes(lifecyclePage, "form.set(\"metadata\"", "batch upload sends document me
 includes(lifecyclePage, "form.set(`file_${index}`", "batch upload sends indexed files");
 includes(lifecyclePage, "uploadOnboardingWorkspaceDocumentBatch", "onboarding workspace uses batch document upload API");
 
-const documentUploadBlock = blockAfter(lifecyclePage, "function DocumentsWorkspaceForm", 15000);
+const documentUploadBlock = blockAfter(lifecyclePage, "function DocumentsWorkspaceForm", 26000);
 check(`${lifecyclePage}: document upload input must remain single-file`, !/<Input[^>]+type="file"[^>]+multiple/.test(documentUploadBlock));
 check(`${lifecyclePage}: onboarding document form must use multi-row batch upload`, /Add document/.test(documentUploadBlock) && /Upload documents/.test(documentUploadBlock));
 

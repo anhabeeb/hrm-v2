@@ -14,7 +14,7 @@ import { requireOperationalModuleMiddleware } from "../utils/module-enforcement"
 import { timeD1 } from "../utils/performance";
 import { isEmail, normalizeEmail, readString } from "../utils/validation";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
-import { cleanupEmployeeDocumentUploads, prepareEmployeeDocumentUpload, savePreparedEmployeeDocumentUpload, uploadEmployeeDocument, type EmployeeDocumentUploadResult, type PreparedEmployeeDocumentUpload } from "./documents";
+import { cleanupEmployeeDocumentUploads, completeDocumentUploadSessions, prepareDocumentUploadSessions, prepareEmployeeDocumentUpload, savePreparedEmployeeDocumentUpload, uploadEmployeeDocument, type DocumentUploadPrepareRow, type EmployeeDocumentUploadResult, type PreparedEmployeeDocumentUpload } from "./documents";
 
 type BindValue = string | number | null;
 type LifecycleCaseType = "ONBOARDING" | "OFFBOARDING";
@@ -645,6 +645,20 @@ async function refreshWorkspaceReadiness(c: Context<AppBindings>, caseId: string
     if (gate) await createLifecycleEvent(c, { employeeId: String(gate.row.employee_id), caseType: "ONBOARDING", caseId, action, previousStatus: String(gate.row.onboarding_status), newStatus: String(gate.row.onboarding_status), metadata: { source_of_truth: "source_module", task_key: taskKey } });
   }
   return getEmployeeOnboardingReadiness(c, caseId);
+}
+
+function runLifecycleBackgroundTask(c: Context<AppBindings>, task: Promise<unknown>, label: string, meta: Record<string, unknown>) {
+  const safeTask = task.catch((error) => {
+    console.warn("Lifecycle background task failed", {
+      label,
+      case_id: meta.case_id ?? null,
+      request_id: c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? null,
+      message: error instanceof Error ? error.message : String(error)
+    });
+  });
+  const executionCtx = (c as unknown as { executionCtx?: { waitUntil: (promise: Promise<unknown>) => void } }).executionCtx;
+  if (executionCtx) executionCtx.waitUntil(safeTask);
+  else void safeTask;
 }
 
 function where(conditions: string[]) {
@@ -2552,6 +2566,51 @@ async function ensureOnboardingDocumentUploadEnabled(c: Context<AppBindings>, ca
   }
   return null;
 }
+
+onboardingRoutes.post("/cases/:caseId/documents/uploads/prepare", requireAnyPermission(["onboarding.workspace.documents.upload", "documents.upload", "onboarding.cases.manage"]), async (c) => {
+  const caseId = c.req.param("caseId");
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  const disabledResponse = await ensureOnboardingDocumentUploadEnabled(c, caseId);
+  if (disabledResponse) return disabledResponse;
+  const body = await readBody(c);
+  const rows = Array.isArray(body.rows) ? (body.rows as DocumentUploadPrepareRow[]) : [];
+  return prepareDocumentUploadSessions(c, {
+    employeeId: String(gate.row.employee_id),
+    onboardingCaseId: caseId,
+    contextType: "onboarding_document",
+    skipAccessCheck: true
+  }, rows);
+});
+
+onboardingRoutes.post("/cases/:caseId/documents/uploads/complete", requireAnyPermission(["onboarding.workspace.documents.upload", "documents.upload", "onboarding.cases.manage"]), async (c) => {
+  const caseId = c.req.param("caseId");
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  const disabledResponse = await ensureOnboardingDocumentUploadEnabled(c, caseId);
+  if (disabledResponse) return disabledResponse;
+  const body = await readBody(c);
+  const uploadIds = Array.isArray(body.upload_ids) ? body.upload_ids.map((value) => optionalText(value)).filter(Boolean) as string[] : [];
+  const result = await completeDocumentUploadSessions(c, uploadIds, { employeeId: String(gate.row.employee_id), onboardingCaseId: caseId });
+  if (result.completed_count > 0) {
+    await setOnboardingTaskState(c, caseId, "documents", "IN_PROGRESS", "Documents uploaded. Updating onboarding readiness in the background.");
+    await auditLifecycle(c, "onboarding.workspace.documents_accelerated_uploaded", "employee", String(gate.row.employee_id), null, {
+      case_id: caseId,
+      uploaded_count: result.completed_count,
+      failed_count: result.failed_count
+    });
+    runLifecycleBackgroundTask(c, (async () => {
+      const blockers = await getOnboardingDocumentBlockers(c, caseId);
+      await setOnboardingTaskState(c, caseId, "documents", blockers.length ? "IN_PROGRESS" : "COMPLETED", `${result.completed_count} document(s) uploaded from accelerated onboarding workspace flow.`);
+      await refreshWorkspaceReadiness(c, caseId, "documents", "onboarding.workspace.documents_accelerated_uploaded");
+    })(), "onboarding.workspace.documents_background_recalculation", { case_id: caseId });
+  }
+  return ok(c, {
+    ...result,
+    readiness_updating: result.completed_count > 0,
+    targeted_workspace_slices: ["documents", "document-checklist", "readiness", "employee-document-summary"]
+  }, result.completed_count > 0 ? 200 : 400);
+});
 
 onboardingRoutes.post("/cases/:caseId/documents/batch", requireAnyPermission(["onboarding.workspace.documents.upload", "documents.upload", "onboarding.cases.manage"]), async (c) => {
   const caseId = c.req.param("caseId");
