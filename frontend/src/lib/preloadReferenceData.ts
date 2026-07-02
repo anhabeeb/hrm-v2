@@ -27,6 +27,23 @@ export function preloadGlobalReferenceData(input: { token: string; user: AuthUse
   void quietPrefetch(client, { queryKey: queryKeys.auth.currentUser(scope), queryFn: () => api.me(input.token) });
   void quietPrefetch(client, { queryKey: queryKeys.auth.sessionSettings(scope), queryFn: () => api.getAuthSessionSettings(input.token) });
   void quietPrefetch(client, { queryKey: queryKeys.moduleVisibility(scope), queryFn: () => api.getSyncBootstrap(input.token) });
+  void quietPrefetch(client, {
+    queryKey: queryKeys.reference.organization(scope),
+    queryFn: async () => {
+      const [departments, locations, positions, jobLevels] = await Promise.all([
+        api.listDepartments(input.token),
+        api.listLocations(input.token),
+        api.listPositions(input.token),
+        api.listJobLevels(input.token)
+      ]);
+      return {
+        departments: departments.departments,
+        locations: locations.locations,
+        positions: positions.positions,
+        jobLevels: jobLevels.job_levels
+      };
+    }
+  });
   void quietPrefetch(client, { queryKey: queryKeys.reference.departments(scope), queryFn: () => api.listDepartments(input.token) });
   void quietPrefetch(client, { queryKey: queryKeys.reference.locations(scope), queryFn: () => api.listLocations(input.token) });
   void quietPrefetch(client, { queryKey: queryKeys.reference.positions(scope), queryFn: () => api.listPositions(input.token) });

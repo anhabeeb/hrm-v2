@@ -69,11 +69,24 @@ export const queryKeys = {
   },
   onboarding: {
     workspace: (scope: QueryScope, caseId: string) => [...scopedRoot(scope), "onboarding", "workspace", caseId] as const,
+    workspaceSlice: (scope: QueryScope, caseId: string, slice: string) => [...scopedRoot(scope), "onboarding", "workspace", caseId, "slice", slice] as const,
     readiness: (scope: QueryScope, caseId: string) => [...scopedRoot(scope), "onboarding", "readiness", caseId] as const
   },
   employee: {
     profile: (scope: QueryScope, employeeId: string) => [...scopedRoot(scope), "employee", employeeId, "profile"] as const,
+    workspace: (scope: QueryScope, employeeId: string) => [...scopedRoot(scope), "employee", employeeId, "workspace"] as const,
+    profileSlice: (scope: QueryScope, employeeId: string, slice: string) => [...scopedRoot(scope), "employee", employeeId, "workspace", "slice", slice] as const,
     contacts: (scope: QueryScope, employeeId: string) => [...scopedRoot(scope), "employee", employeeId, "contacts"] as const,
     payroll: (scope: QueryScope, employeeId: string) => [...scopedRoot(scope), "employee", employeeId, "payroll"] as const
+  },
+  dashboard: {
+    commandCenter: (scope: QueryScope) => [...scopedRoot(scope), "dashboard", "command-center-summary"] as const
+  },
+  notifications: {
+    unreadCount: (scope: QueryScope) => [...scopedRoot(scope), "notifications", "unread-count"] as const,
+    list: (scope: QueryScope, limit = 8) => [...scopedRoot(scope), "notifications", "list", limit] as const
+  },
+  search: {
+    global: (scope: QueryScope, query: string, limit: number) => [...scopedRoot(scope), "search", "global", query, limit] as const
   }
 };

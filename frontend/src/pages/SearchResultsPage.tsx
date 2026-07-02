@@ -39,7 +39,7 @@ export function SearchResultsPage() {
     ...(type !== "all" ? [{ key: "type", label: "Type", value: moduleFilters.find((item) => item.key === type)?.label ?? type, onRemove: () => { setType("all"); const next: Record<string, string> = {}; if (query.trim()) next.q = query.trim(); setParams(next); } }] : [])
   ], [query, setParams, type]);
 
-  async function load(nextQuery = query, nextType = type) {
+  async function load(nextQuery = query, nextType = type, signal?: AbortSignal) {
     if (!token) return;
     setLoading(true);
     setError(null);
@@ -48,22 +48,25 @@ export function SearchResultsPage() {
         q: nextQuery,
         limit: 25,
         types: nextType === "all" ? null : nextType
-      });
+      }, signal);
       setGroups(result.groups);
     } catch (err) {
+      if (signal?.aborted) return;
       setGroups([]);
       setError(err instanceof Error ? err.message : "Search is unavailable.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }
 
   useEffect(() => {
     const nextQuery = params.get("q") ?? "";
     const nextType = params.get("type") ?? "all";
+    const controller = new AbortController();
     setQuery(nextQuery);
     setType(nextType);
-    void load(nextQuery, nextType);
+    void load(nextQuery, nextType, controller.signal);
+    return () => controller.abort();
   }, [params, token]);
 
   function submitSearch() {

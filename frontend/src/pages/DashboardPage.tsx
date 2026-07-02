@@ -36,8 +36,10 @@ import { DashboardWidget, PageShell, WarningPanel } from "../components/ui/page-
 import { Panel } from "../components/ui/panel";
 import { Tooltip } from "../components/ui/tooltip";
 import { api } from "../lib/api";
+import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/useAuth";
+import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
 import type { AuthUser } from "../types/auth";
 
 type DashboardTone = "neutral" | "success" | "warning" | "danger" | "info";
@@ -244,27 +246,19 @@ function resolveCommandCenterWelcome(user: AuthUser | null) {
 
 export function DashboardPage() {
   const { token, user } = useAuth();
-  const [summary, setSummary] = useState<CommandCenterSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [openGroup, setOpenGroup] = useState<string | undefined>(undefined);
-
+  const summaryQuery = useWorkspaceQuery<CommandCenterSummary>({
+    workspaceName: "command-center",
+    queryKey: (scope) => queryKeys.dashboard.commandCenter(scope),
+    queryFn: ({ token, signal }) => api.getCommandCenterDashboard(token, signal) as Promise<CommandCenterSummary>
+  });
+  const summary = summaryQuery.data ?? null;
+  const loading = summaryQuery.firstLoad;
+  const error = summaryQuery.error ? summaryQuery.error.message : null;
+  const canRenderSummary = !loading && Boolean(summary);
   async function load() {
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setSummary(await api.getCommandCenterDashboard(token) as CommandCenterSummary);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Command Center could not be loaded.");
-    } finally {
-      setLoading(false);
-    }
+    await summaryQuery.refetch();
   }
-
-  useEffect(() => {
-    void load();
-  }, [token]);
 
   const groups = useMemo(() => asGroups(summary), [summary]);
   const priorityActions = useMemo(() => summary?.priority_actions ?? [], [summary]);
@@ -285,6 +279,7 @@ export function DashboardPage() {
         <CommandCenterWelcome name={welcome.name} title={welcome.title} />
         <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
           <PriorityKpiIconStrip actions={priorityActions} />
+          {summaryQuery.refreshing ? <Badge tone="info">Refreshing</Badge> : null}
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             Refresh
@@ -295,7 +290,7 @@ export function DashboardPage() {
 
       {loading ? <CommandCenterSkeleton /> : null}
 
-      {!loading && !error ? (
+      {canRenderSummary ? (
         <div className="space-y-5">
           {summary?.warnings?.length ? (
             <WarningPanel tone="warning">
@@ -357,6 +352,17 @@ export function DashboardPage() {
             </Panel>
           )}
         </div>
+      ) : null}
+      {!loading && !summary && !error ? (
+        <Panel className="p-6">
+          <div className="flex items-start gap-3">
+            <LayoutDashboard className="mt-1 h-5 w-5 text-muted-foreground" />
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">No Command Center data available</h2>
+              <p className="mt-1 text-sm text-muted-foreground">KPI groups will appear here after the workspace summary is available.</p>
+            </div>
+          </div>
+        </Panel>
       ) : null}
     </PageShell>
   );

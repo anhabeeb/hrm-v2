@@ -11,6 +11,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, DbUser, UserStatus } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
+import { timeD1 } from "../utils/performance";
 import { isEmail, normalizeEmail, readString } from "../utils/validation";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
 import { cleanupEmployeeDocumentUploads, prepareEmployeeDocumentUpload, savePreparedEmployeeDocumentUpload, uploadEmployeeDocument, type EmployeeDocumentUploadResult, type PreparedEmployeeDocumentUpload } from "./documents";
@@ -509,7 +510,7 @@ async function loadOptionalOnboardingWorkspaceSection<T>(
   }
   try {
     return {
-      value: await options.run(),
+      value: await timeD1(c, options.run, `onboarding.workspace.${options.key}`),
       state: workspaceSectionState("COMPLETE", options.label, `${options.label} is available.`, options.moduleKey, permissions)
     };
   } catch (error) {

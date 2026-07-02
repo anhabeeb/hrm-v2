@@ -495,20 +495,20 @@ export const api = {
   pullSyncEntities(token: string, input: Record<string, unknown>) {
     return request<{ records: Record<string, unknown>[]; current_version: number | string }>("/api/v1/sync/pull-entities", { method: "POST", body: JSON.stringify(input) }, token);
   },
-  getMainDashboard(token: string) {
-    return request<Record<string, unknown>>("/api/v1/dashboard", {}, token);
+  getMainDashboard(token: string, signal?: AbortSignal) {
+    return request<Record<string, unknown>>("/api/v1/dashboard", { signal }, token);
   },
-  getCommandCenterDashboard(token: string) {
-    return request<Record<string, unknown>>("/api/v1/dashboard/command-center-summary", {}, token);
+  getCommandCenterDashboard(token: string, signal?: AbortSignal) {
+    return request<Record<string, unknown>>("/api/v1/dashboard/command-center-summary", { signal }, token);
   },
-  globalSearch(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<GlobalSearchResponse>(`/api/v1/search/global${query(filters)}`, {}, token);
+  globalSearch(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<GlobalSearchResponse>(`/api/v1/search/global${query(filters)}`, { signal }, token);
   },
-  listNotifications(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<{ notifications: HrmNotification[]; unread_count: number }>(`/api/v1/notifications${query(filters)}`, {}, token);
+  listNotifications(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ notifications: HrmNotification[]; unread_count: number }>(`/api/v1/notifications${query(filters)}`, { signal }, token);
   },
-  getUnreadNotificationCount(token: string) {
-    return request<{ unread_count: number }>("/api/v1/notifications/unread-count", {}, token);
+  getUnreadNotificationCount(token: string, signal?: AbortSignal) {
+    return request<{ unread_count: number }>("/api/v1/notifications/unread-count", { signal }, token);
   },
   markNotificationRead(token: string, notificationId: string) {
     return request<{ read: boolean }>(`/api/v1/notifications/${notificationId}/mark-read`, { method: "POST" }, token);
@@ -907,8 +907,8 @@ export const api = {
   accessScopeAction(token: string, id: string, action: "enable" | "disable") {
     return request<{ access_scope: AccessScopeRule }>(`/api/v1/access-scopes/${id}/${action}`, { method: "POST" }, token);
   },
-  getEmployeeUserAccess(token: string, employeeId: string) {
-    return request<{ preview: EmployeeUserAccessPreview }>(`/api/v1/employees/${employeeId}/user-access`, {}, token);
+  getEmployeeUserAccess(token: string, employeeId: string, signal?: AbortSignal) {
+    return request<{ preview: EmployeeUserAccessPreview }>(`/api/v1/employees/${employeeId}/user-access`, { signal }, token);
   },
   applyEmployeeRoleMapping(token: string, employeeId: string, role_mapping_rule_id?: string | null) {
     return request<{ applied: boolean; preview: EmployeeUserAccessPreview }>(
@@ -917,8 +917,8 @@ export const api = {
       token
     );
   },
-  getEmployeeUserAccount(token: string, employeeId: string) {
-    return request<{ user_account: EmployeeUserAccount }>(`/api/v1/employees/${employeeId}/user-account`, {}, token);
+  getEmployeeUserAccount(token: string, employeeId: string, signal?: AbortSignal) {
+    return request<{ user_account: EmployeeUserAccount }>(`/api/v1/employees/${employeeId}/user-account`, { signal }, token);
   },
   linkEmployeeExistingUser(token: string, employeeId: string, input: { user_id: string; replace_existing?: boolean; reason?: string | null; role_ids?: string[]; access_scope_ids?: string[]; self_service_enabled?: boolean }) {
     return request<{ user_account: EmployeeUserAccount }>(
@@ -1037,8 +1037,8 @@ export const api = {
   changeEmployeeStatus(token: string, id: string, input: { status_id: string; exit_date?: string | null; exit_reason?: string | null; reason?: string | null }) {
     return request<{ employee: Employee }>(`/api/v1/employees/${id}/status`, { method: "POST", body: JSON.stringify(input) }, token);
   },
-  getEmployeeOverview(token: string, id: string) {
-    return request<{ employee: Employee; onboarding: OnboardingTask[]; contacts: EmployeeContact[]; audit: Record<string, unknown>[] }>(`/api/v1/employees/${id}/overview`, {}, token);
+  getEmployeeOverview(token: string, id: string, signal?: AbortSignal) {
+    return request<{ employee: Employee; onboarding: OnboardingTask[]; contacts: EmployeeContact[]; audit: Record<string, unknown>[] }>(`/api/v1/employees/${id}/overview`, { signal }, token);
   },
   listEmployeeContacts(token: string, id: string) {
     return request<{ contacts: EmployeeContact[] }>(`/api/v1/employees/${id}/contacts`, {}, token);
@@ -1052,8 +1052,8 @@ export const api = {
   archiveEmployeeContact(token: string, id: string, contactId: string, reason?: string | null) {
     return request<{ archived: boolean }>(`/api/v1/employees/${id}/contacts/${contactId}/archive`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
   },
-  listEmployeeJobHistory(token: string, id: string) {
-    return request<{ job_history: Record<string, unknown>[] }>(`/api/v1/employees/${id}/job-history`, {}, token);
+  listEmployeeJobHistory(token: string, id: string, signal?: AbortSignal) {
+    return request<{ job_history: Record<string, unknown>[] }>(`/api/v1/employees/${id}/job-history`, { signal }, token);
   },
   createEmployeeJobHistory(token: string, id: string, input: Partial<EmployeeInput> & { effective_date: string; reason?: string | null }) {
     return request<{ employee: Employee }>(`/api/v1/employees/${id}/job-history`, { method: "POST", body: JSON.stringify(input) }, token);
@@ -1070,8 +1070,8 @@ export const api = {
   createEmployeeOffboardingCase(token: string, employeeId: string, input: { exit_type: string; last_working_day: string; exit_reason?: string | null; exit_notice_date?: string | null }) {
     return request<{ case_id: string }>(`/api/v1/employees/${employeeId}/offboarding/cases`, { method: "POST", body: JSON.stringify(input) }, token);
   },
-  getEmployeeLifecycleSummary(token: string, employeeId: string) {
-    return request<{ summary: LifecycleSummary }>(`/api/v1/employees/${employeeId}/lifecycle-summary`, {}, token);
+  getEmployeeLifecycleSummary(token: string, employeeId: string, signal?: AbortSignal) {
+    return request<{ summary: LifecycleSummary }>(`/api/v1/employees/${employeeId}/lifecycle-summary`, { signal }, token);
   },
   listEmployeeLifecycleEvents(token: string, employeeId: string) {
     return request<{ events: LifecycleEvent[] }>(`/api/v1/employees/${employeeId}/lifecycle-events`, {}, token);
@@ -1106,8 +1106,8 @@ export const api = {
   getOnboardingCase(token: string, caseId: string) {
     return request<{ case: OnboardingCase; employee: Employee; checklist: { tasks: LifecycleTask[] }; approval: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}`, {}, token);
   },
-  getOnboardingWorkspace(token: string, caseId: string) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/workspace`, {}, token);
+  getOnboardingWorkspace(token: string, caseId: string, signal?: AbortSignal) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/workspace`, { signal }, token);
   },
   updateOnboardingWorkspaceEmployeeInfo(token: string, caseId: string, input: Record<string, unknown>) {
     return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/employee-info`, { method: "PATCH", body: JSON.stringify(input) }, token);
@@ -1235,8 +1235,8 @@ export const api = {
   listEmployeeAudit(token: string, id: string) {
     return request<{ audit: Record<string, unknown>[] }>(`/api/v1/employees/${id}/audit`, {}, token);
   },
-  listEmployeeStatuses(token: string) {
-    return request<{ statuses: EmployeeStatusSetting[] }>("/api/v1/employees/settings/statuses", {}, token);
+  listEmployeeStatuses(token: string, signal?: AbortSignal) {
+    return request<{ statuses: EmployeeStatusSetting[] }>("/api/v1/employees/settings/statuses", { signal }, token);
   },
   createEmployeeStatus(token: string, input: Partial<EmployeeStatusSetting>) {
     return request<{ status: EmployeeStatusSetting }>("/api/v1/employees/settings/statuses", { method: "POST", body: JSON.stringify(input) }, token);

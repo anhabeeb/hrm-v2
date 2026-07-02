@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import type { AppBindings } from "../types";
 import { ok } from "../utils/http";
+import { timeD1 } from "../utils/performance";
 
 export const dashboardRoutes = new Hono<AppBindings>();
 
@@ -62,8 +63,8 @@ interface ModuleEnablement {
   uniforms: boolean;
 }
 
-dashboardRoutes.get("/command-center-summary", requirePermission("dashboard.view"), async (c) => ok(c, await buildCommandCenterSummary(c)));
-dashboardRoutes.get("/", requirePermission("dashboard.view"), async (c) => ok(c, await buildCommandCenterSummary(c)));
+dashboardRoutes.get("/command-center-summary", requirePermission("dashboard.view"), async (c) => ok(c, await timeD1(c, () => buildCommandCenterSummary(c), "dashboard.command-center-summary")));
+dashboardRoutes.get("/", requirePermission("dashboard.view"), async (c) => ok(c, await timeD1(c, () => buildCommandCenterSummary(c), "dashboard.command-center-summary")));
 
 function hasPermission(c: Context<AppBindings>, permission: string) {
   const user = c.get("currentUser");

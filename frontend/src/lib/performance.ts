@@ -13,8 +13,17 @@ export interface ApiTimingEntry {
   createdAt: string;
 }
 
+export interface WorkspaceQueryMetric {
+  workspace: string;
+  queryKey: string;
+  event: "first-load" | "cache-hit" | "background-refresh" | "settled" | "error";
+  createdAt: string;
+}
+
 const MAX_API_TIMINGS = 100;
+const MAX_WORKSPACE_METRICS = 100;
 const apiTimings: ApiTimingEntry[] = [];
+const workspaceMetrics: WorkspaceQueryMetric[] = [];
 
 function safePath(path: string) {
   try {
@@ -64,9 +73,33 @@ export function recordCacheEvent(input: { key: readonly unknown[] | string; disp
   });
 }
 
+function safeQueryKey(key: readonly unknown[] | string) {
+  const text = Array.isArray(key) ? key.map((part) => String(part)).join(":") : String(key);
+  return text.length > 180 ? `${text.slice(0, 177)}...` : text;
+}
+
+export function recordWorkspaceQueryMetric(input: {
+  workspace: string;
+  queryKey: readonly unknown[] | string;
+  event: WorkspaceQueryMetric["event"];
+}) {
+  const metric: WorkspaceQueryMetric = {
+    workspace: input.workspace,
+    queryKey: safeQueryKey(input.queryKey),
+    event: input.event,
+    createdAt: new Date().toISOString()
+  };
+  workspaceMetrics.push(metric);
+  if (workspaceMetrics.length > MAX_WORKSPACE_METRICS) workspaceMetrics.splice(0, workspaceMetrics.length - MAX_WORKSPACE_METRICS);
+  if (isPerformanceDebugEnabled()) {
+    console.debug("[performance:workspace]", metric);
+  }
+}
+
 export function getApiPerformanceSnapshot() {
   return {
     total_recorded_api_requests: apiTimings.length,
-    recent_api_timings: [...apiTimings]
+    recent_api_timings: [...apiTimings],
+    recent_workspace_metrics: [...workspaceMetrics]
   };
 }

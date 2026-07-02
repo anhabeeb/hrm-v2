@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { QueryKey } from "@tanstack/react-query";
 import { referenceDataCache } from "../lib/referenceDataCache";
 import { REFERENCE_DATA_STALE_TIME_MS } from "../lib/queryClient";
 import { createQueryScope, queryKeys } from "../lib/queryKeys";
@@ -9,10 +10,11 @@ export function useReferenceData<T>(input: {
   token?: string | null;
   enabled?: boolean;
   ttlMs?: number;
+  queryKey?: QueryKey;
   load: () => Promise<T>;
   fallback: T;
 }) {
-  const { cacheKey, token, enabled = true, ttlMs, load, fallback } = input;
+  const { cacheKey, token, enabled = true, ttlMs, queryKey, load, fallback } = input;
   const loadRef = useRef(load);
   const fallbackRef = useRef(fallback);
   const scope = useMemo(() => createQueryScope(token), [token]);
@@ -24,7 +26,7 @@ export function useReferenceData<T>(input: {
   }, [fallback, load]);
 
   const query = useApiQuery<T>({
-    queryKey: queryKeys.reference.custom(scope, cacheKey),
+    queryKey: queryKey ?? queryKeys.reference.custom(scope, cacheKey),
     enabled: Boolean(token && enabled),
     staleTime: ttlMs ?? REFERENCE_DATA_STALE_TIME_MS,
     initialData,

@@ -1,5 +1,5 @@
 import { Bell, CheckCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -7,7 +7,12 @@ import { EmptyState } from "../ui/empty-state";
 import { LoadingSkeleton } from "../ui/page-shell";
 import { StatusBadge } from "../ui/status-badge";
 import { useAuth } from "../../hooks/useAuth";
+import { useWorkspaceMutation } from "../../hooks/useWorkspaceMutation";
+import { useWorkspaceQuery } from "../../hooks/useWorkspaceQuery";
 import { api, type HrmNotification } from "../../lib/api";
+import { queryClient } from "../../lib/queryClient";
+import { queryKeys } from "../../lib/queryKeys";
+import { invalidateNotificationQueries, workspaceScope } from "../../lib/workspaceInvalidation";
 import { cn } from "../../lib/utils";
 
 const NOTIFICATIONS_UNAVAILABLE_MESSAGE = "Notifications unavailable. Try again shortly.";
@@ -32,14 +37,27 @@ function relativeTime(value: string) {
 }
 
 export function NotificationBell() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<HrmNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastNotificationFailureAtRef = useRef(0);
+  const scope = useMemo(() => workspaceScope(token, user), [token, user]);
+  const unreadQuery = useWorkspaceQuery<{ unread_count: number }>({
+    queryKey: (scope) => queryKeys.notifications.unreadCount(scope),
+    enabled: Boolean(token),
+    staleTime: NOTIFICATION_UNREAD_POLL_INTERVAL_MS,
+    queryFn: ({ token, signal }) => api.getUnreadNotificationCount(token, signal)
+  });
+  const listQuery = useWorkspaceQuery<{ notifications: HrmNotification[]; unread_count: number }>({
+    queryKey: (scope) => queryKeys.notifications.list(scope, 8),
+    enabled: Boolean(token && open && !failureBackoffActive()),
+    staleTime: 30000,
+    queryFn: ({ token, signal }) => api.listNotifications(token, { limit: 8 }, signal)
+  });
+  const notifications = listQuery.data?.notifications ?? [];
+  const unreadCount = listQuery.data?.unread_count ?? unreadQuery.data?.unread_count ?? 0;
+  const loading = listQuery.firstLoad && open;
 
   function failureBackoffActive() {
     return Date.now() - lastNotificationFailureAtRef.current < NOTIFICATION_FAILURE_BACKOFF_MS;
@@ -48,8 +66,7 @@ export function NotificationBell() {
   async function loadUnreadCount() {
     if (!token || document.visibilityState === "hidden" || failureBackoffActive()) return;
     try {
-      const result = await api.getUnreadNotificationCount(token);
-      setUnreadCount(result.unread_count);
+      await unreadQuery.refetch();
       lastNotificationFailureAtRef.current = 0;
     } catch {
       lastNotificationFailureAtRef.current = Date.now();
@@ -59,25 +76,17 @@ export function NotificationBell() {
   async function loadNotifications(showLoading = false) {
     if (!token) return;
     if (!showLoading && failureBackoffActive()) return;
-    if (showLoading) setLoading(true);
     setError(null);
     try {
-      const result = await api.listNotifications(token, { limit: 8 });
-      setNotifications(result.notifications);
-      setUnreadCount(result.unread_count);
+      await listQuery.refetch();
       lastNotificationFailureAtRef.current = 0;
     } catch {
-      setNotifications([]);
-      setUnreadCount(0);
       lastNotificationFailureAtRef.current = Date.now();
       setError(NOTIFICATIONS_UNAVAILABLE_MESSAGE);
-    } finally {
-      if (showLoading) setLoading(false);
     }
   }
 
   useEffect(() => {
-    void loadUnreadCount();
     const handle = window.setInterval(() => void loadUnreadCount(), NOTIFICATION_UNREAD_POLL_INTERVAL_MS);
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") void loadUnreadCount();
@@ -90,16 +99,39 @@ export function NotificationBell() {
   }, [token]);
 
   useEffect(() => {
-    if (open) void loadNotifications(true);
-  }, [open]);
+    if (listQuery.error) {
+      lastNotificationFailureAtRef.current = Date.now();
+      setError(NOTIFICATIONS_UNAVAILABLE_MESSAGE);
+    }
+  }, [listQuery.error]);
+
+  const markReadMutation = useWorkspaceMutation<{ read: boolean }, { notification: HrmNotification }>({
+    mutationFn: ({ notification }) => api.markNotificationRead(token!, notification.id),
+    applyResult: (_result, { notification }) => {
+      queryClient.setQueryData<{ unread_count: number }>(queryKeys.notifications.unreadCount(scope), (current) => ({ unread_count: Math.max(0, (current?.unread_count ?? unreadCount) - 1) }));
+      queryClient.setQueryData<{ notifications: HrmNotification[]; unread_count: number }>(queryKeys.notifications.list(scope, 8), (current) => ({
+        notifications: (current?.notifications ?? notifications).map((row) => row.id === notification.id ? { ...row, is_read: true, read_at: new Date().toISOString() } : row),
+        unread_count: Math.max(0, (current?.unread_count ?? unreadCount) - 1)
+      }));
+    }
+  });
+
+  const markAllReadMutation = useWorkspaceMutation<{ read: boolean; count: number }, void>({
+    mutationFn: () => api.markAllNotificationsRead(token!),
+    applyResult: () => {
+      queryClient.setQueryData<{ unread_count: number }>(queryKeys.notifications.unreadCount(scope), { unread_count: 0 });
+      queryClient.setQueryData<{ notifications: HrmNotification[]; unread_count: number }>(queryKeys.notifications.list(scope, 8), (current) => ({
+        notifications: (current?.notifications ?? notifications).map((row) => ({ ...row, is_read: true, read_at: row.read_at ?? new Date().toISOString() })),
+        unread_count: 0
+      }));
+      invalidateNotificationQueries(scope);
+    }
+  });
 
   async function openNotification(notification: HrmNotification) {
     if (token && !notification.is_read) {
       try {
-      await api.markNotificationRead(token, notification.id);
-      setNotifications((rows) => rows.map((row) => row.id === notification.id ? { ...row, is_read: true, read_at: new Date().toISOString() } : row));
-      setUnreadCount((count) => Math.max(0, count - 1));
-      void loadUnreadCount();
+        await markReadMutation.mutateAsync({ notification });
       } catch {
         // Navigation should still work even if the read marker cannot be saved.
       }
@@ -111,10 +143,7 @@ export function NotificationBell() {
   async function markAllRead() {
     if (!token) return;
     try {
-      await api.markAllNotificationsRead(token);
-      setNotifications((rows) => rows.map((row) => ({ ...row, is_read: true, read_at: row.read_at ?? new Date().toISOString() })));
-      setUnreadCount(0);
-      void loadUnreadCount();
+      await markAllReadMutation.mutateAsync();
     } catch {
       setError(NOTIFICATIONS_UPDATE_ERROR_MESSAGE);
     }

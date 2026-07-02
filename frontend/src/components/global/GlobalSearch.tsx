@@ -71,6 +71,7 @@ export function GlobalSearch() {
   useEffect(() => {
     if (!open || !token) return;
     let cancelled = false;
+    const controller = new AbortController();
     const trimmedQuery = query.trim();
     const handle = window.setTimeout(async () => {
       if (lastFailedQueryRef.current === trimmedQuery && Date.now() < retryBlockedUntilRef.current) {
@@ -84,7 +85,7 @@ export function GlobalSearch() {
       setError(null);
       setWarnings([]);
       try {
-        const result = await api.globalSearch(token, { q: query, limit: 8 });
+        const result = await api.globalSearch(token, { q: query, limit: 8 }, controller.signal);
         if (!cancelled) {
           setGroups(result.groups ?? []);
           setWarnings(result.warnings ?? []);
@@ -93,6 +94,7 @@ export function GlobalSearch() {
           retryBlockedUntilRef.current = 0;
         }
       } catch {
+        if (controller.signal.aborted) return;
         if (!cancelled) {
           setGroups([]);
           setWarnings([]);
@@ -106,6 +108,7 @@ export function GlobalSearch() {
     }, trimmedQuery ? GLOBAL_SEARCH_DEBOUNCE_MS : 0);
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(handle);
     };
   }, [open, query, retryKey, token]);

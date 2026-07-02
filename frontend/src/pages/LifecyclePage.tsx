@@ -1,5 +1,5 @@
 import { AlertTriangle, BriefcaseBusiness, CalendarClock, CheckCircle2, Circle, ClipboardCheck, FileCheck2, FileDown, RefreshCw, ShieldAlert, UserPlus, UsersRound, WalletCards } from "lucide-react";
-import { FormEvent, type ChangeEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { ExportMenu } from "../components/export/ExportMenu";
@@ -23,8 +23,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Timeline } from "../components/ui/timeline";
 import { useAuth } from "../hooks/useAuth";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
+import { useWorkspaceMutation } from "../hooks/useWorkspaceMutation";
+import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
 import { ApiError, api } from "../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateField, validateRequiredField } from "../lib/form-validation";
+import { queryKeys } from "../lib/queryKeys";
+import { applyWorkspacePayload, invalidateOnboardingWorkspaceSlices, workspaceScope, type WorkspaceSlice } from "../lib/workspaceInvalidation";
 import type { Employee } from "../types/employees";
 import type { LifecycleSettings, LifecycleTask, OffboardingCase, OnboardingCase } from "../types/lifecycle";
 import type { OrganizationDepartment, OrganizationJobLevel, OrganizationLocation, OrganizationPosition } from "../types/organization";
@@ -889,41 +893,54 @@ function CreateCaseModal({ kind, employees, organizationRefs, onClose, onCreated
 function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind: CaseKind; caseId: string; onClose: () => void; onChanged: () => void; askReason: (title: string, submit: (reason: string) => Promise<void>) => void }) {
   const { token } = useAuth();
   const [detail, setDetail] = useState<{ case: OnboardingCase | OffboardingCase; checklist: { tasks: LifecycleTask[] }; readiness?: Row } | null>(null);
-  const [workspace, setWorkspace] = useState<Row | null>(null);
   const [error, setError] = useState<string | null>(null);
-  async function load() {
+  const onboardingWorkspaceQuery = useWorkspaceQuery<Row>({
+    workspaceName: "onboarding-workspace",
+    queryKey: (scope) => queryKeys.onboarding.workspace(scope, caseId),
+    enabled: kind === "onboarding",
+    placeholderData: (previousData) => String(asRow(previousData?.case).id ?? "") === caseId ? previousData : undefined,
+    queryFn: async ({ token, signal }) => (await api.getOnboardingWorkspace(token, caseId, signal)).workspace as Row
+  });
+  const workspace = kind === "onboarding" ? (onboardingWorkspaceQuery.data ?? null) : null;
+  const onboardingDetail = workspace ? {
+    case: workspace.case as OnboardingCase,
+    checklist: workspace.checklist as { tasks: LifecycleTask[] },
+    readiness: workspace.readiness as Row
+  } : null;
+  const activeDetail = kind === "onboarding" ? onboardingDetail : detail;
+  const load = useCallback(async () => {
     if (!token) return;
     try {
       setError(null);
       if (kind === "onboarding") {
-        const data = (await api.getOnboardingWorkspace(token, caseId)).workspace;
-        setWorkspace(data);
-        setDetail({ case: data.case as OnboardingCase, checklist: data.checklist as { tasks: LifecycleTask[] }, readiness: data.readiness as Row });
+        await onboardingWorkspaceQuery.refetch();
       } else {
         const data = await api.getOffboardingCase(token, caseId);
         const readiness = (await api.getOffboardingReadiness(token, caseId)).readiness;
-        setWorkspace(null);
         setDetail({ case: data.case, checklist: data.checklist, readiness });
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load lifecycle case.");
     }
-  }
-  useEffect(() => { void load(); }, [token, kind, caseId]);
+  }, [caseId, kind, onboardingWorkspaceQuery, token]);
+  useEffect(() => {
+    if (kind === "offboarding") void load();
+  }, [token, kind, caseId]);
   async function run(action: () => Promise<unknown>) {
     await action();
     await load();
     onChanged();
   }
-  const tasks = detail?.checklist?.tasks ?? [];
-  const blockers = Array.isArray(detail?.readiness?.blocking_items) ? (detail?.readiness?.blocking_items as unknown[]) : [];
-  const warnings = Array.isArray(detail?.readiness?.warning_items) ? (detail?.readiness?.warning_items as unknown[]) : [];
+  const combinedError = error ?? (onboardingWorkspaceQuery.error ? onboardingWorkspaceQuery.error.message : null);
+  const tasks = activeDetail?.checklist?.tasks ?? [];
+  const blockers = Array.isArray(activeDetail?.readiness?.blocking_items) ? (activeDetail?.readiness?.blocking_items as unknown[]) : [];
+  const warnings = Array.isArray(activeDetail?.readiness?.warning_items) ? (activeDetail?.readiness?.warning_items as unknown[]) : [];
   const offboardingUserAccess = kind === "offboarding" ? asRow(detail?.readiness?.user_access) : {};
-  const caseEmployeeId = detail ? String((detail.case as unknown as Row).employee_id ?? "") : "";
+  const caseEmployeeId = activeDetail ? String((activeDetail.case as unknown as Row).employee_id ?? "") : "";
   return (
     <Modal title={`${title(kind)} case`} onClose={onClose} wide={kind === "onboarding"} hideHeader={kind === "onboarding"} bodyClassName={kind === "onboarding" ? "min-h-0 flex-1 overflow-hidden p-0" : undefined}>
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {!detail ? <FormSkeleton fields={6} label="Loading lifecycle case detail" /> : (
+      {combinedError ? <p className="text-sm text-red-600">{combinedError}</p> : null}
+      {!activeDetail ? <FormSkeleton fields={6} label="Loading lifecycle case detail" /> : (
         kind === "onboarding" && workspace ? (
           <OnboardingWorkspace
             workspace={workspace}
@@ -939,18 +956,18 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
         ) : (
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
-            <Info label="Case" value={detail.case.case_number} />
-            <Info label="Status" value={"onboarding_status" in detail.case ? detail.case.onboarding_status : detail.case.offboarding_status} />
-            <Info label="Readiness" value={"activation_status" in detail.case ? detail.case.activation_status : detail.case.finalization_status} />
+            <Info label="Case" value={activeDetail.case.case_number} />
+            <Info label="Status" value={"onboarding_status" in activeDetail.case ? activeDetail.case.onboarding_status : activeDetail.case.offboarding_status} />
+            <Info label="Readiness" value={"activation_status" in activeDetail.case ? activeDetail.case.activation_status : activeDetail.case.finalization_status} />
           </div>
           <Timeline
             items={[
-              { title: "Lifecycle case opened", description: detail.case.case_number, meta: text((detail.case as unknown as Row).created_at) },
-              { title: "Current readiness", description: text("activation_status" in detail.case ? detail.case.activation_status : detail.case.finalization_status) },
-              { title: "Current workflow status", description: text("onboarding_status" in detail.case ? detail.case.onboarding_status : detail.case.offboarding_status) }
+              { title: "Lifecycle case opened", description: activeDetail.case.case_number, meta: text((activeDetail.case as unknown as Row).created_at) },
+              { title: "Current readiness", description: text("activation_status" in activeDetail.case ? activeDetail.case.activation_status : activeDetail.case.finalization_status) },
+              { title: "Current workflow status", description: text("onboarding_status" in activeDetail.case ? activeDetail.case.onboarding_status : activeDetail.case.offboarding_status) }
             ]}
           />
-          {kind === "onboarding" ? <ContractReadinessPanel contract={detail.readiness?.contract as Row | undefined} /> : null}
+          {kind === "onboarding" ? <ContractReadinessPanel contract={activeDetail.readiness?.contract as Row | undefined} /> : null}
           {kind === "offboarding" ? (
             <OffboardingUserAccessPanel
               status={offboardingUserAccess}
@@ -1375,17 +1392,26 @@ function onboardingModuleStateSummary(rows: Array<{ status: string }>) {
   return { enabled, notRequired, disabled };
 }
 
+type OnboardingWorkspaceMutationResult = { workspace?: Row } & Record<string, unknown>;
+
 function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReason }: { workspace: Row; caseId: string; onClose: () => void; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const alerts = useAlert();
   const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
-  async function save(action: () => Promise<unknown>, success: string) {
+  const scope = useMemo(() => workspaceScope(token, user), [token, user]);
+  const workspaceMutation = useWorkspaceMutation<OnboardingWorkspaceMutationResult, { action: () => Promise<unknown>; slices: WorkspaceSlice[] }>({
+    mutationFn: async (variables) => variables.action() as Promise<OnboardingWorkspaceMutationResult>,
+    applyResult: (result, variables) => {
+      applyWorkspacePayload(scope, caseId, result);
+      invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: variables.slices });
+    }
+  });
+  async function save(action: () => Promise<unknown>, success: string, slices: WorkspaceSlice[]) {
     if (!token) return;
     try {
-      await action();
+      await workspaceMutation.mutateAsync({ action, slices });
       alerts.showSuccess(success);
-      await reload();
     } catch (err) {
       alerts.showApiError(err, "Unable to save onboarding workspace section.");
     }
@@ -1395,8 +1421,9 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
     try {
       const result = await api.uploadOnboardingWorkspaceDocumentBatch(token, caseId, form);
       const uploaded = Number(result.uploaded_count ?? 0);
+      applyWorkspacePayload(scope, caseId, result as OnboardingWorkspaceMutationResult);
+      invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: ["documents", "document-checklist", "readiness"] });
       alerts.showSuccess(uploaded === 1 ? "1 document uploaded." : `${uploaded} documents uploaded.`);
-      await reload();
       return result;
     } catch (err) {
       alerts.showApiError(err, "Document batch upload failed.");
@@ -1509,16 +1536,16 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
             </div>
           </Panel>
       {activeTab === "Overview" ? <OnboardingWorkspaceOverview readiness={readiness} tasks={tasks} workspace={workspace} /> : null}
-      {activeTab === "Employee Info" ? <EmployeeInfoWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceEmployeeInfo(token!, caseId, input), "Employee information saved.")} /> : null}
-      {activeTab === "Contacts" ? <ContactWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceContactInfo(token!, caseId, input), "Contact information saved.")} /> : null}
-      {activeTab === "Job Assignment" ? <JobAssignmentWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceJobAssignment(token!, caseId, input), "Job assignment saved.")} /> : null}
+      {activeTab === "Employee Info" ? <EmployeeInfoWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceEmployeeInfo(token!, caseId, input), "Employee information saved.", ["employee-info", "readiness"])} /> : null}
+      {activeTab === "Contacts" ? <ContactWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceContactInfo(token!, caseId, input), "Contact information saved.", ["contacts", "readiness"])} /> : null}
+      {activeTab === "Job Assignment" ? <JobAssignmentWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceJobAssignment(token!, caseId, input), "Job assignment saved.", ["job-assignment", "documents", "document-checklist", "readiness"])} /> : null}
       {activeTab === "Documents" ? <DocumentsWorkspaceForm workspace={workspace} onSave={saveDocumentBatch} /> : null}
-      {activeTab === "Contract" ? <ContractWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceContract(token!, caseId, input), "Contract draft created.")} /> : null}
-      {activeTab === "Payroll" ? <PayrollWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspacePayrollProfile(token!, caseId, input), "Payroll profile saved.")} /> : null}
-      {activeTab === "Payment & Pension" ? <PaymentPensionWorkspaceForm workspace={workspace} onPaymentSave={(input) => save(() => api.createOnboardingWorkspacePaymentMethod(token!, caseId, input), "Payment method saved.")} onPensionSave={(input) => save(() => api.updateOnboardingWorkspacePensionProfile(token!, caseId, input), "Pension profile saved.")} /> : null}
-      {activeTab === "Attendance & Roster" ? <AttendanceRosterWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceBiometricMapping(token!, caseId, input), "Attendance/biometric setup saved.")} /> : null}
-      {activeTab === "Assets & Uniforms" ? <AssetsWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceAssetsUniforms(token!, caseId, input), "Asset/uniform setup saved.")} /> : null}
-      {activeTab === "User Access" ? <UserAccessWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceUserAccount(token!, caseId, input), "User access setup saved.")} /> : null}
+      {activeTab === "Contract" ? <ContractWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceContract(token!, caseId, input), "Contract draft created.", ["contract", "readiness"])} /> : null}
+      {activeTab === "Payroll" ? <PayrollWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspacePayrollProfile(token!, caseId, input), "Payroll profile saved.", ["payroll", "readiness"])} /> : null}
+      {activeTab === "Payment & Pension" ? <PaymentPensionWorkspaceForm workspace={workspace} onPaymentSave={(input) => save(() => api.createOnboardingWorkspacePaymentMethod(token!, caseId, input), "Payment method saved.", ["payment-methods", "payroll", "readiness"])} onPensionSave={(input) => save(() => api.updateOnboardingWorkspacePensionProfile(token!, caseId, input), "Pension profile saved.", ["pension", "payroll", "readiness"])} /> : null}
+      {activeTab === "Attendance & Roster" ? <AttendanceRosterWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceBiometricMapping(token!, caseId, input), "Attendance/biometric setup saved.", ["attendance", "readiness"])} /> : null}
+      {activeTab === "Assets & Uniforms" ? <AssetsWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceAssetsUniforms(token!, caseId, input), "Asset/uniform setup saved.", ["assets", "readiness"])} /> : null}
+      {activeTab === "User Access" ? <UserAccessWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceUserAccount(token!, caseId, input), "User access setup saved.", ["user-access", "readiness"])} /> : null}
         </main>
         <aside className="onboarding-employee-info-panel order-1 min-w-0 max-w-full overflow-hidden lg:order-3 lg:sticky lg:top-0 lg:max-h-[calc(90vh-9rem)] lg:overflow-y-auto" aria-label="Employee information" data-onboarding-employee-info-panel>
           <Panel className="min-w-0 overflow-hidden p-3">
@@ -1566,7 +1593,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <Button variant="outline" size="sm" aria-expanded={moreActionsOpen} onClick={() => setMoreActionsOpen((value) => !value)}>More actions</Button>
               {moreActionsOpen ? (
                 <div className="absolute bottom-full right-0 z-20 mb-2 w-56 rounded-md border bg-white p-1.5 shadow-lg">
-                  <ActionTextButton intent="refresh" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Setup readiness refreshed."); }}>Refresh readiness</ActionTextButton>
+                  <ActionTextButton intent="refresh" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Setup readiness refreshed.", ["document-checklist", "readiness"]); }}>Refresh readiness</ActionTextButton>
                   <ActionTextButton intent="submit" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted."); }}>Submit activation</ActionTextButton>
                   <ActionTextButton intent="approve" size="sm" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved."); }}>Approve activation</ActionTextButton>
                   <Button size="sm" variant="danger" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); askReason("Activate with override", (reason) => runWorkspaceAction(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason), "Employee activated with override.")); }}>Override activation</Button>

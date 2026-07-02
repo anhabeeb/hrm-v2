@@ -26,13 +26,25 @@ import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
 import { ApiError, api } from "../lib/api";
+import { queryKeys } from "../lib/queryKeys";
 import type { AccessScopeRule, EmployeeUserAccessPreview, EmployeeUserAccount, Role, UserStatus } from "../types/auth";
 import type { Employee, EmployeeContact, EmployeeContactInput, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
 import type { LifecycleSummary, LifecycleTask } from "../types/lifecycle";
 
 const profileTabs = ["Overview", "Personal Info", "Job Info", "Contracts", "Contacts", "User Access", "Lifecycle", "Payroll", "Final Settlement", "Attendance", "Roster", "Leave", "Documents", "Assets & Uniforms", "Notes", "Audit Log"] as const;
 type ProfileTab = (typeof profileTabs)[number];
+type EmployeeProfileWorkspacePayload = {
+  overview: {
+    employee: Employee;
+    onboarding: OnboardingTask[];
+    contacts: EmployeeContact[];
+    audit: Record<string, unknown>[];
+  };
+  statuses: EmployeeStatusSetting[];
+  lifecycle: LifecycleSummary | null;
+};
 
 function tone(status?: string) {
   if (status === "ACTIVE" || status === "ON_LEAVE") return "success";
@@ -96,27 +108,55 @@ export function EmployeeProfilePage() {
   const canClearPhoto = permissions.has("documents.archive");
   const canViewDuringOnboarding = permissions.has("employees.360.view_during_onboarding");
 
+  const profileWorkspaceQuery = useWorkspaceQuery<EmployeeProfileWorkspacePayload>({
+    workspaceName: "employee-profile",
+    queryKey: (scope) => queryKeys.employee.workspace(scope, id ?? "unknown"),
+    enabled: Boolean(id && canView),
+    placeholderData: (previousData) => previousData?.overview.employee.id === id ? previousData : undefined,
+    queryFn: async ({ token, signal }) => {
+      const [overview, statusesResult, lifecycleResult] = await Promise.all([
+        api.getEmployeeOverview(token, id!, signal),
+        api.listEmployeeStatuses(token, signal),
+        canViewLifecycle
+          ? api.getEmployeeLifecycleSummary(token, id!, signal).then((result) => result.summary).catch(() => null)
+          : Promise.resolve(null)
+      ]);
+      return {
+        overview,
+        statuses: statusesResult.statuses,
+        lifecycle: lifecycleResult
+      };
+    }
+  });
+
+  useEffect(() => {
+    const payload = profileWorkspaceQuery.data;
+    if (!payload) return;
+    setEmployee(payload.overview.employee);
+    setStatuses(payload.statuses);
+    setContacts(payload.overview.contacts);
+    setOnboarding(payload.overview.onboarding);
+    setAudit(payload.overview.audit);
+    setLifecycle(payload.lifecycle);
+    setError(null);
+  }, [profileWorkspaceQuery.data]);
+
+  useEffect(() => {
+    if (profileWorkspaceQuery.error && !profileWorkspaceQuery.data) {
+      setError(profileWorkspaceQuery.error instanceof ApiError ? profileWorkspaceQuery.error.message : "Unable to load Employee 360 profile.");
+    }
+  }, [profileWorkspaceQuery.data, profileWorkspaceQuery.error]);
+
   const load = useCallback(async () => {
     if (!token || !id || !canView) return;
     setError(null);
     try {
-      const [overview, statusesResult] = await Promise.all([api.getEmployeeOverview(token, id), api.listEmployeeStatuses(token)]);
-      setEmployee(overview.employee);
-      setStatuses(statusesResult.statuses);
-      setContacts(overview.contacts);
-      setOnboarding(overview.onboarding);
-      setAudit(overview.audit);
-      if (canViewLifecycle) {
-        try {
-          setLifecycle((await api.getEmployeeLifecycleSummary(token, id)).summary);
-        } catch {
-          setLifecycle(null);
-        }
-      }
+      const result = await profileWorkspaceQuery.refetch();
+      if (result.error) throw result.error;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load Employee 360 profile.");
     }
-  }, [token, id, canView, canViewLifecycle]);
+  }, [token, id, canView, profileWorkspaceQuery]);
 
   const loadTabData = useCallback(async (tab: ProfileTab, force = false) => {
     if (!token || !id || !employee) return;
@@ -164,10 +204,6 @@ export function EmployeeProfilePage() {
       setTabLoading((current) => ({ ...current, [tab]: false }));
     }
   }, [canApplyUserAccess, canManageUserAccess, canViewUserAccess, employee, id, loadedTabs, token]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   useEffect(() => {
     if (!visibleProfileTabs.includes(activeTab)) setActiveTab("Overview");
