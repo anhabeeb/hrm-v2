@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { accessScopeRoutes } from "./routes/access-scopes";
 import { adminReportRoutes, adminRoutes } from "./routes/admin";
@@ -41,25 +40,60 @@ import { fail } from "./utils/http";
 
 const app = new Hono<AppBindings>();
 
+const PRODUCTION_FRONTEND_ORIGIN = "https://hr.cafeasiana.com.mv";
+const LOCAL_FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
+const CORS_ALLOWED_HEADERS = [
+  "Content-Type",
+  "Authorization",
+  "X-Requested-With",
+  "X-Request-Id",
+  "X-Request-ID",
+  "x-request-id",
+  "X-Correlation-Id",
+  "x-correlation-id",
+  "X-Client-Request-Id",
+  "x-client-request-id",
+  "X-HRM-Company-Id",
+  "x-hrm-company-id",
+  "X-HRM-Bridge-Token",
+  "x-hrm-bridge-token",
+  "X-ZKTeco-Token",
+  "x-zkteco-token",
+  "X-Tenant-Id",
+  "x-tenant-id",
+  "X-Timezone",
+  "x-timezone"
+] as const;
+const CORS_ALLOWED_METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"] as const;
+
+function unique(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function allowedCorsOrigins(configuredOrigin: string | undefined) {
+  const configured = configuredOrigin ? configuredOrigin.split(",") : [];
+  const fallback = configured.length ? [] : LOCAL_FRONTEND_ORIGINS;
+  return unique([PRODUCTION_FRONTEND_ORIGIN, ...configured, ...fallback]);
+}
+
 app.use("*", async (c, next) => {
-  const configuredOrigin = c.env.CORS_ORIGIN;
-  const allowedOrigins = configuredOrigin
-    ? configuredOrigin.split(",").map((origin) => origin.trim())
-    : ["http://localhost:5173", "http://127.0.0.1:5173"];
+  const origin = c.req.header("Origin");
+  const allowedOrigin = origin && allowedCorsOrigins(c.env.CORS_ORIGIN).includes(origin) ? origin : null;
 
-  const middleware = cors({
-    origin: (origin) => {
-      if (!origin) {
-        return null;
-      }
-      return allowedOrigins.includes(origin) ? origin : null;
-    },
-    allowHeaders: ["Authorization", "Content-Type"],
-    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    maxAge: 86400
-  });
+  c.header("Vary", "Origin");
+  if (allowedOrigin) {
+    c.header("Access-Control-Allow-Origin", allowedOrigin);
+    c.header("Access-Control-Allow-Credentials", "true");
+  }
+  c.header("Access-Control-Allow-Methods", CORS_ALLOWED_METHODS.join(", "));
+  c.header("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS.join(", "));
+  c.header("Access-Control-Max-Age", "86400");
 
-  return middleware(c, next);
+  if (c.req.method === "OPTIONS") {
+    return c.body(null, 204);
+  }
+
+  await next();
 });
 
 app.use("*", withRouteTiming());
