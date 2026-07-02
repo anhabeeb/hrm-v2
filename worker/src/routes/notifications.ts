@@ -22,6 +22,10 @@ const NOTIFICATION_SELECT_COLUMNS = `
   title, message, severity, notification_type, route, is_read, read_at, dismissed_at,
   created_at, metadata_json
 `;
+const NOTIFICATION_PREFERENCE_COLUMNS = `
+  id, user_id, module_key, in_app_enabled, email_placeholder_enabled,
+  created_at, updated_at, metadata_json
+`;
 
 function hasAny(user: AuthUser, permissions: string[]) {
   return user.is_owner || permissions.some((permission) => user.permissions.includes(permission));
@@ -327,8 +331,8 @@ notificationRoutes.get("/preferences", (c) => withNotificationRuntimeError(c, "p
   if (!hasAny(c.get("currentUser"), ["notifications.preferences.view", "notifications.view", "self_service.notifications.view"])) {
     return fail(c, 403, "NOTIFICATION_PERMISSION_DENIED", "You do not have permission to view notification preferences.");
   }
-  const rows = await c.env.DB.prepare("SELECT * FROM notification_preferences WHERE user_id = ? ORDER BY module_key").bind(c.get("currentUser").id).all<Row>();
-  return ok(c, { preferences: rows.results });
+  const rows = await c.env.DB.prepare(`SELECT ${NOTIFICATION_PREFERENCE_COLUMNS} FROM notification_preferences WHERE user_id = ? ORDER BY module_key LIMIT 100`).bind(c.get("currentUser").id).all<Row>();
+  return ok(c, { preferences: rows.results, limit: 100 });
 }));
 
 notificationRoutes.patch("/preferences", (c) => withNotificationRuntimeError(c, "preferences-update", async () => {

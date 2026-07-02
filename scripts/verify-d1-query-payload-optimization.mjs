@@ -65,6 +65,12 @@ const dashboard = "worker/src/routes/dashboard.ts";
 const employees = "worker/src/routes/employees.ts";
 const performance = "worker/src/utils/performance.ts";
 const http = "worker/src/utils/http.ts";
+const attendance = "worker/src/routes/attendance.ts";
+const documents = "worker/src/routes/documents.ts";
+const documentCompliance = "worker/src/routes/document-compliance.ts";
+const payroll = "worker/src/routes/payroll.ts";
+const payrollFoundations = "worker/src/routes/payroll-foundations.ts";
+const phase4ReportFile = "docs/performance/d1-query-audit-phase4.md";
 const remoteAudit = "scripts/audit-remote-d1-schema.mjs";
 const remoteGenerate = "scripts/generate-remote-d1-repair.mjs";
 const remoteReady = "scripts/verify-remote-d1-schema-ready.mjs";
@@ -77,6 +83,9 @@ includes("scripts/audit-d1-query-performance.mjs", "SELECT * occurrences", "D1 q
 includes("scripts/audit-d1-query-performance.mjs", "Potential unbounded ordered lists", "D1 query audit reports unbounded list risk");
 includes("scripts/audit-d1-query-performance.mjs", "Potential unindexed filters", "D1 query audit reports missing-index risk");
 includes("scripts/audit-d1-query-performance.mjs", "Potential N+1 risks", "D1 query audit reports N+1 risk");
+includes("scripts/audit-d1-query-performance.mjs", "severity_model", "D1 query audit reports Phase 4 severity model");
+includes("scripts/audit-d1-query-performance.mjs", "priority_route", "D1 query audit tags priority route findings");
+includes("scripts/audit-d1-query-performance.mjs", "HIGH", "D1 query audit ranks high-priority findings");
 
 for (const [indexName, tableName, message] of [
   ["idx_phase3_employees_type_employment_archived", "employees", "employee type/employment filters have a Phase 3 index"],
@@ -123,6 +132,13 @@ includes(performance, "private, no-store", "authenticated API responses are priv
 includes(lifecycle, "timeD1(c, options.run, `onboarding.workspace.${options.key}`)", "onboarding workspace optional read groups remain D1-timed");
 includes(lifecycle, "moduleStatuses[options.moduleKey] === false", "onboarding workspace skips disabled optional modules early");
 includes(lifecycle, "No permission to load", "onboarding optional sections return no-permission state");
+includes(lifecycle, "LIFECYCLE_CONTACT_COLUMNS", "Phase 4 onboarding workspace contacts use selected columns");
+includes(lifecycle, "LIFECYCLE_ADDRESS_COLUMNS", "Phase 4 onboarding workspace addresses use selected columns");
+includes(lifecycle, "ONBOARDING_TASK_COLUMNS", "Phase 4 onboarding task reads use selected columns");
+includes(lifecycle, "OFFBOARDING_TASK_COLUMNS", "Phase 4 offboarding task reads use selected columns");
+excludes(lifecycle, "SELECT * FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY is_primary DESC, contact_type", "onboarding workspace contacts must not select all columns");
+excludes(lifecycle, "SELECT * FROM employee_addresses WHERE employee_id = ? ORDER BY is_primary DESC, address_type", "onboarding workspace addresses must not select all columns");
+excludes(lifecycle, "SELECT * FROM employee_onboarding_tasks WHERE onboarding_case_id = ? ORDER BY is_required DESC", "onboarding checklist must not select all task columns");
 includes(lifecycle, "SELECT id, code, name, category, requires_end_date", "contract type workspace payload is narrowed");
 includes(lifecycle, "SELECT id, employee_id, basic_salary, currency, payment_method", "payroll profile workspace payload is narrowed");
 includes(lifecycle, "SELECT id, employee_id, payment_method_type", "payment method workspace payload is narrowed");
@@ -138,7 +154,9 @@ excludes(lifecycle, "SELECT * FROM employee_payment_methods WHERE employee_id", 
 excludes(lifecycle, "SELECT * FROM employee_lifecycle_events WHERE case_type = 'ONBOARDING'", "onboarding workspace event payload is narrowed");
 
 includes(notifications, "NOTIFICATION_SELECT_COLUMNS", "notification list/detail queries use an explicit column list");
+includes(notifications, "NOTIFICATION_PREFERENCE_COLUMNS", "Phase 4 notification preferences use an explicit column list");
 excludes(notifications, "SELECT * FROM notifications", "notifications hot path must not select all columns");
+excludes(notifications, "SELECT * FROM notification_preferences", "notification preference hot path must not select all columns");
 includes(notifications, "LIMIT ?", "notification list remains bounded");
 includes(search, "const DEFAULT_LIMIT = 8", "global search default limit remains safe");
 includes(search, "const MAX_LIMIT = 25", "global search maximum limit remains safe");
@@ -154,8 +172,48 @@ includes(dashboard, "dashboard.command-center-summary", "Command Center route re
 
 includes(employees, "const EMPLOYEE_LIST_DEFAULT_LIMIT", "employee list has a default limit");
 includes(employees, "const EMPLOYEE_LIST_MAX_LIMIT", "employee list has a maximum limit");
+includes(employees, "EMPLOYEE_CONTACT_COLUMNS", "Phase 4 Employee 360 contact reads use selected columns");
+includes(employees, "EMPLOYEE_ONBOARDING_TASK_COLUMNS", "Phase 4 Employee 360 onboarding reads use selected columns");
+includes(employees, "EMPLOYEE_OVERVIEW_AUDIT_COLUMNS", "Phase 4 Employee 360 audit preview uses selected columns");
+excludes(employees, "SELECT * FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY contact_type, emergency_priority", "Employee 360 contacts must not select all columns");
+excludes(employees, "SELECT * FROM employee_onboarding_tasks WHERE employee_id = ? ORDER BY required DESC, created_at", "Employee 360 onboarding list must not select all columns");
 check(`${employees}: employee list endpoint caps LIMIT/OFFSET`, /LIMIT \? OFFSET \?/.test(read(employees)));
 check(`${employees}: Employee 360 overview audit payload is capped`, /ORDER BY created_at DESC LIMIT 8/.test(read(employees)));
+
+includes(attendance, "boundedRouteLimit", "Phase 4 attendance list endpoints clamp requested limits");
+excludes(attendance, "return `adr.*, e.employee_no", "attendance record list columns must not use adr.*");
+excludes(attendance, "return `acr.*, e.employee_no", "attendance correction list columns must not use acr.*");
+excludes(attendance, "SELECT ad.*, l.name AS location_name FROM attendance_devices ad LEFT JOIN locations l ON l.id = ad.location_id ORDER BY ad.status, ad.name", "attendance device list must not select all columns");
+check(`${attendance}: attendance records list is bounded`, /attendanceRoutes\.get\("\/records"[\s\S]*ORDER BY adr\.attendance_date DESC, e\.employee_no\s+LIMIT \?/.test(read(attendance)));
+check(`${attendance}: attendance corrections list is bounded`, /attendanceRoutes\.get\("\/corrections"[\s\S]*ORDER BY acr\.created_at DESC LIMIT \?/.test(read(attendance)));
+check(`${attendance}: employee attendance records list is bounded`, /employeeAttendanceRoutes\.get\("\/:employeeId\/attendance\/records"[\s\S]*ORDER BY adr\.attendance_date DESC LIMIT \?/.test(read(attendance)));
+
+includes(documents, "DOCUMENT_CATEGORY_COLUMNS", "Phase 4 document category lists use selected columns");
+includes(documents, "DOCUMENT_TYPE_LIST_COLUMNS", "Phase 4 document type lists use selected columns");
+excludes(documents, "SELECT * FROM document_categories ORDER BY is_active DESC", "document category list must not select all columns");
+excludes(documents, "SELECT dt.*, dc.name AS category_name FROM document_types dt LEFT JOIN document_categories dc ON dc.id = dt.category_id ORDER BY dt.is_active DESC", "document type list must not select all columns");
+includes(documentCompliance, "DOCUMENT_TYPE_COMPLIANCE_COLUMNS", "Phase 4 document compliance type list uses selected columns");
+includes(documentCompliance, "DOCUMENT_RENEWAL_EVENT_COLUMNS", "Phase 4 renewal events use selected columns");
+excludes(documentCompliance, "SELECT * FROM document_renewal_case_events WHERE renewal_case_id = ? ORDER BY created_at DESC", "renewal event lists must not select all columns");
+
+includes(payrollFoundations, "PAYMENT_INSTITUTION_COLUMNS", "Phase 4 payment institution list uses selected columns");
+includes(payrollFoundations, "PENSION_SCHEME_COLUMNS", "Phase 4 pension scheme list uses selected columns");
+includes(payrollFoundations, "CUSTOM_DEDUCTION_TEMPLATE_LIST_COLUMNS", "Phase 4 custom deduction template list uses selected columns");
+excludes(payrollFoundations, "SELECT * FROM payment_institutions WHERE", "payment institution list must not select all columns");
+excludes(payrollFoundations, "SELECT * FROM pension_schemes WHERE status != 'ARCHIVED'", "pension scheme list must not select all columns");
+includes(payroll, "PAYROLL_PERIOD_LIST_COLUMNS", "Phase 4 payroll period list uses selected columns");
+includes(payroll, "PAYROLL_RUN_LIST_COLUMNS", "Phase 4 payroll run list uses selected columns");
+excludes(payroll, "SELECT * FROM payroll_periods WHERE", "payroll period list must not select all columns");
+check(`${payroll}: payroll run list route must not select pr.*`, !/payrollRoutes\.get\("\/runs"[\s\S]{0,2800}SELECT\s+pr\.\*/.test(read(payroll)));
+check(`${payroll}: payroll period list is bounded`, /payrollRoutes\.get\("\/periods"[\s\S]*ORDER BY pp\.period_year DESC, pp\.period_month DESC LIMIT \?/.test(read(payroll)));
+check(`${payroll}: payroll run list is bounded`, /payrollRoutes\.get\("\/runs"[\s\S]*ORDER BY pp\.period_year DESC, pp\.period_month DESC, pr\.run_no DESC LIMIT \?/.test(read(payroll)));
+
+includes(phase4ReportFile, "# D1 Query Audit Phase 4", "Phase 4 D1 audit report exists");
+includes(phase4ReportFile, "## Fixed in Phase 4", "Phase 4 report lists fixed items");
+includes(phase4ReportFile, "## Deferred HIGH Findings", "Phase 4 report documents deferred high findings");
+includes(phase4ReportFile, "Employees / Employee 360", "Phase 4 report covers employee priority routes");
+includes(phase4ReportFile, "Onboarding workspace", "Phase 4 report covers onboarding priority routes");
+includes(phase4ReportFile, "Payroll foundations", "Phase 4 report covers payroll priority routes");
 
 for (const script of [
   "verify:global-instant-performance-foundation",

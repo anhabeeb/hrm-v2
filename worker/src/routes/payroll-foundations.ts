@@ -78,6 +78,32 @@ function parseJson<T>(value: unknown, fallback: T): T {
 const BANK_LOAN_INSUFFICIENT_SALARY_MODES = new Set(["WARN_ONLY", "PARTIAL_DEDUCTION", "SKIP_AND_MARK_FAILED", "BLOCK_PAYROLL", "REQUIRE_OVERRIDE"]);
 const BANK_LOAN_MINIMUM_NET_THRESHOLD_TYPES = new Set(["PERCENTAGE_OF_NET_SALARY", "FIXED_AMOUNT"]);
 const CUSTOM_DEDUCTION_TYPES = new Set(["ONE_TIME", "RECURRING", "INSTALLMENT", "BALANCE_BASED", "FORMULA_PLACEHOLDER"]);
+const PAYMENT_INSTITUTION_COLUMNS = `
+  id, code, name, type, country_code, swift_code, is_active, status, display_order,
+  created_at, updated_at, archived_at, metadata_json
+`;
+const PENSION_SCHEME_COLUMNS = `
+  id, scheme_code, scheme_name, country_code, employee_contribution_percent,
+  employer_contribution_percent, contribution_basis, include_allowances, min_employee_age,
+  max_employee_age, local_employee_required, foreign_employee_allowed,
+  foreign_employee_default_required, employer_can_pay_employee_share, effective_from,
+  effective_to, status, notes, created_at, updated_at, metadata_json
+`;
+const CUSTOM_DEDUCTION_TEMPLATE_LIST_COLUMNS = `
+  id, code, name, description, category, deduction_type, amount_type, default_amount,
+  default_percentage, default_currency, default_installment_count, default_recurrence_interval,
+  default_priority_number, affects_net_salary, show_on_payslip, show_in_self_service,
+  require_employee_acknowledgement_placeholder, require_approval, require_document,
+  allow_employee_override_amount, allow_installment_override, allow_pause_resume,
+  include_in_final_settlement, linked_module, status, created_at, updated_at, archived_at,
+  metadata_json
+`;
+
+function boundedListLimit(value: unknown, fallback: number, max: number) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(max, Math.trunc(parsed)));
+}
 const CUSTOM_DEDUCTION_AMOUNT_TYPES = new Set(["FIXED_AMOUNT", "PERCENTAGE_OF_BASIC", "PERCENTAGE_OF_GROSS", "CUSTOM_FORMULA_PLACEHOLDER"]);
 const CUSTOM_DEDUCTION_INTERVALS = new Set(["MONTHLY", "PAYROLL_PERIOD", "WEEKLY_PLACEHOLDER", "CUSTOM_PLACEHOLDER"]);
 const CUSTOM_DEDUCTION_MODULES = new Set(["PAYROLL", "DOCUMENTS", "ASSETS", "UNIFORMS", "DISCIPLINARY_PLACEHOLDER", "OTHER"]);
@@ -684,11 +710,11 @@ export async function getActivePaymentMethodSnapshot(db: D1Database, employeeId:
 }
 
 async function readInstitution(c: Context<AppBindings>, id: string) {
-  return c.env.DB.prepare("SELECT * FROM payment_institutions WHERE id = ?").bind(id).first<Row>();
+  return c.env.DB.prepare(`SELECT ${PAYMENT_INSTITUTION_COLUMNS} FROM payment_institutions WHERE id = ?`).bind(id).first<Row>();
 }
 
 async function readActiveBankInstitution(c: Context<AppBindings>, id: string) {
-  return c.env.DB.prepare("SELECT * FROM payment_institutions WHERE id = ? AND is_active = 1 AND status = 'ACTIVE' AND type = 'BANK'").bind(id).first<Row>();
+  return c.env.DB.prepare(`SELECT ${PAYMENT_INSTITUTION_COLUMNS} FROM payment_institutions WHERE id = ? AND is_active = 1 AND status = 'ACTIVE' AND type = 'BANK'`).bind(id).first<Row>();
 }
 
 function normalizePaymentMethodType(value: unknown) {
@@ -976,8 +1002,9 @@ export async function recordPayrollPensionContribution(c: Context<AppBindings>, 
 
 payrollFoundationRoutes.get("/payment-institutions", requireAnyPermission(["payroll.payment_institutions.view", "payroll.payment_institutions.manage", "payroll.view"]), async (c) => {
   const includeArchived = c.req.query("include_archived") === "1";
-  const rows = await c.env.DB.prepare(`SELECT * FROM payment_institutions WHERE ${includeArchived ? "1 = 1" : "status != 'ARCHIVED'"} ORDER BY display_order, name`).all<Row>();
-  return ok(c, { institutions: rows.results });
+  const limit = boundedListLimit(c.req.query("limit"), 100, 500);
+  const rows = await c.env.DB.prepare(`SELECT ${PAYMENT_INSTITUTION_COLUMNS} FROM payment_institutions WHERE ${includeArchived ? "1 = 1" : "status != 'ARCHIVED'"} ORDER BY display_order, name LIMIT ?`).bind(limit).all<Row>();
+  return ok(c, { institutions: rows.results, limit });
 });
 
 payrollFoundationRoutes.post("/payment-institutions", requireAnyPermission(["payroll.payment_institutions.create", "payroll.payment_institutions.manage"]), async (c) => {
@@ -1354,14 +1381,29 @@ payrollFoundationRoutes.get("/reports/bank-loan-summary", requireAnyPermission([
   return ok(c, { reports: rows });
 });
 
-payrollFoundationRoutes.get("/reports/bank-loan-shortfalls", requireAnyPermission(["payroll.reports.view", "payroll.bank_loan_payments.view"]), async (c) => ok(c, { reports: (await c.env.DB.prepare("SELECT * FROM employee_bank_loan_payments WHERE shortfall_amount > 0 ORDER BY created_at DESC").all<Row>()).results }));
+payrollFoundationRoutes.get("/reports/bank-loan-shortfalls", requireAnyPermission(["payroll.reports.view", "payroll.bank_loan_payments.view"]), async (c) => {
+  const limit = boundedListLimit(c.req.query("limit"), 100, 500);
+  const reports = (await c.env.DB.prepare(
+    `SELECT id, employee_id, payroll_period_id, payroll_run_id, payment_institution_id,
+            bank_name_snapshot, loan_reference_number_snapshot, scheduled_installment_amount,
+            deducted_amount, shortfall_amount, payment_status, bank_notification_status,
+            skipped_due_to_minimum_net_salary, bank_direct_collection_required, created_at, updated_at
+       FROM employee_bank_loan_payments
+      WHERE shortfall_amount > 0
+      ORDER BY created_at DESC
+      LIMIT ?`
+  ).bind(limit).all<Row>()).results;
+  return ok(c, { reports, limit });
+});
 
 payrollFoundationRoutes.get("/custom-deduction-templates", requireAnyPermission(["payroll.custom_deduction_templates.view", "payroll.custom_deduction_templates.manage", "payroll.view"]), async (c) => {
   const includeArchived = c.req.query("include_archived") === "1";
+  const limit = boundedListLimit(c.req.query("limit"), 100, 500);
   const rows = await c.env.DB
-    .prepare(`SELECT * FROM custom_deduction_templates WHERE ${includeArchived ? "1 = 1" : "status != 'ARCHIVED'"} ORDER BY status, category, name`)
+    .prepare(`SELECT ${CUSTOM_DEDUCTION_TEMPLATE_LIST_COLUMNS} FROM custom_deduction_templates WHERE ${includeArchived ? "1 = 1" : "status != 'ARCHIVED'"} ORDER BY status, category, name LIMIT ?`)
+    .bind(limit)
     .all<Row>();
-  return ok(c, { templates: rows.results });
+  return ok(c, { templates: rows.results, limit });
 });
 
 payrollFoundationRoutes.post("/custom-deduction-templates", requireAnyPermission(["payroll.custom_deduction_templates.create", "payroll.custom_deduction_templates.manage"]), async (c) => {
@@ -1584,7 +1626,11 @@ payrollFoundationRoutes.get("/reports/custom-deduction-applications", requireAny
   return ok(c, { reports: rows });
 });
 
-payrollFoundationRoutes.get("/pension-schemes", requireAnyPermission(["payroll.pension_schemes.view", "payroll.pension_schemes.manage", "payroll.view"]), async (c) => ok(c, { schemes: (await c.env.DB.prepare("SELECT * FROM pension_schemes WHERE status != 'ARCHIVED' ORDER BY effective_from DESC, scheme_name").all<Row>()).results }));
+payrollFoundationRoutes.get("/pension-schemes", requireAnyPermission(["payroll.pension_schemes.view", "payroll.pension_schemes.manage", "payroll.view"]), async (c) => {
+  const limit = boundedListLimit(c.req.query("limit"), 100, 500);
+  const schemes = (await c.env.DB.prepare(`SELECT ${PENSION_SCHEME_COLUMNS} FROM pension_schemes WHERE status != 'ARCHIVED' ORDER BY effective_from DESC, scheme_name LIMIT ?`).bind(limit).all<Row>()).results;
+  return ok(c, { schemes, limit });
+});
 payrollFoundationRoutes.post("/pension-schemes", requireAnyPermission(["payroll.pension_schemes.create", "payroll.pension_schemes.manage"]), async (c) => {
   const body = await c.req.json<Row>();
   const dateIssues = validateDateRange({ start: text(body.effective_from) || now().slice(0, 10), end: text(body.effective_to) || null, startField: "effective_from", endField: "effective_to", label: "Effective to date" });

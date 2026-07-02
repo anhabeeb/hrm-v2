@@ -269,6 +269,21 @@ const WAIVER_CANCEL = ["documents.waivers.cancel", "documents.waivers.manage"];
 const EMPLOYEE_COMPLIANCE_VIEW = ["employees.documents.compliance.view", "employees.documents.compliance.manage", "documents.compliance.view", "documents.view"];
 const EMPLOYEE_COMPLIANCE_MANAGE = ["employees.documents.compliance.manage", "documents.compliance.manage"];
 const SENSITIVE_VIEW = ["documents.sensitive.view", "documents.registry.sensitive.view"];
+const DOCUMENT_TYPE_COMPLIANCE_COLUMNS = `
+  dt.id, dt.category_id, dc.name AS category_name, dt.code, dt.name, dt.description,
+  dt.is_sensitive, dt.is_active, dt.expiring_soon_days, dt.allowed_file_types_json,
+  dt.max_file_size_mb, dt.allow_multiple_files, dt.requires_expiry_date,
+  dt.requires_issue_date, dt.requires_document_number, dt.expiry_required,
+  dt.issue_date_required, dt.document_number_required, dt.urgent_expiring_days,
+  dt.renewal_case_auto_create, dt.employee_summary_visible, dt.employee_download_allowed,
+  dt.blocks_employee_activation, dt.creates_payroll_warning,
+  dt.creates_final_settlement_warning, dt.compliance_weight, dt.sensitivity_level,
+  dt.renewal_instructions, dt.retention_rule_json, dt.sort_order, dt.created_at, dt.updated_at
+`;
+const DOCUMENT_RENEWAL_EVENT_COLUMNS = `
+  id, renewal_case_id, employee_id, action, previous_status, new_status,
+  actor_user_id, actor_name_snapshot, note, reason, created_at, metadata_json
+`;
 
 function bool(value: number | null | undefined) {
   return value === 1;
@@ -1118,8 +1133,8 @@ documentComplianceRoutes.patch("/compliance/settings", async (c) => {
 documentComplianceRoutes.get("/types/compliance", async (c) => {
   const denied = requireAny(c, TYPE_COMPLIANCE_VIEW);
   if (denied) return denied;
-  const rows = await c.env.DB.prepare("SELECT dt.*, dc.name AS category_name FROM document_types dt LEFT JOIN document_categories dc ON dc.id = dt.category_id ORDER BY dt.is_active DESC, dt.sort_order, dt.name").all<DocumentTypeComplianceRow>();
-  return ok(c, { document_types: rows.results.map(toDocumentType) });
+  const rows = await c.env.DB.prepare(`SELECT ${DOCUMENT_TYPE_COMPLIANCE_COLUMNS} FROM document_types dt LEFT JOIN document_categories dc ON dc.id = dt.category_id ORDER BY dt.is_active DESC, dt.sort_order, dt.name LIMIT 500`).all<DocumentTypeComplianceRow>();
+  return ok(c, { document_types: rows.results.map(toDocumentType), limit: 500 });
 });
 
 documentComplianceRoutes.patch("/types/:typeId/compliance", async (c) => {
@@ -1291,7 +1306,7 @@ documentComplianceRoutes.get("/renewal-cases/:caseId", async (c) => {
   if (denied) return denied;
   const row = await getScopedRenewalCase(c, routeParam(c, "caseId"), "view");
   if (!row) return fail(c, 404, "NOT_FOUND", "Renewal case was not found.");
-  const events = await c.env.DB.prepare("SELECT * FROM document_renewal_case_events WHERE renewal_case_id = ? ORDER BY created_at DESC").bind(row.id).all();
+  const events = await c.env.DB.prepare(`SELECT ${DOCUMENT_RENEWAL_EVENT_COLUMNS} FROM document_renewal_case_events WHERE renewal_case_id = ? ORDER BY created_at DESC LIMIT 100`).bind(row.id).all();
   return ok(c, { renewal_case: row, events: events.results });
 });
 
@@ -1378,8 +1393,8 @@ documentComplianceRoutes.get("/renewal-cases/:caseId/events", async (c) => {
   if (denied) return denied;
   const current = await getScopedRenewalCase(c, routeParam(c, "caseId"), "view");
   if (!current) return fail(c, 404, "NOT_FOUND", "Renewal case was not found.");
-  const events = await c.env.DB.prepare("SELECT * FROM document_renewal_case_events WHERE renewal_case_id = ? ORDER BY created_at DESC").bind(current.id).all();
-  return ok(c, { events: events.results });
+  const events = await c.env.DB.prepare(`SELECT ${DOCUMENT_RENEWAL_EVENT_COLUMNS} FROM document_renewal_case_events WHERE renewal_case_id = ? ORDER BY created_at DESC LIMIT 100`).bind(current.id).all();
+  return ok(c, { events: events.results, limit: 100 });
 });
 
 documentComplianceRoutes.get("/waivers", async (c) => {

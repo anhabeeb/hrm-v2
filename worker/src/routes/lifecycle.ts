@@ -106,6 +106,27 @@ const LIFECYCLE_EVENT_COLUMNS = `
   id, employee_id, case_type, case_id, action, previous_status, new_status,
   actor_user_id, actor_name_snapshot, reason, note, created_at
 `;
+const LIFECYCLE_CONTACT_COLUMNS = `
+  id, employee_id, contact_type, value, country_code, relationship, is_primary,
+  emergency_priority, is_sensitive, notes, archived_at, created_at, updated_at
+`;
+const LIFECYCLE_ADDRESS_COLUMNS = `
+  id, employee_id, address_type, address_line, island_city, country, is_primary,
+  is_sensitive, created_at, updated_at
+`;
+const ONBOARDING_TASK_COLUMNS = `
+  id, onboarding_case_id, employee_id, task_key, title, task_name, description, module,
+  task_group, source_module, source_reference_type, source_reference_id, status, task_status,
+  required, is_required, assigned_to_user_id, assigned_role_id, due_date, completed_by_user_id,
+  completed_at, waived_by_user_id, waived_at, waiver_reason, blocked_reason, notes,
+  created_at, updated_at, metadata_json
+`;
+const OFFBOARDING_TASK_COLUMNS = `
+  id, offboarding_case_id, employee_id, task_key, task_name, task_group, source_module,
+  source_reference_type, source_reference_id, is_required, task_status, assigned_to_user_id,
+  assigned_role_id, due_date, completed_by_user_id, completed_at, waived_by_user_id,
+  waived_at, waiver_reason, blocked_reason, notes, created_at, updated_at, metadata_json
+`;
 
 const onboardingTemplates = [
   ["personal_info", "Personal information complete", "PERSONAL_INFO", "employees", "Core profile fields are complete.", 1],
@@ -902,8 +923,8 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
   ] = await Promise.all([
     getOnboardingChecklistStatus(c, caseId),
     getEmployeeOnboardingReadiness(c, caseId),
-    c.env.DB.prepare("SELECT * FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY is_primary DESC, contact_type").bind(employeeId).all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT * FROM employee_addresses WHERE employee_id = ? ORDER BY is_primary DESC, address_type").bind(employeeId).all<Record<string, unknown>>(),
+    c.env.DB.prepare(`SELECT ${LIFECYCLE_CONTACT_COLUMNS} FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY is_primary DESC, contact_type LIMIT 25`).bind(employeeId).all<Record<string, unknown>>(),
+    c.env.DB.prepare(`SELECT ${LIFECYCLE_ADDRESS_COLUMNS} FROM employee_addresses WHERE employee_id = ? ORDER BY is_primary DESC, address_type LIMIT 10`).bind(employeeId).all<Record<string, unknown>>(),
     loadOptionalOnboardingWorkspaceSection(c, { key: "documents", label: "Documents", moduleKey: "documents", moduleStatuses, permissions: ["documents.view", "documents.checklist.view", "documents.upload", "onboarding.workspace.documents.upload", "onboarding.cases.manage"], fallback: emptyOnboardingDocumentChecklist("NO_PERMISSION", "No permission to load documents."), run: () => getOnboardingDocumentChecklist(c, caseId) }),
     loadOptionalOnboardingWorkspaceSection(c, { key: "document_types", label: "Document upload types", moduleKey: "documents", moduleStatuses, permissions: ["documents.view", "documents.upload", "onboarding.workspace.documents.upload", "onboarding.cases.manage"], fallback: { ...emptyD1Result<Record<string, unknown>>(), warning: "No permission to load document upload types." }, run: () => getOnboardingWorkspaceDocumentTypes(c) }),
     loadOptionalOnboardingWorkspaceSection(c, { key: "contracts", label: "Contracts", moduleKey: "contracts", moduleStatuses, permissions: ["contracts.view", "employees.contracts.view", "onboarding.workspace.contracts.create", "onboarding.cases.manage"], fallback: emptyD1Result<Record<string, unknown>>(), run: () => c.env.DB.prepare(
@@ -984,7 +1005,7 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     c.env.DB.prepare("SELECT id, code, name, type, island_city, is_active FROM locations WHERE is_active = 1 ORDER BY name").all<Record<string, unknown>>(),
     c.env.DB.prepare("SELECT id, code, title, department_id, level_id, is_active FROM positions WHERE is_active = 1 ORDER BY title").all<Record<string, unknown>>(),
     c.env.DB.prepare("SELECT id, code, name, rank_order, is_active FROM job_levels WHERE is_active = 1 ORDER BY rank_order, name").all<Record<string, unknown>>(),
-    c.env.DB.prepare("SELECT id, employee_no, full_name, primary_department_id, primary_location_id, primary_position_id FROM employees WHERE archived_at IS NULL AND id != ? ORDER BY full_name").bind(employeeId).all<Record<string, unknown>>()
+    c.env.DB.prepare("SELECT id, employee_no, full_name, primary_department_id, primary_location_id, primary_position_id FROM employees WHERE archived_at IS NULL AND id != ? ORDER BY full_name LIMIT 250").bind(employeeId).all<Record<string, unknown>>()
   ]);
   const optionalSectionStates = {
     documents: documents.state,
@@ -1155,14 +1176,14 @@ async function refreshOffboardingChecklist(c: Context<AppBindings>, caseId: stri
 }
 
 export async function getOnboardingChecklistStatus(c: Context<AppBindings>, caseId: string) {
-  const rows = await c.env.DB.prepare("SELECT * FROM employee_onboarding_tasks WHERE onboarding_case_id = ? ORDER BY is_required DESC, task_group, created_at").bind(caseId).all<Record<string, unknown>>();
+  const rows = await c.env.DB.prepare(`SELECT ${ONBOARDING_TASK_COLUMNS} FROM employee_onboarding_tasks WHERE onboarding_case_id = ? ORDER BY is_required DESC, task_group, created_at LIMIT 200`).bind(caseId).all<Record<string, unknown>>();
   const tasks = rows.results;
   const blockers = tasks.filter((task) => Number(task.is_required ?? task.required ?? 1) === 1 && !["COMPLETED", "WAIVED", "NOT_REQUIRED"].includes(String(task.task_status ?? "")));
   return { tasks, total: tasks.length, completed: tasks.filter((task) => task.task_status === "COMPLETED").length, blockers };
 }
 
 async function getOffboardingChecklistStatus(c: Context<AppBindings>, caseId: string) {
-  const rows = await c.env.DB.prepare("SELECT * FROM employee_offboarding_tasks WHERE offboarding_case_id = ? ORDER BY is_required DESC, task_group, created_at").bind(caseId).all<Record<string, unknown>>();
+  const rows = await c.env.DB.prepare(`SELECT ${OFFBOARDING_TASK_COLUMNS} FROM employee_offboarding_tasks WHERE offboarding_case_id = ? ORDER BY is_required DESC, task_group, created_at LIMIT 200`).bind(caseId).all<Record<string, unknown>>();
   const tasks = rows.results;
   const blockers = tasks.filter((task) => Number(task.is_required ?? 1) === 1 && !["COMPLETED", "WAIVED", "NOT_REQUIRED"].includes(String(task.task_status ?? "")));
   return { tasks, total: tasks.length, completed: tasks.filter((task) => task.task_status === "COMPLETED").length, blockers };
@@ -1984,7 +2005,7 @@ async function getOnboardingDashboardTasks(db: D1Database, caseIds: string[]) {
   if (!caseIds.length) return [] as Record<string, unknown>[];
   const placeholders = caseIds.map(() => "?").join(", ");
   const rows = await db
-    .prepare(`SELECT * FROM employee_onboarding_tasks WHERE onboarding_case_id IN (${placeholders})`)
+    .prepare(`SELECT ${ONBOARDING_TASK_COLUMNS} FROM employee_onboarding_tasks WHERE onboarding_case_id IN (${placeholders}) LIMIT 500`)
     .bind(...caseIds)
     .all<Record<string, unknown>>();
   return rows.results;
@@ -2312,8 +2333,8 @@ async function lifecycleSummary(c: Context<AppBindings>, employeeId: string) {
     c.env.DB.prepare("SELECT * FROM employee_offboarding_cases WHERE employee_id = ? ORDER BY created_at DESC LIMIT 1").bind(employeeId).first<Record<string, unknown>>(),
     c.env.DB.prepare(`SELECT ${LIFECYCLE_EVENT_COLUMNS} FROM employee_lifecycle_events WHERE employee_id = ? ORDER BY created_at DESC LIMIT 25`).bind(employeeId).all<Record<string, unknown>>()
   ]);
-  const onboardingTasks = onboarding ? (await c.env.DB.prepare("SELECT * FROM employee_onboarding_tasks WHERE onboarding_case_id = ? ORDER BY is_required DESC, task_group").bind(String(onboarding.id)).all()).results : [];
-  const offboardingTasks = offboarding ? (await c.env.DB.prepare("SELECT * FROM employee_offboarding_tasks WHERE offboarding_case_id = ? ORDER BY is_required DESC, task_group").bind(String(offboarding.id)).all()).results : [];
+  const onboardingTasks = onboarding ? (await c.env.DB.prepare(`SELECT ${ONBOARDING_TASK_COLUMNS} FROM employee_onboarding_tasks WHERE onboarding_case_id = ? ORDER BY is_required DESC, task_group LIMIT 100`).bind(String(onboarding.id)).all()).results : [];
+  const offboardingTasks = offboarding ? (await c.env.DB.prepare(`SELECT ${OFFBOARDING_TASK_COLUMNS} FROM employee_offboarding_tasks WHERE offboarding_case_id = ? ORDER BY is_required DESC, task_group LIMIT 100`).bind(String(offboarding.id)).all()).results : [];
   return { employee, onboarding, onboarding_tasks: onboardingTasks, offboarding, offboarding_tasks: offboardingTasks, events: events.results };
 }
 

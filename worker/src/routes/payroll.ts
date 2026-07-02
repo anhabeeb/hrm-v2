@@ -84,6 +84,20 @@ const PAYROLL_SUBMODULE_LABELS: Record<PayrollSubmoduleKey, string> = {
   payroll_adjustments_enabled: "Payroll Adjustments",
   payroll_reports_enabled: "Payroll Reports"
 };
+const PAYROLL_PERIOD_LIST_COLUMNS = `
+  pp.id, pp.period_month, pp.period_year, pp.start_date, pp.end_date, pp.salary_payment_date,
+  pp.status, pp.created_by_user_id, pp.approved_by_user_id, pp.approved_at,
+  pp.finalized_by_user_id, pp.finalized_at, pp.locked_by_user_id, pp.locked_at,
+  pp.finalization_note, pp.unlocked_by_user_id, pp.unlocked_at, pp.unlock_reason,
+  pp.created_at, pp.updated_at
+`;
+const PAYROLL_RUN_LIST_COLUMNS = `
+  pr.id, pr.payroll_period_id, pr.run_no, pr.status, pr.calculation_mode,
+  pr.generated_by_user_id, pr.generated_at, pr.approved_by_user_id, pr.approved_at,
+  pr.rejected_by_user_id, pr.rejected_at, pr.rejection_reason, pr.finalized_by_user_id,
+  pr.finalized_at, pr.locked_by_user_id, pr.locked_at, pr.finalization_note,
+  pr.unlocked_by_user_id, pr.unlocked_at, pr.unlock_reason, pr.notes, pr.created_at, pr.updated_at
+`;
 
 export const payrollRoutes = new Hono<AppBindings>();
 export const employeePayrollRoutes = new Hono<AppBindings>();
@@ -138,6 +152,12 @@ function bool(value: unknown, fallback = false) {
   if (typeof value === "number") return value === 1;
   if (typeof value === "string") return value === "true" || value === "1";
   return fallback;
+}
+
+function boundedPayrollLimit(value: unknown, fallback: number, max: number) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(max, Math.trunc(parsed)));
 }
 
 function has(c: Context<AppBindings>, permission: string) {
@@ -1938,8 +1958,9 @@ payrollRoutes.get("/periods", requireAnyPermission(["payroll.periods.view", "pay
   if (month) { conditions.push("period_month = ?"); params.push(Number(month)); }
   const status = readString(c.req.query("status")).toUpperCase();
   if (PERIOD_STATUSES.has(status)) { conditions.push("status = ?"); params.push(status); }
-  const rows = await c.env.DB.prepare(`SELECT * FROM payroll_periods WHERE ${conditions.join(" AND ")} ORDER BY period_year DESC, period_month DESC`).bind(...params).all();
-  return ok(c, { periods: rows.results });
+  const limit = boundedPayrollLimit(c.req.query("limit"), 100, 500);
+  const rows = await c.env.DB.prepare(`SELECT ${PAYROLL_PERIOD_LIST_COLUMNS} FROM payroll_periods pp WHERE ${conditions.join(" AND ")} ORDER BY pp.period_year DESC, pp.period_month DESC LIMIT ?`).bind(...params, limit).all();
+  return ok(c, { periods: rows.results, limit });
 });
 
 payrollRoutes.get("/periods/:id", requireAnyPermission(["payroll.periods.view", "payroll.view"]), async (c) => {
@@ -2050,10 +2071,11 @@ payrollRoutes.get("/runs", requireAnyPermission(["payroll.runs.view", "payroll.v
   if (status && RUN_STATUSES.has(status)) { conditions.push("pr.status = ?"); params.push(status); }
   const search = readString(c.req.query("search"));
   if (search) { conditions.push("(CAST(pr.run_no AS TEXT) LIKE ? OR pp.period_year LIKE ? OR pp.period_month LIKE ?)"); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+  const limit = boundedPayrollLimit(c.req.query("limit"), 100, 500);
   const rows = globalSummary
-    ? await c.env.DB.prepare(`SELECT pr.*, pp.period_month, pp.period_year, (SELECT COUNT(*) FROM payroll_employee_results pre WHERE pre.payroll_run_id = pr.id) AS employee_count, (SELECT COALESCE(SUM(total_earnings),0) FROM payroll_employee_results pre WHERE pre.payroll_run_id = pr.id) AS total_earnings, (SELECT COALESCE(SUM(total_deductions),0) FROM payroll_employee_results pre WHERE pre.payroll_run_id = pr.id) AS total_deductions, (SELECT COALESCE(SUM(net_salary),0) FROM payroll_employee_results pre WHERE pre.payroll_run_id = pr.id) AS net_salary_total FROM payroll_runs pr INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE ${conditions.join(" AND ")} ORDER BY pp.period_year DESC, pp.period_month DESC, pr.run_no DESC`).bind(...params).all()
+    ? await c.env.DB.prepare(`SELECT ${PAYROLL_RUN_LIST_COLUMNS}, pp.period_month, pp.period_year, (SELECT COUNT(*) FROM payroll_employee_results pre WHERE pre.payroll_run_id = pr.id) AS employee_count, (SELECT COALESCE(SUM(total_earnings),0) FROM payroll_employee_results pre WHERE pre.payroll_run_id = pr.id) AS total_earnings, (SELECT COALESCE(SUM(total_deductions),0) FROM payroll_employee_results pre WHERE pre.payroll_run_id = pr.id) AS total_deductions, (SELECT COALESCE(SUM(net_salary),0) FROM payroll_employee_results pre WHERE pre.payroll_run_id = pr.id) AS net_salary_total FROM payroll_runs pr INNER JOIN payroll_periods pp ON pp.id = pr.payroll_period_id WHERE ${conditions.join(" AND ")} ORDER BY pp.period_year DESC, pp.period_month DESC, pr.run_no DESC LIMIT ?`).bind(...params, limit).all()
     : await c.env.DB.prepare(
-      `SELECT pr.*, pp.period_month, pp.period_year,
+      `SELECT ${PAYROLL_RUN_LIST_COLUMNS}, pp.period_month, pp.period_year,
         COUNT(pre.id) AS employee_count,
         COALESCE(SUM(pre.total_earnings),0) AS total_earnings,
         COALESCE(SUM(pre.total_deductions),0) AS total_deductions,
@@ -2063,9 +2085,10 @@ payrollRoutes.get("/runs", requireAnyPermission(["payroll.runs.view", "payroll.v
        INNER JOIN payroll_employee_results pre ON pre.payroll_run_id = pr.id
        WHERE ${conditions.join(" AND ")} AND pre.employee_id IN (${scopedEmployeeSql})
        GROUP BY pr.id
-       ORDER BY pp.period_year DESC, pp.period_month DESC, pr.run_no DESC`
-    ).bind(...params, ...scope.params).all();
-  return ok(c, { runs: rows.results });
+       ORDER BY pp.period_year DESC, pp.period_month DESC, pr.run_no DESC
+       LIMIT ?`
+    ).bind(...params, ...scope.params, limit).all();
+  return ok(c, { runs: rows.results, limit });
 });
 
 payrollRoutes.get("/runs/:id", requireAnyPermission(["payroll.runs.view", "payroll.view"]), async (c) => {

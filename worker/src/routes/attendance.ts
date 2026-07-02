@@ -65,6 +65,12 @@ function bool(value: unknown, fallback = false) {
   return fallback;
 }
 
+function boundedRouteLimit(value: unknown, fallback: number, max: number) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(max, Math.trunc(parsed)));
+}
+
 function has(c: Context<AppBindings>, permission: string) {
   return c.get("currentUser").permissions.includes(permission);
 }
@@ -135,7 +141,15 @@ async function publishAttendance(c: Context<AppBindings>, event: "attendance.cha
 }
 
 function recordColumns() {
-  return `adr.*, e.employee_no, e.full_name AS employee_name,
+  return `adr.id, adr.employee_id, adr.attendance_date, adr.status, adr.calculated_status, adr.final_status,
+    adr.first_clock_in, adr.last_clock_out, adr.total_work_minutes, adr.late_minutes, adr.early_checkout_minutes,
+    adr.missed_punch, adr.missing_clock_in, adr.missing_clock_out, adr.is_absent, adr.is_late,
+    adr.is_early_leave, adr.is_half_day, adr.is_leave_day, adr.is_public_holiday, adr.is_day_off,
+    adr.source, adr.payroll_impact_json, adr.payroll_impact_status, adr.payroll_impact_minutes,
+    adr.payroll_impact_days, adr.payroll_impact_reason, adr.leave_request_id, adr.roster_assignment_id,
+    adr.roster_shift_id, adr.correction_status, adr.locked_for_payroll, adr.generated_by, adr.generated_at,
+    adr.metadata_json, adr.notes, adr.created_by_user_id, adr.updated_by_user_id, adr.created_at, adr.updated_at,
+    e.employee_no, e.full_name AS employee_name,
     e.primary_department_id AS department_id, d.name AS department_name,
     e.primary_position_id AS position_id, p.title AS position_title,
     e.primary_location_id AS location_id, l.name AS location_name`;
@@ -147,6 +161,7 @@ function leaveStatusExpression() {
 
 async function leaveCalendarRows(c: Context<AppBindings>, input: { employeeId?: string; from?: string; to?: string }) {
   const params: BindValue[] = [];
+  const limit = boundedRouteLimit(c.req.query("leave_overlay_limit"), 2500, 5000);
   const conditions = [
     "lr.status = 'APPROVED'",
     "NOT EXISTS (SELECT 1 FROM attendance_daily_records adr WHERE adr.employee_id = lr.employee_id AND adr.attendance_date = lrd.leave_date)"
@@ -198,8 +213,9 @@ async function leaveCalendarRows(c: Context<AppBindings>, input: { employeeId?: 
      LEFT JOIN positions p ON p.id = e.primary_position_id
      LEFT JOIN locations l ON l.id = e.primary_location_id
      WHERE ${conditions.join(" AND ")}
-     ORDER BY e.employee_no, lrd.leave_date`
-  ).bind(...params).all<Record<string, unknown>>();
+     ORDER BY e.employee_no, lrd.leave_date
+     LIMIT ?`
+  ).bind(...params, limit).all<Record<string, unknown>>();
   return rows.results;
 }
 
@@ -447,6 +463,7 @@ attendanceRoutes.get("/records", requirePermission("attendance.view"), async (c)
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
   conditions.push(scope.sql);
   params.push(...scope.params);
+  const limit = boundedRouteLimit(c.req.query("limit"), 100, 500);
   const rows = await c.env.DB
     .prepare(
       `SELECT ${recordColumns()}
@@ -456,11 +473,12 @@ attendanceRoutes.get("/records", requirePermission("attendance.view"), async (c)
        LEFT JOIN positions p ON p.id = e.primary_position_id
        LEFT JOIN locations l ON l.id = e.primary_location_id
        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
-       ORDER BY adr.attendance_date DESC, e.employee_no`
+       ORDER BY adr.attendance_date DESC, e.employee_no
+       LIMIT ?`
     )
-    .bind(...params)
+    .bind(...params, limit)
     .all();
-  return ok(c, { records: rows.results });
+  return ok(c, { records: rows.results, limit });
 });
 
 attendanceRoutes.get("/daily", requireAnyPermission(["attendance.view", "attendance.logs.view"]), async (c) => {
@@ -468,6 +486,7 @@ attendanceRoutes.get("/daily", requireAnyPermission(["attendance.view", "attenda
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
   conditions.push(scope.sql);
   params.push(...scope.params);
+  const limit = boundedRouteLimit(c.req.query("limit"), 100, 500);
   const rows = await c.env.DB
     .prepare(
       `SELECT ${recordColumns()}
@@ -477,11 +496,12 @@ attendanceRoutes.get("/daily", requireAnyPermission(["attendance.view", "attenda
        LEFT JOIN positions p ON p.id = e.primary_position_id
        LEFT JOIN locations l ON l.id = e.primary_location_id
        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
-       ORDER BY adr.attendance_date DESC, e.employee_no`
+       ORDER BY adr.attendance_date DESC, e.employee_no
+       LIMIT ?`
     )
-    .bind(...params)
+    .bind(...params, limit)
     .all();
-  return ok(c, { records: rows.results, daily_records: rows.results });
+  return ok(c, { records: rows.results, daily_records: rows.results, limit });
 });
 
 attendanceRoutes.post("/daily/refresh", requireAnyPermission(["attendance.daily.refresh", "attendance.manage"]), async (c) => {
@@ -617,7 +637,8 @@ async function refreshDailyAttendanceRecord(c: Context<AppBindings>, employeeId:
     `SELECT punch_time, punch_type, source FROM attendance_raw_logs WHERE employee_id = ? AND punch_time BETWEEN ? AND ?
      UNION ALL
      SELECT log_time AS punch_time, log_type AS punch_type, source FROM attendance_logs WHERE employee_id = ? AND is_archived = 0 AND log_time BETWEEN ? AND ?
-     ORDER BY punch_time`
+     ORDER BY punch_time
+     LIMIT 256`
   ).bind(employeeId, dayStart, dayEnd, employeeId, dayStart, dayEnd).all<Record<string, unknown>>()).results;
   if (!logs.length) return null;
   const inLogs = logs.filter((row) => row.punch_type === "IN" || row.punch_type === "UNKNOWN");
@@ -677,6 +698,7 @@ attendanceRoutes.get("/calendar", requirePermission("attendance.view"), async (c
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
   conditions.push(scope.sql);
   params.push(...scope.params);
+  const limit = boundedRouteLimit(c.req.query("limit"), 2500, 5000);
   const month = readString(c.req.query("month"));
   let overlayFrom = readString(c.req.query("date_from"));
   let overlayTo = readString(c.req.query("date_to"));
@@ -686,7 +708,7 @@ attendanceRoutes.get("/calendar", requirePermission("attendance.view"), async (c
     overlayFrom = `${month}-01`;
     overlayTo = `${month}-31`;
   }
-  const rows = await c.env.DB.prepare(`SELECT ${recordColumns()} FROM attendance_daily_records adr INNER JOIN employees e ON e.id = adr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY e.employee_no, adr.attendance_date`).bind(...params).all();
+  const rows = await c.env.DB.prepare(`SELECT ${recordColumns()} FROM attendance_daily_records adr INNER JOIN employees e ON e.id = adr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY e.employee_no, adr.attendance_date LIMIT ?`).bind(...params, limit).all();
   const leaveRows = await leaveCalendarRows(c, { from: overlayFrom, to: overlayTo });
   return ok(c, { calendar: [...rows.results, ...leaveRows].sort((a, b) => String(a.employee_no ?? "").localeCompare(String(b.employee_no ?? "")) || String(a.attendance_date ?? "").localeCompare(String(b.attendance_date ?? ""))) });
 });
@@ -722,7 +744,18 @@ function readDeviceInput(body: Record<string, unknown>, existing?: Record<string
 }
 
 attendanceRoutes.get("/devices", requireAnyPermission(["attendance.devices.view", "attendance.devices.manage", "attendance.view"]), async (c) => {
-  const rows = await c.env.DB.prepare("SELECT ad.*, l.name AS location_name FROM attendance_devices ad LEFT JOIN locations l ON l.id = ad.location_id ORDER BY ad.status, ad.name").all();
+  const rows = await c.env.DB.prepare(
+    `SELECT ad.id, ad.name, ad.device_code, ad.location_id, ad.vendor, ad.model, ad.type,
+            ad.ip_address, ad.port, ad.serial_number, ad.timezone, ad.device_mode, ad.direction_mode,
+            ad.external_device_id, ad.status, ad.health_status, ad.last_sync_at, ad.last_seen_at,
+            ad.last_error_at, ad.last_error_message, ad.sync_enabled, ad.allow_csv_import,
+            ad.allow_bridge_import, ad.allow_push_adms, ad.notes, ad.archived_at, ad.created_at,
+            ad.updated_at, l.name AS location_name
+       FROM attendance_devices ad
+       LEFT JOIN locations l ON l.id = ad.location_id
+      ORDER BY ad.status, ad.name
+      LIMIT 200`
+  ).all();
   return ok(c, { devices: rows.results });
 });
 
@@ -971,7 +1004,13 @@ attendanceRoutes.post("/logs/:id/archive", requireAnyPermission(["attendance.log
 });
 
 function correctionColumns() {
-  return `acr.*, e.employee_no, e.full_name AS employee_name, d.name AS department_name, p.title AS position_title, l.name AS location_name, requester.name AS requested_by_name, reviewer.name AS reviewed_by_name`;
+  return `acr.id, acr.employee_id, acr.attendance_date, acr.current_record_id, acr.request_type,
+    acr.current_values_json, acr.requested_values_json, acr.requested_clock_in, acr.requested_clock_out,
+    acr.requested_status, acr.reason, acr.status, acr.requested_by_user_id, acr.reviewed_by_user_id,
+    acr.reviewer_user_id, acr.reviewed_at, acr.review_note, acr.reviewer_note, acr.metadata_json,
+    acr.created_at, acr.updated_at, e.employee_no, e.full_name AS employee_name, d.name AS department_name,
+    p.title AS position_title, l.name AS location_name, requester.name AS requested_by_name,
+    reviewer.name AS reviewed_by_name`;
 }
 
 async function getCorrection(c: Context<AppBindings>, id: string) {
@@ -1001,8 +1040,9 @@ attendanceRoutes.get("/corrections", requireAnyPermission(["attendance.correctio
     }
   }
   addRange(c, conditions, params, "date", "acr.attendance_date");
-  const rows = await c.env.DB.prepare(`SELECT ${correctionColumns()} FROM attendance_correction_requests acr INNER JOIN employees e ON e.id = acr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id LEFT JOIN users requester ON requester.id = acr.requested_by_user_id LEFT JOIN users reviewer ON reviewer.id = acr.reviewed_by_user_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY acr.created_at DESC`).bind(...params).all();
-  return ok(c, { corrections: rows.results });
+  const limit = boundedRouteLimit(c.req.query("limit"), 100, 500);
+  const rows = await c.env.DB.prepare(`SELECT ${correctionColumns()} FROM attendance_correction_requests acr INNER JOIN employees e ON e.id = acr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id LEFT JOIN users requester ON requester.id = acr.requested_by_user_id LEFT JOIN users reviewer ON reviewer.id = acr.reviewed_by_user_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY acr.created_at DESC LIMIT ?`).bind(...params, limit).all();
+  return ok(c, { corrections: rows.results, limit });
 });
 
 attendanceRoutes.get("/corrections/:id", requireAnyPermission(["attendance.corrections.view", "attendance.corrections.review", "attendance.view", "attendance.corrections.manage", "attendance.manage"]), async (c) => {
@@ -1273,8 +1313,9 @@ attendanceRoutes.get("/reports/export.csv", requirePermission("attendance.report
 
 employeeAttendanceRoutes.get("/:employeeId/attendance/records", requireAnyPermission(["employees.attendance.view", "attendance.view"]), async (c) => {
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), routeParam(c, "employeeId"), "attendance", "view"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
-  const rows = await c.env.DB.prepare(`SELECT ${recordColumns()} FROM attendance_daily_records adr INNER JOIN employees e ON e.id = adr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id WHERE adr.employee_id = ? ORDER BY adr.attendance_date DESC`).bind(routeParam(c, "employeeId")).all();
-  return ok(c, { records: rows.results });
+  const limit = boundedRouteLimit(c.req.query("limit"), 180, 500);
+  const rows = await c.env.DB.prepare(`SELECT ${recordColumns()} FROM attendance_daily_records adr INNER JOIN employees e ON e.id = adr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id WHERE adr.employee_id = ? ORDER BY adr.attendance_date DESC LIMIT ?`).bind(routeParam(c, "employeeId"), limit).all();
+  return ok(c, { records: rows.results, limit });
 });
 
 employeeAttendanceRoutes.get("/:employeeId/attendance/raw-logs", requireAnyPermission(["employees.attendance.view", "attendance.view"]), async (c) => {
@@ -1297,7 +1338,8 @@ async function getEmployeeAttendanceCalendar(c: Context<AppBindings>, employeeId
   const params: BindValue[] = [employeeId];
   if (from) { conditions.push("adr.attendance_date >= ?"); params.push(from); }
   if (to) { conditions.push("adr.attendance_date <= ?"); params.push(to); }
-  const rows = await c.env.DB.prepare(`SELECT ${recordColumns()} FROM attendance_daily_records adr INNER JOIN employees e ON e.id = adr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id WHERE ${conditions.join(" AND ")} ORDER BY adr.attendance_date`).bind(...params).all();
+  const limit = boundedRouteLimit(c.req.query("limit"), 370, 1500);
+  const rows = await c.env.DB.prepare(`SELECT ${recordColumns()} FROM attendance_daily_records adr INNER JOIN employees e ON e.id = adr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id WHERE ${conditions.join(" AND ")} ORDER BY adr.attendance_date LIMIT ?`).bind(...params, limit).all();
   const leaveRows = await leaveCalendarRows(c, { employeeId, from, to });
   return [...rows.results, ...leaveRows].sort((a, b) => String(a.attendance_date ?? "").localeCompare(String(b.attendance_date ?? "")));
 }

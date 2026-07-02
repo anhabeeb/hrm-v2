@@ -28,6 +28,26 @@ const CONTACT_TYPES = new Set<ContactType>(["PERSONAL_PHONE", "WORK_PHONE", "PER
 const ONBOARDING_STATUSES = new Set<OnboardingStatus>(["PENDING", "COMPLETED", "SKIPPED", "BLOCKED"]);
 const EMPLOYEE_LIST_DEFAULT_LIMIT = 250;
 const EMPLOYEE_LIST_MAX_LIMIT = 500;
+const EMPLOYEE_CONTACT_COLUMNS = `
+  id, employee_id, contact_type, value, country_code, relationship, is_primary,
+  emergency_priority, is_sensitive, notes, archived_at, created_at, updated_at
+`;
+const EMPLOYEE_ONBOARDING_TASK_COLUMNS = `
+  id, onboarding_case_id, employee_id, task_key, title, task_name, description, module,
+  task_group, source_module, source_reference_type, source_reference_id, status, task_status,
+  required, is_required, assigned_to_user_id, assigned_role_id, due_date, completed_by_user_id,
+  completed_at, waived_by_user_id, waived_at, waiver_reason, blocked_reason, notes,
+  created_at, updated_at, metadata_json
+`;
+const EMPLOYEE_OVERVIEW_AUDIT_COLUMNS = `
+  id, actor_user_id, action, module, entity_type, entity_id, reason, created_at
+`;
+const EMPLOYEE_STATUS_COLUMNS = `
+  id, key, name, description, is_protected, is_active, can_login, include_in_payroll,
+  include_in_roster, show_in_active_lists, requires_exit_date, requires_exit_reason,
+  requires_final_settlement, requires_document_clearance, requires_asset_clearance,
+  sort_order, created_at, updated_at
+`;
 
 function boundedEmployeeListLimit(value: unknown) {
   const parsed = Number(value ?? EMPLOYEE_LIST_DEFAULT_LIMIT);
@@ -1259,7 +1279,7 @@ async function createOnboardingTasks(db: AppBindings["Bindings"]["DB"], employee
 }
 
 employeeRoutes.get("/settings/statuses", requirePermission("employees.view"), async (c) => {
-  const rows = await c.env.DB.prepare("SELECT * FROM employee_statuses ORDER BY sort_order, name").all<EmployeeStatusRow>();
+  const rows = await c.env.DB.prepare(`SELECT ${EMPLOYEE_STATUS_COLUMNS} FROM employee_statuses ORDER BY sort_order, name LIMIT 100`).all<EmployeeStatusRow>();
   return okCached(c, { statuses: rows.results.map(toStatus) }, 60, `employee-statuses-${rows.results.length}`);
 });
 
@@ -1618,10 +1638,10 @@ employeeRoutes.get("/:id/overview", requirePermission("employees.view"), async (
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   }
   const [tasks, contacts, audit] = await Promise.all([
-    c.env.DB.prepare("SELECT * FROM employee_onboarding_tasks WHERE employee_id = ? ORDER BY required DESC, created_at").bind(employee.id).all(),
-    c.env.DB.prepare("SELECT * FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY contact_type, emergency_priority").bind(employee.id).all<ContactRow>(),
+    c.env.DB.prepare(`SELECT ${EMPLOYEE_ONBOARDING_TASK_COLUMNS} FROM employee_onboarding_tasks WHERE employee_id = ? ORDER BY required DESC, created_at LIMIT 100`).bind(employee.id).all(),
+    c.env.DB.prepare(`SELECT ${EMPLOYEE_CONTACT_COLUMNS} FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY contact_type, emergency_priority LIMIT 25`).bind(employee.id).all<ContactRow>(),
     c.env.DB.prepare(
-      `SELECT * FROM audit_logs
+      `SELECT ${EMPLOYEE_OVERVIEW_AUDIT_COLUMNS} FROM audit_logs
        WHERE (module = 'employees' AND entity_id = ?)
            OR (module = 'leave' AND entity_id IN (SELECT id FROM leave_requests WHERE employee_id = ?))
             OR (module = 'attendance' AND (
@@ -2002,7 +2022,7 @@ employeeRoutes.get("/:id/contacts", requirePermission("employees.contacts.view")
   if (!employee) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   }
-  const rows = await c.env.DB.prepare("SELECT * FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY contact_type, emergency_priority, created_at").bind(employee.id).all<ContactRow>();
+  const rows = await c.env.DB.prepare(`SELECT ${EMPLOYEE_CONTACT_COLUMNS} FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY contact_type, emergency_priority, created_at LIMIT 50`).bind(employee.id).all<ContactRow>();
   return ok(c, { contacts: rows.results.map((contact) => toContact(contact, hasPermission(c, "employees.sensitive.view"))) });
 });
 
@@ -2107,7 +2127,7 @@ employeeRoutes.get("/:id/onboarding", requirePermission("employees.view"), async
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), c.req.param("id"), "employees", "view"))) {
     return fail(c, 404, "NOT_FOUND", "Employee was not found.");
   }
-  const rows = await c.env.DB.prepare("SELECT * FROM employee_onboarding_tasks WHERE employee_id = ? ORDER BY required DESC, created_at").bind(c.req.param("id")).all();
+  const rows = await c.env.DB.prepare(`SELECT ${EMPLOYEE_ONBOARDING_TASK_COLUMNS} FROM employee_onboarding_tasks WHERE employee_id = ? ORDER BY required DESC, created_at LIMIT 100`).bind(c.req.param("id")).all();
   return ok(c, { onboarding: rows.results });
 });
 

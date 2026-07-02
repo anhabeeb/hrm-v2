@@ -16,6 +16,15 @@ type BindValue = string | number | null;
 type StoredStatus = "ACTIVE" | "ARCHIVED" | "SOFT_DELETED";
 type DisplayStatus = "VALID" | "EXPIRING_SOON" | "EXPIRED" | "ARCHIVED" | "SOFT_DELETED";
 
+const DOCUMENT_CATEGORY_COLUMNS = "id, name, description, sort_order, is_active, created_at, updated_at";
+const DOCUMENT_TYPE_LIST_COLUMNS = `
+  dt.id, dt.category_id, dc.name AS category_name, dt.code, dt.name, dt.description,
+  dt.is_sensitive, dt.is_active, dt.expiring_soon_days, dt.allowed_file_types_json,
+  dt.max_file_size_mb, dt.allow_multiple_files, dt.requires_expiry_date,
+  dt.requires_issue_date, dt.requires_document_number, dt.retention_rule_json,
+  dt.sort_order, dt.created_at, dt.updated_at
+`;
+
 interface DocumentCategoryRow {
   id: string;
   name: string;
@@ -476,8 +485,8 @@ async function listRegistry(c: Context<AppBindings>) {
 }
 
 documentRoutes.get("/categories", requirePermission("documents.view"), async (c) => {
-  const rows = await c.env.DB.prepare("SELECT * FROM document_categories ORDER BY is_active DESC, sort_order, name").all<DocumentCategoryRow>();
-  return ok(c, { categories: rows.results.map(toCategory) });
+  const rows = await c.env.DB.prepare(`SELECT ${DOCUMENT_CATEGORY_COLUMNS} FROM document_categories ORDER BY is_active DESC, sort_order, name LIMIT 200`).all<DocumentCategoryRow>();
+  return ok(c, { categories: rows.results.map(toCategory), limit: 200 });
 });
 
 documentRoutes.post("/categories", requirePermission("documents.settings.manage"), async (c) => {
@@ -520,8 +529,8 @@ documentRoutes.post("/categories/:id/enable", requirePermission("documents.setti
 documentRoutes.post("/categories/:id/disable", requirePermission("documents.settings.manage"), (c) => categoryActive(c, 0));
 
 documentRoutes.get("/types", requirePermission("documents.view"), async (c) => {
-  const rows = await c.env.DB.prepare("SELECT dt.*, dc.name AS category_name FROM document_types dt LEFT JOIN document_categories dc ON dc.id = dt.category_id ORDER BY dt.is_active DESC, dt.sort_order, dt.name").all<DocumentTypeRow>();
-  return ok(c, { document_types: rows.results.map(toType) });
+  const rows = await c.env.DB.prepare(`SELECT ${DOCUMENT_TYPE_LIST_COLUMNS} FROM document_types dt LEFT JOIN document_categories dc ON dc.id = dt.category_id ORDER BY dt.is_active DESC, dt.sort_order, dt.name LIMIT 500`).all<DocumentTypeRow>();
+  return ok(c, { document_types: rows.results.map(toType), limit: 500 });
 });
 
 documentRoutes.get("/types/:id", requirePermission("documents.view"), async (c) => {
