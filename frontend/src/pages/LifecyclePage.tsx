@@ -1204,31 +1204,6 @@ function readinessPillTone(status: string): "neutral" | "success" | "warning" | 
   return "info";
 }
 
-function OnboardingReadinessPills({ workspace, readiness, tasks }: { workspace: Row; readiness: Row; tasks: Row[] }) {
-  const modules = asRow(workspace.module_statuses);
-  const pillRows = [
-    { key: "employee_data", label: "Employee Data", status: taskStatusForKeys(tasks, ["personal_info", "contact_info", "job_assignment"]) },
-    { key: "documents", label: "Documents", status: modules.document_compliance === false ? "Disabled" : readinessStatusLabel(asRow(readiness.documents).status ?? taskStatusForKeys(tasks, ["documents"])) },
-    { key: "contract", label: "Contract", status: modules.contracts === false ? "Disabled" : readinessStatusLabel(asRow(readiness.contract).status ?? taskStatusForKeys(tasks, ["contract"])) },
-    { key: "payroll", label: "Payroll", status: modules.payroll === false ? "Disabled" : asRow(readiness.payroll).ready ? "Complete" : taskStatusForKeys(tasks, ["payroll_profile", "payment_method", "pension_profile"]) },
-    { key: "user_account", label: "User Account", status: modules.self_service === false ? "Disabled" : asRow(readiness.user_access).ready ? "Complete" : taskStatusForKeys(tasks, ["user_access"]) },
-    { key: "approvals", label: "Approvals", status: modules.approvals === false ? "Disabled" : taskStatusForKeys(tasks, ["activation_approval"]) },
-    ...(modules.assets_uniforms === false ? [] : [{ key: "assets_uniforms", label: "Assets / Uniforms", status: taskStatusForKeys(tasks, ["assets_uniforms"]) }])
-  ];
-  return (
-    <div className="flex flex-wrap gap-2" data-onboarding-readiness-pills>
-      {pillRows.map((pill) => (
-        <span key={pill.key} className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${readinessPillTone(pill.status) === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : readinessPillTone(pill.status) === "danger" ? "border-red-200 bg-red-50 text-red-700" : readinessPillTone(pill.status) === "warning" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
-          {pill.status === "Complete" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-          <span>{pill.label}</span>
-          <span className="text-slate-500">/</span>
-          <span>{pill.status}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
 function onboardingReadinessState(rowCase: Row, readiness: Row, tasks: Row[]) {
   if (rowCase.onboarding_status === "ACTIVATED" || rowCase.activation_status === "ACTIVATED") return "Activated";
   if (readiness.can_activate === true) return "Ready for Activation";
@@ -1317,18 +1292,97 @@ function workspaceContactValue(workspace: Row, matchers: string[], employeeKeys:
 }
 
 function OnboardingEmployeeSummaryRow({ label, value }: { label: string; value: unknown }) {
+  const display = displayText(value);
   return (
-    <div className="grid grid-cols-[94px_minmax(0,1fr)] gap-3 border-b border-slate-100 py-2 last:border-0">
+    <div className="grid min-w-0 grid-cols-[88px_minmax(0,1fr)] gap-2 border-b border-slate-100 py-1.5 last:border-0">
       <span className="text-xs font-medium text-slate-500">{label}</span>
-      <span className="min-w-0 break-words text-sm font-medium text-slate-800">{displayText(value)}</span>
+      <span className="min-w-0 truncate text-sm font-medium text-slate-800" title={display}>{display}</span>
     </div>
   );
+}
+
+function formatOnboardingModuleLabel(value: string) {
+  const key = value.trim().toLowerCase();
+  const normalizedKey = key
+    .replace(/&/g, "and")
+    .replace(/[\s/-]+/g, "_")
+    .replace(/_and_/g, "_")
+    .replace(/__+/g, "_");
+  const labels: Record<string, string> = {
+    assets_uniforms: "Assets & Uniforms",
+    bank_loans: "Bank loans",
+    custom_deductions: "Custom deductions",
+    document_compliance: "Document compliance",
+    documents: "Documents",
+    final_settlement: "Final settlement",
+    payment_institutions: "Payment institutions",
+    payment_methods: "Payment methods",
+    self_service: "Self-service",
+    zkteco_attendance: "ZKTeco attendance"
+  };
+  return labels[normalizedKey] ?? labels[key] ?? normalizedKey.split("_").filter(Boolean).map((part) => part === "zk" || part === "zkteco" ? "ZKTeco" : part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function onboardingStatusCategory(value: unknown) {
+  const label = readinessStatusLabel(value);
+  if (label === "Complete") return "Complete";
+  if (label === "Not Required") return "Not Required";
+  if (label === "Disabled") return "Disabled";
+  if (label === "Blocked") return "Blocked";
+  if (label === "No Permission") return "No Permission";
+  return "Missing";
+}
+
+function summarizeReadinessRows(rows: Array<{ status: unknown }>) {
+  return rows.reduce((summary, row) => {
+    const category = onboardingStatusCategory(row.status);
+    summary[category] = (summary[category] ?? 0) + 1;
+    return summary;
+  }, {} as Record<string, number>);
+}
+
+function attentionReadinessRows(rows: Array<{ label: string; status: unknown; tab: OnboardingWorkspaceTab }>) {
+  return rows.filter((row) => !["Complete", "Not Required", "Disabled"].includes(onboardingStatusCategory(row.status)));
+}
+
+function onboardingModuleStateRows(workspace: Row) {
+  const moduleRows = Object.entries(asRow(workspace.module_statuses)).map(([key, value]) => ({
+    key,
+    label: formatOnboardingModuleLabel(key),
+    status: value === false ? "Disabled" : "Enabled"
+  }));
+  const optionalRows = Object.entries(asRow(asRow(workspace.sections).optional_section_states)).map(([key, stateValue]) => {
+    const state = asRow(stateValue);
+    return {
+      key: `optional_${key}`,
+      label: formatOnboardingModuleLabel(String(state.label ?? key)),
+      status: optionalSectionTitle(state)
+    };
+  });
+  const seen = new Set<string>();
+  return [...moduleRows, ...optionalRows]
+    .filter((row) => {
+      const key = row.label.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function onboardingModuleStateSummary(rows: Array<{ status: string }>) {
+  const enabled = rows.filter((row) => row.status === "Enabled" || row.status === "Complete").length;
+  const notRequired = rows.filter((row) => row.status === "Not required" || row.status === "Not Required").length;
+  const disabled = rows.filter((row) => row.status === "Disabled").length;
+  return { enabled, notRequired, disabled };
 }
 
 function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReason }: { workspace: Row; caseId: string; onClose: () => void; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void }) {
   const { token } = useAuth();
   const alerts = useAlert();
   const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
+  const [moduleStatesOpen, setModuleStatesOpen] = useState(false);
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   async function save(action: () => Promise<unknown>, success: string) {
     if (!token) return;
     try {
@@ -1393,36 +1447,37 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const email = workspaceContactValue(workspace, ["PERSONAL_EMAIL", "EMAIL", "WORK_EMAIL"], ["email", "personal_email", "work_email"]);
   const activeSectionComplete = sectionStatus(activeTab);
   const showReadyState = canActivate && visibleBlockers.length === 0;
+  const attentionRows = attentionReadinessRows(readinessRows);
+  const moduleStateRows = onboardingModuleStateRows(workspace);
+  const moduleSummary = onboardingModuleStateSummary(moduleStateRows);
   return (
     <div className="OnboardingEmployeePopupLayout flex h-full min-h-0 flex-col overflow-hidden bg-slate-50" data-onboarding-employee-popup-layout>
       <header className="onboarding-popup-header shrink-0 border-b bg-white px-4 py-3 sm:px-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 max-w-full overflow-hidden">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="min-w-0 max-w-full truncate text-lg font-semibold text-slate-950 sm:text-xl">{employeeName}</h2>
               <Badge tone="info">{employeeType}</Badge>
               <StatusBadge value={rowCase.onboarding_status} />
-              <StatusBadge value={rowCase.activation_status} />
               <Badge tone={canActivate ? "success" : visibleBlockers.length ? "danger" : "warning"}>{readinessState}</Badge>
             </div>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span>{employeeCode}</span>
-              <span>Joining {displayText(employee.joining_date, "Not set")}</span>
-              <span>{displayText(employee.department_name, "Department not set")}</span>
-              <span>{employeeTitle}</span>
-              <span>{displayText(employee.employment_type, "Employment type not set")}</span>
-              {rowCase.owner_name || rowCase.assignee_name ? <span>Owner {displayText(rowCase.owner_name ?? rowCase.assignee_name)}</span> : null}
+            <div className="mt-1 grid min-w-0 max-w-full gap-x-3 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
+              <span className="min-w-0 truncate" title={employeeCode}>{employeeCode}</span>
+              <span className="min-w-0 truncate" title={displayText(employee.joining_date, "Not set")}>Joining {displayText(employee.joining_date, "Not set")}</span>
+              <span className="min-w-0 truncate" title={displayText(employee.department_name, "Department not set")}>{displayText(employee.department_name, "Department not set")}</span>
+              <span className="min-w-0 truncate" title={employeeTitle}>{employeeTitle}</span>
+              {rowCase.owner_name || rowCase.assignee_name ? <span className="min-w-0 truncate" title={displayText(rowCase.owner_name ?? rowCase.assignee_name)}>Owner {displayText(rowCase.owner_name ?? rowCase.assignee_name)}</span> : null}
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+          <Button variant="ghost" size="sm" className="shrink-0" onClick={onClose}>Close</Button>
         </div>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[300px_minmax(0,1fr)_340px] xl:grid-cols-[320px_minmax(0,1fr)_360px]">
-        <aside className="onboarding-employee-summary-panel min-w-0 space-y-4 lg:sticky lg:top-0 lg:max-h-[calc(90vh-9rem)] lg:overflow-y-auto" aria-label="Employee summary">
-          <Panel className="p-4">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4">
+      <div className="grid min-w-0 max-w-full gap-4 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+        <aside className="onboarding-employee-summary-panel min-w-0 max-w-full space-y-3 overflow-hidden lg:sticky lg:top-0 lg:max-h-[calc(90vh-9rem)] lg:overflow-y-auto" aria-label="Employee summary">
+          <Panel className="min-w-0 overflow-hidden p-3">
             <div className="flex items-start gap-3">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-slate-100 text-base font-semibold text-slate-700">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-slate-100 text-sm font-semibold text-slate-700">
                 {employeePhoto ? <img src={employeePhoto} alt={`${employeeName} profile`} className="h-full w-full object-cover" /> : employeeInitials(employee)}
               </div>
               <div className="min-w-0">
@@ -1446,7 +1501,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <OnboardingEmployeeSummaryRow label="Location" value={employee.location_name ?? employee.primary_location_name} />
             </div>
           </Panel>
-          <nav aria-label="Onboarding setup sections" className="rounded-lg border bg-white p-2 shadow-panel" data-onboarding-section-sidebar>
+          <nav aria-label="Onboarding setup sections" className="min-w-0 overflow-hidden rounded-lg border bg-white p-2 shadow-panel" data-onboarding-section-sidebar>
             <div className="px-2 pb-2 pt-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Setup sections</p>
               <p className="mt-1 text-xs text-muted-foreground">{canActivate ? "Ready to activate" : "Complete required validator items"}</p>
@@ -1465,20 +1520,17 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
             </div>
           </nav>
         </aside>
-        <main className="onboarding-main-workspace min-w-0 space-y-4" aria-label="Onboarding workspace">
-          <Panel className="p-4">
+        <main className="onboarding-main-workspace min-w-0 max-w-full space-y-4 overflow-hidden" aria-label="Onboarding workspace">
+          <Panel className="min-w-0 overflow-hidden p-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current section</p>
-                <h3 className="mt-1 text-base font-semibold text-slate-950">{activeTab}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <h3 className="mt-1 truncate text-base font-semibold text-slate-950">{activeTab}</h3>
+                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                   {activeSectionComplete ? "This section is complete for activation readiness." : "Review and save this section to update readiness."}
                 </p>
               </div>
               <Badge tone={activeSectionComplete ? "success" : "warning"}>{activeSectionComplete ? "Complete" : "Needs review"}</Badge>
-            </div>
-            <div className="mt-3">
-              <OnboardingReadinessPills workspace={workspace} readiness={readiness} tasks={tasks} />
             </div>
           </Panel>
       {activeTab === "Overview" ? <OnboardingWorkspaceOverview readiness={readiness} blockers={visibleBlockers} warnings={warnings} tasks={tasks} workspace={workspace} /> : null}
@@ -1495,39 +1547,49 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       {activeTab === "Checklist" ? <ChecklistWorkspaceTable tasks={tasks} /> : null}
           {activeTab === "Approval Timeline" ? <Timeline items={asRows(workspace.events).map((event) => ({ title: text(event.action), description: text(event.new_status ?? event.note ?? event.reason), meta: text(event.created_at) }))} /> : null}
         </main>
-        <aside className="onboarding-readiness-blockers-panel min-w-0 space-y-4 lg:sticky lg:top-0 lg:max-h-[calc(90vh-9rem)] lg:overflow-y-auto" aria-label="Readiness and blockers">
-          <Panel className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
+        <aside className="onboarding-readiness-blockers-panel min-w-0 max-w-full space-y-3 overflow-hidden lg:sticky lg:top-0 lg:max-h-[calc(90vh-9rem)] lg:overflow-y-auto" aria-label="Readiness and blockers">
+          <Panel className="min-w-0 overflow-hidden p-3">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Readiness</p>
-                <h3 className="mt-1 text-base font-semibold text-slate-950">{showReadyState ? "Ready for activation" : "Activation blocked"}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{showReadyState ? "All required validator items are complete." : "Resolve the required setup items before activation."}</p>
+                <h3 className="mt-1 truncate text-base font-semibold text-slate-950">{showReadyState ? "Ready for activation" : "Activation blocked"}</h3>
+                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{showReadyState ? "All required validator items are complete." : "Resolve the required setup items before activation."}</p>
               </div>
               <Badge tone={canActivate ? "success" : visibleBlockers.length ? "danger" : "warning"}>{readinessState}</Badge>
             </div>
-            <div className="mt-4 space-y-2">
-              {readinessRows.map((row) => (
-                <Button key={row.label} variant="ghost" size="sm" className="h-auto w-full justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-left hover:bg-slate-100" onClick={() => setActiveTab(row.tab)}>
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{row.label}</span>
-                  <Badge tone={readinessPillTone(readinessStatusLabel(row.status))}>{readinessStatusLabel(row.status)}</Badge>
-                </Button>
-              ))}
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <div className="min-w-0 rounded-md border bg-slate-50 px-2.5 py-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Activation</p>
+                <p className="mt-1 truncate font-semibold text-slate-900">{canActivate ? "Allowed" : "Blocked"}</p>
+              </div>
+              <div className="min-w-0 rounded-md border bg-slate-50 px-2.5 py-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Blockers</p>
+                <p className="mt-1 truncate font-semibold text-slate-900">{visibleBlockers.length}</p>
+              </div>
+              <div className="min-w-0 rounded-md border bg-slate-50 px-2.5 py-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Missing</p>
+                <p className="mt-1 truncate font-semibold text-slate-900">{attentionRows.length}</p>
+              </div>
+              <div className="min-w-0 rounded-md border bg-slate-50 px-2.5 py-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Ready</p>
+                <p className="mt-1 truncate font-semibold text-slate-900">{showReadyState ? "Yes" : "No"}</p>
+              </div>
             </div>
           </Panel>
 
-          <Panel className="p-4">
-            <div className="flex items-center justify-between gap-3">
+          <Panel className="min-w-0 overflow-hidden p-3">
+            <div className="flex min-w-0 items-center justify-between gap-3">
               <h3 className="text-sm font-semibold">Missing items</h3>
               <Badge tone={visibleBlockers.length ? "danger" : "success"}>{visibleBlockers.length ? `${visibleBlockers.length} open` : "None"}</Badge>
             </div>
             {visibleBlockers.length ? (
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
                 {visibleBlockers.map((blocker, index) => {
                   const target = onboardingBlockerTarget(blocker);
                   return (
-                    <Button key={`${objectMessage(blocker)}-${index}`} variant="ghost" size="sm" className="h-auto w-full justify-start rounded-md border border-red-100 bg-red-50 px-3 py-2 text-left text-red-700 hover:bg-red-100" onClick={() => setActiveTab(target)}>
+                    <Button key={`${objectMessage(blocker)}-${index}`} variant="ghost" size="sm" className="h-auto w-full min-w-0 justify-start rounded-md border border-red-100 bg-red-50 px-3 py-2 text-left text-red-700 hover:bg-red-100" onClick={() => setActiveTab(target)}>
                       <AlertTriangle className="h-4 w-4 shrink-0" />
-                      <span className="min-w-0 flex-1 whitespace-normal text-sm">{objectMessage(blocker)}</span>
+                      <span className="min-w-0 flex-1 break-words text-sm">{objectMessage(blocker)}</span>
                     </Button>
                   );
                 })}
@@ -1538,7 +1600,33 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
             {warnings.length ? (
               <div className="mt-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Warnings</p>
-                <List values={warnings} />
+                <div className="max-h-32 overflow-y-auto pr-1"><List values={warnings} /></div>
+              </div>
+            ) : null}
+          </Panel>
+
+          <Panel className="min-w-0 overflow-hidden p-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto w-full min-w-0 justify-between rounded-md border bg-slate-50 px-3 py-2 text-left hover:bg-slate-100"
+              aria-expanded={moduleStatesOpen}
+              onClick={() => setModuleStatesOpen((value) => !value)}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-slate-900">Module states</span>
+                <span className="block truncate text-xs text-muted-foreground">Enabled: {moduleSummary.enabled} / Not required: {moduleSummary.notRequired} / Disabled: {moduleSummary.disabled}</span>
+              </span>
+              <span className="shrink-0 text-xs text-muted-foreground">{moduleStatesOpen ? "Hide" : "Show"}</span>
+            </Button>
+            {moduleStatesOpen ? (
+              <div className="mt-3 max-h-56 space-y-1 overflow-y-auto pr-1">
+                {moduleStateRows.map((row) => (
+                  <div key={row.key} className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-slate-100 px-2.5 py-1.5 text-sm">
+                    <span className="min-w-0 truncate text-slate-700" title={row.label}>{row.label}</span>
+                    <Badge tone={row.status === "Enabled" || row.status === "Complete" ? "success" : row.status === "Disabled" || row.status === "Not required" || row.status === "Not Required" ? "neutral" : "warning"}>{row.status}</Badge>
+                  </div>
+                ))}
               </div>
             ) : null}
           </Panel>
@@ -1546,23 +1634,30 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       </div>
       </div>
       <footer className="onboarding-popup-footer shrink-0 border-t bg-white px-4 py-3 sm:px-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground">Section forms save changes inside the workspace. Refresh readiness after completing a section.</p>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" onClick={onClose}>Close</Button>
-            <ActionTextButton intent="refresh" size="sm" onClick={() => void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Setup readiness refreshed.")}>Refresh readiness</ActionTextButton>
-            <ActionTextButton intent="submit" size="sm" onClick={() => void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.")}>Submit activation</ActionTextButton>
-            <ActionTextButton intent="approve" size="sm" onClick={() => void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved.")}>Approve activation</ActionTextButton>
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="min-w-0 truncate text-xs text-muted-foreground">Section forms save changes inside the workspace. Refresh readiness after completing a section.</p>
+          <div className="flex min-w-0 flex-wrap justify-end gap-2 sm:flex-nowrap">
+            <Button variant="outline" className="shrink-0" onClick={onClose}>Close</Button>
+            <ActionTextButton intent="refresh" size="sm" className="shrink-0" onClick={() => void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Setup readiness refreshed.")}>Refresh readiness</ActionTextButton>
             <Button
               size="sm"
               disabled={!canActivate}
               title={canActivate ? "Activate employee" : "Complete required onboarding items before activation."}
-              className={canActivate ? "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700" : "border-slate-200 bg-slate-100 text-slate-500"}
+              className={`shrink-0 ${canActivate ? "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700" : "border-slate-200 bg-slate-100 text-slate-500"}`}
               onClick={() => void runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.")}
             >
               <CheckCircle2 className="h-4 w-4" /> Activate Employee
             </Button>
-            <Button size="sm" variant="danger" onClick={() => askReason("Activate with override", (reason) => runWorkspaceAction(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason), "Employee activated with override."))}>Override activation</Button>
+            <div className="relative shrink-0">
+              <Button variant="outline" size="sm" aria-expanded={moreActionsOpen} onClick={() => setMoreActionsOpen((value) => !value)}>More actions</Button>
+              {moreActionsOpen ? (
+                <div className="absolute bottom-full right-0 z-20 mb-2 w-56 rounded-md border bg-white p-1.5 shadow-lg">
+                  <ActionTextButton intent="submit" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted."); }}>Submit activation</ActionTextButton>
+                  <ActionTextButton intent="approve" size="sm" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved."); }}>Approve activation</ActionTextButton>
+                  <Button size="sm" variant="danger" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); askReason("Activate with override", (reason) => runWorkspaceAction(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason), "Employee activated with override.")); }}>Override activation</Button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </footer>
@@ -1571,41 +1666,73 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
 }
 
 function OnboardingWorkspaceOverview({ readiness, blockers, warnings, tasks, workspace }: { readiness: Row; blockers: Row[]; warnings: Row[]; tasks: Row[]; workspace: Row }) {
+  const rows = onboardingReadinessRows(workspace, readiness, tasks);
+  const summary = summarizeReadinessRows(rows);
+  const attentionRows = attentionReadinessRows(rows);
+  const keyRows = rows.filter((row) => ["Employee profile", "Job assignment", "Required documents", "Payroll/payment setup", "User access"].includes(row.label));
+  const counters = [
+    { label: "Completed", value: summary.Complete ?? 0, tone: "success" as const },
+    { label: "Missing", value: (summary.Missing ?? 0) + (summary.Blocked ?? 0) + (summary["No Permission"] ?? 0), tone: "warning" as const },
+    { label: "Not required", value: summary["Not Required"] ?? 0, tone: "neutral" as const },
+    { label: "Disabled", value: summary.Disabled ?? 0, tone: "neutral" as const }
+  ];
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
-      <Panel className="p-3 lg:col-span-2">
-        <h3 className="text-sm font-semibold">Activation readiness</h3>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <Info label="Can activate" value={readiness.can_activate ? "Yes" : "No"} />
-          <Info label="Required tasks complete" value={asRow(readiness.checklist).required_completed ?? "-"} />
-          <Info label="Required tasks" value={asRow(readiness.checklist).required_total ?? tasks.filter((task) => task.is_required || task.required).length} />
+    <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
+      <Panel className="min-w-0 overflow-hidden p-3">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold">Setup progress summary</h3>
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">Focus on missing or blocked setup before activation.</p>
+          </div>
+          <Badge tone={readiness.can_activate ? "success" : "warning"}>{readiness.can_activate ? "Ready" : "Needs attention"}</Badge>
         </div>
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <div><p className="text-xs font-medium text-muted-foreground">Blockers</p><List values={blockers} /></div>
-          <div><p className="text-xs font-medium text-muted-foreground">Warnings</p><List values={warnings} /></div>
-        </div>
-      </Panel>
-      <Panel className="p-3">
-        <h3 className="text-sm font-semibold">Module readiness</h3>
-        <div className="mt-3 space-y-2 text-sm">
-          {Object.entries(asRow(workspace.module_statuses)).map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between gap-3">
-              <span>{title(key)}</span>
-              <Badge tone={value === false ? "neutral" : "success"}>{value === false ? "Not required" : "Enabled"}</Badge>
+        <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {counters.map((counter) => (
+            <div key={counter.label} className="min-w-0 rounded-md border bg-slate-50 px-3 py-2">
+              <p className="truncate text-[11px] font-medium uppercase tracking-wide text-slate-500">{counter.label}</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">{counter.value}</p>
             </div>
           ))}
         </div>
-        <h4 className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Optional sections</h4>
-        <div className="mt-2 space-y-2 text-sm">
-          {Object.entries(asRow(asRow(workspace.sections).optional_section_states)).map(([key, stateValue]) => {
-            const state = asRow(stateValue);
-            return (
-              <div key={key} className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate">{String(state.label ?? title(key))}</span>
-                <Badge tone={optionalSectionTone(state)}>{optionalSectionTitle(state)}</Badge>
+        <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Needs attention</p>
+            {blockers.length ? (
+              <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
+                {blockers.map((blocker, index) => (
+                  <div key={`${objectMessage(blocker)}-${index}`} className="min-w-0 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <span className="block break-words">{objectMessage(blocker)}</span>
+                  </div>
+                ))}
               </div>
-            );
-          })}
+            ) : attentionRows.length ? (
+              <div className="mt-2 space-y-2">
+                {attentionRows.map((row) => (
+                  <div key={row.label} className="flex min-w-0 items-center justify-between gap-2 rounded-md border bg-slate-50 px-3 py-2 text-sm">
+                    <span className="min-w-0 truncate">{row.label}</span>
+                    <Badge tone={readinessPillTone(readinessStatusLabel(row.status))}>{readinessStatusLabel(row.status)}</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">No setup items need attention.</p>
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Warnings</p>
+            {warnings.length ? <div className="max-h-44 overflow-y-auto pr-1"><List values={warnings} /></div> : <p className="mt-2 rounded-md border bg-slate-50 px-3 py-2 text-sm text-muted-foreground">None.</p>}
+          </div>
+        </div>
+      </Panel>
+      <Panel className="min-w-0 overflow-hidden p-3">
+        <h3 className="truncate text-sm font-semibold">Key setup</h3>
+        <div className="mt-3 space-y-2 text-sm">
+          {keyRows.map((row) => (
+            <div key={row.label} className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-slate-100 px-2.5 py-1.5">
+              <span className="min-w-0 truncate text-slate-700">{row.label}</span>
+              <Badge tone={readinessPillTone(readinessStatusLabel(row.status))}>{readinessStatusLabel(row.status)}</Badge>
+            </div>
+          ))}
         </div>
       </Panel>
     </div>

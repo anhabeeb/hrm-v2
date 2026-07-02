@@ -280,8 +280,8 @@ const lifecycleSource = read("frontend/src/pages/LifecyclePage.tsx");
   ["Approve finalization", '<ActionTextButton intent="approve" size="sm" onClick={() => void run(() => api.approveOffboardingFinalization'],
   ["Complete task", '<ActionTextButton intent="complete" size="sm" onClick={() => void run(() => kind === "onboarding" ? api.completeOnboardingTask'],
   ["Waive task", '<ActionTextButton intent="waive" size="sm" onClick={() => askReason("Waive task"'],
-  ["Workspace submit activation", '<ActionTextButton intent="submit" size="sm" onClick={() => void runWorkspaceAction(() => api.completeOnboardingWorkspace'],
-  ["Workspace approve activation", '<ActionTextButton intent="approve" size="sm" onClick={() => void runWorkspaceAction(() => api.approveOnboardingActivation'],
+  ["Workspace submit activation", '<ActionTextButton intent="submit" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.completeOnboardingWorkspace'],
+  ["Workspace approve activation", '<ActionTextButton intent="approve" size="sm" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.approveOnboardingActivation'],
   ["Reason confirm", '<ActionTextButton intent="confirm" type="submit">Confirm</ActionTextButton>']
 ].forEach(([label, marker]) => assert(lifecycleSource.includes(marker), `LifecyclePage ${label} action must use ActionTextButton.`));
 [

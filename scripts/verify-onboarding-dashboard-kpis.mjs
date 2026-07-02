@@ -100,11 +100,13 @@ assert(lifecycle.includes("EMPLOYEE_ACTIVATION_NOT_READY") && lifecycle.includes
 ].forEach((marker) => assert(lifecycle.includes(marker), `blocker summary marker exists: ${marker}`));
 
 [
-  "OnboardingReadinessPills",
-  "data-onboarding-readiness-pills",
+  "Setup progress summary",
+  "Needs attention",
+  "Module states",
+  "moduleStatesOpen",
   "Setup Readiness",
   "Activation Readiness",
-  "Required Setup",
+  "Key setup",
   "Ready for Activation",
   "No Permission",
   "Disabled",
@@ -114,7 +116,8 @@ assert(lifecycle.includes("EMPLOYEE_ACTIVATION_NOT_READY") && lifecycle.includes
   "Missing"
 ].forEach((marker) => assert(lifecyclePage.includes(marker), `workspace readiness marker exists: ${marker}`));
 
-assert(lifecyclePage.includes("Refresh setup") && !lifecyclePage.includes("Refresh checklist</ActionTextButton>"), "workspace setup action avoids incorrect checklist wording");
+assert(lifecyclePage.includes("Refresh readiness") && !lifecyclePage.includes("Refresh checklist</ActionTextButton>"), "workspace setup action avoids incorrect checklist wording");
+assert(!lifecyclePage.includes("data-onboarding-readiness-pills") && !lifecyclePage.includes("OnboardingReadinessPills"), "workspace overview no longer renders the overcrowded readiness chip wall");
 assert(lifecyclePage.includes("disabled={!canActivate}") && lifecyclePage.includes("border-emerald-600 bg-emerald-600"), "activate button remains permission/readiness gated and green when ready");
 assert(lifecyclePage.includes("showSuccess") && lifecyclePage.includes("showApiError"), "global popup alerts are used for onboarding workspace actions");
 assert(lifecyclePage.includes("validateWorkspaceJobAssignment") || lifecycle.includes("validateWorkspaceJobAssignment"), "field-level/structured validation foundation remains connected");
