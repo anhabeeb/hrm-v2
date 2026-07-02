@@ -118,7 +118,7 @@ assert(lifecycle.includes("EMPLOYEE_ACTIVATION_NOT_READY") && lifecycle.includes
 
 assert(lifecyclePage.includes("Refresh readiness") && !lifecyclePage.includes("Refresh checklist</ActionTextButton>"), "workspace setup action avoids incorrect checklist wording");
 assert(!lifecyclePage.includes("data-onboarding-readiness-pills") && !lifecyclePage.includes("OnboardingReadinessPills"), "workspace overview no longer renders the overcrowded readiness chip wall");
-assert(lifecyclePage.includes("disabled={!canActivate}") && lifecyclePage.includes("border-emerald-600 bg-emerald-600"), "activate button remains permission/readiness gated and green when ready");
+assert(lifecyclePage.includes("disabled={primaryAction.disabled}") && lifecyclePage.includes("intent={primaryAction.intent}") && lifecyclePage.includes("primaryAction.label"), "activate button remains permission/readiness gated through the standardized green action intent when ready");
 assert(lifecyclePage.includes("showSuccess") && lifecyclePage.includes("showApiError"), "global popup alerts are used for onboarding workspace actions");
 assert(lifecyclePage.includes("validateWorkspaceJobAssignment") || lifecycle.includes("validateWorkspaceJobAssignment"), "field-level/structured validation foundation remains connected");
 assert(lifecycle.includes("lifecycleEmployeeEmailSuggestion") && lifecycle.includes("employee_email_fallback"), "employee email default provisioning did not regress");

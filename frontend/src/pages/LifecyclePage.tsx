@@ -1450,6 +1450,27 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const attentionRows = attentionReadinessRows(readinessRows);
   const moduleStateRows = onboardingModuleStateRows(workspace);
   const moduleSummary = onboardingModuleStateSummary(moduleStateRows);
+  const activationStatus = String(rowCase.activation_status ?? "");
+  const onboardingStatus = String(rowCase.onboarding_status ?? "");
+  const approvalRequired = tasks.some((task) => String(task.task_key ?? task.key ?? "").toLowerCase() === "activation_approval" && (task.is_required || task.required)) || ["SUBMITTED", "APPROVED"].includes(activationStatus) || onboardingStatus === "PENDING_APPROVAL";
+  const primaryAction = (() => {
+    if (["ACTIVATED", "OVERRIDDEN"].includes(activationStatus)) {
+      return { label: "Activated", intent: "complete" as const, disabled: true, title: "This employee has already been activated.", run: async () => undefined };
+    }
+    if (activationStatus === "SUBMITTED") {
+      return { label: "Approve activation", intent: "approve" as const, disabled: false, title: "Approve the submitted onboarding activation.", run: () => runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved.") };
+    }
+    if (approvalRequired && activationStatus !== "APPROVED") {
+      return { label: "Submit activation", intent: "submit" as const, disabled: !canActivate, title: canActivate ? "Submit onboarding activation for approval." : "Complete required onboarding items before submitting activation.", run: () => runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.") };
+    }
+    return { label: "Activate Employee", intent: "confirm" as const, disabled: !canActivate, title: canActivate ? "Activate employee." : "Complete required onboarding items before activation.", run: () => runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.") };
+  })();
+  const readinessMetrics = [
+    { label: "Activation", value: canActivate ? "Allowed" : "Blocked" },
+    { label: "Blockers", value: visibleBlockers.length },
+    { label: "Missing", value: attentionRows.length },
+    { label: "Ready", value: showReadyState ? "Yes" : "No" }
+  ];
   return (
     <div className="OnboardingEmployeePopupLayout flex h-full min-h-0 flex-col overflow-hidden bg-slate-50" data-onboarding-employee-popup-layout>
       <header className="onboarding-popup-header shrink-0 border-b bg-white px-4 py-3 sm:px-5">
@@ -1483,10 +1504,6 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-950">{employeeName}</p>
                 <p className="truncate text-xs text-muted-foreground">{employeeTitle}</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Badge tone="info">{employeeType}</Badge>
-                  <StatusBadge value={rowCase.onboarding_status} />
-                </div>
               </div>
             </div>
             <div className="mt-4">
@@ -1557,23 +1574,13 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               </div>
               <Badge tone={canActivate ? "success" : visibleBlockers.length ? "danger" : "warning"}>{readinessState}</Badge>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <div className="min-w-0 rounded-md border bg-slate-50 px-2.5 py-2">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Activation</p>
-                <p className="mt-1 truncate font-semibold text-slate-900">{canActivate ? "Allowed" : "Blocked"}</p>
-              </div>
-              <div className="min-w-0 rounded-md border bg-slate-50 px-2.5 py-2">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Blockers</p>
-                <p className="mt-1 truncate font-semibold text-slate-900">{visibleBlockers.length}</p>
-              </div>
-              <div className="min-w-0 rounded-md border bg-slate-50 px-2.5 py-2">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Missing</p>
-                <p className="mt-1 truncate font-semibold text-slate-900">{attentionRows.length}</p>
-              </div>
-              <div className="min-w-0 rounded-md border bg-slate-50 px-2.5 py-2">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Ready</p>
-                <p className="mt-1 truncate font-semibold text-slate-900">{showReadyState ? "Yes" : "No"}</p>
-              </div>
+            <div className="mt-3 grid min-w-0 max-w-full grid-cols-2 gap-2 text-sm" data-onboarding-metric-grid>
+              {readinessMetrics.map((metric) => (
+                <div key={metric.label} data-onboarding-metric-card className="min-w-0 max-w-full rounded-md border bg-slate-50 px-2.5 py-2">
+                  <p className="truncate text-[11px] font-medium uppercase tracking-wide text-slate-500">{metric.label}</p>
+                  <p className="mt-1 truncate font-semibold text-slate-900" title={String(metric.value)}>{metric.value}</p>
+                </div>
+              ))}
             </div>
           </Panel>
 
@@ -1635,23 +1642,24 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       </div>
       <footer className="onboarding-popup-footer shrink-0 border-t bg-white px-4 py-3 sm:px-5">
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="min-w-0 truncate text-xs text-muted-foreground">Section forms save changes inside the workspace. Refresh readiness after completing a section.</p>
-          <div className="flex min-w-0 flex-wrap justify-end gap-2 sm:flex-nowrap">
+          <p className="min-w-0 truncate text-xs text-muted-foreground">Section forms save changes inside the workspace. Use More actions to refresh setup status after saving.</p>
+          <div className="flex min-w-0 justify-end gap-2" data-onboarding-footer-visible-actions>
             <Button variant="outline" className="shrink-0" onClick={onClose}>Close</Button>
-            <ActionTextButton intent="refresh" size="sm" className="shrink-0" onClick={() => void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Setup readiness refreshed.")}>Refresh readiness</ActionTextButton>
-            <Button
+            <ActionTextButton
+              intent={primaryAction.intent}
               size="sm"
-              disabled={!canActivate}
-              title={canActivate ? "Activate employee" : "Complete required onboarding items before activation."}
-              className={`shrink-0 ${canActivate ? "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700" : "border-slate-200 bg-slate-100 text-slate-500"}`}
-              onClick={() => void runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.")}
+              disabled={primaryAction.disabled}
+              title={primaryAction.title}
+              className="shrink-0"
+              onClick={() => void primaryAction.run()}
             >
-              <CheckCircle2 className="h-4 w-4" /> Activate Employee
-            </Button>
+              <CheckCircle2 className="h-4 w-4" /> {primaryAction.label}
+            </ActionTextButton>
             <div className="relative shrink-0">
               <Button variant="outline" size="sm" aria-expanded={moreActionsOpen} onClick={() => setMoreActionsOpen((value) => !value)}>More actions</Button>
               {moreActionsOpen ? (
                 <div className="absolute bottom-full right-0 z-20 mb-2 w-56 rounded-md border bg-white p-1.5 shadow-lg">
+                  <ActionTextButton intent="refresh" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Setup readiness refreshed."); }}>Refresh readiness</ActionTextButton>
                   <ActionTextButton intent="submit" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted."); }}>Submit activation</ActionTextButton>
                   <ActionTextButton intent="approve" size="sm" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved."); }}>Approve activation</ActionTextButton>
                   <Button size="sm" variant="danger" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); askReason("Activate with override", (reason) => runWorkspaceAction(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason), "Employee activated with override.")); }}>Override activation</Button>

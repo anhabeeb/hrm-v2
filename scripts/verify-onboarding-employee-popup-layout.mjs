@@ -49,9 +49,15 @@ const lifecycleText = read(lifecyclePage);
 const modalBlock = blockAfter(lifecyclePage, "function Modal", 2200);
 const workspaceBlock = blockAfter(lifecyclePage, "function OnboardingWorkspace", 26000);
 const headerBlock = blockAfter(lifecyclePage, "<header className=\"onboarding-popup-header", 2200);
+const leftSummaryBlock = blockAfter(lifecyclePage, "onboarding-employee-summary-panel", 3600);
 const overviewBlock = blockAfter(lifecyclePage, "function OnboardingWorkspaceOverview", 9000);
 const rightPanelBlock = blockAfter(lifecyclePage, "onboarding-readiness-blockers-panel", 9000);
+const readinessMetricsBlock = blockAfter(lifecyclePage, "const readinessMetrics = [", 900);
+const metricGridBlock = blockAfter(lifecyclePage, "className=\"mt-3 grid min-w-0 max-w-full grid-cols-2", 1700);
 const footerBlock = blockAfter(lifecyclePage, "<footer className=\"onboarding-popup-footer", 5000);
+const footerVisibleStart = lifecycleText.indexOf("data-onboarding-footer-visible-actions");
+const footerVisibleEnd = footerVisibleStart >= 0 ? lifecycleText.indexOf("{moreActionsOpen ?", footerVisibleStart) : -1;
+const footerVisibleActionsBlock = footerVisibleStart >= 0 && footerVisibleEnd > footerVisibleStart ? lifecycleText.slice(footerVisibleStart, footerVisibleEnd) : "";
 const documentFormBlock = blockAfter(lifecyclePage, "function DocumentsWorkspaceForm", 17000);
 const paymentPensionBlock = blockAfter(lifecyclePage, "function PaymentPensionWorkspaceForm", 12000);
 
@@ -101,6 +107,7 @@ check(`${lifecyclePage}: header must not render undefined/null employee identity
 check(`${lifecyclePage}: header must show no more than three high-signal badges`, (headerBlock.match(/<Badge|<StatusBadge/g) ?? []).length <= 3);
 check(`${lifecyclePage}: header must not show duplicate activation status badge`, !headerBlock.includes("rowCase.activation_status"));
 check(`${lifecyclePage}: header metadata row must protect long values`, headerBlock.includes("grid min-w-0 max-w-full") && (headerBlock.match(/truncate/g) ?? []).length >= 4);
+check(`${lifecyclePage}: left employee summary must not repeat header workflow/status badges`, !leftSummaryBlock.includes("<Badge") && !leftSummaryBlock.includes("<StatusBadge"));
 
 for (const marker of [
   "employeeProfilePhoto(employee)",
@@ -162,19 +169,25 @@ for (const marker of [
 }
 check(`${lifecyclePage}: module states must be summarized/collapsible by default`, rightPanelBlock.includes("Module states") && rightPanelBlock.includes("moduleStatesOpen ?") && rightPanelBlock.includes("Enabled: {moduleSummary.enabled}") && rightPanelBlock.includes("aria-expanded={moduleStatesOpen}"));
 check(`${lifecyclePage}: right panel must use compact counters instead of every readiness row`, rightPanelBlock.includes("Activation") && rightPanelBlock.includes("Blockers") && rightPanelBlock.includes("Missing") && rightPanelBlock.includes("Ready") && !rightPanelBlock.includes("readinessRows.map"));
+check(`${lifecyclePage}: readiness metric definitions must contain exactly four metrics`, ["Activation", "Blockers", "Missing", "Ready"].every((label) => readinessMetricsBlock.includes(`label: "${label}"`)) && (readinessMetricsBlock.match(/label: "/g) ?? []).length === 4);
+check(`${lifecyclePage}: readiness metric grid must render metric cards as direct mapped children`, metricGridBlock.includes("grid min-w-0 max-w-full grid-cols-2") && metricGridBlock.includes("readinessMetrics.map((metric) => (") && metricGridBlock.includes("<div key={metric.label} data-onboarding-metric-card"));
+check(`${lifecyclePage}: readiness metric cards must guard against horizontal overflow`, metricGridBlock.includes("max-w-full") && (metricGridBlock.match(/truncate/g) ?? []).length >= 2);
 check(`${lifecyclePage}: right panel blockers must scroll internally`, rightPanelBlock.includes("max-h-56") && rightPanelBlock.includes("overflow-y-auto") && rightPanelBlock.includes("break-words"));
 
 for (const marker of [
   "Refresh readiness",
   "Activate Employee",
-  "disabled={!canActivate}",
-  "border-emerald-600 bg-emerald-600",
+  "primaryAction",
+  "disabled={primaryAction.disabled}",
+  "intent={primaryAction.intent}",
   "Section forms save changes inside the workspace",
   "More actions"
 ]) {
   check(`${lifecyclePage}: footer action marker missing: ${marker}`, workspaceBlock.includes(marker));
 }
-check(`${lifecyclePage}: footer must avoid a crowded always-visible action row`, footerBlock.includes("sm:flex-nowrap") && footerBlock.includes("More actions") && footerBlock.includes("bottom-full"));
+check(`${lifecyclePage}: footer must expose no more than three visible controls`, (footerVisibleActionsBlock.match(/<Button|<ActionTextButton/g) ?? []).length === 3 && footerVisibleActionsBlock.includes("Close") && footerVisibleActionsBlock.includes("primaryAction.label") && footerVisibleActionsBlock.includes("More actions"));
+check(`${lifecyclePage}: refresh readiness must live inside the More actions menu`, !footerVisibleActionsBlock.includes("Refresh readiness") && footerBlock.indexOf("More actions") < footerBlock.indexOf("Refresh readiness"));
+check(`${lifecyclePage}: footer must avoid a crowded always-visible action row`, footerBlock.includes("data-onboarding-footer-visible-actions") && footerBlock.includes("More actions") && footerBlock.includes("bottom-full"));
 check(`${lifecyclePage}: secondary activation actions must live inside the More actions menu`, footerBlock.indexOf("More actions") < footerBlock.indexOf("Submit activation") && footerBlock.indexOf("More actions") < footerBlock.indexOf("Approve activation") && footerBlock.indexOf("More actions") < footerBlock.indexOf("Override activation"));
 check(`${lifecyclePage}: destructive override action must be in dropdown, not the visible footer row`, /More actions[\s\S]+Override activation/.test(footerBlock) && !/flex-nowrap[\s\S]+Override activation[\s\S]+More actions/.test(footerBlock));
 
