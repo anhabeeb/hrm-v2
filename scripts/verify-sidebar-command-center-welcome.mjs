@@ -27,6 +27,10 @@ function before(file, first, second, message) {
   if (firstIndex === -1 || secondIndex === -1 || firstIndex > secondIndex) failures.push(message);
 }
 
+function countMatches(file, regex) {
+  return Array.from(read(file).matchAll(regex)).length;
+}
+
 const appShell = "frontend/src/layouts/AppShell.tsx";
 const dashboardPage = "frontend/src/pages/DashboardPage.tsx";
 const authTypes = "frontend/src/types/auth.ts";
@@ -51,6 +55,17 @@ hasNo(appShell, "setExpandedGroups", "Sidebar must not use the old setExpandedGr
 hasNo(appShell, /useState<Record<string,\s*boolean>>/, "Sidebar group open state must not use a Record<string, boolean>.");
 hasNo(appShell, /setExpandedGroups\(\(current\)\s*=>\s*\(\{\s*\.\.\.current/, "Sidebar must not spread old group state when toggling.");
 hasNo(appShell, /\?\?\s*true/, "Sidebar groups must not default every group open with ?? true.");
+has(appShell, /const\s+\[openGroup,\s*setOpenGroup\]\s*=\s*useState<string\s*\|\s*null>\(\(\)\s*=>\s*readSidebarOpenGroupState\(\)\)/, "Sidebar must persist exactly one open group label, not a multi-open collection.");
+has(appShell, /const\s+activeGroupLabel\s*=\s*useMemo\(\(\)\s*=>\s*resolveActiveSidebarGroup\(location\.pathname,\s*sidebarGroups\),\s*\[location\.pathname,\s*sidebarGroups\]\)/, "Sidebar active group must be recalculated from the current route and visible sidebar groups.");
+has(appShell, /useEffect\(\(\)\s*=>\s*\{\s*setOpenGroup\(activeGroupLabel\);\s*\},\s*\[activeGroupLabel\]\);/, "Sidebar route changes must replace stale open group state with the active route group.");
+has(appShell, /const\s+toggleGroup\s*=\s*\(label:\s*string\)\s*=>\s*\{\s*setOpenGroup\(\(current\)\s*=>\s*\(current\s*===\s*label\s*&&\s*activeGroupLabel\s*!==\s*label\s*\?\s*null\s*:\s*label\)\);\s*\};/, "Sidebar toggle must set a single group label and close the previous submenu.");
+has(appShell, /const\s+expanded\s*=\s*collapsed\s*\|\|\s*openGroup\s*===\s*group\.label;/, "Sidebar submenu expansion must be derived from the single openGroup value.");
+has(appShell, /visibleGroups[\s\S]*items:\s*group\.items\.filter\(\(item\)\s*=>\s*canShow\(item,\s*permissions,\s*moduleVisibility\)\)/, "Sidebar visible groups must keep permission and disabled-module filtering.");
+has(appShell, /sidebarGroups[\s\S]*filter\(\(item\)\s*=>\s*canShow\(item,\s*permissions,\s*moduleVisibility\)\)/, "Self-service sidebar items must keep disabled-module filtering.");
+hasNo(appShell, /openGroups|openedGroups|expandedGroupLabels|expandedGroupSet/, "Sidebar must not introduce a second multi-open submenu state.");
+if (countMatches(appShell, /useState<[^>]*(?:Record|Set|Array|\[\])[^>]*>\(/g) > 0) {
+  failures.push("Sidebar must not use Record/Set/Array state for submenu expansion.");
+}
 
 has(dashboardPage, "CommandCenterHeader", "Command Center must have a dedicated header/top container.");
 has(dashboardPage, "<CommandCenterWelcome name={welcome.name} title={welcome.title} />", "Command Center welcome must be rendered in the header.");
@@ -67,6 +82,8 @@ hasNo(dashboardPage, "OmniCore Command Center", "Old Command Center title must n
 hasNo(dashboardPage, "Enterprise people operations overview with live HR, attendance, payroll, compliance, and workflow indicators.", "Old Command Center enterprise overview description must not appear.");
 hasNo(dashboardPage, "APP_BRANDING", "Command Center header must not reintroduce app branding text in place of the welcome heading.");
 
+has(dashboardPage, "const { token, user } = useAuth();", "Command Center welcome must use the authenticated user context.");
+has(dashboardPage, "const welcome = useMemo(() => resolveCommandCenterWelcome(user), [user]);", "Command Center welcome should resolve from current user data without extra loading calls.");
 has(dashboardPage, "resolveCommandCenterWelcome", "Command Center welcome resolver is missing.");
 has(dashboardPage, "user?.employee_full_name", "Welcome resolver must prefer linked employee full name.");
 has(dashboardPage, "user?.employee_position_title", "Welcome resolver must prefer linked employee position title.");
