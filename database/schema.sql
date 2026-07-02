@@ -4978,3 +4978,20 @@ CREATE INDEX IF NOT EXISTS idx_performance_approval_instances_status_employee ON
 CREATE INDEX IF NOT EXISTS idx_performance_onboarding_status_created ON employee_onboarding_cases(onboarding_status, created_at);
 CREATE INDEX IF NOT EXISTS idx_performance_offboarding_status_created ON employee_offboarding_cases(offboarding_status, created_at);
 CREATE INDEX IF NOT EXISTS idx_performance_audit_logs_module_created ON audit_logs(module, created_at);
+
+-- Phase 3 performance indexes: safe, non-unique helpers for high-traffic scoped filters and workspace reads.
+CREATE INDEX IF NOT EXISTS idx_phase3_employees_type_employment_archived ON employees(employee_type, employment_type, archived_at);
+CREATE INDEX IF NOT EXISTS idx_phase3_employees_created_active ON employees(archived_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_phase3_onboarding_activation_created ON employee_onboarding_cases(activation_status, onboarding_status, created_at);
+CREATE INDEX IF NOT EXISTS idx_phase3_onboarding_owner_status_created ON employee_onboarding_cases(assigned_owner_user_id, onboarding_status, created_at);
+CREATE INDEX IF NOT EXISTS idx_phase3_document_required_rules_criteria ON document_required_rules(is_active, employee_type, employment_type, department_id, position_id, location_id, document_type_id);
+CREATE INDEX IF NOT EXISTS idx_phase3_employee_documents_status_expiry_employee ON employee_documents(status, expiry_date, employee_id, document_type_id);
+CREATE INDEX IF NOT EXISTS idx_phase3_attendance_daily_employee_status_date ON attendance_daily_records(employee_id, attendance_date, status);
+CREATE INDEX IF NOT EXISTS idx_phase3_attendance_corrections_status_employee_date ON attendance_correction_requests(status, employee_id, attendance_date);
+CREATE INDEX IF NOT EXISTS idx_phase3_roster_assignments_employee_status_date ON roster_assignments(employee_id, status, roster_date);
+CREATE INDEX IF NOT EXISTS idx_phase3_payroll_runs_status_period ON payroll_runs(status, payroll_period_id, generated_at);
+CREATE INDEX IF NOT EXISTS idx_phase3_payroll_results_employee_status_run ON payroll_employee_results(employee_id, status, payroll_run_id);
+CREATE INDEX IF NOT EXISTS idx_phase3_payroll_advances_status_employee_date ON payroll_advance_payments(status, employee_id, payment_date);
+CREATE INDEX IF NOT EXISTS idx_phase3_payroll_adjustments_period_status ON payroll_adjustments(payroll_period_id, status, employee_id);
+CREATE INDEX IF NOT EXISTS idx_phase3_assets_assignment_employee_status_created ON employee_asset_assignments(employee_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_phase3_uniform_assignment_employee_status_created ON employee_uniform_assignments(employee_id, assignment_status, created_at);

@@ -60,6 +60,8 @@
     "verify:client-side-speed-polish": "node scripts/verify-client-side-speed-polish.mjs",
     "verify:global-instant-performance-foundation": "node scripts/verify-global-instant-performance-foundation.mjs",
     "verify:global-workspace-page-load-reduction": "node scripts/verify-global-workspace-page-load-reduction.mjs",
+    "audit:d1-query-performance": "node scripts/audit-d1-query-performance.mjs",
+    "verify:d1-query-payload-optimization": "node scripts/verify-d1-query-payload-optimization.mjs",
     "verify:branding-standardization": "node scripts/verify-branding-standardization.mjs",
     "verify:login-brand-layout": "node scripts/verify-login-brand-layout.mjs",
     "verify:filter-search-date-standardization": "node scripts/verify-filter-search-date-standardization.mjs",

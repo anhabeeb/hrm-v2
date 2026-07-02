@@ -61,6 +61,7 @@ export interface AppVariables {
     queryCount: number;
     d1DurationMs: number;
     d1Warnings: string[];
+    requestId?: string;
   };
 }
 

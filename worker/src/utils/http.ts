@@ -1,8 +1,20 @@
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
+const encoder = new TextEncoder();
+
+function estimatePayloadBytes(value: unknown) {
+  try {
+    return encoder.encode(JSON.stringify(value)).byteLength;
+  } catch {
+    return 0;
+  }
+}
+
 export function ok<T>(c: Context, data: T, status: ContentfulStatusCode = 200) {
-  return c.json({ ok: true, data }, status);
+  const payload = { ok: true, data };
+  c.header("X-HRM-Payload-Bytes", String(estimatePayloadBytes(payload)));
+  return c.json(payload, status);
 }
 
 export function withPrivateCacheHeaders(c: Context, maxAgeSeconds = 60, etagSeed?: string | number | null) {
@@ -19,7 +31,9 @@ export function okCached<T>(c: Context, data: T, maxAgeSeconds = 60, etagSeed?: 
 }
 
 export function fail(c: Context, status: ContentfulStatusCode, code: string, message: string) {
-  return c.json({ ok: false, error: { code, message } }, status);
+  const payload = { ok: false, error: { code, message } };
+  c.header("X-HRM-Payload-Bytes", String(estimatePayloadBytes(payload)));
+  return c.json(payload, status);
 }
 
 export function nowIso() {

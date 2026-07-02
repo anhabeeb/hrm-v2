@@ -21,7 +21,7 @@ function safeUserId(c: Context<AppBindings>) {
 function timingState(c: Context<AppBindings>) {
   const timing = c.get("routeTiming");
   if (timing) return timing;
-  const next = { queryCount: 0, d1DurationMs: 0, d1Warnings: [] as string[] };
+  const next = { queryCount: 0, d1DurationMs: 0, d1Warnings: [] as string[], requestId: undefined as string | undefined };
   c.set("routeTiming", next);
   return next;
 }
@@ -50,7 +50,7 @@ function appendPrivateCacheHeader(c: Context<AppBindings>) {
 }
 
 function payloadBytes(c: Context<AppBindings>) {
-  const length = c.res.headers.get("Content-Length");
+  const length = c.res.headers.get("Content-Length") ?? c.res.headers.get("X-HRM-Payload-Bytes");
   const parsed = length ? Number(length) : 0;
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -64,6 +64,7 @@ export function logSlowApi(input: {
   d1DurationMs: number;
   payloadBytes: number;
   userId: string | null;
+  requestId?: string | null;
 }) {
   const level = input.durationMs >= API_CRITICAL_THRESHOLD_MS ? "error" : input.durationMs >= API_WARNING_THRESHOLD_MS ? "warn" : "info";
   const payloadWarning = input.payloadBytes >= PAYLOAD_WARNING_THRESHOLD_BYTES;
@@ -79,6 +80,7 @@ export function logSlowApi(input: {
     d1_duration_ms: Math.round(input.d1DurationMs),
     payload_bytes: input.payloadBytes || null,
     payload_warning: payloadWarning,
+    request_id: input.requestId ?? null,
     user_id: input.userId,
     timestamp: new Date().toISOString()
   }));
@@ -101,6 +103,7 @@ export async function timeD1<T>(c: Context<AppBindings>, operation: () => Promis
         label,
         duration_ms: duration,
         route_pattern: safeRoutePattern(c),
+        request_id: timing.requestId ?? null,
         timestamp: new Date().toISOString()
       }));
     }
@@ -110,7 +113,9 @@ export async function timeD1<T>(c: Context<AppBindings>, operation: () => Promis
 export function withRequestTiming(): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
     const start = Date.now();
-    c.set("routeTiming", { queryCount: 0, d1DurationMs: 0, d1Warnings: [] });
+    const requestId = c.req.header("CF-Ray") ?? crypto.randomUUID();
+    c.set("routeTiming", { queryCount: 0, d1DurationMs: 0, d1Warnings: [], requestId });
+    c.header("X-Request-Id", requestId);
     await next();
     const durationMs = Date.now() - start;
     appendServerTiming(c, durationMs);
@@ -124,7 +129,8 @@ export function withRequestTiming(): MiddlewareHandler<AppBindings> {
       queryCount: timing.queryCount,
       d1DurationMs: timing.d1DurationMs,
       payloadBytes: payloadBytes(c),
-      userId: safeUserId(c)
+      userId: safeUserId(c),
+      requestId
     });
   };
 }

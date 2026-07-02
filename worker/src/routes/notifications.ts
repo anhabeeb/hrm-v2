@@ -17,6 +17,11 @@ notificationRoutes.use("*", requireAuth);
 
 const NOTIFICATION_LIMIT_DEFAULT = 20;
 const NOTIFICATION_LIMIT_MAX = 100;
+const NOTIFICATION_SELECT_COLUMNS = `
+  id, recipient_user_id, recipient_employee_id, employee_id, module_key, entity_type, entity_id,
+  title, message, severity, notification_type, route, is_read, read_at, dismissed_at,
+  created_at, metadata_json
+`;
 
 function hasAny(user: AuthUser, permissions: string[]) {
   return user.is_owner || permissions.some((permission) => user.permissions.includes(permission));
@@ -169,7 +174,7 @@ async function baseNotificationRows(c: Context<AppBindings>, limit: number, filt
   }
   bindings.push(limit);
   const rows = await c.env.DB
-    .prepare(`SELECT * FROM notifications ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY created_at DESC LIMIT ?`)
+    .prepare(`SELECT ${NOTIFICATION_SELECT_COLUMNS} FROM notifications ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY created_at DESC LIMIT ?`)
     .bind(...bindings)
     .all<Row>();
   const enabledRows = [];
@@ -199,7 +204,7 @@ export async function getUnreadNotificationCount(c: Context<AppBindings>) {
 }
 
 async function ensureCanUpdateNotification(c: Context<AppBindings>, notificationId: string) {
-  const row = await c.env.DB.prepare("SELECT * FROM notifications WHERE id = ?").bind(notificationId).first<Row>();
+  const row = await c.env.DB.prepare(`SELECT ${NOTIFICATION_SELECT_COLUMNS} FROM notifications WHERE id = ?`).bind(notificationId).first<Row>();
   if (!row) return { row: null, response: fail(c, 404, "NOTIFICATION_NOT_FOUND", "Notification was not found.") };
   if (!(await notificationModuleVisible(c.env.DB, String(row.module_key ?? "general")))) return { row: null, response: fail(c, 404, "NOTIFICATION_NOT_FOUND", "Notification was not found.") };
   const scoped = await filterNotificationsByUserScope(c.env.DB, c.get("currentUser"), [row]);
