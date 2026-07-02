@@ -9,8 +9,12 @@ import type { AppBindings, AuthUser, Env } from "../types";
 import { validationMessageToIssue } from "../utils/import-validation";
 import { REPORT_FILE_PREFIX, buildCsv, buildPdfReport, buildXlsxReport, buildXlsxTemplate, friendlyColumnLabel, type ExcelValidationRule } from "../utils/report-export";
 import { parseXlsxTemplateSheet } from "../utils/xlsx-import";
+import { enqueueJob, jobToApi, runJobWithWaitUntil } from "../utils/background-jobs";
 import { fail, getClientIp, ok } from "../utils/http";
+import { runImportApplyJob, runImportValidationJob } from "../utils/import-jobs";
 import { disabledModuleResponse, disabledSubmoduleResponse, isOperationalModuleEnabled, isOperationalSubmoduleEnabled } from "../utils/module-enforcement";
+import { createReportArtifact, getReportArtifactForJob, sanitizeReportArtifactForUser, writeReportArtifactObject } from "../utils/report-artifacts";
+import { runReportExportJob } from "../utils/report-jobs";
 import { readJsonBody, readString } from "../utils/validation";
 
 type ImportMode = "CREATE_ONLY" | "UPDATE_ONLY" | "UPSERT" | "VALIDATE_ONLY";
@@ -182,6 +186,16 @@ export const dataTransferAdminRoutes = new Hono<AppBindings>();
 dataImportRoutes.use("*", requireAuth);
 dataExportRoutes.use("*", requireAuth);
 dataTransferAdminRoutes.use("*", requireAuth);
+
+function getExecutionCtx(c: Context<AppBindings>) {
+  return (c as unknown as { executionCtx?: ExecutionContext }).executionCtx;
+}
+
+function boundedPagination(c: Context<AppBindings>, defaultLimit = 100, maxLimit = 300) {
+  const page = Math.max(1, Number.parseInt(c.req.query("page") ?? "1", 10) || 1);
+  const limit = Math.min(maxLimit, Math.max(1, Number.parseInt(c.req.query("limit") ?? String(defaultLimit), 10) || defaultLimit));
+  return { page, limit, offset: (page - 1) * limit };
+}
 
 function hasAny(c: Context<AppBindings>, permissions: string[]) {
   const user = c.get("currentUser");
@@ -871,6 +885,80 @@ function normalizeExportFormat(value: unknown): ExportFormat {
   return format === "xlsx" || format === "pdf" ? format : "csv";
 }
 
+function artifactTypeForExportFormat(format: ExportFormat): "CSV" | "EXCEL" | "PDF" {
+  return format === "xlsx" ? "EXCEL" : format === "pdf" ? "PDF" : "CSV";
+}
+
+function dataExportArtifactBody(definition: ExportTypeDefinition, rows: Record<string, unknown>[], format: ExportFormat) {
+  if (format === "xlsx") return buildXlsxReport(definition.label, definition.columns, rows, [`Module: ${definition.moduleKey}`]);
+  if (format === "pdf") return buildPdfReport(definition.label, definition.columns, rows, [`Module: ${definition.moduleKey}`]);
+  return buildCsv(definition.columns, rows);
+}
+
+async function preflightDataExportRun(c: Context<AppBindings>, exportType: string, input: { reason?: string | null; format?: ExportFormat | string | null }) {
+  const definition = getDataExportTypeDefinition(exportType);
+  if (!definition) return { error: fail(c, 400, "EXPORT_TYPE_UNKNOWN", "Unknown export type.") };
+  if (!(await dataTransferDefinitionEnabled(c, definition))) return { error: dataTransferDisabledResponse(c, definition) };
+  const settings = await getDataTransferSettings(c.env.DB);
+  if (settings.data_export_enabled !== 1) return { error: fail(c, 403, "DATA_EXPORT_DISABLED", "Data export is disabled.") };
+  const permissionError = validateDataExportPermission(c, definition, input.reason ?? null);
+  if (permissionError) return { error: fail(c, 403, "EXPORT_PERMISSION_DENIED", permissionError) };
+  return { definition, settings };
+}
+
+async function queueDataExportJob(c: Context<AppBindings>, exportType: string, input: { reason?: string | null; format?: ExportFormat | string | null }) {
+  const preflight = await preflightDataExportRun(c, exportType, input);
+  if ("error" in preflight) return preflight.error;
+  const { definition } = preflight;
+  const format = normalizeExportFormat(input.format);
+  const artifactType = artifactTypeForExportFormat(format);
+  const fileName = `${REPORT_FILE_PREFIX}-${definition.key}-export.${format}`;
+  const { job, deduped } = await enqueueJob(c.env.DB, {
+    jobType: "DATA_EXPORT_GENERATION",
+    moduleKey: "data_export",
+    entityType: "data_export_type",
+    entityId: definition.key,
+    requestedByUserId: c.get("currentUser").id,
+    dedupeKey: `data-export:${definition.key}:${format}:${c.get("currentUser").id}:${definition.sensitive ? "sensitive" : "standard"}`,
+    payload: { export_type: definition.key, format, sensitive_export: Boolean(definition.sensitive), has_reason: Boolean(input.reason) },
+    progressTotal: 4,
+    progressMessage: "Data export queued."
+  });
+
+  const artifact = deduped
+    ? await getReportArtifactForJob(c.env.DB, job.id)
+    : await createReportArtifact(c.env.DB, {
+      jobId: job.id,
+      reportKey: `data-export/${definition.key}`,
+      artifactType,
+      fileName,
+      rowCount: 0,
+      createdByUserId: c.get("currentUser").id,
+      metadata: { export_type: definition.key, format, sensitive_export: Boolean(definition.sensitive), source: "data_export_center" }
+    });
+
+  if (!deduped && artifact) {
+    runJobWithWaitUntil(getExecutionCtx(c), runReportExportJob(c.env, job, async () => {
+      const result = await runDataExport(c, definition.key, input);
+      if ("error" in result) throw new Error("Data export generation failed.");
+      const rows = result.export.rows as Record<string, unknown>[];
+      const body = dataExportArtifactBody(definition, rows, format);
+      const readyArtifact = await writeReportArtifactObject(c.env, { ...artifact, row_count: rows.length }, body);
+      await c.env.DB.prepare("UPDATE report_export_artifacts SET row_count = ?, updated_at = ? WHERE id = ?").bind(rows.length, now(), artifact.id).run();
+      return { artifact: readyArtifact, rowCount: rows.length, fileName };
+    }), { jobId: job.id, jobType: job.job_type });
+  }
+
+  return ok(c, {
+    queued: true,
+    deduped,
+    job_id: job.id,
+    job: jobToApi(job),
+    artifact: artifact ? sanitizeReportArtifactForUser(artifact, c.get("currentUser")) : null,
+    message: deduped ? "An active data export job is already running." : "Data export queued. The background job drawer will show progress."
+  }, 202);
+}
+
 function exportResponse(definition: ExportTypeDefinition, rows: Record<string, unknown>[], format: ExportFormat, fileName: string) {
   if (format === "xlsx") {
     return new Response(buildXlsxReport(definition.label, definition.columns, rows, [`Module: ${definition.moduleKey}`]), {
@@ -970,32 +1058,66 @@ dataImportRoutes.post("/batches", requireAnyPermission(["data_import.upload", "d
 dataImportRoutes.post("/batches/:batchId/validate", requireAnyPermission(["data_import.validate", "data_import.manage"]), async (c) => {
   const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
   if ("disabled" in gate) return gate.disabled;
-  const batch = await validateDataImportBatch(c.env.DB, c.get("currentUser"), c.req.param("batchId"));
-  if (!batch) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
-  await auditDataImportAction(c, "data_import.validated", c.req.param("batchId"), undefined, batch);
-  return ok(c, { batch });
+  const current = await getDataImportBatchSummary(c.env.DB, c.req.param("batchId"));
+  if (!current) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
+  const { job, deduped } = await enqueueJob(c.env.DB, {
+    jobType: "IMPORT_VALIDATION",
+    moduleKey: "data_import",
+    entityType: "data_import_batch",
+    entityId: c.req.param("batchId"),
+    requestedByUserId: c.get("currentUser").id,
+    dedupeKey: `data-import:validate:${c.req.param("batchId")}`,
+    payload: { batch_id: c.req.param("batchId"), import_type: current.import_type },
+    progressTotal: 3,
+    progressMessage: "Import validation queued."
+  });
+  if (!deduped) {
+    runJobWithWaitUntil(getExecutionCtx(c), runImportValidationJob(c.env, job, async () => {
+      const batch = await validateDataImportBatch(c.env.DB, c.get("currentUser"), c.req.param("batchId"));
+      if (!batch) throw new Error("Import batch not found.");
+      await auditDataImportAction(c, "data_import.validated", c.req.param("batchId"), undefined, batch);
+      return { batch, processedRows: Number(batch.row_count ?? 0), errorRows: Number(batch.error_count ?? 0) };
+    }), { jobId: job.id, jobType: job.job_type });
+  }
+  return ok(c, { batch: current, queued: true, deduped, job_id: job.id, job: jobToApi(job) }, 202);
 });
 dataImportRoutes.get("/batches/:batchId/validation-preview", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
   const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
   if ("disabled" in gate) return gate.disabled;
   const batch = await c.env.DB.prepare("SELECT * FROM data_import_batches WHERE id = ?").bind(c.req.param("batchId")).first<ImportBatchRow>();
   if (!batch) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
-  const rows = await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? ORDER BY row_number LIMIT 300").bind(c.req.param("batchId")).all<ImportResultRow>();
-  return ok(c, { preview: buildImportValidationPreview(batch, rows.results) });
+  const pagination = boundedPagination(c);
+  const rows = await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? ORDER BY row_number LIMIT ? OFFSET ?").bind(c.req.param("batchId"), pagination.limit, pagination.offset).all<ImportResultRow>();
+  return ok(c, { preview: buildImportValidationPreview(batch, rows.results), pagination: { ...pagination, total: batch.row_count } });
 });
 dataImportRoutes.post("/batches/:batchId/apply", requireAnyPermission(["data_import.apply", "data_import.manage"]), async (c) => {
   const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
   if ("disabled" in gate) return gate.disabled;
   const body = await readJsonBody(c.req.raw) as { acknowledgement?: string; reason?: string };
   if ((await getDataTransferSettings(c.env.DB)).import_apply_requires_confirmation === 1 && body.acknowledgement !== "APPLY") return fail(c, 400, "IMPORT_APPLY_CONFIRMATION_REQUIRED", "Type APPLY before applying this import batch.");
-  try {
-    const batch = await applyDataImportBatch(c.env.DB, c.get("currentUser"), c.req.param("batchId"));
-    if (!batch) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
-    await auditDataImportAction(c, "data_import.applied", c.req.param("batchId"), undefined, batch, body.reason ?? null);
-    return ok(c, { batch });
-  } catch (error) {
-    return fail(c, 400, "IMPORT_APPLY_FAILED", error instanceof Error ? error.message : "Unable to apply import batch.");
+  const current = await getDataImportBatchSummary(c.env.DB, c.req.param("batchId"));
+  if (!current) return fail(c, 404, "IMPORT_BATCH_NOT_FOUND", "Import batch not found.");
+  if (current.status !== "READY_TO_APPLY") return fail(c, 400, "IMPORT_APPLY_FAILED", "Validate this import batch before applying.");
+  const { job, deduped } = await enqueueJob(c.env.DB, {
+    jobType: "IMPORT_APPLY",
+    moduleKey: "data_import",
+    entityType: "data_import_batch",
+    entityId: c.req.param("batchId"),
+    requestedByUserId: c.get("currentUser").id,
+    dedupeKey: `data-import:apply:${c.req.param("batchId")}`,
+    payload: { batch_id: c.req.param("batchId"), import_type: current.import_type },
+    progressTotal: 3,
+    progressMessage: "Import apply queued."
+  });
+  if (!deduped) {
+    runJobWithWaitUntil(getExecutionCtx(c), runImportApplyJob(c.env, job, async () => {
+      const batch = await applyDataImportBatch(c.env.DB, c.get("currentUser"), c.req.param("batchId"));
+      if (!batch) throw new Error("Import batch not found.");
+      await auditDataImportAction(c, "data_import.applied", c.req.param("batchId"), undefined, batch, body.reason ?? null);
+      return { batch, processedRows: Number(batch.row_count ?? 0), errorRows: Number(batch.error_count ?? 0) };
+    }), { jobId: job.id, jobType: job.job_type });
   }
+  return ok(c, { batch: current, queued: true, deduped, job_id: job.id, job: jobToApi(job) }, 202);
 });
 dataImportRoutes.post("/batches/:batchId/cancel", requireAnyPermission(["data_import.cancel", "data_import.manage"]), async (c) => {
   const body = await readJsonBody(c.req.raw) as { reason?: string };
@@ -1011,12 +1133,16 @@ dataImportRoutes.post("/batches/:batchId/cancel", requireAnyPermission(["data_im
 dataImportRoutes.get("/batches/:batchId/errors", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
   const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
   if ("disabled" in gate) return gate.disabled;
-  return ok(c, { errors: (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? AND validation_status IN ('INVALID','DUPLICATE') ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results.map(rowToApi) });
+  const pagination = boundedPagination(c);
+  const errors = await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? AND validation_status IN ('INVALID','DUPLICATE') ORDER BY row_number LIMIT ? OFFSET ?").bind(c.req.param("batchId"), pagination.limit, pagination.offset).all<ImportResultRow>();
+  return ok(c, { errors: errors.results.map(rowToApi), pagination });
 });
 dataImportRoutes.get("/batches/:batchId/results", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
   const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
   if ("disabled" in gate) return gate.disabled;
-  return ok(c, { results: (await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? ORDER BY row_number").bind(c.req.param("batchId")).all<ImportResultRow>()).results.map(rowToApi) });
+  const pagination = boundedPagination(c);
+  const results = await c.env.DB.prepare("SELECT * FROM data_import_rows WHERE import_batch_id = ? ORDER BY row_number LIMIT ? OFFSET ?").bind(c.req.param("batchId"), pagination.limit, pagination.offset).all<ImportResultRow>();
+  return ok(c, { results: results.results.map(rowToApi), pagination });
 });
 dataImportRoutes.get("/batches/:batchId/errors/download", requireAnyPermission(["data_import.view", "data_import.manage"]), async (c) => {
   const gate = await importDefinitionForBatch(c, c.req.param("batchId"));
@@ -1029,9 +1155,7 @@ dataImportRoutes.get("/batches/:batchId/errors/download", requireAnyPermission([
 
 dataExportRoutes.get("/types", requireAnyPermission(["data_export.view", "data_export.manage", "reports.view"]), async (c) => ok(c, { types: await enabledExportTypes(c) }));
 dataExportRoutes.post("/:exportType/run", requireAnyPermission(["data_export.run", "data_export.manage", "reports.export"]), async (c) => {
-  const result = await runDataExport(c, c.req.param("exportType"), await readJsonBody(c.req.raw) as { reason?: string });
-  if ("error" in result) return result.error;
-  return ok(c, result);
+  return queueDataExportJob(c, c.req.param("exportType"), await readJsonBody(c.req.raw) as { reason?: string; format?: string });
 });
 dataExportRoutes.post("/:exportType/download", requireAnyPermission(["data_export.run", "data_export.manage", "reports.export"]), async (c) => {
   const input = await readJsonBody(c.req.raw) as { reason?: string; format?: string };

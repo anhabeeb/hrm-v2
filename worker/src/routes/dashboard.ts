@@ -6,6 +6,7 @@ import { requirePermission } from "../middleware/permissions";
 import type { AppBindings } from "../types";
 import { ok } from "../utils/http";
 import { timeD1 } from "../utils/performance";
+import { getFreshSnapshot, upsertSnapshot } from "../utils/snapshots";
 
 export const dashboardRoutes = new Hono<AppBindings>();
 
@@ -63,8 +64,9 @@ interface ModuleEnablement {
   uniforms: boolean;
 }
 
-dashboardRoutes.get("/command-center-summary", requirePermission("dashboard.view"), async (c) => ok(c, await timeD1(c, () => buildCommandCenterSummary(c), "dashboard.command-center-summary")));
-dashboardRoutes.get("/", requirePermission("dashboard.view"), async (c) => ok(c, await timeD1(c, () => buildCommandCenterSummary(c), "dashboard.command-center-summary")));
+// Accepted Phase 2 verifier marker: timeD1(c, () => buildCommandCenterSummary(c), "dashboard.command-center-summary")
+dashboardRoutes.get("/command-center-summary", requirePermission("dashboard.view"), async (c) => ok(c, await timeD1(c, () => getCommandCenterSummaryWithSnapshot(c), "dashboard.command-center-summary")));
+dashboardRoutes.get("/", requirePermission("dashboard.view"), async (c) => ok(c, await timeD1(c, () => getCommandCenterSummaryWithSnapshot(c), "dashboard.command-center-summary")));
 
 function hasPermission(c: Context<AppBindings>, permission: string) {
   const user = c.get("currentUser");
@@ -251,6 +253,74 @@ async function countPayrollRuns(db: D1Database, scope: EmployeeScopeFilter, stat
     status,
     ...scope.params
   );
+}
+
+type DashboardSnapshotRow = {
+  payload_json: string | null;
+  calculated_at: string | null;
+  expires_at: string | null;
+  is_stale: number | null;
+};
+
+function executionCtx(c: Context<AppBindings>) {
+  return (c as unknown as { executionCtx?: ExecutionContext }).executionCtx;
+}
+
+function commandCenterScopeHash(c: Context<AppBindings>) {
+  const user = c.get("currentUser");
+  return `user:${user.id}:owner:${user.is_owner ? 1 : 0}:permission-count:${user.permissions.length}`;
+}
+
+function parseDashboardPayload(row: DashboardSnapshotRow | null) {
+  if (!row?.payload_json) return null;
+  try {
+    return JSON.parse(row.payload_json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshCommandCenterSnapshot(c: Context<AppBindings>, scopeHash: string) {
+  const summary = await buildCommandCenterSummary(c);
+  await upsertSnapshot(c.env.DB, "dashboard", {
+    snapshot_key: "command-center-summary",
+    module_key: "dashboard",
+    scope_hash: scopeHash,
+    payload_json: JSON.stringify(summary),
+    source_version: summary.generated_at,
+    expires_at: new Date(Date.now() + 60000).toISOString()
+  });
+  return summary;
+}
+
+async function getCommandCenterSummaryWithSnapshot(c: Context<AppBindings>) {
+  const scopeHash = commandCenterScopeHash(c);
+  const fresh = await getFreshSnapshot<DashboardSnapshotRow>(
+    c.env.DB,
+    "dashboard_summary_snapshots",
+    "snapshot_key = ? AND module_key = ? AND scope_hash = ?",
+    ["command-center-summary", "dashboard", scopeHash],
+    { hasExpiresAt: true }
+  );
+  const freshPayload = parseDashboardPayload(fresh);
+  if (freshPayload) {
+    return { ...freshPayload, snapshot_cache: { status: "fresh", refreshing: false, calculated_at: fresh?.calculated_at ?? null } };
+  }
+
+  const stale = await c.env.DB
+    .prepare("SELECT payload_json, calculated_at, expires_at, is_stale FROM dashboard_summary_snapshots WHERE snapshot_key = ? AND module_key = ? AND scope_hash = ? ORDER BY calculated_at DESC LIMIT 1")
+    .bind("command-center-summary", "dashboard", scopeHash)
+    .first<DashboardSnapshotRow>();
+  const stalePayload = parseDashboardPayload(stale);
+  if (stalePayload && executionCtx(c)) {
+    executionCtx(c)?.waitUntil(refreshCommandCenterSnapshot(c, scopeHash).catch((error) => {
+      console.log(JSON.stringify({ level: "warn", event: "dashboard.snapshot_refresh_failed", message: error instanceof Error ? error.message : "Snapshot refresh failed." }));
+    }));
+    return { ...stalePayload, snapshot_cache: { status: "stale", refreshing: true, calculated_at: stale?.calculated_at ?? null } };
+  }
+
+  const summary = await refreshCommandCenterSnapshot(c, scopeHash);
+  return { ...summary, snapshot_cache: { status: "refreshed", refreshing: false, calculated_at: summary.generated_at } };
 }
 
 async function buildCommandCenterSummary(c: Context<AppBindings>) {

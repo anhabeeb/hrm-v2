@@ -133,6 +133,12 @@ export function ImportWizard({
     try {
       const result = await api.validateDataImportBatch(token, String(batch.id));
       setBatch(result.batch);
+      if (result.queued) {
+        const queuedMessage = result.deduped ? "Validation is already running. Track it in the background job drawer." : "Validation queued. Track it in the background job drawer.";
+        setMessage(queuedMessage);
+        alerts.showSuccess("Validation queued", queuedMessage);
+        return;
+      }
       const previewData = await api.getDataImportValidationPreview(token, String(batch.id));
       const detail = await api.getDataImportBatch(token, String(batch.id));
       setPreview(previewData.preview as ImportPreviewSummary);
@@ -157,6 +163,12 @@ export function ImportWizard({
     try {
       const result = await api.applyDataImportBatch(token, String(batch.id), { acknowledgement: ack, reason });
       setBatch(result.batch);
+      if (result.queued) {
+        const queuedMessage = result.deduped ? "Import apply is already running. Track it in the background job drawer." : "Import apply queued. Track it in the background job drawer.";
+        setMessage(queuedMessage);
+        alerts.showSuccess("Import apply queued", queuedMessage);
+        return;
+      }
       setStep("done");
       const successMessage = "Import apply finished. Review row-level results and audit history.";
       setMessage(successMessage);

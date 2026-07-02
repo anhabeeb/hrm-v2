@@ -82,7 +82,7 @@ export function invalidateBackgroundJobTargets(scope: QueryScope, job: Backgroun
     return;
   }
 
-  if (job.module_key === "reports" || job.module_key === "data_import") {
+  if (job.module_key === "reports" || job.module_key === "data_import" || job.module_key === "data_export") {
     void client.invalidateQueries({ queryKey: [...queryKeys.scope(scope), job.module_key] });
   }
 }

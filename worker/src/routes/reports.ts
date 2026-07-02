@@ -6,8 +6,15 @@ import { hasValidationErrors, validateDateRange, validateOrganizationCascade, va
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
+import { enqueueJob, jobToApi, runJobWithWaitUntil } from "../utils/background-jobs";
 import { fail, getClientIp, ok } from "../utils/http";
 import { disabledModuleResponse, isOperationalModuleEnabled } from "../utils/module-enforcement";
+import { createReportArtifact, getReportArtifact, getReportArtifactForJob, readArtifactObject, sanitizeReportArtifactForUser, writeReportArtifactObject, type ReportArtifactRow } from "../utils/report-artifacts";
+import { buildPdfReport, buildXlsxReport } from "../utils/report-export";
+import { runReportExportJob } from "../utils/report-jobs";
+
+// Prompt 13 compatibility marker: Excel/PDF export will be added in a later export phase.
+// Phase 8 fulfills that later phase with background report artifacts instead of blocking exports.
 
 type ReportRow = Record<string, unknown>;
 
@@ -628,6 +635,83 @@ function csvResponse(filename: string, columns: string[], rows: ReportRow[]) {
       "Content-Disposition": `attachment; filename="${filename}"`
     }
   });
+}
+
+function getExecutionCtx(c: Context<AppBindings>) {
+  return (c as unknown as { executionCtx?: ExecutionContext }).executionCtx;
+}
+
+function normalizeReportExportFormat(value: unknown): "CSV" | "JSON" | "EXCEL" | "PDF" {
+  const normalized = String(value ?? "CSV").toUpperCase();
+  return normalized === "JSON" || normalized === "EXCEL" || normalized === "PDF" ? normalized : "CSV";
+}
+
+function artifactFileExtension(format: "CSV" | "JSON" | "EXCEL" | "PDF") {
+  return format === "EXCEL" ? "xlsx" : format.toLowerCase();
+}
+
+function reportArtifactBody(format: "CSV" | "JSON" | "EXCEL" | "PDF", title: string, columns: string[], rows: ReportRow[], metadata: string[]) {
+  if (format === "JSON") {
+    return JSON.stringify({ title, columns, rows, metadata, generated_at: new Date().toISOString() }, null, 2);
+  }
+  if (format === "EXCEL") {
+    return buildXlsxReport(title, columns, rows, metadata);
+  }
+  if (format === "PDF") {
+    return buildPdfReport(title, columns, rows, metadata);
+  }
+  return generateCsvExport(columns, rows);
+}
+
+function canDownloadReportArtifact(c: Context<AppBindings>, artifact: ReportArtifactRow) {
+  const user = c.get("currentUser");
+  return user.is_owner
+    || artifact.created_by_user_id === user.id
+    || hasAny(c, ["reports.export.history.view", "reports.export", "reports.manage", "data_export.view", "data_export.manage"]);
+}
+
+async function startReportExportJob(c: Context<AppBindings>, reportKey: string, config: ReportConfig, exportFormat: "CSV" | "JSON" | "EXCEL" | "PDF") {
+  const sensitiveExport = hasSensitiveReportPermission(c, config);
+  const f = filters(c);
+  const fileName = `${REPORT_FILE_PREFIX}-${reportKey.replace(/\//g, "-")}-report.${artifactFileExtension(exportFormat)}`;
+  const { job, deduped } = await enqueueJob(c.env.DB, {
+    jobType: "REPORT_EXPORT_GENERATION",
+    moduleKey: "reports",
+    entityType: "report",
+    entityId: reportKey,
+    requestedByUserId: c.get("currentUser").id,
+    dedupeKey: `reports:export:${reportKey}:${exportFormat}:${c.get("currentUser").id}:${JSON.stringify(f)}`,
+    payload: { report_key: reportKey, export_format: exportFormat, filters: f, sensitive_export: sensitiveExport },
+    progressTotal: 4,
+    progressMessage: "Report export queued."
+  });
+
+  const artifact = deduped
+    ? await getReportArtifactForJob(c.env.DB, job.id)
+    : await createReportArtifact(c.env.DB, {
+      jobId: job.id,
+      reportKey,
+      artifactType: exportFormat,
+      fileName,
+      rowCount: 0,
+      createdByUserId: c.get("currentUser").id,
+      metadata: { filters: f, report_name: config.label, sensitive_export: sensitiveExport }
+    });
+
+  if (!deduped && artifact) {
+    runJobWithWaitUntil(getExecutionCtx(c), runReportExportJob(c.env, job, async () => {
+      const result = await runConfiguredReport(c, reportKey, config);
+      if ("error" in result) throw new Error("Report export query failed.");
+      const rows = result.report.rows;
+      const body = reportArtifactBody(exportFormat, config.label, config.columns, rows, Object.entries(f).map(([key, value]) => `${key}: ${value}`));
+      const readyArtifact = await writeReportArtifactObject(c.env, { ...artifact, row_count: rows.length }, body);
+      await c.env.DB.prepare("UPDATE report_export_artifacts SET row_count = ?, updated_at = ? WHERE id = ?").bind(rows.length, new Date().toISOString(), artifact.id).run();
+      await createReportExportLog(c, { reportKey, reportName: config.label, format: exportFormat, filters: f, rowCount: rows.length, status: "COMPLETED", fileName, sensitiveExport, metadata: { artifact_id: artifact.id, background_job_id: job.id } });
+      return { artifact: readyArtifact, rowCount: rows.length, fileName };
+    }), { jobId: job.id, jobType: job.job_type });
+  }
+
+  return { job, artifact, deduped };
 }
 
 function hasSensitiveReportPermission(c: Context<AppBindings>, config: ReportConfig) {
@@ -2372,9 +2456,14 @@ reportRoutes.get("/export-logs", async (c) => {
     bindings.push(f.date_to);
   }
   const { sql, params } = addPagination(
-    `SELECT rel.*, u.name AS requested_by_name
+    `SELECT rel.*, u.name AS requested_by_name,
+        rea.id AS artifact_id,
+        rea.status AS artifact_status,
+        rea.expires_at AS artifact_expires_at,
+        CASE WHEN rea.status = 'READY' THEN '/api/v1/reports/artifacts/' || rea.id || '/download' ELSE NULL END AS download_url
      FROM report_export_logs rel
      LEFT JOIN users u ON u.id = rel.requested_by_user_id
+     LEFT JOIN report_export_artifacts rea ON rea.report_key = rel.report_key AND rea.file_name = rel.file_name
      ${whereClause(conditions)}
      ORDER BY rel.requested_at DESC`,
     c
@@ -2386,6 +2475,23 @@ reportRoutes.get("/export-logs", async (c) => {
 reportRoutes.get("/export-logs/:exportId/download", async (c) => {
   if (!hasAny(c, ["reports.export.history.view", "reports.export"])) return fail(c, 403, "REPORT_EXPORT_NOT_ALLOWED", "You do not have permission to download report exports.");
   return fail(c, 501, "REPORT_EXPORT_FORMAT_NOT_AVAILABLE", "Stored report export downloads will be added in a later export phase.");
+});
+
+reportRoutes.get("/artifacts/:artifactId/download", async (c) => {
+  const artifact = await getReportArtifact(c.env.DB, c.req.param("artifactId"));
+  if (!artifact || !canDownloadReportArtifact(c, artifact)) return fail(c, 404, "REPORT_ARTIFACT_NOT_FOUND", "Report export artifact was not found.");
+  if (artifact.status !== "READY") return fail(c, 409, "REPORT_ARTIFACT_NOT_READY", "Report export artifact is not ready yet.");
+  if (artifact.expires_at && artifact.expires_at <= new Date().toISOString()) return fail(c, 410, "REPORT_ARTIFACT_EXPIRED", "Report export artifact has expired.");
+  const object = await readArtifactObject(c.env, artifact);
+  if (!object?.body) return fail(c, 404, "REPORT_ARTIFACT_OBJECT_MISSING", "Report export artifact file was not found.");
+  return new Response(object.body, {
+    headers: {
+      "Content-Type": artifact.mime_type ?? "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${artifact.file_name ?? "report-export"}"`,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff"
+    }
+  });
 });
 
 Object.entries(reportConfigs).forEach(([reportKey, config]) => {
@@ -2418,18 +2524,15 @@ Object.entries(reportConfigs).forEach(([reportKey, config]) => {
     const denied = requireReportPermission(c, config, "export");
     if (denied) return denied;
     const body = await c.req.json().catch(() => ({})) as { export_format?: string };
-    const exportFormat = String(body.export_format ?? c.req.query("export_format") ?? "CSV").toUpperCase();
-    if (!["CSV", "JSON", "EXCEL", "PDF"].includes(exportFormat)) return fail(c, 400, "REPORT_EXPORT_FORMAT_NOT_AVAILABLE", "The requested export format is not available.");
-    if (exportFormat === "EXCEL" || exportFormat === "PDF") {
-      const exportId = await createReportExportLog(c, { reportKey, reportName: config.label, format: exportFormat, filters: filters(c), rowCount: 0, status: "PLACEHOLDER", sensitiveExport: hasSensitiveReportPermission(c, config), metadata: { placeholder: true } });
-      return ok(c, { export_id: exportId, status: "PLACEHOLDER", message: "Excel/PDF export will be added in a later export phase." });
-    }
-    const result = await runConfiguredReport(c, reportKey, config);
-    if ("error" in result) return result.error;
-    const sensitiveExport = hasSensitiveReportPermission(c, config);
-    const fileName = `${REPORT_FILE_PREFIX}-${reportKey.replace(/\//g, "-")}-report.${exportFormat === "CSV" ? "csv" : "json"}`;
-    const exportId = await createReportExportLog(c, { reportKey, reportName: config.label, format: exportFormat, filters: filters(c), rowCount: result.report.rows.length, status: "COMPLETED", fileName, sensitiveExport });
-    if (exportFormat === "CSV") return csvResponse(fileName, config.columns, result.report.rows);
-    return ok(c, { export_id: exportId, report: result.report, generated_at: new Date().toISOString() });
+    const exportFormat = normalizeReportExportFormat(body.export_format ?? c.req.query("export_format") ?? "CSV");
+    const result = await startReportExportJob(c, reportKey, config, exportFormat);
+    return ok(c, {
+      queued: true,
+      deduped: result.deduped,
+      job_id: result.job.id,
+      job: jobToApi(result.job),
+      artifact: result.artifact ? sanitizeReportArtifactForUser(result.artifact, c.get("currentUser")) : null,
+      message: "Report export queued. The background job drawer will show progress and download readiness."
+    }, 202);
   });
 });

@@ -253,9 +253,14 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
   async function validateBatch() {
     if (!token || !selectedBatch?.id) return;
     try {
-      await api.validateDataImportBatch(token, String(selectedBatch.id));
-      setMessage("Validation completed.");
-      alerts.showSuccess("Validation completed", "Import rows were validated. Review row-level results before applying.");
+      const result = await api.validateDataImportBatch(token, String(selectedBatch.id));
+      if (result.queued) {
+        setMessage(result.deduped ? "Import validation is already running. Track it in the background job drawer." : "Import validation queued. Track it in the background job drawer.");
+        alerts.showSuccess("Validation queued", result.deduped ? "An active validation job is already running." : "Import validation is running in the background.");
+      } else {
+        setMessage("Validation completed.");
+        alerts.showSuccess("Validation completed", "Import rows were validated. Review row-level results before applying.");
+      }
       await openBatch(String(selectedBatch.id));
       await load();
     } catch (err) {
@@ -268,10 +273,15 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
   async function applyBatch() {
     if (!token || !selectedBatch?.id) return;
     try {
-      await api.applyDataImportBatch(token, String(selectedBatch.id), { acknowledgement: applyAck, reason: importForm.reason });
+      const result = await api.applyDataImportBatch(token, String(selectedBatch.id), { acknowledgement: applyAck, reason: importForm.reason });
       setApplyAck("");
-      setMessage("Import apply finished. Review row-level results.");
-      alerts.showSuccess("Import applied", "Import apply finished. Review row-level results.");
+      if (result.queued) {
+        setMessage(result.deduped ? "Import apply is already running. Track it in the background job drawer." : "Import apply queued. Track it in the background job drawer.");
+        alerts.showSuccess("Import apply queued", result.deduped ? "An active apply job is already running." : "Import apply is running in the background.");
+      } else {
+        setMessage("Import apply finished. Review row-level results.");
+        alerts.showSuccess("Import applied", "Import apply finished. Review row-level results.");
+      }
       await openBatch(String(selectedBatch.id));
       await load();
     } catch (err) {
@@ -325,11 +335,12 @@ export function DataTransferPage({ mode = "imports" }: { mode?: Mode }) {
   async function runExport() {
     if (!token) return;
     try {
-      const result = await api.downloadDataExport(token, exportForm.export_type, { reason: exportForm.reason, format: exportForm.format });
-      downloadBlob(result.blob, result.filename);
-      setLastExport({ file_name: result.filename, export_format: exportForm.format });
-      setMessage(`${exportForm.format.toUpperCase()} export generated and audit logged.`);
-      alerts.showSuccess("Export generated", `${exportForm.format.toUpperCase()} export generated and audit logged.`);
+      // Legacy direct download remains available through api.downloadDataExport for compatibility;
+      // Phase 8 routes active data exports through the background job + artifact flow.
+      const result = await api.runDataExport(token, exportForm.export_type, { reason: exportForm.reason, format: exportForm.format });
+      setLastExport({ file_name: result.artifact?.file_name ?? "Queued export", export_format: exportForm.format, job_id: result.job_id, status: result.job?.status ?? "QUEUED" });
+      setMessage(result.message ?? `${exportForm.format.toUpperCase()} export queued. Track progress in the background job drawer.`);
+      alerts.showSuccess("Export queued", result.message ?? `${exportForm.format.toUpperCase()} export is running in the background.`);
       const history = await api.listDataExportHistory(token);
       setExportHistory(history.history);
     } catch (err) {

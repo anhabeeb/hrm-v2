@@ -12,6 +12,7 @@ import { enqueueJob, jobToApi, markJobFailed, markJobRunning, markJobSucceeded, 
 import { fail, getClientIp, ok } from "../utils/http";
 import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
+import { markSnapshotsStaleForEmployee, recalculateAttendanceSnapshot } from "../utils/snapshots";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -121,6 +122,10 @@ async function auditAttendance(c: Context<AppBindings>, input: { action: string;
 
 function executionCtx(c: Context<AppBindings>) {
   return (c as unknown as { executionCtx?: ExecutionContext }).executionCtx;
+}
+
+function attendancePeriodKey(date: string) {
+  return /^\d{4}-\d{2}/.test(date) ? date.slice(0, 7) : new Date().toISOString().slice(0, 7);
 }
 
 function runTrackedAttendanceJob(
@@ -555,8 +560,12 @@ attendanceRoutes.post("/daily/refresh", requireAnyPermission(["attendance.daily.
   if (!deduped) {
     runTrackedAttendanceJob(c, job, async () => {
       const refreshed = await refreshAttendanceRange(c, employeeId, from, to);
+      const refreshedPeriods = Array.from(new Set([attendancePeriodKey(from), attendancePeriodKey(to)]));
+      for (const periodKey of refreshedPeriods) {
+        await recalculateAttendanceSnapshot(c.env.DB, { employeeId, periodKey });
+      }
       await auditAttendance(c, { action: "attendance.daily.refreshed", entityType: "attendance_record", entityId: employeeId, newValue: { date_from: from, date_to: to, refreshed_count: refreshed.length, background_job_id: job.id } });
-      return { refreshed_count: refreshed.length };
+      return { refreshed_count: refreshed.length, snapshot_periods: refreshedPeriods.length };
     }, { running: "Refreshing attendance range.", complete: "Attendance refresh completed." });
   }
   return ok(c, { job_id: job.id, job: jobToApi(job), queued: true, deduped, message: deduped ? "An active attendance refresh is already running." : "Attendance refresh queued." }, 202);
@@ -624,6 +633,7 @@ attendanceRoutes.post("/records", requirePermission("attendance.manage"), async 
       input.source, impact, derived.payroll_impact_status, derived.payroll_impact_minutes, derived.payroll_impact_days, derived.payroll_impact_reason, input.leave_request_id, input.notes, c.get("currentUser").id, c.get("currentUser").id, "MANUAL", new Date().toISOString()
     )
     .run();
+  await markSnapshotsStaleForEmployee(c.env.DB, input.employee_id, { moduleKey: "attendance", periodKey: attendancePeriodKey(input.attendance_date) });
   await auditAttendance(c, { action: "attendance.record.created", entityType: "attendance_record", entityId: id, newValue: input });
   await publishAttendance(c, "attendance.record.created", id, "created");
   await publishAttendance(c, "employee.attendance.changed", input.employee_id, "record_created", "attendance_record");
@@ -665,6 +675,10 @@ attendanceRoutes.patch("/records/:id", requirePermission("attendance.manage"), a
       derived.payroll_impact_days, derived.payroll_impact_reason, input.leave_request_id, input.notes, c.get("currentUser").id, new Date().toISOString(), id
     )
     .run();
+  const affectedPeriods = Array.from(new Set([attendancePeriodKey(String(old.attendance_date)), attendancePeriodKey(input.attendance_date)]));
+  for (const periodKey of affectedPeriods) {
+    await markSnapshotsStaleForEmployee(c.env.DB, String(old.employee_id), { moduleKey: "attendance", periodKey });
+  }
   await auditAttendance(c, { action: "attendance.record.updated", entityType: "attendance_record", entityId: id, oldValue: old, newValue: input, reason });
   await publishAttendance(c, "attendance.record.updated", id, "updated");
   await publishAttendance(c, "employee.attendance.changed", String(old.employee_id), "record_updated", "attendance_record");

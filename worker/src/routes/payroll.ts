@@ -11,6 +11,7 @@ import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { disabledModuleResponse, isOperationalModuleEnabled, requireOperationalModuleEnabled, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
+import { markSnapshotsStaleForEmployee, markSnapshotsStaleForPeriod, recalculatePayrollSnapshot } from "../utils/snapshots";
 import { readJsonBody, readString } from "../utils/validation";
 import {
   calculatePayrollPensionContribution,
@@ -861,6 +862,8 @@ async function recalculateRun(c: Context<AppBindings>, run: Record<string, unkno
       )
       .run();
 
+    await recalculatePayrollSnapshot(c.env.DB, { employeeId: String(employee.id), payrollPeriodId: String(period.id), payrollRunId: runId });
+
     if (excluded) continue;
     await insertLine(c, runEmployeeId, basicComponent?.id ?? null, "EARNING", "BASIC", "Basic salary", basicSalary, "PROFILE", "employee_payroll_profile", String(employee.id), { daily_rate: dailyRate });
     if (pensionEmployeeDeduction > 0 && pensionImpact) await insertLine(c, runEmployeeId, pensionEmployeeComponent?.id ?? null, "DEDUCTION", "PENSION", "Pension employee contribution", pensionEmployeeDeduction, "SYSTEM", "payroll_pension_contribution", String(employee.id), pensionImpact);
@@ -981,6 +984,7 @@ async function transitionPayrollRun(c: Context<AppBindings>, run: Record<string,
       .bind(input.resultStatus, now, run.id)
       .run();
   }
+  await markSnapshotsStaleForPeriod(c.env.DB, { payrollPeriodId: String(run.payroll_period_id), payrollRunId: String(run.id), moduleKey: "payroll" });
   await syncLegacyPayrollRunTablesForCompatibility(c, String(run.id));
   await recordPayrollApprovalEvent(c, run, input.action, previousStatus, nextStatus, { note: input.note, reason: input.reason });
   await publishPayroll(c, "payroll.changed", "payroll_run", String(run.id), input.action);
@@ -1068,6 +1072,7 @@ async function finalizePayrollRun(c: Context<AppBindings>, runId: string, note?:
     .bind("FINALIZED", c.get("currentUser").id, now, c.get("currentUser").id, now, note ?? null, JSON.stringify(snapshot), now, run.payroll_period_id)
     .run();
   await c.env.DB.prepare("UPDATE payroll_employee_results SET status = ?, finalized_at = ?, updated_at = ? WHERE payroll_run_id = ? AND status NOT IN ('HELD', 'EXCLUDED', 'CANCELLED')").bind("FINALIZED", now, now, run.id).run();
+  await markSnapshotsStaleForPeriod(c.env.DB, { payrollPeriodId: String(run.payroll_period_id), payrollRunId: String(run.id), moduleKey: "payroll" });
   await updateCustomDeductionAfterPayrollFinalized(c, String(run.id));
   await syncLegacyPayrollRunTablesForCompatibility(c, String(run.id));
   await recordPayrollApprovalEvent(c, run, "payroll.run.finalized", readString(run.status), "FINALIZED", { note });
@@ -1086,6 +1091,7 @@ async function unlockFinalizedPayrollRun(c: Context<AppBindings>, runId: string,
   await c.env.DB.prepare("UPDATE payroll_runs SET status = ?, unlocked_by_user_id = ?, unlocked_at = ?, unlock_reason = ?, updated_at = ? WHERE id = ?").bind("READY_FOR_REVIEW", c.get("currentUser").id, now, reason, now, run.id).run();
   await c.env.DB.prepare("UPDATE payroll_periods SET status = ?, unlocked_by_user_id = ?, unlocked_at = ?, unlock_reason = ?, updated_at = ? WHERE id = ?").bind("READY_FOR_REVIEW", c.get("currentUser").id, now, reason, now, run.payroll_period_id).run();
   await c.env.DB.prepare("UPDATE payroll_employee_results SET status = ?, updated_at = ? WHERE payroll_run_id = ? AND status = ?").bind("READY_FOR_REVIEW", now, run.id, "FINALIZED").run();
+  await markSnapshotsStaleForPeriod(c.env.DB, { payrollPeriodId: String(run.payroll_period_id), payrollRunId: String(run.id), moduleKey: "payroll" });
   await syncLegacyPayrollRunTablesForCompatibility(c, String(run.id));
   await recordPayrollApprovalEvent(c, run, "payroll.run.unlocked_after_finalization", readString(run.status), "READY_FOR_REVIEW", { reason });
   await publishPayroll(c, "payroll.changed", "payroll_run", String(run.id), "unlocked_after_finalization");
@@ -2235,6 +2241,7 @@ payrollRoutes.post("/runs/:id/cancel", requireAnyPermission(["payroll.runs.cance
   if (!run) return fail(c, 404, "NOT_FOUND", "Payroll run was not found.");
   await c.env.DB.prepare("UPDATE payroll_runs SET status = 'CANCELLED', updated_at = ? WHERE id = ?").bind(isoNow(), run.id).run();
   await c.env.DB.prepare("UPDATE payroll_employee_results SET status = 'CANCELLED', updated_at = ? WHERE payroll_run_id = ? AND status != 'HELD'").bind(isoNow(), run.id).run();
+  await markSnapshotsStaleForPeriod(c.env.DB, { payrollPeriodId: String(run.payroll_period_id), payrollRunId: String(run.id), moduleKey: "payroll" });
   await syncLegacyPayrollRunTablesForCompatibility(c, String(run.id));
   await auditPayroll(c, { action: "payroll.run.cancelled", entityType: "payroll_run", entityId: String(run.id), oldValue: run, reason });
   return ok(c, { cancelled: true });
@@ -2265,6 +2272,7 @@ payrollRoutes.patch("/runs/:id/employees/:runEmployeeId", requireAnyPermission([
   const status = readString(body.status ?? old.status).toUpperCase();
   const nextStatus = RUN_EMPLOYEE_STATUSES.has(status) ? mapLegacyPayrollResultStatus(status) : mapLegacyPayrollResultStatus(old.status);
   await c.env.DB.prepare("UPDATE payroll_employee_results SET status = ?, hold_reason = ?, updated_at = ? WHERE id = ?").bind(nextStatus, optionalString(body.hold_reason ?? old.hold_reason), isoNow(), id).run();
+  await markSnapshotsStaleForEmployee(c.env.DB, String(old.employee_id), { moduleKey: "payroll" });
   await syncLegacyPayrollRunTablesForCompatibility(c, String(old.payroll_run_id));
   const saved = await getRunEmployee(c, id);
   await auditPayroll(c, { action: "payroll.run_employee.updated", entityType: "payroll_run_employee", entityId: id, oldValue: old, newValue: saved });
@@ -2280,6 +2288,7 @@ payrollRoutes.post("/runs/:id/employees/:runEmployeeId/hold", requireAnyPermissi
   if (!old) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
   await c.env.DB.prepare("UPDATE payroll_employee_results SET status = 'HELD', hold_reason = ?, updated_at = ? WHERE id = ?").bind(reason, isoNow(), id).run();
+  await markSnapshotsStaleForEmployee(c.env.DB, String(old.employee_id), { moduleKey: "payroll" });
   await syncLegacyPayrollRunTablesForCompatibility(c, String(old.payroll_run_id));
   await auditPayroll(c, { action: "payroll.run_employee.held", entityType: "payroll_run_employee", entityId: id, oldValue: old, reason });
   return ok(c, { employee: await getRunEmployee(c, id) });
@@ -2291,6 +2300,7 @@ payrollRoutes.post("/runs/:id/employees/:runEmployeeId/release-hold", requireAny
   if (!old) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(old.employee_id), "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Payroll employee row was not found.");
   await c.env.DB.prepare("UPDATE payroll_employee_results SET status = 'READY_FOR_REVIEW', hold_reason = NULL, updated_at = ? WHERE id = ?").bind(isoNow(), id).run();
+  await markSnapshotsStaleForEmployee(c.env.DB, String(old.employee_id), { moduleKey: "payroll" });
   await syncLegacyPayrollRunTablesForCompatibility(c, String(old.payroll_run_id));
   await auditPayroll(c, { action: "payroll.run_employee.released", entityType: "payroll_run_employee", entityId: id, oldValue: old });
   return ok(c, { employee: await getRunEmployee(c, id) });

@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
 import { api } from "../lib/api";
+import { downloadBlob } from "../lib/export-utils";
 import type { OrganizationDepartment, OrganizationLocation, OrganizationPosition } from "../types/organization";
 
 type Row = Record<string, unknown>;
@@ -223,23 +224,34 @@ export function ReportsPage() {
     if (tab === "exports") void loadExportLogs();
   }, [tab, token, selected]);
 
-  async function exportCsv() {
+  async function queueReportExport(format: "csv" | "xlsx" | "pdf") {
     if (!token || !canExport) return;
     try {
-      const download = await api.exportReportCsv(token, selected, activeFilters);
-      const url = URL.createObjectURL(download.blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = download.filename;
-      anchor.click();
-      URL.revokeObjectURL(url);
-      setMessage("CSV export created and audit logged.");
-      alerts.showSuccess("Report exported", "CSV export created and audit logged.");
+      const exportFormat = format === "xlsx" ? "EXCEL" : format === "pdf" ? "PDF" : "CSV";
+      const result = await api.queueReportExport(token, selected, { ...activeFilters, export_format: exportFormat });
+      const queuedMessage = result.message ?? `${exportFormat} report export queued. Track progress in the background job drawer.`;
+      setMessage(queuedMessage);
+      alerts.showSuccess("Report export queued", queuedMessage);
       if (tab === "exports") void loadExportLogs();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Export failed.";
       setError(message);
-      alerts.showApiError(err, "Export failed.");
+      alerts.showApiError(err, "Unable to queue report export.");
+    }
+  }
+
+  async function exportRows(format: "csv" | "xlsx" | "pdf") {
+    await queueReportExport(format);
+  }
+
+  async function downloadArtifact(row: Row) {
+    if (!token || !row.artifact_id) return;
+    try {
+      const result = await api.downloadReportArtifact(token, String(row.artifact_id));
+      downloadBlob(result.blob, result.filename);
+      alerts.showSuccess("Export downloaded", "Report artifact downloaded.");
+    } catch (err) {
+      alerts.showApiError(err, "Unable to download report artifact.");
     }
   }
 
@@ -366,16 +378,9 @@ export function ReportsPage() {
           moduleName={report?.label ?? selectedMeta?.label ?? "Report"}
           rows={report?.rows ?? []}
           columns={report?.columns ?? []}
-          disabled={!canExport || !report?.rows.length}
+          disabled={!canExport}
           filterSummary={Object.entries(activeFilters).map(([key, value]) => `${key}: ${value}`)}
-          onBackendExport={async (format) => {
-            if (format === "csv") {
-              await exportCsv();
-              return;
-            }
-            const { exportRows } = await import("../lib/export-utils");
-            exportRows(format, report?.label ?? selectedMeta?.label ?? "Report", report?.columns ?? [], report?.rows ?? [], Object.entries(activeFilters).map(([key, value]) => `${key}: ${value}`));
-          }}
+          onBackendExport={(format) => exportRows(format)}
         />
       </ExportActionBar>
 
@@ -399,14 +404,14 @@ export function ReportsPage() {
             </div>
             <ActionTextButton intent="refresh" size="sm" onClick={() => void loadExportLogs()}><RefreshCw className="h-4 w-4" /> Refresh</ActionTextButton>
           </div>
-          <ReportTable columns={["requested_at", "report_key", "report_name", "export_format", "row_count", "status", "sensitive_export", "requested_by_name", "file_name"]} rows={exportLogs} loading={logsLoading} error={null} />
+          <ReportTable columns={["requested_at", "report_key", "report_name", "export_format", "row_count", "status", "artifact_status", "sensitive_export", "requested_by_name", "file_name", "download_url"]} rows={exportLogs} loading={logsLoading} error={null} onDownloadArtifact={downloadArtifact} />
         </Panel>
       )}
     </PageShell>
   );
 }
 
-function ReportTable({ columns, rows, loading, error }: { columns: string[]; rows: Row[]; loading?: boolean; error?: string | null }) {
+function ReportTable({ columns, rows, loading, error, onDownloadArtifact }: { columns: string[]; rows: Row[]; loading?: boolean; error?: string | null; onDownloadArtifact?: (row: Row) => void }) {
   return (
     <DataTableFrame loading={loading} error={error} empty={!loading && !error && rows.length === 0} emptyTitle="No report rows found" emptyDescription="Adjust filters or run the report after source records are created.">
       <Table>
@@ -418,7 +423,13 @@ function ReportTable({ columns, rows, loading, error }: { columns: string[]; row
             <TableRow key={String(row.id ?? `${row.report_key ?? "row"}-${index}`)}>
               {columns.map((column) => (
                 <TableCell key={column} className="whitespace-nowrap">
-                  {statusColumns.has(column) ? <StatusBadge value={row[column]} /> : String(row[column] ?? "-")}
+                  {column === "download_url"
+                    ? row.download_url
+                      ? <ActionTextButton intent="download" size="sm" onClick={() => onDownloadArtifact?.(row)}>Download</ActionTextButton>
+                      : "-"
+                    : statusColumns.has(column) || column === "artifact_status"
+                      ? <StatusBadge value={row[column]} />
+                      : String(row[column] ?? "-")}
                 </TableCell>
               ))}
             </TableRow>

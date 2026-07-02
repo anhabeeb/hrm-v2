@@ -531,6 +531,12 @@ export const api = {
   exportReportCsv(token: string, key: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return blobRequest(`/api/v1/reports/${key}/export.csv${query(filters)}`, token);
   },
+  queueReportExport(token: string, key: string, input: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ queued: boolean; deduped?: boolean; job_id: string; job: Record<string, unknown>; artifact?: Record<string, unknown> | null; message?: string }>(`/api/v1/reports/${key}/export${query(input)}`, { method: "POST" }, token);
+  },
+  downloadReportArtifact(token: string, artifactId: string) {
+    return blobRequest(`/api/v1/reports/artifacts/${artifactId}/download`, token);
+  },
   getApprovalSettings(token: string) {
     return request<{ settings: ApprovalWorkflowSettings }>("/api/v1/approvals/settings", {}, token);
   },
@@ -2742,13 +2748,13 @@ export const api = {
     return multipartRequest<{ batch: Record<string, unknown> }>("/api/v1/data-import/batches", form, token);
   },
   validateDataImportBatch(token: string, batchId: string) {
-    return request<{ batch: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/validate`, { method: "POST" }, token);
+    return request<{ batch: Record<string, unknown>; queued?: boolean; deduped?: boolean; job_id?: string; job?: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/validate`, { method: "POST" }, token);
   },
-  getDataImportValidationPreview(token: string, batchId: string) {
-    return request<{ preview: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/validation-preview`, {}, token);
+  getDataImportValidationPreview(token: string, batchId: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ preview: Record<string, unknown>; pagination?: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/validation-preview${query(filters)}`, {}, token);
   },
   applyDataImportBatch(token: string, batchId: string, input: Record<string, unknown>) {
-    return request<{ batch: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/apply`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<{ batch: Record<string, unknown>; queued?: boolean; deduped?: boolean; job_id?: string; job?: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/apply`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   cancelDataImportBatch(token: string, batchId: string, reason?: string | null) {
     return request<{ batch: Record<string, unknown> }>(`/api/v1/data-import/batches/${batchId}/cancel`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
@@ -2766,7 +2772,7 @@ export const api = {
     return request<{ types: Record<string, unknown>[] }>("/api/v1/data-export/types", {}, token);
   },
   runDataExport(token: string, exportType: string, input: Record<string, unknown>) {
-    return request<{ export: Record<string, unknown> }>(`/api/v1/data-export/${exportType}/run`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<{ queued: boolean; deduped?: boolean; job_id: string; job: Record<string, unknown>; artifact?: Record<string, unknown> | null; message?: string }>(`/api/v1/data-export/${exportType}/run`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   downloadDataExport(token: string, exportType: string, input: Record<string, unknown>) {
     return blobRequest(`/api/v1/data-export/${exportType}/download`, token, { method: "POST", body: JSON.stringify(input) });

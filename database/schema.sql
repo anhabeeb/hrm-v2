@@ -547,6 +547,96 @@ CREATE INDEX IF NOT EXISTS idx_background_jobs_entity ON background_jobs(entity_
 CREATE INDEX IF NOT EXISTS idx_background_jobs_dedupe_key ON background_jobs(dedupe_key);
 CREATE INDEX IF NOT EXISTS idx_background_job_events_job_created ON background_job_events(job_id, created_at);
 
+CREATE TABLE IF NOT EXISTS attendance_summary_snapshots (
+  id TEXT PRIMARY KEY,
+  employee_id TEXT NOT NULL,
+  period_key TEXT,
+  summary_date TEXT,
+  status TEXT,
+  present_days REAL NOT NULL DEFAULT 0,
+  absent_days REAL NOT NULL DEFAULT 0,
+  late_count INTEGER NOT NULL DEFAULT 0,
+  early_leave_count INTEGER NOT NULL DEFAULT 0,
+  missed_punch_count INTEGER NOT NULL DEFAULT 0,
+  overtime_minutes INTEGER NOT NULL DEFAULT 0,
+  leave_days REAL NOT NULL DEFAULT 0,
+  source_version TEXT,
+  is_stale INTEGER NOT NULL DEFAULT 0 CHECK (is_stale IN (0, 1)),
+  calculated_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(employee_id, period_key, summary_date),
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS payroll_summary_snapshots (
+  id TEXT PRIMARY KEY,
+  employee_id TEXT NOT NULL,
+  payroll_period_id TEXT,
+  payroll_run_id TEXT,
+  gross_salary REAL NOT NULL DEFAULT 0,
+  allowances_total REAL NOT NULL DEFAULT 0,
+  deductions_total REAL NOT NULL DEFAULT 0,
+  net_salary REAL NOT NULL DEFAULT 0,
+  payment_method TEXT,
+  status TEXT,
+  source_version TEXT,
+  is_stale INTEGER NOT NULL DEFAULT 0 CHECK (is_stale IN (0, 1)),
+  calculated_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(employee_id, payroll_period_id, payroll_run_id),
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (payroll_period_id) REFERENCES payroll_periods(id) ON DELETE SET NULL,
+  FOREIGN KEY (payroll_run_id) REFERENCES payroll_runs(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS report_export_artifacts (
+  id TEXT PRIMARY KEY,
+  job_id TEXT,
+  report_key TEXT NOT NULL,
+  artifact_type TEXT NOT NULL CHECK (artifact_type IN ('CSV', 'JSON', 'EXCEL', 'PDF')),
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'READY', 'FAILED', 'EXPIRED')),
+  file_name TEXT,
+  mime_type TEXT,
+  storage_key TEXT,
+  row_count INTEGER NOT NULL DEFAULT 0 CHECK (row_count >= 0),
+  expires_at TEXT,
+  created_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  metadata_json TEXT,
+  FOREIGN KEY (job_id) REFERENCES background_jobs(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS dashboard_summary_snapshots (
+  id TEXT PRIMARY KEY,
+  snapshot_key TEXT NOT NULL,
+  module_key TEXT NOT NULL,
+  scope_hash TEXT NOT NULL,
+  payload_json TEXT,
+  source_version TEXT,
+  is_stale INTEGER NOT NULL DEFAULT 0 CHECK (is_stale IN (0, 1)),
+  calculated_at TEXT,
+  expires_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(snapshot_key, module_key, scope_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_summary_snapshots_employee_date ON attendance_summary_snapshots(employee_id, summary_date);
+CREATE INDEX IF NOT EXISTS idx_attendance_summary_snapshots_employee_period ON attendance_summary_snapshots(employee_id, period_key);
+CREATE INDEX IF NOT EXISTS idx_attendance_summary_snapshots_stale ON attendance_summary_snapshots(is_stale, period_key, summary_date);
+CREATE INDEX IF NOT EXISTS idx_payroll_summary_snapshots_period_run ON payroll_summary_snapshots(payroll_period_id, payroll_run_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_summary_snapshots_employee ON payroll_summary_snapshots(employee_id, payroll_period_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_summary_snapshots_stale ON payroll_summary_snapshots(is_stale, payroll_period_id, payroll_run_id);
+CREATE INDEX IF NOT EXISTS idx_report_export_artifacts_job ON report_export_artifacts(job_id, status);
+CREATE INDEX IF NOT EXISTS idx_report_export_artifacts_status_user ON report_export_artifacts(status, created_by_user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_report_export_artifacts_report_key ON report_export_artifacts(report_key, created_at);
+CREATE INDEX IF NOT EXISTS idx_dashboard_summary_snapshots_key_scope ON dashboard_summary_snapshots(snapshot_key, module_key, scope_hash);
+CREATE INDEX IF NOT EXISTS idx_dashboard_summary_snapshots_stale_expires ON dashboard_summary_snapshots(is_stale, expires_at);
+
 CREATE TABLE IF NOT EXISTS notification_preferences (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
