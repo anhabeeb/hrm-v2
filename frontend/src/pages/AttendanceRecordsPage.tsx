@@ -12,6 +12,8 @@ import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { TableSkeleton } from "../components/loading";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
+import { TablePaginationBar } from "../components/table/TablePaginationBar";
 import { Input } from "../components/ui/input";
 import {
   ActiveFilterChips,
@@ -28,6 +30,8 @@ import { OrganizationCascadeSelector } from "../components/organization/Organiza
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useDebouncedTableFilters } from "../hooks/useDebouncedTableFilters";
+import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceLog, AttendanceRawLog, AttendanceRecord } from "../types/attendance";
@@ -51,7 +55,6 @@ export function AttendanceRecordsPage() {
   const canCorrect = permissions.has("attendance.correct") || permissions.has("attendance.manage");
   const canDevices = permissions.has("attendance.devices.manage");
   const canManageLogs = permissions.has("attendance.logs.manage") || permissions.has("attendance.manual_entries.manage") || permissions.has("attendance.manage");
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [rawLogs, setRawLogs] = useState<AttendanceRawLog[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -71,6 +74,8 @@ export function AttendanceRecordsPage() {
   const [lateOnly, setLateOnly] = useState(false);
   const [earlyCheckoutOnly, setEarlyCheckoutOnly] = useState(false);
   const [payrollImpact, setPayrollImpact] = useState(false);
+  const [recordPage, setRecordPage] = useState(1);
+  const [recordPageSize, setRecordPageSize] = useState(25);
   const [editing, setEditing] = useState<AttendanceRecord | null | undefined>(undefined);
   const [editingLog, setEditingLog] = useState<AttendanceLog | null | undefined>(undefined);
   const [correctionOpen, setCorrectionOpen] = useState(false);
@@ -95,6 +100,19 @@ export function AttendanceRecordsPage() {
     early_checkout_only: earlyCheckoutOnly || undefined,
     payroll_impact: payrollImpact || undefined
   }), [search, status, source, departmentId, positionId, locationId, dateFrom, dateTo, missedPunch, lateOnly, earlyCheckoutOnly, payrollImpact]);
+  const { debouncedFilters, isDebouncing } = useDebouncedTableFilters(filters, 300);
+  const recordsQuery = usePaginatedQuery<{ records: AttendanceRecord[]; pagination?: Record<string, unknown> }>({
+    scope: user?.id,
+    tableName: "attendance-records",
+    page: recordPage,
+    pageSize: recordPageSize,
+    filters: debouncedFilters,
+    enabled: Boolean(token && canView && !attendanceDisabled),
+    queryFn: ({ signal, pagination }) => api.listAttendanceRecords(token!, { ...debouncedFilters, limit: pagination.limit, offset: pagination.offset }, signal),
+    getRowCount: (data) => data?.records.length ?? 0
+  });
+  const records = recordsQuery.data?.records ?? [];
+  const recordPagination = recordsQuery.data?.pagination;
 
   const rawLogFilters = useMemo(() => ({
     search,
@@ -109,17 +127,15 @@ export function AttendanceRecordsPage() {
     setError(null);
     try {
       setAttendanceDisabled(false);
-      const [recordResult, logResult, employeeResult, departmentResult, jobLevelResult, positionResult, locationResult] = await Promise.all([
-        api.listAttendanceRecords(token, filters),
+      const [logResult, employeeResult, departmentResult, jobLevelResult, positionResult, locationResult] = await Promise.all([
         api.listAttendanceRawLogs(token, rawLogFilters),
-        api.listEmployees(token),
+        api.listEmployees(token, { limit: 100 }),
         api.listDepartments(token),
         api.listJobLevels(token),
         api.listPositions(token),
         api.listLocations(token)
       ]);
       const attendanceLogs = await api.listAttendanceLogs(token, { ...rawLogFilters, log_from: dateFrom ? `${dateFrom}T00:00:00` : "", log_to: dateTo ? `${dateTo}T23:59:59` : "" });
-      setRecords(recordResult.records);
       setRawLogs(logResult.logs);
       setLogs(attendanceLogs.logs);
       setEmployees(employeeResult.employees);
@@ -130,7 +146,6 @@ export function AttendanceRecordsPage() {
     } catch (err) {
       if (err instanceof ApiError && (err.code === "ATTENDANCE_MODULE_DISABLED" || err.code === "MODULE_DISABLED")) {
         setAttendanceDisabled(true);
-        setRecords([]);
         setRawLogs([]);
         setLogs([]);
         return;
@@ -143,14 +158,24 @@ export function AttendanceRecordsPage() {
 
   useEffect(() => {
     void load();
-  }, [token, canView, filters, rawLogFilters]);
+  }, [token, canView, rawLogFilters]);
+
+  useEffect(() => {
+    setRecordPage(1);
+  }, [filters]);
+
+  useEffect(() => {
+    if (recordsQuery.error instanceof ApiError && (recordsQuery.error.code === "ATTENDANCE_MODULE_DISABLED" || recordsQuery.error.code === "MODULE_DISABLED")) {
+      setAttendanceDisabled(true);
+    }
+  }, [recordsQuery.error]);
 
   async function recalculate(record: AttendanceRecord) {
     if (!token) return;
     try {
       await api.recalculateAttendanceRecord(token, record.id);
       alerts.showSuccess("Recalculation queued", "Attendance record recalculation was queued.");
-      await load();
+      await recordsQuery.refetch();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Unable to queue recalculation.";
       setError(message);
@@ -165,7 +190,7 @@ export function AttendanceRecordsPage() {
       await api.importAttendanceRawLogs(token, { logs, source: "MANUAL_IMPORT" });
       setRawImportOpen(false);
       alerts.showSuccess("Raw logs imported", "Attendance raw logs were imported.");
-      await load();
+      await Promise.all([load(), recordsQuery.refetch()]);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Enter valid raw log JSON before importing.";
       setError(message);
@@ -193,6 +218,7 @@ export function AttendanceRecordsPage() {
     setLateOnly(false);
     setEarlyCheckoutOnly(false);
     setPayrollImpact(false);
+    setRecordPage(1);
   }
 
   const activeChips = [
@@ -261,7 +287,7 @@ export function AttendanceRecordsPage() {
       </StandardFilterBar>
       <ActiveFilterChips chips={activeChips} />
       <Panel className="overflow-hidden">
-        <div className="overflow-x-auto">
+        <PerformanceDataTable loading={loading || recordsQuery.isInitialLoading} refreshing={recordsQuery.isRefreshing || isDebouncing} error={error ?? recordsQuery.error?.message ?? null} empty={records.length === 0} rowCount={records.length} emptyTitle="No attendance records found" emptyDescription="Create records, import raw logs, or adjust filters." skeleton={<TableSkeleton rows={5} columns={9} label="Loading attendance records" />}>
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>Clock in/out</TableHead><TableHead>Work</TableHead><TableHead>Late/Early</TableHead><TableHead>Source</TableHead><TableHead>Payroll impact</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>
@@ -279,8 +305,8 @@ export function AttendanceRecordsPage() {
               </TableRow>)}
             </TableBody>
           </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={10} label="Loading attendance records" /> : records.length === 0 ? <EmptyState title="No attendance records found" description="Create records, import raw logs, or adjust filters." /> : null}
+        </PerformanceDataTable>
+        <TablePaginationBar page={recordPage} pageSize={recordPageSize} rowCount={records.length} hasMore={Boolean(recordPagination?.has_more)} onPageChange={setRecordPage} onPageSizeChange={setRecordPageSize} />
       </Panel>
       <Panel className="overflow-hidden">
         <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">Recent Attendance Logs</h2></div>
@@ -302,9 +328,9 @@ export function AttendanceRecordsPage() {
         </div>
         {loading ? <TableSkeleton rows={4} columns={6} label="Loading raw attendance logs" /> : rawLogs.length === 0 ? <EmptyState title="No raw logs found" description="Raw device and import logs will appear here." /> : null}
       </Panel>
-      {editing !== undefined && token ? <AttendanceRecordModal token={token} employees={employees} record={editing} onClose={() => setEditing(undefined)} onSaved={load} /> : null}
-      {editingLog !== undefined && token ? <AttendanceManualLogModal token={token} employees={employees} log={editingLog} onClose={() => setEditingLog(undefined)} onSaved={load} /> : null}
-      {correctionOpen && token ? <AttendanceCorrectionModal token={token} employees={employees} onClose={() => setCorrectionOpen(false)} onSaved={load} /> : null}
+      {editing !== undefined && token ? <AttendanceRecordModal token={token} employees={employees} record={editing} onClose={() => setEditing(undefined)} onSaved={async () => { await load(); await recordsQuery.refetch(); }} /> : null}
+      {editingLog !== undefined && token ? <AttendanceManualLogModal token={token} employees={employees} log={editingLog} onClose={() => setEditingLog(undefined)} onSaved={async () => { await load(); await recordsQuery.refetch(); }} /> : null}
+      {correctionOpen && token ? <AttendanceCorrectionModal token={token} employees={employees} onClose={() => setCorrectionOpen(false)} onSaved={async () => { await load(); await recordsQuery.refetch(); }} /> : null}
       {rawImportOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
           <div className="w-full max-w-2xl rounded-lg border bg-white shadow-xl">

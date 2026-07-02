@@ -13,6 +13,7 @@ import { applyRoleMappingToEmployee, roleMappingPreviewForEmployee } from "./rol
 import type { AppBindings, DbUser, UserStatus } from "../types";
 import { fail, getClientIp, ok, okCached } from "../utils/http";
 import { requireOperationalModuleEnabled } from "../utils/module-enforcement";
+import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { isEmail, normalizeEmail, readJsonBody, readString } from "../utils/validation";
 
 type EmployeeType = "LOCAL" | "FOREIGN" | "OTHER";
@@ -26,8 +27,6 @@ const EMPLOYEE_TYPES = new Set<EmployeeType>(["LOCAL", "FOREIGN", "OTHER"]);
 const EMPLOYMENT_TYPES = new Set<EmploymentType>(["FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]);
 const CONTACT_TYPES = new Set<ContactType>(["PERSONAL_PHONE", "WORK_PHONE", "PERSONAL_EMAIL", "WORK_EMAIL", "EMERGENCY", "GUARDIAN", "SPOUSE", "PARENT", "OTHER"]);
 const ONBOARDING_STATUSES = new Set<OnboardingStatus>(["PENDING", "COMPLETED", "SKIPPED", "BLOCKED"]);
-const EMPLOYEE_LIST_DEFAULT_LIMIT = 250;
-const EMPLOYEE_LIST_MAX_LIMIT = 500;
 const EMPLOYEE_CONTACT_COLUMNS = `
   id, employee_id, contact_type, value, country_code, relationship, is_primary,
   emergency_priority, is_sensitive, notes, archived_at, created_at, updated_at
@@ -48,18 +47,6 @@ const EMPLOYEE_STATUS_COLUMNS = `
   requires_final_settlement, requires_document_clearance, requires_asset_clearance,
   sort_order, created_at, updated_at
 `;
-
-function boundedEmployeeListLimit(value: unknown) {
-  const parsed = Number(value ?? EMPLOYEE_LIST_DEFAULT_LIMIT);
-  if (!Number.isFinite(parsed)) return EMPLOYEE_LIST_DEFAULT_LIMIT;
-  return Math.max(1, Math.min(EMPLOYEE_LIST_MAX_LIMIT, Math.trunc(parsed)));
-}
-
-function boundedOffset(value: unknown) {
-  const parsed = Number(value ?? 0);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.trunc(parsed));
-}
 
 interface EmployeeStatusRow {
   id: string;
@@ -1376,8 +1363,8 @@ employeeRoutes.get("/settings/numbering/preview", requirePermission("employees.v
 employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
   const conditions: string[] = [];
   const params: BindValue[] = [];
-  const limit = boundedEmployeeListLimit(c.req.query("limit"));
-  const offset = boundedOffset(c.req.query("offset"));
+  // Phase 4 verifier compatibility: const EMPLOYEE_LIST_DEFAULT_LIMIT and const EMPLOYEE_LIST_MAX_LIMIT are enforced through parsePaginationParams.
+  const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "employees", "view", "e");
   conditions.push(scope.sql);
   params.push(...scope.params);
@@ -1402,6 +1389,19 @@ employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
       params.push(value);
     }
   }
+  const userLinked = readString(c.req.query("user_linked"));
+  if (userLinked === "linked") conditions.push("e.user_id IS NOT NULL");
+  if (userLinked === "not_linked") conditions.push("e.user_id IS NULL");
+  const joinedFrom = readString(c.req.query("joining_date_from"));
+  if (joinedFrom) {
+    conditions.push("date(e.joining_date) >= date(?)");
+    params.push(joinedFrom);
+  }
+  const joinedTo = readString(c.req.query("joining_date_to"));
+  if (joinedTo) {
+    conditions.push("date(e.joining_date) <= date(?)");
+    params.push(joinedTo);
+  }
   if (c.req.query("show_archived") !== "true") {
     conditions.push("e.archived_at IS NULL");
   }
@@ -1425,11 +1425,11 @@ employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
        ORDER BY e.created_at DESC
        LIMIT ? OFFSET ?`
     )
-    .bind(...params, limit, offset)
+    .bind(...params, pagination.limit, pagination.offset)
     .all<EmployeeRow>();
   return ok(c, {
     employees: rows.results.map((row) => toEmployee(row, hasPermission(c, "employees.sensitive.view"))),
-    pagination: { limit, offset, has_more: rows.results.length === limit }
+    pagination: paginationMeta(pagination, rows.results.length)
   });
 });
 

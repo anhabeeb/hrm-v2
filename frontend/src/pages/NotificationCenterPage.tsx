@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
+import { TablePaginationBar } from "../components/table/TablePaginationBar";
 import {
   ActiveFilterChips,
   FilterResetButton,
@@ -14,10 +16,12 @@ import {
   StandardSearchInput,
   StandardSelectFilter
 } from "../components/filters";
-import { LoadingSkeleton, PageHeader, PageShell } from "../components/ui/page-shell";
+import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { StatusBadge } from "../components/ui/status-badge";
 import { APP_BRANDING } from "../config/branding";
 import { useAuth } from "../hooks/useAuth";
+import { useDebouncedTableFilters } from "../hooks/useDebouncedTableFilters";
+import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
 import { api, type HrmNotification } from "../lib/api";
 import { cn } from "../lib/utils";
 
@@ -32,14 +36,26 @@ function formatTime(value: string) {
 }
 
 export function NotificationCenterPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
-  const [rows, setRows] = useState<HrmNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({ read: "", module: "", severity: "", date_from: "", date_to: "" });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const dateRange = { from: filters.date_from, to: filters.date_to };
+  const { debouncedFilters, isDebouncing } = useDebouncedTableFilters(filters, 300);
+  const notificationsQuery = usePaginatedQuery<{ notifications: HrmNotification[]; unread_count: number; pagination?: Record<string, unknown> }>({
+    scope: user?.id,
+    tableName: "notifications",
+    page,
+    pageSize,
+    filters: debouncedFilters,
+    enabled: Boolean(token),
+    queryFn: ({ signal, pagination }) => api.listNotifications(token!, { ...debouncedFilters, limit: pagination.limit, offset: pagination.offset }, signal),
+    getRowCount: (data) => data?.notifications.length ?? 0
+  });
+  const rows = notificationsQuery.data?.notifications ?? [];
+  const unreadCount = notificationsQuery.data?.unread_count ?? 0;
+  const pagination = notificationsQuery.data?.pagination;
   const activeChips = [
     filters.module ? { key: "module", label: "Module", value: filters.module, onRemove: () => setFilters((current) => ({ ...current, module: "" })) } : null,
     filters.read ? { key: "read", label: "Read", value: filters.read, onRemove: () => setFilters((current) => ({ ...current, read: "" })) } : null,
@@ -49,40 +65,27 @@ export function NotificationCenterPage() {
 
   function resetFilters() {
     setFilters({ read: "", module: "", severity: "", date_from: "", date_to: "" });
+    setPage(1);
   }
 
-  async function load() {
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await api.listNotifications(token, { ...filters, limit: 100 });
-      setRows(result.notifications);
-      setUnreadCount(result.unread_count);
-    } catch (err) {
-      setRows([]);
-      setError(err instanceof Error ? err.message : "Notifications are unavailable.");
-    } finally {
-      setLoading(false);
-    }
+  function load() {
+    return notificationsQuery.refetch();
   }
 
   useEffect(() => {
-    void load();
-  }, [token]);
+    setPage(1);
+  }, [filters]);
 
   async function markRead(notification: HrmNotification) {
     if (!token) return;
     await api.markNotificationRead(token, notification.id);
-    setRows((current) => current.map((row) => row.id === notification.id ? { ...row, is_read: true, read_at: row.read_at ?? new Date().toISOString() } : row));
-    setUnreadCount((count) => Math.max(0, count - 1));
+    await notificationsQuery.refetch();
   }
 
   async function markAllRead() {
     if (!token) return;
-    const result = await api.markAllNotificationsRead(token);
-    setRows((current) => current.map((row) => ({ ...row, is_read: true, read_at: row.read_at ?? new Date().toISOString() })));
-    setUnreadCount((count) => Math.max(0, count - result.count));
+    await api.markAllNotificationsRead(token);
+    await notificationsQuery.refetch();
   }
 
   async function openNotification(notification: HrmNotification) {
@@ -122,11 +125,9 @@ export function NotificationCenterPage() {
       </StandardFilterBar>
       <ActiveFilterChips chips={activeChips} />
 
-      {loading ? <LoadingSkeleton rows={6} /> : null}
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
-      {!loading && !error && rows.length === 0 ? <EmptyState title="No notifications" description="There are no notifications matching your filters." /> : null}
-      {!loading && !error && rows.length ? (
-        <section className="overflow-hidden rounded-lg border bg-white shadow-panel">
+      <PerformanceDataTable loading={notificationsQuery.isInitialLoading} refreshing={notificationsQuery.isRefreshing || isDebouncing} error={notificationsQuery.error?.message ?? null} empty={rows.length === 0} rowCount={rows.length} emptyTitle="No notifications" emptyDescription="There are no notifications matching your filters.">
+        {rows.length ? (
+        <section className="overflow-hidden bg-white">
           <div className="divide-y">
             {rows.map((notification) => (
               <div key={notification.id} className={cn("grid gap-3 px-4 py-3 lg:grid-cols-[1fr_auto]", !notification.is_read && "bg-primary/5")}>
@@ -148,7 +149,9 @@ export function NotificationCenterPage() {
             ))}
           </div>
         </section>
-      ) : null}
+        ) : <EmptyState title="No notifications" description="There are no notifications matching your filters." />}
+      </PerformanceDataTable>
+      <TablePaginationBar page={page} pageSize={pageSize} rowCount={rows.length} hasMore={Boolean(pagination?.has_more)} onPageChange={setPage} onPageSizeChange={setPageSize} />
     </PageShell>
   );
 }

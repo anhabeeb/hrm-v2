@@ -11,6 +11,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, DbUser, UserStatus } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
+import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { timeD1 } from "../utils/performance";
 import { isEmail, normalizeEmail, readString } from "../utils/validation";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
@@ -1942,11 +1943,14 @@ async function updateSettings(c: Context<AppBindings>, table: "onboarding_settin
   return row;
 }
 
-async function listOnboardingCases(c: Context<AppBindings>) {
+async function listOnboardingCases(c: Context<AppBindings>): Promise<Record<string, unknown>[]>;
+async function listOnboardingCases(c: Context<AppBindings>, options: { paginate: true }): Promise<{ rows: Record<string, unknown>[]; pagination: ReturnType<typeof paginationMeta> }>;
+async function listOnboardingCases(c: Context<AppBindings>, options: { paginate?: boolean } = {}) {
   const user = c.get("currentUser");
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, user, "employees", "view", "e");
   const conditions = [scope.sql];
   const binds: BindValue[] = [...scope.params];
+  const pagination = options.paginate ? parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 }) : null;
   const status = c.req.query("status");
   if (status) {
     conditions.push("oc.onboarding_status = ?");
@@ -1966,9 +1970,11 @@ async function listOnboardingCases(c: Context<AppBindings>) {
      LEFT JOIN job_levels jl ON jl.id = e.job_level_id
      LEFT JOIN users owner ON owner.id = oc.assigned_owner_user_id
      ${where(conditions)}
-     ORDER BY oc.created_at DESC`
-  ).bind(...binds).all<Record<string, unknown>>();
-  return rows.results;
+     ORDER BY oc.created_at DESC
+     ${pagination ? "LIMIT ? OFFSET ?" : ""}`
+  ).bind(...binds, ...(pagination ? [pagination.limit, pagination.offset] : [])).all<Record<string, unknown>>();
+  if (!pagination) return rows.results;
+  return { rows: rows.results, pagination: paginationMeta(pagination, rows.results.length) };
 }
 
 function parseJsonArrayField(value: unknown) {
@@ -2230,11 +2236,14 @@ export async function getOnboardingDashboardSummary(c: Context<AppBindings>) {
   };
 }
 
-async function listOffboardingCases(c: Context<AppBindings>) {
+async function listOffboardingCases(c: Context<AppBindings>): Promise<Record<string, unknown>[]>;
+async function listOffboardingCases(c: Context<AppBindings>, options: { paginate: true }): Promise<{ rows: Record<string, unknown>[]; pagination: ReturnType<typeof paginationMeta> }>;
+async function listOffboardingCases(c: Context<AppBindings>, options: { paginate?: boolean } = {}) {
   const user = c.get("currentUser");
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, user, "employees", "view", "e");
   const conditions = [scope.sql];
   const binds: BindValue[] = [...scope.params];
+  const pagination = options.paginate ? parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 }) : null;
   const status = c.req.query("status");
   if (status) {
     conditions.push("oc.offboarding_status = ?");
@@ -2249,9 +2258,11 @@ async function listOffboardingCases(c: Context<AppBindings>) {
      LEFT JOIN locations l ON l.id = e.primary_location_id
      LEFT JOIN positions p ON p.id = e.primary_position_id
      ${where(conditions)}
-     ORDER BY oc.created_at DESC`
-  ).bind(...binds).all<Record<string, unknown>>();
-  return rows.results;
+     ORDER BY oc.created_at DESC
+     ${pagination ? "LIMIT ? OFFSET ?" : ""}`
+  ).bind(...binds, ...(pagination ? [pagination.limit, pagination.offset] : [])).all<Record<string, unknown>>();
+  if (!pagination) return rows.results;
+  return { rows: rows.results, pagination: paginationMeta(pagination, rows.results.length) };
 }
 
 async function loadOnboardingCaseEmployeeSnapshot(db: D1Database, employeeId: string) {
@@ -2355,7 +2366,10 @@ async function lifecycleSummary(c: Context<AppBindings>, employeeId: string) {
 onboardingRoutes.get("/settings", requireAnyPermission(["onboarding.settings.view", "onboarding.settings.manage", "settings.view"]), async (c) => ok(c, { settings: await ensureOnboardingSettings(c.env.DB) }));
 onboardingRoutes.patch("/settings", requireAnyPermission(["onboarding.settings.update", "onboarding.settings.manage", "settings.manage"]), async (c) => ok(c, { settings: await updateSettings(c, "onboarding_settings", onboardingSettingsFields) }));
 onboardingRoutes.use("*", requireOperationalModuleMiddleware("onboarding", "Onboarding"));
-onboardingRoutes.get("/cases", requireAnyPermission(["onboarding.cases.view", "onboarding.cases.manage", "employees.view"]), async (c) => ok(c, { cases: await listOnboardingCases(c) }));
+onboardingRoutes.get("/cases", requireAnyPermission(["onboarding.cases.view", "onboarding.cases.manage", "employees.view"]), async (c) => {
+  const result = await listOnboardingCases(c, { paginate: true });
+  return ok(c, { cases: result.rows, pagination: result.pagination });
+});
 onboardingRoutes.get("/dashboard-summary", requireAnyPermission(["onboarding.dashboard.view", "onboarding.cases.view", "dashboard.view"]), async (c) => {
   try {
     return ok(c, { summary: await getOnboardingDashboardSummary(c) });
@@ -3113,7 +3127,10 @@ onboardingRoutes.post("/tasks/:taskId/assign", requireAnyPermission(["onboarding
 offboardingRoutes.get("/settings", requireAnyPermission(["offboarding.settings.view", "offboarding.settings.manage", "settings.view"]), async (c) => ok(c, { settings: await ensureOffboardingSettings(c.env.DB) }));
 offboardingRoutes.patch("/settings", requireAnyPermission(["offboarding.settings.update", "offboarding.settings.manage", "settings.manage"]), async (c) => ok(c, { settings: await updateSettings(c, "offboarding_settings", offboardingSettingsFields) }));
 offboardingRoutes.use("*", requireOperationalModuleMiddleware("offboarding", "Offboarding"));
-offboardingRoutes.get("/cases", requireAnyPermission(["offboarding.cases.view", "offboarding.cases.manage", "employees.view"]), async (c) => ok(c, { cases: await listOffboardingCases(c) }));
+offboardingRoutes.get("/cases", requireAnyPermission(["offboarding.cases.view", "offboarding.cases.manage", "employees.view"]), async (c) => {
+  const result = await listOffboardingCases(c, { paginate: true });
+  return ok(c, { cases: result.rows, pagination: result.pagination });
+});
 offboardingRoutes.get("/dashboard", requireAnyPermission(["offboarding.dashboard.view", "offboarding.cases.view", "dashboard.view"]), async (c) => {
   const cases = await listOffboardingCases(c);
   return ok(c, { dashboard: { total_cases: cases.length, pending_clearance: cases.filter((row) => row.offboarding_status === "WAITING_FOR_CLEARANCE").length, pending_final_settlement: cases.filter((row) => row.offboarding_status === "WAITING_FOR_FINAL_SETTLEMENT").length, pending_access_revocation: cases.filter((row) => row.offboarding_status === "WAITING_FOR_ACCESS_REVOCATION").length, completed_exits: cases.filter((row) => row.offboarding_status === "COMPLETED").length, overdue_cases: cases.filter((row) => row.due_date && String(row.due_date) < new Date().toISOString().slice(0, 10)).length, rows: cases.slice(0, 20) } });

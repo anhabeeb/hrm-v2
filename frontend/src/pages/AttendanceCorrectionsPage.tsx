@@ -8,6 +8,8 @@ import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFilters
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
+import { TablePaginationBar } from "../components/table/TablePaginationBar";
 import { TableSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
@@ -15,6 +17,8 @@ import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useDebouncedTableFilters } from "../hooks/useDebouncedTableFilters";
+import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceCorrection } from "../types/attendance";
@@ -47,7 +51,6 @@ export function AttendanceCorrectionsPage() {
   const canApprove = permissions.has("attendance.corrections.approve") || permissions.has("attendance.approve_correction") || permissions.has("attendance.corrections.manage") || permissions.has("attendance.manage");
   const canReject = permissions.has("attendance.corrections.reject") || permissions.has("attendance.approve_correction") || permissions.has("attendance.corrections.manage") || permissions.has("attendance.manage");
   const canCancel = permissions.has("attendance.corrections.cancel") || permissions.has("attendance.corrections.manage") || permissions.has("attendance.manage") || canCorrect;
-  const [corrections, setCorrections] = useState<AttendanceCorrection[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
@@ -57,6 +60,8 @@ export function AttendanceCorrectionsPage() {
   const [locationId, setLocationId] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [modalOpen, setModalOpen] = useState(false);
   const [reviewAction, setReviewAction] = useState<{ correction: AttendanceCorrection; type: "approve" | "reject" | "cancel" } | null>(null);
   const [reviewNote, setReviewNote] = useState("");
@@ -65,6 +70,19 @@ export function AttendanceCorrectionsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const filters = useMemo(() => ({ search, status, department_id: departmentId, location_id: locationId, date_from: dateFrom, date_to: dateTo }), [search, status, departmentId, locationId, dateFrom, dateTo]);
+  const { debouncedFilters, isDebouncing } = useDebouncedTableFilters(filters, 300);
+  const correctionsQuery = usePaginatedQuery<{ corrections: AttendanceCorrection[]; pagination?: Record<string, unknown> }>({
+    scope: user?.id,
+    tableName: "attendance-corrections",
+    page,
+    pageSize,
+    filters: debouncedFilters,
+    enabled: Boolean(token && canView && !attendanceDisabled),
+    queryFn: ({ signal, pagination }) => api.listAttendanceCorrections(token!, { ...debouncedFilters, limit: pagination.limit, offset: pagination.offset }, signal),
+    getRowCount: (data) => data?.corrections.length ?? 0
+  });
+  const corrections = correctionsQuery.data?.corrections ?? [];
+  const pagination = correctionsQuery.data?.pagination;
   const dateRange = useMemo(() => ({ from: dateFrom, to: dateTo }), [dateFrom, dateTo]);
   const activeFilterChips = useMemo(() => [
     ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
@@ -80,20 +98,17 @@ export function AttendanceCorrectionsPage() {
     setError(null);
     try {
       setAttendanceDisabled(false);
-      const [correctionResult, employeeResult, departmentResult, locationResult] = await Promise.all([
-        api.listAttendanceCorrections(token, filters),
-        api.listEmployees(token),
+      const [employeeResult, departmentResult, locationResult] = await Promise.all([
+        api.listEmployees(token, { limit: 100 }),
         api.listDepartments(token),
         api.listLocations(token)
       ]);
-      setCorrections(correctionResult.corrections);
       setEmployees(employeeResult.employees);
       setDepartments(departmentResult.departments);
       setLocations(locationResult.locations);
     } catch (err) {
       if (err instanceof ApiError && (err.code === "ATTENDANCE_MODULE_DISABLED" || err.code === "MODULE_DISABLED")) {
         setAttendanceDisabled(true);
-        setCorrections([]);
         return;
       }
       setError(err instanceof ApiError ? err.message : "Unable to load correction requests.");
@@ -104,7 +119,17 @@ export function AttendanceCorrectionsPage() {
 
   useEffect(() => {
     void load();
-  }, [token, canView, filters]);
+  }, [token, canView]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters]);
+
+  useEffect(() => {
+    if (correctionsQuery.error instanceof ApiError && (correctionsQuery.error.code === "ATTENDANCE_MODULE_DISABLED" || correctionsQuery.error.code === "MODULE_DISABLED")) {
+      setAttendanceDisabled(true);
+    }
+  }, [correctionsQuery.error]);
 
   async function action(correction: AttendanceCorrection, type: "approve" | "reject" | "cancel", note?: string | null) {
     if (!token) return;
@@ -115,7 +140,7 @@ export function AttendanceCorrectionsPage() {
       setReviewAction(null);
       setReviewNote("");
       alerts.showSuccess("Correction updated", `Attendance correction ${type} completed.`);
-      await load();
+      await correctionsQuery.refetch();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Unable to update correction request.";
       setError(message);
@@ -177,7 +202,7 @@ export function AttendanceCorrectionsPage() {
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <div className="overflow-x-auto">
+        <PerformanceDataTable loading={loading || correctionsQuery.isInitialLoading} refreshing={correctionsQuery.isRefreshing || isDebouncing} error={error ?? correctionsQuery.error?.message ?? null} empty={corrections.length === 0} rowCount={corrections.length} emptyTitle="No correction requests found" emptyDescription="Submit a correction request or adjust filters." skeleton={<TableSkeleton rows={5} columns={9} label="Loading attendance corrections" />}>
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Date</TableHead><TableHead>Current</TableHead><TableHead>Requested changes</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead><TableHead>Requested by</TableHead><TableHead>Reviewed by</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>{corrections.map((correction) => {
@@ -196,10 +221,10 @@ export function AttendanceCorrectionsPage() {
               </TableRow>;
             })}</TableBody>
           </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={8} label="Loading attendance corrections" /> : corrections.length === 0 ? <EmptyState title="No correction requests found" description="Submit a correction request or adjust filters." /> : null}
+        </PerformanceDataTable>
+        <TablePaginationBar page={page} pageSize={pageSize} rowCount={corrections.length} hasMore={Boolean(pagination?.has_more)} onPageChange={setPage} onPageSizeChange={setPageSize} />
       </Panel>
-      {modalOpen && token ? <AttendanceCorrectionModal token={token} employees={employees} onClose={() => setModalOpen(false)} onSaved={load} /> : null}
+      {modalOpen && token ? <AttendanceCorrectionModal token={token} employees={employees} onClose={() => setModalOpen(false)} onSaved={async () => { await load(); await correctionsQuery.refetch(); }} /> : null}
       {reviewAction ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
           <div className="w-full max-w-lg rounded-lg border bg-white shadow-xl">

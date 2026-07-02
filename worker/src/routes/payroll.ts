@@ -10,6 +10,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { disabledModuleResponse, isOperationalModuleEnabled, requireOperationalModuleEnabled, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
+import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { readJsonBody, readString } from "../utils/validation";
 import {
   calculatePayrollPensionContribution,
@@ -1331,15 +1332,20 @@ async function preparePaymentRegisterForPayrollRun(c: Context<AppBindings>, runI
   return { payments: await listPaymentRegisters(c, runId) };
 }
 
-async function listPaymentRegisters(c: Context<AppBindings>, runId?: string | null) {
+async function listPaymentRegisters(c: Context<AppBindings>, runId?: string | null): Promise<Record<string, unknown>[]>;
+async function listPaymentRegisters(c: Context<AppBindings>, runId: string | null | undefined, options: { paginate: true }): Promise<{ rows: Record<string, unknown>[]; pagination: ReturnType<typeof paginationMeta> }>;
+async function listPaymentRegisters(c: Context<AppBindings>, runId?: string | null, options: { paginate?: boolean } = {}) {
   const disabled = await requirePayrollSubmoduleEnabled(c, "payment_register_enabled");
-  if (disabled) return [];
+  if (disabled) return options.paginate ? { rows: [], pagination: paginationMeta(parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 }), 0) } : [];
   const conditions = ["1 = 1"];
   const params: BindValue[] = [];
+  const pagination = options.paginate ? parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 }) : null;
   if (runId) { conditions.push("ppr.payroll_run_id = ?"); params.push(runId); }
   await addEmployeeScope(c, conditions, params, "view", "ppr.employee_id");
-  const rows = (await c.env.DB.prepare(`SELECT ppr.*, pp.period_month, pp.period_year, pr.run_no FROM payroll_payment_register ppr INNER JOIN payroll_periods pp ON pp.id = ppr.payroll_period_id INNER JOIN payroll_runs pr ON pr.id = ppr.payroll_run_id WHERE ${conditions.join(" AND ")} ORDER BY pp.period_year DESC, pp.period_month DESC, ppr.employee_number_snapshot`).bind(...params).all<Record<string, unknown>>()).results;
-  return rows.map((row) => safePaymentRegister(row, hasAny(c, ["payroll.payment_register.sensitive.view", "payroll.payment_register.manage", "payroll.manage"])));
+  const rows = (await c.env.DB.prepare(`SELECT ppr.*, pp.period_month, pp.period_year, pr.run_no FROM payroll_payment_register ppr INNER JOIN payroll_periods pp ON pp.id = ppr.payroll_period_id INNER JOIN payroll_runs pr ON pr.id = ppr.payroll_run_id WHERE ${conditions.join(" AND ")} ORDER BY pp.period_year DESC, pp.period_month DESC, ppr.employee_number_snapshot ${pagination ? "LIMIT ? OFFSET ?" : ""}`).bind(...params, ...(pagination ? [pagination.limit, pagination.offset] : [])).all<Record<string, unknown>>()).results;
+  const safeRows = rows.map((row) => safePaymentRegister(row, hasAny(c, ["payroll.payment_register.sensitive.view", "payroll.payment_register.manage", "payroll.manage"])));
+  if (!pagination) return safeRows;
+  return { rows: safeRows, pagination: paginationMeta(pagination, rows.length) };
 }
 
 async function confirmManualPayrollPayment(c: Context<AppBindings>, paymentId: string, reference: string, note: string) {
@@ -2209,7 +2215,8 @@ payrollRoutes.get("/runs/:id/payment-register", requireAnyPermission(["payroll.p
   if (disabled) return disabled;
   const { run, response } = await ensureRunAccess(c, routeParam(c, "id"), "view");
   if (!run) return response!;
-  return ok(c, { payments: await listPaymentRegisters(c, String(run.id)) });
+  const result = await listPaymentRegisters(c, String(run.id), { paginate: true });
+  return ok(c, { payments: result.rows, pagination: result.pagination });
 });
 
 payrollRoutes.post("/runs/:id/prepare-payment-register", requireAnyPermission(["payroll.payment_register.prepare", "payroll.payment_register.manage", "payroll.manage"]), async (c) => {
@@ -2236,9 +2243,10 @@ payrollRoutes.post("/runs/:id/cancel", requireAnyPermission(["payroll.runs.cance
 payrollRoutes.get("/runs/:id/employees", requireAnyPermission(["payroll.results.view", "payroll.runs.view", "payroll.view"]), async (c) => {
   const conditions = ["pre.payroll_run_id = ?"];
   const params: BindValue[] = [routeParam(c, "id")];
+  const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
   await addEmployeeScope(c, conditions, params, "view", "pre.employee_id");
-  const rows = (await c.env.DB.prepare(`SELECT pre.*, d.name AS department_name, l.name AS location_name FROM payroll_employee_results pre LEFT JOIN departments d ON d.id = pre.department_id LEFT JOIN locations l ON l.id = pre.location_id WHERE ${conditions.join(" AND ")} ORDER BY pre.employee_no_snapshot`).bind(...params).all<Record<string, unknown>>()).results;
-  return ok(c, { employees: rows.map((row) => safePayrollResult(row, canViewPayrollResultSensitive(c))) });
+  const rows = (await c.env.DB.prepare(`SELECT pre.*, d.name AS department_name, l.name AS location_name FROM payroll_employee_results pre LEFT JOIN departments d ON d.id = pre.department_id LEFT JOIN locations l ON l.id = pre.location_id WHERE ${conditions.join(" AND ")} ORDER BY pre.employee_no_snapshot LIMIT ? OFFSET ?`).bind(...params, pagination.limit, pagination.offset).all<Record<string, unknown>>()).results;
+  return ok(c, { employees: rows.map((row) => safePayrollResult(row, canViewPayrollResultSensitive(c))), pagination: paginationMeta(pagination, rows.length) });
 });
 
 payrollRoutes.get("/runs/:id/employees/:runEmployeeId", requireAnyPermission(["payroll.results.detail.view", "payroll.results.view", "payroll.view"]), async (c) => {
@@ -2336,7 +2344,8 @@ payrollRoutes.get("/payslips/:payslipId/download", requireAnyPermission(["payrol
 payrollRoutes.get("/payment-registers", requireAnyPermission(["payroll.payment_register.view", "payroll.payment_register.manage", "payroll.view"]), async (c) => {
   const disabled = await requirePayrollSubmoduleEnabled(c, "payment_register_enabled");
   if (disabled) return disabled;
-  return ok(c, { payments: await listPaymentRegisters(c) });
+  const result = await listPaymentRegisters(c, null, { paginate: true });
+  return ok(c, { payments: result.rows, pagination: result.pagination });
 });
 
 payrollRoutes.post("/payment-register/:paymentId/confirm-manual-paid", requireAnyPermission(["payroll.payment_register.confirm_manual_paid", "payroll.payment_register.manage", "payroll.manage"]), async (c) => {

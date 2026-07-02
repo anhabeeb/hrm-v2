@@ -8,6 +8,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
+import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -1236,6 +1237,7 @@ documentComplianceRoutes.get("/compliance/dashboard", async (c) => {
 async function complianceList(c: Context<AppBindings>, kind: "missing" | "expiring" | "expired") {
   const denied = requireAny(c, COMPLIANCE_VIEW);
   if (denied) return denied;
+  const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
   const canSensitive = hasAny(c.get("currentUser"), SENSITIVE_VIEW);
   const employees = await employeeListForScope(c, "documents", "view");
   const rows: Record<string, unknown>[] = [];
@@ -1250,7 +1252,8 @@ async function complianceList(c: Context<AppBindings>, kind: "missing" | "expiri
       for (const item of compliance.expired_documents_list) rows.push(maskSensitive({ ...employee, ...item, document_type_name: item.document_type_name, is_sensitive: item.is_sensitive }, canSensitive));
     }
   }
-  return ok(c, { [kind]: rows, rows });
+  const pagedRows = rows.slice(pagination.offset, pagination.offset + pagination.limit);
+  return ok(c, { [kind]: pagedRows, rows: pagedRows, pagination: paginationMeta(pagination, pagedRows.length) });
 }
 
 documentComplianceRoutes.get("/compliance/missing", (c) => complianceList(c, "missing"));

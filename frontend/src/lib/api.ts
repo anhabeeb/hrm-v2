@@ -505,7 +505,7 @@ export const api = {
     return request<GlobalSearchResponse>(`/api/v1/search/global${query(filters)}`, { signal }, token);
   },
   listNotifications(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
-    return request<{ notifications: HrmNotification[]; unread_count: number }>(`/api/v1/notifications${query(filters)}`, { signal }, token);
+    return request<{ notifications: HrmNotification[]; unread_count: number; pagination?: Record<string, unknown> }>(`/api/v1/notifications${query(filters)}`, { signal }, token);
   },
   getUnreadNotificationCount(token: string, signal?: AbortSignal) {
     return request<{ unread_count: number }>("/api/v1/notifications/unread-count", { signal }, token);
@@ -1016,8 +1016,8 @@ export const api = {
   positionAction(token: string, id: string, action: "enable" | "disable") {
     return invalidateReferences(request<Record<string, unknown>>(`/api/v1/organization/positions/${id}/${action}`, { method: "POST" }, token), "organization");
   },
-  listEmployees(token: string) {
-    return request<{ employees: Employee[] }>("/api/v1/employees", {}, token);
+  listEmployees(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ employees: Employee[]; pagination?: Record<string, unknown> }>(`/api/v1/employees${query(filters)}`, { signal }, token);
   },
   getEmployeeAssignmentOptions(token: string) {
     return request<{ departments: OrganizationDepartment[]; locations: OrganizationLocation[]; positions: OrganizationPosition[]; job_levels: OrganizationJobLevel[]; reporting_managers: Employee[] }>("/api/v1/employees/assignment-options", {}, token);
@@ -1088,8 +1088,8 @@ export const api = {
   updateOnboardingSettings(token: string, input: Partial<LifecycleSettings>) {
     return request<{ settings: LifecycleSettings }>("/api/v1/onboarding/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
   },
-  listOnboardingCases(token: string) {
-    return request<{ cases: OnboardingCase[] }>("/api/v1/onboarding/cases", {}, token);
+  listOnboardingCases(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ cases: OnboardingCase[]; pagination?: Record<string, unknown> }>(`/api/v1/onboarding/cases${query(filters)}`, { signal }, token);
   },
   getOnboardingDashboard(token: string) {
     return request<{ dashboard: Record<string, unknown> }>("/api/v1/onboarding/dashboard", {}, token);
@@ -1187,8 +1187,8 @@ export const api = {
   updateOffboardingSettings(token: string, input: Partial<LifecycleSettings>) {
     return request<{ settings: LifecycleSettings }>("/api/v1/offboarding/settings", { method: "PATCH", body: JSON.stringify(input) }, token);
   },
-  listOffboardingCases(token: string) {
-    return request<{ cases: OffboardingCase[] }>("/api/v1/offboarding/cases", {}, token);
+  listOffboardingCases(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ cases: OffboardingCase[]; pagination?: Record<string, unknown> }>(`/api/v1/offboarding/cases${query(filters)}`, { signal }, token);
   },
   getOffboardingDashboard(token: string) {
     return request<{ dashboard: Record<string, unknown> }>("/api/v1/offboarding/dashboard", {}, token);
@@ -1295,8 +1295,8 @@ export const api = {
   listDocumentRegistry(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ documents: EmployeeDocument[] }>(`/api/v1/documents/registry${query(filters)}`, {}, token);
   },
-  listMissingDocuments(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<{ missing: MissingDocument[] }>(`/api/v1/documents/missing${query(filters)}`, {}, token);
+  listMissingDocuments(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ missing: MissingDocument[]; pagination?: Record<string, unknown> }>(`/api/v1/documents/missing${query(filters)}`, { signal }, token);
   },
   listExpiringDocuments(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ documents: EmployeeDocument[] }>(`/api/v1/documents/expiring${query(filters)}`, {}, token);
@@ -1367,14 +1367,14 @@ export const api = {
   refreshDocumentCompliance(token: string) {
     return request<{ refreshed_count: number; employee_ids: string[]; alerts?: Record<string, unknown> }>("/api/v1/documents/compliance/refresh", { method: "POST" }, token);
   },
-  listDocumentComplianceMissing(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<{ missing: Record<string, unknown>[]; rows: Record<string, unknown>[] }>(`/api/v1/documents/compliance/missing${query(filters)}`, {}, token);
+  listDocumentComplianceMissing(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ missing: Record<string, unknown>[]; rows: Record<string, unknown>[]; pagination?: Record<string, unknown> }>(`/api/v1/documents/compliance/missing${query(filters)}`, { signal }, token);
   },
-  listDocumentComplianceExpiring(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<{ expiring: Record<string, unknown>[]; rows: Record<string, unknown>[] }>(`/api/v1/documents/compliance/expiring${query(filters)}`, {}, token);
+  listDocumentComplianceExpiring(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ expiring: Record<string, unknown>[]; rows: Record<string, unknown>[]; pagination?: Record<string, unknown> }>(`/api/v1/documents/compliance/expiring${query(filters)}`, { signal }, token);
   },
-  listDocumentComplianceExpired(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<{ expired: Record<string, unknown>[]; rows: Record<string, unknown>[] }>(`/api/v1/documents/compliance/expired${query(filters)}`, {}, token);
+  listDocumentComplianceExpired(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ expired: Record<string, unknown>[]; rows: Record<string, unknown>[]; pagination?: Record<string, unknown> }>(`/api/v1/documents/compliance/expired${query(filters)}`, { signal }, token);
   },
   listDocumentAlerts(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ alerts: DocumentExpiryAlert[] }>(`/api/v1/documents/alerts${query(filters)}`, {}, token);
@@ -1568,8 +1568,8 @@ export const api = {
   exportLeaveReportCsv(token: string) {
     return blobRequest("/api/v1/leave/reports/export.csv", token);
   },
-  listAttendanceRecords(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<{ records: AttendanceRecord[] }>(`/api/v1/attendance/records${query(filters)}`, {}, token);
+  listAttendanceRecords(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ records: AttendanceRecord[]; pagination?: Record<string, unknown> }>(`/api/v1/attendance/records${query(filters)}`, { signal }, token);
   },
   listAttendanceDailyRecords(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ records: AttendanceRecord[]; daily_records: AttendanceRecord[] }>(`/api/v1/attendance/daily${query(filters)}`, {}, token);
@@ -1661,8 +1661,8 @@ export const api = {
   listAttendanceImportErrors(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ errors: AttendanceImportRowError[] }>(`/api/v1/attendance/import-errors${query(filters)}`, {}, token);
   },
-  listAttendanceRawLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<{ logs: AttendanceRawLog[] }>(`/api/v1/attendance/raw-logs${query(filters)}`, {}, token);
+  listAttendanceRawLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ logs: AttendanceRawLog[]; pagination?: Record<string, unknown> }>(`/api/v1/attendance/raw-logs${query(filters)}`, { signal }, token);
   },
   getAttendanceRawLog(token: string, id: string) {
     return request<{ log: AttendanceRawLog }>(`/api/v1/attendance/raw-logs/${id}`, {}, token);
@@ -1715,8 +1715,8 @@ export const api = {
   testAttendanceVendorIntegration(token: string, id: string) {
     return request<{ status: string; message: string }>(`/api/v1/attendance/vendor-integrations/${id}/test-placeholder`, { method: "POST" }, token);
   },
-  listAttendanceLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<{ logs: AttendanceLog[] }>(`/api/v1/attendance/logs${query(filters)}`, {}, token);
+  listAttendanceLogs(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ logs: AttendanceLog[]; pagination?: Record<string, unknown> }>(`/api/v1/attendance/logs${query(filters)}`, { signal }, token);
   },
   createManualAttendanceLog(token: string, input: Partial<AttendanceLog>) {
     return request<{ log: AttendanceLog }>("/api/v1/attendance/logs/manual", { method: "POST", body: JSON.stringify(input) }, token);
@@ -1733,8 +1733,8 @@ export const api = {
   reconcileAttendanceRawLogs(token: string) {
     return request<{ queued: boolean }>("/api/v1/attendance/raw-logs/reconcile-placeholder", { method: "POST" }, token);
   },
-  listAttendanceCorrections(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
-    return request<{ corrections: AttendanceCorrection[] }>(`/api/v1/attendance/corrections${query(filters)}`, {}, token);
+  listAttendanceCorrections(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ corrections: AttendanceCorrection[]; pagination?: Record<string, unknown> }>(`/api/v1/attendance/corrections${query(filters)}`, { signal }, token);
   },
   getAttendanceCorrection(token: string, id: string) {
     return request<{ correction: AttendanceCorrection }>(`/api/v1/attendance/corrections/${id}`, {}, token);
@@ -2222,14 +2222,14 @@ export const api = {
   preparePayrollRunPaymentRegister(token: string, id: string) {
     return request<{ payments: PayrollPaymentRegister[] }>(`/api/v1/payroll/runs/${id}/prepare-payment-register`, { method: "POST" }, token);
   },
-  listPayrollRunPaymentRegister(token: string, id: string) {
-    return request<{ payments: PayrollPaymentRegister[] }>(`/api/v1/payroll/runs/${id}/payment-register`, {}, token);
+  listPayrollRunPaymentRegister(token: string, id: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ payments: PayrollPaymentRegister[]; pagination?: Record<string, unknown> }>(`/api/v1/payroll/runs/${id}/payment-register${query(filters)}`, { signal }, token);
   },
   cancelPayrollRun(token: string, id: string, reason: string) {
     return request<{ run: PayrollRun }>(`/api/v1/payroll/runs/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, token);
   },
-  listPayrollRunEmployees(token: string, runId: string) {
-    return request<{ employees: PayrollRunEmployee[] }>(`/api/v1/payroll/runs/${runId}/employees`, {}, token);
+  listPayrollRunEmployees(token: string, runId: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ employees: PayrollRunEmployee[]; pagination?: Record<string, unknown> }>(`/api/v1/payroll/runs/${runId}/employees${query(filters)}`, { signal }, token);
   },
   getPayrollRunEmployee(token: string, runId: string, runEmployeeId: string) {
     return request<{ employee: PayrollRunEmployee }>(`/api/v1/payroll/runs/${runId}/employees/${runEmployeeId}`, {}, token);

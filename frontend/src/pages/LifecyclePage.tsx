@@ -13,6 +13,8 @@ import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
+import { TablePaginationBar } from "../components/table/TablePaginationBar";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { SubNavigationBar, SubNavigationItem } from "../components/ui/navigation-tabs";
@@ -23,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Timeline } from "../components/ui/timeline";
 import { useAuth } from "../hooks/useAuth";
 import { useDocumentUploadBatch } from "../hooks/useDocumentUploadBatch";
+import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
 import { useWorkspaceMutation } from "../hooks/useWorkspaceMutation";
 import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
@@ -157,6 +160,8 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
   const [reportKey, setReportKey] = useState(reportKeys[0]);
   const [reportRows, setReportRows] = useState<Row[]>([]);
   const [reasonAction, setReasonAction] = useState<{ title: string; submit: (reason: string) => Promise<void> } | null>(null);
+  const [casePage, setCasePage] = useState(1);
+  const [casePageSize, setCasePageSize] = useState(25);
   const organizationRefs = useOrganizationReferences(token);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -165,6 +170,18 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
   const canManageLifecycleSettings = activeKind === "onboarding"
     ? permissions.has("onboarding.settings.manage") || permissions.has("onboarding.settings.update") || permissions.has("settings.manage")
     : permissions.has("offboarding.settings.manage") || permissions.has("offboarding.settings.update") || permissions.has("settings.manage");
+  const caseQuery = usePaginatedQuery<{ cases: (OnboardingCase | OffboardingCase)[]; pagination?: Record<string, unknown> }>({
+    scope: user?.id,
+    tableName: `${activeKind}-cases`,
+    page: casePage,
+    pageSize: casePageSize,
+    filters: { kind: activeKind },
+    enabled: Boolean(token && mode.includes("cases")),
+    queryFn: ({ signal, pagination }) => activeKind === "onboarding"
+      ? api.listOnboardingCases(token!, { limit: pagination.limit, offset: pagination.offset }, signal)
+      : api.listOffboardingCases(token!, { limit: pagination.limit, offset: pagination.offset }, signal),
+    getRowCount: (data) => data?.cases.length ?? 0
+  });
 
   async function load() {
     if (!token) return;
@@ -181,13 +198,8 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
       } else if (mode.includes("dashboard")) {
         setDashboard(activeKind === "onboarding" ? (await api.getOnboardingDashboardSummary(token)).summary : (await api.getOffboardingDashboard(token)).dashboard);
       } else {
-        const [employeeResult, caseResult] = await Promise.all([
-          api.listEmployees(token).catch(() => ({ employees: [] })),
-          activeKind === "onboarding" ? api.listOnboardingCases(token) : api.listOffboardingCases(token)
-        ]);
+        const employeeResult = await api.listEmployees(token, { limit: 100 }).catch(() => ({ employees: [] }));
         setEmployees(employeeResult.employees);
-        if (activeKind === "onboarding") setOnboardingCases((caseResult as { cases: OnboardingCase[] }).cases);
-        else setOffboardingCases((caseResult as { cases: OffboardingCase[] }).cases);
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Lifecycle workspace could not be loaded.");
@@ -199,6 +211,17 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
   useEffect(() => {
     void load();
   }, [token, mode, reportKey]);
+
+  useEffect(() => {
+    setCasePage(1);
+  }, [mode]);
+
+  useEffect(() => {
+    const rows = caseQuery.data?.cases;
+    if (!rows) return;
+    if (activeKind === "onboarding") setOnboardingCases(rows as OnboardingCase[]);
+    else setOffboardingCases(rows as OffboardingCase[]);
+  }, [activeKind, caseQuery.data]);
 
   useEffect(() => {
     const caseId = searchParams.get("case_id");
@@ -251,7 +274,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
         <DashboardSection
           kind={activeKind}
           data={dashboard}
-          loading={loading}
+          loading={loading || caseQuery.isInitialLoading}
           error={error}
           onSelect={(id) => {
             setSelected({ kind: activeKind, id });
@@ -264,11 +287,19 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
           kind={activeKind}
           cases={activeCases}
           loading={loading}
-          error={error}
+          error={error ?? caseQuery.error?.message ?? null}
           onCreate={() => setCreateKind(activeKind)}
           onSelect={(id) => {
             setSelected({ kind: activeKind, id });
-            if (activeKind === "onboarding") setSearchParams({ case_id: id });
+              if (activeKind === "onboarding") setSearchParams({ case_id: id });
+          }}
+          pagination={{
+            page: casePage,
+            pageSize: casePageSize,
+            hasMore: Boolean(caseQuery.data?.pagination?.has_more),
+            refreshing: caseQuery.isRefreshing,
+            onPageChange: setCasePage,
+            onPageSizeChange: setCasePageSize
           }}
         />
       ) : null}
@@ -276,7 +307,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
       {mode === "onboarding-alerts" ? <AlertsSection alerts={alerts} loading={loading} error={error} onRefresh={() => void refreshAlerts()} /> : null}
       {mode === "lifecycle-reports" ? <ReportsSection reportKey={reportKey} setReportKey={setReportKey} rows={reportRows} loading={loading} error={error} onExport={() => void exportReport()} /> : null}
 
-      {createKind ? <CreateCaseModal kind={createKind} employees={employees} organizationRefs={organizationRefs} onClose={() => setCreateKind(null)} onCreated={() => { setCreateKind(null); void load(); }} /> : null}
+      {createKind ? <CreateCaseModal kind={createKind} employees={employees} organizationRefs={organizationRefs} onClose={() => setCreateKind(null)} onCreated={() => { setCreateKind(null); void load(); void caseQuery.refetch(); }} /> : null}
       {selected ? (
         <CaseDetailModal
           kind={selected.kind}
@@ -285,7 +316,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
             setSelected(null);
             if (searchParams.get("case_id")) setSearchParams({});
           }}
-          onChanged={() => void load()}
+          onChanged={() => { void load(); void caseQuery.refetch(); }}
           askReason={(titleText, submit) => setReasonAction({ title: titleText, submit })}
         />
       ) : null}
@@ -645,7 +676,23 @@ function OnboardingDashboardSection({ data, loading, error, onSelect }: { data: 
   );
 }
 
-function CasesSection({ kind, cases, loading, error, onCreate, onSelect }: { kind: CaseKind; cases: (OnboardingCase | OffboardingCase)[]; loading: boolean; error: string | null; onCreate: () => void; onSelect: (id: string) => void }) {
+function CasesSection({
+  kind,
+  cases,
+  loading,
+  error,
+  pagination,
+  onCreate,
+  onSelect
+}: {
+  kind: CaseKind;
+  cases: (OnboardingCase | OffboardingCase)[];
+  loading: boolean;
+  error: string | null;
+  pagination?: { page: number; pageSize: number; hasMore: boolean; refreshing?: boolean; onPageChange: (page: number) => void; onPageSizeChange: (pageSize: number) => void };
+  onCreate: () => void;
+  onSelect: (id: string) => void;
+}) {
   const rows = cases as unknown as Row[];
   const [filters, setFilters] = useState<OnboardingFilterState>(defaultOnboardingFilters);
   const setFilter = <K extends keyof OnboardingFilterState>(key: K, value: OnboardingFilterState[K]) => setFilters((current) => ({ ...current, [key]: value }));
@@ -691,7 +738,8 @@ function CasesSection({ kind, cases, loading, error, onCreate, onSelect }: { kin
             </StandardFilterBar>
             <ActiveFilterChips chips={activeChips} className="mt-2" />
           </div>
-          <OnboardingCaseTable rows={filtered} loading={loading} error={error} onSelect={onSelect} />
+          <OnboardingCaseTable rows={filtered} loading={loading} refreshing={pagination?.refreshing} error={error} onSelect={onSelect} />
+          {pagination ? <TablePaginationBar page={pagination.page} pageSize={pagination.pageSize} rowCount={filtered.length} hasMore={pagination.hasMore} onPageChange={pagination.onPageChange} onPageSizeChange={pagination.onPageSizeChange} /> : null}
         </Panel>
       </div>
     );
@@ -701,7 +749,7 @@ function CasesSection({ kind, cases, loading, error, onCreate, onSelect }: { kin
       <div className="flex justify-end">
         <ActionTextButton intent="create" size="sm" onClick={onCreate}>Create {kind} case</ActionTextButton>
       </div>
-      <DataTableFrame loading={loading} error={error} empty={!loading && cases.length === 0}>
+      <PerformanceDataTable loading={loading} refreshing={pagination?.refreshing} error={error} empty={!loading && cases.length === 0} rowCount={cases.length} emptyTitle="No lifecycle cases found" emptyDescription="Create a case or adjust filters.">
         <Table>
           <TableHeader>
             <TableRow>
@@ -723,15 +771,15 @@ function CasesSection({ kind, cases, loading, error, onCreate, onSelect }: { kin
             ))}
           </TableBody>
         </Table>
-      </DataTableFrame>
+      </PerformanceDataTable>
+      {pagination ? <TablePaginationBar page={pagination.page} pageSize={pagination.pageSize} rowCount={cases.length} hasMore={pagination.hasMore} onPageChange={pagination.onPageChange} onPageSizeChange={pagination.onPageSizeChange} /> : null}
     </div>
   );
 }
 
-function OnboardingCaseTable({ rows, loading, error, onSelect }: { rows: Row[]; loading: boolean; error: string | null; onSelect: (id: string) => void }) {
+function OnboardingCaseTable({ rows, loading, refreshing, error, onSelect }: { rows: Row[]; loading: boolean; refreshing?: boolean; error: string | null; onSelect: (id: string) => void }) {
   return (
-    <DataTableFrame loading={false} error={error} empty={!loading && rows.length === 0}>
-      <div className="overflow-x-auto">
+    <PerformanceDataTable loading={loading} refreshing={refreshing} error={error} empty={!loading && rows.length === 0} rowCount={rows.length} emptyTitle="No onboarding cases found" emptyDescription="Create an onboarding case or adjust filters.">
         <Table>
           <TableHeader>
             <TableRow>
@@ -763,9 +811,7 @@ function OnboardingCaseTable({ rows, loading, error, onSelect }: { rows: Row[]; 
             ))}
           </TableBody>
         </Table>
-      </div>
-      {loading ? <TableSkeleton rows={6} columns={10} label="Loading onboarding cases" /> : rows.length === 0 ? <EmptyState title="No onboarding cases found" description="Create an onboarding case or adjust filters." /> : null}
-    </DataTableFrame>
+    </PerformanceDataTable>
   );
 }
 

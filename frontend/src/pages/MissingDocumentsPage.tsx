@@ -6,6 +6,8 @@ import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, 
 import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
+import { TablePaginationBar } from "../components/table/TablePaginationBar";
 import { TableSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -13,6 +15,8 @@ import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell"
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useDebouncedTableFilters } from "../hooks/useDebouncedTableFilters";
+import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import type { DocumentType, MissingDocument } from "../types/documents";
@@ -32,16 +36,30 @@ export function MissingDocumentsPage() {
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("documents.view");
   const canUpload = permissions.has("documents.upload");
-  const [rows, setRows] = useState<MissingDocument[]>([]);
   const [types, setTypes] = useState<DocumentType[]>([]);
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [filters, setFilters] = useState(emptyFilters);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [uploadRow, setUploadRow] = useState<MissingDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const activeFilters = useMemo(() => Object.fromEntries(Object.entries(filters).filter(([, value]) => value)), [filters]);
+  const { debouncedFilters, isDebouncing } = useDebouncedTableFilters(activeFilters, 300);
+  const missingQuery = usePaginatedQuery<{ missing: MissingDocument[]; pagination?: Record<string, unknown> }>({
+    scope: user?.id,
+    tableName: "missing-documents",
+    page,
+    pageSize,
+    filters: debouncedFilters,
+    enabled: Boolean(token && canView),
+    queryFn: ({ signal, pagination }) => api.listMissingDocuments(token!, { ...debouncedFilters, limit: pagination.limit, offset: pagination.offset }, signal),
+    getRowCount: (data) => data?.missing.length ?? 0
+  });
+  const rows = missingQuery.data?.missing ?? [];
+  const pagination = missingQuery.data?.pagination;
   const departmentName = (id: string) => departments.find((item) => item.id === id)?.name ?? id;
   const locationName = (id: string) => locations.find((item) => item.id === id)?.name ?? id;
   const documentTypeName = (id: string) => types.find((item) => item.id === id)?.name ?? id;
@@ -59,13 +77,11 @@ export function MissingDocumentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [missingResult, typeResult, departmentResult, locationResult] = await Promise.all([
-        api.listMissingDocuments(token, activeFilters),
+      const [typeResult, departmentResult, locationResult] = await Promise.all([
         api.listDocumentTypes(token),
         api.listDepartments(token),
         api.listLocations(token)
       ]);
-      setRows(missingResult.missing);
       setTypes(typeResult.document_types);
       setDepartments(departmentResult.departments);
       setLocations(locationResult.locations);
@@ -78,7 +94,11 @@ export function MissingDocumentsPage() {
 
   useEffect(() => {
     void load();
-  }, [token, canView, activeFilters]);
+  }, [token, canView]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeFilters]);
 
   if (!canView) return <PageShell><Panel><EmptyState title="Missing documents unavailable" description="Your account needs documents.view permission." /></Panel></PageShell>;
 
@@ -105,7 +125,7 @@ export function MissingDocumentsPage() {
         <div className="border-b p-3">
           <StandardFilterBar
             search={<StandardSearchInput value={filters.search} onDebouncedChange={(search) => setFilters((current) => ({ ...current, search }))} placeholder="Search employee or document type" />}
-            reset={<FilterResetButton onReset={() => setFilters(emptyFilters)} />}
+            reset={<FilterResetButton onReset={() => { setFilters(emptyFilters); setPage(1); }} />}
             moreFilters={
               <MoreFiltersSheet title="Missing document filters" onReset={() => setFilters((current) => ({ ...current, location_id: "", employee_type: "", employment_type: "" }))}>
                 <FilterSection title="Additional filters">
@@ -121,15 +141,15 @@ export function MissingDocumentsPage() {
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <div className="overflow-x-auto">
+        <PerformanceDataTable loading={loading || missingQuery.isInitialLoading} refreshing={missingQuery.isRefreshing || isDebouncing} error={error ?? missingQuery.error?.message ?? null} empty={rows.length === 0} rowCount={rows.length} emptyTitle="No missing documents" emptyDescription="Required documents are currently satisfied for the loaded rules." skeleton={<TableSkeleton rows={5} columns={10} label="Loading missing documents" />}>
           <Table>
             <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Position</TableHead><TableHead>Location</TableHead><TableHead>Employee type</TableHead><TableHead>Employment type</TableHead><TableHead>Required document</TableHead><TableHead>Category</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>{rows.map((row) => <TableRow key={`${row.employee_id}-${row.document_type_id}`}><TableCell><span className="font-medium">{row.employee_name}</span><div className="font-mono text-xs text-muted-foreground">{row.employee_no}</div></TableCell><TableCell>{row.department_name ?? "-"}</TableCell><TableCell>{row.position_title ?? "-"}</TableCell><TableCell>{row.location_name ?? "-"}</TableCell><TableCell>{row.employee_type}</TableCell><TableCell>{row.employment_type}</TableCell><TableCell>{row.document_type_name}</TableCell><TableCell>{row.category_name ?? "-"}</TableCell><TableCell>{row.reason ?? "Required rule"}</TableCell><TableCell><div className="flex justify-end gap-1"><Link to={`/employees/${row.employee_id}`}><RowActionButton intent="view" size="sm" title="Open 360">Open 360</RowActionButton></Link>{canUpload ? <RowActionButton intent="upload" size="sm" title="Upload missing document" onClick={() => setUploadRow(row)}><FileUp className="h-4 w-4" /> Upload</RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
           </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={10} label="Loading missing documents" /> : rows.length === 0 ? <EmptyState title="No missing documents" description="Required documents are currently satisfied for the loaded rules." /> : null}
+        </PerformanceDataTable>
+        <TablePaginationBar page={page} pageSize={pageSize} rowCount={rows.length} hasMore={Boolean(pagination?.has_more)} onPageChange={setPage} onPageSizeChange={setPageSize} />
       </Panel>
-      {uploadRow && token ? <MissingUploadModal token={token} row={uploadRow} type={types.find((item) => item.id === uploadRow.document_type_id)} onClose={() => setUploadRow(null)} onSaved={load} /> : null}
+      {uploadRow && token ? <MissingUploadModal token={token} row={uploadRow} type={types.find((item) => item.id === uploadRow.document_type_id)} onClose={() => setUploadRow(null)} onSaved={async () => { await load(); await missingQuery.refetch(); }} /> : null}
     </PageShell>
   );
 }

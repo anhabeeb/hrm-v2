@@ -10,6 +10,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
+import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -463,7 +464,7 @@ attendanceRoutes.get("/records", requirePermission("attendance.view"), async (c)
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "attendance", "view", "e");
   conditions.push(scope.sql);
   params.push(...scope.params);
-  const limit = boundedRouteLimit(c.req.query("limit"), 100, 500);
+  const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
   const rows = await c.env.DB
     .prepare(
       `SELECT ${recordColumns()}
@@ -474,11 +475,11 @@ attendanceRoutes.get("/records", requirePermission("attendance.view"), async (c)
        LEFT JOIN locations l ON l.id = e.primary_location_id
        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
        ORDER BY adr.attendance_date DESC, e.employee_no
-       LIMIT ?`
+       LIMIT ? OFFSET ?`
     )
-    .bind(...params, limit)
+    .bind(...params, pagination.limit, pagination.offset)
     .all();
-  return ok(c, { records: rows.results, limit });
+  return ok(c, { records: rows.results, pagination: paginationMeta(pagination, rows.results.length) });
 });
 
 attendanceRoutes.get("/daily", requireAnyPermission(["attendance.view", "attendance.logs.view"]), async (c) => {
@@ -819,6 +820,7 @@ attendanceRoutes.post("/devices/:id/disable", requirePermission("attendance.devi
 attendanceRoutes.get("/raw-logs", requirePermission("attendance.view"), async (c) => {
   const conditions: string[] = [];
   const params: BindValue[] = [];
+  const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
   for (const [query, column] of [["employee_id", "arl.employee_id"], ["device_id", "arl.device_id"], ["source", "arl.source"], ["punch_type", "arl.punch_type"]] as const) {
     const value = readString(c.req.query(query));
     if (value) {
@@ -827,8 +829,8 @@ attendanceRoutes.get("/raw-logs", requirePermission("attendance.view"), async (c
     }
   }
   addRange(c, conditions, params, "punch", "arl.punch_time");
-  const rows = await c.env.DB.prepare(`SELECT arl.*, e.employee_no, e.full_name AS employee_name, ad.name AS device_name, ad.device_code FROM attendance_raw_logs arl LEFT JOIN employees e ON e.id = arl.employee_id LEFT JOIN attendance_devices ad ON ad.id = arl.device_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY arl.punch_time DESC LIMIT 500`).bind(...params).all();
-  return ok(c, { logs: rows.results, raw_logs: rows.results });
+  const rows = await c.env.DB.prepare(`SELECT arl.*, e.employee_no, e.full_name AS employee_name, ad.name AS device_name, ad.device_code FROM attendance_raw_logs arl LEFT JOIN employees e ON e.id = arl.employee_id LEFT JOIN attendance_devices ad ON ad.id = arl.device_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY arl.punch_time DESC LIMIT ? OFFSET ?`).bind(...params, pagination.limit, pagination.offset).all();
+  return ok(c, { logs: rows.results, raw_logs: rows.results, pagination: paginationMeta(pagination, rows.results.length) });
 });
 
 attendanceRoutes.post("/raw-logs/import", requirePermission("attendance.devices.manage"), async (c) => {
@@ -925,6 +927,7 @@ function readAttendanceLogInput(body: Record<string, unknown>, existing?: Record
 attendanceRoutes.get("/logs", requireAnyPermission(["attendance.logs.view", "attendance.view"]), async (c) => {
   const conditions = ["COALESCE(al.is_archived, 0) = 0"];
   const params: BindValue[] = [];
+  const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
   const search = readString(c.req.query("search"));
   if (search) {
     conditions.push("(e.employee_no LIKE ? OR e.full_name LIKE ? OR al.external_employee_code LIKE ?)");
@@ -950,9 +953,9 @@ attendanceRoutes.get("/logs", requireAnyPermission(["attendance.logs.view", "att
      LEFT JOIN locations l ON l.id = e.primary_location_id
      LEFT JOIN attendance_devices ad ON ad.id = al.device_id
      WHERE ${conditions.join(" AND ")}
-     ORDER BY al.log_time DESC LIMIT 500`
-  ).bind(...params).all();
-  return ok(c, { logs: rows.results });
+     ORDER BY al.log_time DESC LIMIT ? OFFSET ?`
+  ).bind(...params, pagination.limit, pagination.offset).all();
+  return ok(c, { logs: rows.results, pagination: paginationMeta(pagination, rows.results.length) });
 });
 
 attendanceRoutes.post("/logs/manual", requireAnyPermission(["attendance.logs.manage", "attendance.manual_entries.manage", "attendance.manage"]), async (c) => {
@@ -1040,9 +1043,9 @@ attendanceRoutes.get("/corrections", requireAnyPermission(["attendance.correctio
     }
   }
   addRange(c, conditions, params, "date", "acr.attendance_date");
-  const limit = boundedRouteLimit(c.req.query("limit"), 100, 500);
-  const rows = await c.env.DB.prepare(`SELECT ${correctionColumns()} FROM attendance_correction_requests acr INNER JOIN employees e ON e.id = acr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id LEFT JOIN users requester ON requester.id = acr.requested_by_user_id LEFT JOIN users reviewer ON reviewer.id = acr.reviewed_by_user_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY acr.created_at DESC LIMIT ?`).bind(...params, limit).all();
-  return ok(c, { corrections: rows.results, limit });
+  const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
+  const rows = await c.env.DB.prepare(`SELECT ${correctionColumns()} FROM attendance_correction_requests acr INNER JOIN employees e ON e.id = acr.employee_id LEFT JOIN departments d ON d.id = e.primary_department_id LEFT JOIN positions p ON p.id = e.primary_position_id LEFT JOIN locations l ON l.id = e.primary_location_id LEFT JOIN users requester ON requester.id = acr.requested_by_user_id LEFT JOIN users reviewer ON reviewer.id = acr.reviewed_by_user_id ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY acr.created_at DESC LIMIT ? OFFSET ?`).bind(...params, pagination.limit, pagination.offset).all();
+  return ok(c, { corrections: rows.results, pagination: paginationMeta(pagination, rows.results.length) });
 });
 
 attendanceRoutes.get("/corrections/:id", requireAnyPermission(["attendance.corrections.view", "attendance.corrections.review", "attendance.view", "attendance.corrections.manage", "attendance.manage"]), async (c) => {

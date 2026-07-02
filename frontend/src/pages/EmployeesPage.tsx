@@ -23,7 +23,8 @@ import {
   useCascadingOrganizationFilters,
   type StandardDateRange
 } from "../components/filters";
-import { DataTableShell } from "../components/ui/data-table-shell";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
+import { TablePaginationBar } from "../components/table/TablePaginationBar";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -32,6 +33,8 @@ import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { useDebouncedTableFilters } from "../hooks/useDebouncedTableFilters";
+import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
 import { ApiError, api } from "../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateField, validateDateRange, validateEnumValue, validateMaxLength, validateRequiredFields, type ValidationIssue } from "../lib/form-validation";
 import type { Employee, EmployeeInput, EmployeeStatusSetting, EmployeeType, EmploymentType } from "../types/employees";
@@ -84,7 +87,6 @@ export function EmployeesPage() {
   const { token, user } = useAuth();
   const navigate = useNavigate();
   const alerts = useAlert();
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [statuses, setStatuses] = useState<EmployeeStatusSetting[]>([]);
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
@@ -101,6 +103,8 @@ export function EmployeesPage() {
   const [employmentType, setEmploymentType] = useState("all");
   const [joinedDateRange, setJoinedDateRange] = useState<StandardDateRange>({});
   const [userLinked, setUserLinked] = useState("all");
+  const [employeePage, setEmployeePage] = useState(1);
+  const [employeePageSize, setEmployeePageSize] = useState(25);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<{ mode: "create" | "edit"; employee?: Employee } | null>(null);
@@ -136,12 +140,10 @@ export function EmployeesPage() {
     setLoading(true);
     setError(null);
     try {
-      const [employeesResult, statusesResult, assignmentOptions] = await Promise.all([
-        api.listEmployees(token),
+      const [statusesResult, assignmentOptions] = await Promise.all([
         api.listEmployeeStatuses(token),
         api.getEmployeeAssignmentOptions(token)
       ]);
-      setEmployees(employeesResult.employees);
       setStatuses(statusesResult.statuses);
       setDepartments(assignmentOptions.departments);
       setLocations(assignmentOptions.locations);
@@ -159,29 +161,40 @@ export function EmployeesPage() {
     void load();
   }, [token, canView]);
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return employees.filter((employee) => {
-      const matchesSearch =
-        !needle ||
-        employee.employee_no.toLowerCase().includes(needle) ||
-        employee.full_name.toLowerCase().includes(needle) ||
-        (employee.display_name ?? "").toLowerCase().includes(needle);
-      return (
-        matchesSearch &&
-        (statusId === "all" || employee.status_id === statusId) &&
-        (departmentId === "all" || employee.primary_department_id === departmentId) &&
-        (locationId === "all" || employee.primary_location_id === locationId) &&
-        (positionId === "all" || employee.primary_position_id === positionId) &&
-        (levelId === "all" || employee.job_level_id === levelId) &&
-        (employeeType === "all" || employee.employee_type === employeeType) &&
-        (employmentType === "all" || employee.employment_type === employmentType) &&
-        (userLinked === "all" || (userLinked === "linked" ? employee.user_linked : !employee.user_linked)) &&
-        (!joinedDateRange.from || (employee.joining_date ?? "") >= joinedDateRange.from) &&
-        (!joinedDateRange.to || (employee.joining_date ?? "") <= joinedDateRange.to)
-      );
-    });
-  }, [departmentId, employeeType, employees, employmentType, joinedDateRange.from, joinedDateRange.to, levelId, locationId, positionId, search, statusId, userLinked]);
+  const employeeTableFilters = useMemo(() => ({
+    search: search.trim() || undefined,
+    status_id: statusId === "all" ? undefined : statusId,
+    department_id: departmentId === "all" ? undefined : departmentId,
+    location_id: locationId === "all" ? undefined : locationId,
+    position_id: positionId === "all" ? undefined : positionId,
+    job_level_id: levelId === "all" ? undefined : levelId,
+    employee_type: employeeType === "all" ? undefined : employeeType,
+    employment_type: employmentType === "all" ? undefined : employmentType,
+    user_linked: userLinked === "all" ? undefined : userLinked,
+    joining_date_from: joinedDateRange.from,
+    joining_date_to: joinedDateRange.to
+  }), [departmentId, employeeType, employmentType, joinedDateRange.from, joinedDateRange.to, levelId, locationId, positionId, search, statusId, userLinked]);
+  const { debouncedFilters: debouncedEmployeeFilters, isDebouncing: employeeFiltersDebouncing } = useDebouncedTableFilters(employeeTableFilters, 300);
+  const employeesQuery = usePaginatedQuery<{ employees: Employee[]; pagination?: Record<string, unknown> }>({
+    scope: user?.id,
+    tableName: "employees",
+    page: employeePage,
+    pageSize: employeePageSize,
+    filters: debouncedEmployeeFilters,
+    enabled: Boolean(token && canView),
+    queryFn: ({ signal, pagination }) => api.listEmployees(token!, { ...debouncedEmployeeFilters, limit: pagination.limit, offset: pagination.offset }, signal),
+    getRowCount: (data) => data?.employees.length ?? 0
+  });
+  const employees = employeesQuery.data?.employees ?? [];
+  const employeePagination = employeesQuery.data?.pagination;
+  const filtered = employees;
+  const tableError = error ?? (employeesQuery.error?.message ?? null);
+  const tableLoading = loading || employeesQuery.isInitialLoading;
+  const tableRefreshing = employeeFiltersDebouncing || employeesQuery.isRefreshing;
+
+  useEffect(() => {
+    setEmployeePage(1);
+  }, [search, statusId, departmentId, locationId, positionId, levelId, employeeType, employmentType, userLinked, joinedDateRange.from, joinedDateRange.to]);
 
   function resetFilters() {
     setSearch("");
@@ -194,6 +207,7 @@ export function EmployeesPage() {
     setEmploymentType("all");
     setJoinedDateRange({});
     setUserLinked("all");
+    setEmployeePage(1);
   }
 
   const activeChips = [
@@ -218,7 +232,7 @@ export function EmployeesPage() {
         await api.updateEmployee(token, modal.employee.id, input);
       }
       setModal(null);
-      await load();
+      await Promise.all([load(), employeesQuery.refetch()]);
       alerts.showSuccess(modal.mode === "create" ? "Employee created" : "Employee updated", modal.mode === "create" ? "The employee record was added." : "The employee record was saved.");
     } catch (err) {
       const issues = normalizeValidationIssues(err);
@@ -235,7 +249,7 @@ export function EmployeesPage() {
       await api.archiveEmployee(token, employee.id, reason);
       setArchiveTarget(null);
       setArchiveReason("");
-      await load();
+      await Promise.all([load(), employeesQuery.refetch()]);
       alerts.showSuccess("Employee archived", `${employee.full_name} was archived.`);
     } catch (err) {
       alerts.showApiError(err, "Employee archive failed");
@@ -250,7 +264,7 @@ export function EmployeesPage() {
     try {
       await api.changeEmployeeStatus(token, employee.id, input);
       setStatusModalEmployee(null);
-      await load();
+      await Promise.all([load(), employeesQuery.refetch()]);
       alerts.showSuccess("Employee status changed", `${employee.full_name} status was updated.`);
     } catch (err) {
       alerts.showApiError(err, "Employee status change failed");
@@ -313,7 +327,7 @@ export function EmployeesPage() {
           <StandardSelectFilter value={levelId === "all" ? "" : levelId} onValueChange={(value) => { setLevelId(value || "all"); setPositionId("all"); }} allLabel="All job levels" width="jobLevel" options={filteredJobLevels.map((level) => ({ value: level.id, label: level.name }))} />
         </StandardFilterBar>
         <ActiveFilterChips chips={activeChips} />
-        <DataTableShell loading={loading} empty={filtered.length === 0} emptyTitle="No employees found" emptyDescription="Create a draft employee or adjust filters.">
+        <PerformanceDataTable loading={tableLoading} refreshing={tableRefreshing} error={tableError} empty={filtered.length === 0} rowCount={filtered.length} emptyTitle="No employees found" emptyDescription="Create a draft employee or adjust filters.">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -366,7 +380,15 @@ export function EmployeesPage() {
                 ))}
               </TableBody>
             </Table>
-        </DataTableShell>
+        </PerformanceDataTable>
+        <TablePaginationBar
+          page={employeePage}
+          pageSize={employeePageSize}
+          rowCount={filtered.length}
+          hasMore={Boolean(employeePagination?.has_more)}
+          onPageChange={setEmployeePage}
+          onPageSizeChange={setEmployeePageSize}
+        />
       </div>
 
       {modal ? (

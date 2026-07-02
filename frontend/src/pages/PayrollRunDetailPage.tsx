@@ -8,11 +8,14 @@ import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { TableSkeleton } from "../components/loading";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
+import { TablePaginationBar } from "../components/table/TablePaginationBar";
 import { Panel } from "../components/ui/panel";
 import { InputField, PageHeader, PageShell, WarningPanel } from "../components/ui/page-shell";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
+import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import type { PayrollApprovalEvent, PayrollPaymentRegister, PayrollPayslip, PayrollRun, PayrollRunEmployee, PayrollRunLine } from "../types/payroll";
@@ -55,7 +58,6 @@ export function PayrollRunDetailPage() {
   const canPayslips = permissions.has("payroll.payslips.generate") || permissions.has("payroll.payslips.manage") || permissions.has("payroll.manage");
   const canPayments = permissions.has("payroll.payment_register.prepare") || permissions.has("payroll.payment_register.manage") || permissions.has("payroll.manage");
   const [run, setRun] = useState<PayrollRun | null>(null);
-  const [employees, setEmployees] = useState<PayrollRunEmployee[]>([]);
   const [approvals, setApprovals] = useState<PayrollApprovalEvent[]>([]);
   const [payslips, setPayslips] = useState<PayrollPayslip[]>([]);
   const [payments, setPayments] = useState<PayrollPaymentRegister[]>([]);
@@ -67,21 +69,33 @@ export function PayrollRunDetailPage() {
   const [holdReason, setHoldReason] = useState("");
   const [runAction, setRunAction] = useState<{ action: "submit" | "approve" | "reject" | "send_back" | "finalize" | "unlock" | "payslips" | "payment_register"; title: string; reasonRequired?: boolean } | null>(null);
   const [actionReason, setActionReason] = useState("");
+  const [employeePage, setEmployeePage] = useState(1);
+  const [employeePageSize, setEmployeePageSize] = useState(25);
+  const payrollEmployeesQuery = usePaginatedQuery<{ employees: PayrollRunEmployee[]; pagination?: Record<string, unknown> }>({
+    scope: user?.id,
+    tableName: "payroll-run-employees",
+    page: employeePage,
+    pageSize: employeePageSize,
+    filters: { payroll_run_id: id },
+    enabled: Boolean(token && canView && id),
+    queryFn: ({ signal, pagination }) => api.listPayrollRunEmployees(token!, id!, { limit: pagination.limit, offset: pagination.offset }, signal),
+    getRowCount: (data) => data?.employees.length ?? 0
+  });
+  const employees = payrollEmployeesQuery.data?.employees ?? [];
+  const employeePagination = payrollEmployeesQuery.data?.pagination;
 
   async function load() {
     if (!token || !canView || !id) return;
     setLoading(true);
     setError(null);
     try {
-      const [runResult, employeeResult, approvalResult, payslipResult, paymentResult] = await Promise.all([
+      const [runResult, approvalResult, payslipResult, paymentResult] = await Promise.all([
         api.getPayrollRun(token, id),
-        api.listPayrollRunEmployees(token, id),
         api.listPayrollRunApprovals(token, id),
         api.listPayrollPayslips(token, { payroll_run_id: id }),
         api.listPayrollRunPaymentRegister(token, id)
       ]);
       setRun(runResult.run);
-      setEmployees(employeeResult.employees);
       setApprovals(approvalResult.approvals);
       setPayslips(payslipResult.payslips);
       setPayments(paymentResult.payments);
@@ -121,7 +135,7 @@ export function PayrollRunDetailPage() {
       setHoldModal(null);
       setHoldReason("");
       alerts.showSuccess("Payroll row updated", `Employee payroll row ${holdModal.action === "hold" ? "held" : "released"}.`);
-      await load();
+      await Promise.all([load(), payrollEmployeesQuery.refetch()]);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Unable to update payroll row.";
       setError(message);
@@ -150,7 +164,7 @@ export function PayrollRunDetailPage() {
       setRunAction(null);
       setActionReason("");
       alerts.showSuccess("Payroll action completed", `${runAction.title} completed.`);
-      await load();
+      await Promise.all([load(), payrollEmployeesQuery.refetch()]);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Unable to complete payroll action.";
       setError(message);
@@ -199,7 +213,7 @@ export function PayrollRunDetailPage() {
       </div>
       <Panel className="overflow-hidden">
         <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Employee payroll review</h2><p className="text-xs text-muted-foreground">Attendance, leave, roster, advance, and net salary foundations are stored as snapshots for export.</p></div>
-        <div className="overflow-x-auto">
+        <PerformanceDataTable loading={loading || payrollEmployeesQuery.isInitialLoading} refreshing={payrollEmployeesQuery.isRefreshing} error={error ?? payrollEmployeesQuery.error?.message ?? null} empty={employees.length === 0} rowCount={employees.length} emptyTitle="No employee rows" emptyDescription="Recalculate or generate the run to create employee snapshots." skeleton={<TableSkeleton rows={5} columns={9} label="Loading payroll review rows" />}>
           <Table>
             <TableHeader><TableRow><TableHead className="sticky left-0 z-10 min-w-[280px] bg-white">Employee</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Basic</TableHead><TableHead>Days</TableHead><TableHead>Scheduled</TableHead><TableHead>Worked</TableHead><TableHead>Absent</TableHead><TableHead>Leave</TableHead><TableHead>Unpaid leave</TableHead><TableHead>Late</TableHead><TableHead>Missed punch</TableHead><TableHead>Missed ranges</TableHead><TableHead>Earnings</TableHead><TableHead>Deductions</TableHead><TableHead>Advance</TableHead><TableHead>Attendance</TableHead><TableHead>Leave deduct.</TableHead><TableHead>Net</TableHead><TableHead>Status</TableHead><TableHead className="sticky right-0 bg-white text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>{employees.map((employee) => {
@@ -207,8 +221,8 @@ export function PayrollRunDetailPage() {
               return <TableRow key={employee.id}><TableCell className="sticky left-0 z-10 bg-white"><EmployeeIdentityCell employeeId={employee.employee_id} employeeName={employee.employee_name_snapshot} employeeNumber={employee.employee_no_snapshot} departmentName={employee.department_name} locationName={employee.location_name} size="sm" to={`/employees/${employee.employee_id}`} /></TableCell><TableCell>{employee.department_name ?? "-"}</TableCell><TableCell>{employee.location_name ?? "-"}</TableCell><TableCell>{money(employee.basic_salary)}</TableCell><TableCell>{employee.days_in_period}</TableCell><TableCell>{employee.scheduled_work_days ?? "-"}</TableCell><TableCell>{employee.days_worked ?? "-"}</TableCell><TableCell>{employee.absent_days ?? 0}</TableCell><TableCell>{employee.leave_days ?? 0}</TableCell><TableCell>{employee.unpaid_leave_days ?? 0}</TableCell><TableCell>{employee.late_days ?? 0}</TableCell><TableCell>{employee.missed_punch_days ?? 0}</TableCell><TableCell className="max-w-[220px] truncate">{employee.missed_date_ranges_json ?? "-"}</TableCell><TableCell>{money(employee.total_earnings)}</TableCell><TableCell>{money(employee.total_deductions)}</TableCell><TableCell>{money(employee.advance_deductions)}</TableCell><TableCell>{money(employee.attendance_deductions)}</TableCell><TableCell>{money(employee.leave_deductions)}</TableCell><TableCell className="font-semibold">{money(employee.net_salary)}</TableCell><TableCell><StatusBadge value={displayStatus} /></TableCell><TableCell className="sticky right-0 bg-white"><div className="flex justify-end gap-1"><RowActionButton intent="view" title="View lines" onClick={() => void showLines(employee)}><Eye className="h-4 w-4" /></RowActionButton><Link to={`/employees/${employee.employee_id}`}><RowActionButton intent="view" title="Open Employee 360"><UserRound className="h-4 w-4" /></RowActionButton></Link>{canManage && displayStatus !== "HELD" ? <RowActionButton intent="hold" title="Hold row" onClick={() => setHoldModal({ employee, action: "hold" })}><PauseCircle className="h-4 w-4" /></RowActionButton> : null}{canManage && displayStatus === "HELD" ? <RowActionButton intent="release" title="Release hold" onClick={() => setHoldModal({ employee, action: "release" })}><PlayCircle className="h-4 w-4" /></RowActionButton> : null}</div></TableCell></TableRow>;
             })}</TableBody>
           </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={10} label="Loading payroll review rows" /> : employees.length === 0 ? <EmptyState title="No employee rows" description="Recalculate or generate the run to create employee snapshots." /> : null}
+        </PerformanceDataTable>
+        <TablePaginationBar page={employeePage} pageSize={employeePageSize} rowCount={employees.length} hasMore={Boolean(employeePagination?.has_more)} onPageChange={setEmployeePage} onPageSizeChange={setEmployeePageSize} />
       </Panel>
       {selected ? <LinesModal employee={selected} lines={lines} onClose={() => { setSelected(null); setLines(null); }} /> : null}
       {holdModal ? <HoldModal modal={holdModal} reason={holdReason} onReason={setHoldReason} onClose={() => { setHoldModal(null); setHoldReason(""); }} onConfirm={() => void confirmHoldAction()} /> : null}

@@ -10,6 +10,7 @@ import { refreshComplianceAfterDocumentChange, resolveDocumentAlertForRenewedDoc
 import type { AppBindings } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
+import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -820,7 +821,7 @@ documentRoutes.get("/registry", async (c) => {
   return ok(c, { documents: await listRegistry(c) });
 });
 
-async function missingRows(c: Context<AppBindings>) {
+async function missingRows(c: Context<AppBindings>, pagination?: ReturnType<typeof parsePaginationParams>) {
   const conditions: string[] = ["rr.is_active = 1", "rr.is_required = 1"];
   const params: BindValue[] = [];
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e");
@@ -846,6 +847,7 @@ async function missingRows(c: Context<AppBindings>) {
       params.push(value);
     }
   }
+  const pagedParams = pagination ? [...params, pagination.limit, pagination.offset] : params;
   const rows = await c.env.DB.prepare(
     `SELECT e.id AS employee_id, e.employee_no, e.full_name AS employee_name,
       e.primary_department_id AS department_id, d.name AS department_name,
@@ -871,12 +873,16 @@ async function missingRows(c: Context<AppBindings>) {
          SELECT 1 FROM employee_documents ed
          WHERE ed.employee_id = e.id AND ed.document_type_id = rr.document_type_id AND ed.status = 'ACTIVE'
        )
-     ORDER BY e.employee_no, dt.name`
-  ).bind(...params).all();
+     ORDER BY e.employee_no, dt.name${pagination ? " LIMIT ? OFFSET ?" : ""}`
+  ).bind(...pagedParams).all();
   return rows.results;
 }
 
-documentRoutes.get("/missing", requirePermission("documents.view"), async (c) => ok(c, { missing: await missingRows(c) }));
+documentRoutes.get("/missing", requirePermission("documents.view"), async (c) => {
+  const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
+  const rows = await missingRows(c, pagination);
+  return ok(c, { missing: rows, pagination: paginationMeta(pagination, rows.length) });
+});
 
 documentRoutes.get("/expiring", requirePermission("documents.view"), async (c) => {
   const docs = (await listRegistry(c)).filter((doc) => doc.display_status === "EXPIRING_SOON" || doc.display_status === "EXPIRED");

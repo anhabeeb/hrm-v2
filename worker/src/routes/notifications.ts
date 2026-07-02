@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { isOperationalModuleEnabled } from "../utils/module-enforcement";
+import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { readJsonBody } from "../utils/validation";
 
 // Performance verifier marker: isModuleEnabled/module_control_settings checks are centralized in module-enforcement.
@@ -29,12 +30,6 @@ const NOTIFICATION_PREFERENCE_COLUMNS = `
 
 function hasAny(user: AuthUser, permissions: string[]) {
   return user.is_owner || permissions.some((permission) => user.permissions.includes(permission));
-}
-
-function boundedLimit(value: unknown) {
-  const parsed = Number(value ?? NOTIFICATION_LIMIT_DEFAULT);
-  if (!Number.isFinite(parsed)) return NOTIFICATION_LIMIT_DEFAULT;
-  return Math.max(1, Math.min(NOTIFICATION_LIMIT_MAX, Math.trunc(parsed)));
 }
 
 function safeNotificationRoute(route: unknown) {
@@ -146,7 +141,7 @@ export async function filterNotificationsByUserScope(db: Env["DB"], user: AuthUs
   return filtered;
 }
 
-async function baseNotificationRows(c: Context<AppBindings>, limit: number, filters: Record<string, string | undefined> = {}) {
+async function baseNotificationRows(c: Context<AppBindings>, limit: number, filters: Record<string, string | undefined> = {}, offset = 0) {
   const user = c.get("currentUser");
   const conditions: string[] = [];
   const bindings: unknown[] = [];
@@ -176,9 +171,9 @@ async function baseNotificationRows(c: Context<AppBindings>, limit: number, filt
     conditions.push("date(created_at) <= date(?)");
     bindings.push(filters.date_to);
   }
-  bindings.push(limit);
+  bindings.push(limit, offset);
   const rows = await c.env.DB
-    .prepare(`SELECT ${NOTIFICATION_SELECT_COLUMNS} FROM notifications ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY created_at DESC LIMIT ?`)
+    .prepare(`SELECT ${NOTIFICATION_SELECT_COLUMNS} FROM notifications ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
     .bind(...bindings)
     .all<Row>();
   const enabledRows = [];
@@ -191,15 +186,18 @@ async function baseNotificationRows(c: Context<AppBindings>, limit: number, filt
 }
 
 export async function getNotificationsForUser(c: Context<AppBindings>) {
-  const limit = boundedLimit(c.req.query("limit"));
-  const rows = await baseNotificationRows(c, limit, {
+  const pagination = parsePaginationParams(c, { defaultLimit: NOTIFICATION_LIMIT_DEFAULT, maxLimit: NOTIFICATION_LIMIT_MAX });
+  const rows = await baseNotificationRows(c, pagination.limit, {
     read: c.req.query("read"),
     module: c.req.query("module"),
     severity: c.req.query("severity"),
     date_from: c.req.query("date_from"),
     date_to: c.req.query("date_to")
-  });
-  return rows.map(notificationToApi);
+  }, pagination.offset);
+  return {
+    notifications: rows.map(notificationToApi),
+    pagination: paginationMeta(pagination, rows.length)
+  };
 }
 
 export async function getUnreadNotificationCount(c: Context<AppBindings>) {
@@ -311,8 +309,10 @@ notificationRoutes.get("/", (c) => withNotificationRuntimeError(c, "list", async
   if (!hasAny(c.get("currentUser"), ["notifications.view", "notifications.admin.view", "notifications.manage", "self_service.notifications.view", "self_service.view"])) {
     return fail(c, 403, "NOTIFICATION_PERMISSION_DENIED", "You do not have permission to view notifications.");
   }
+  const result = await measureD1Query(c, () => getNotificationsForUser(c));
   return ok(c, {
-    notifications: await measureD1Query(c, () => getNotificationsForUser(c)),
+    notifications: result.notifications,
+    pagination: result.pagination,
     unread_count: await measureD1Query(c, () => getUnreadNotificationCount(c))
   });
 }));
