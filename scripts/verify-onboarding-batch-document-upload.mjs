@@ -58,7 +58,7 @@ const packageJson = JSON.parse(read("package.json"));
 includes(api, "uploadOnboardingWorkspaceDocumentBatch", "frontend API exposes onboarding batch document upload helper");
 includes(api, "/api/v1/onboarding/cases/${caseId}/documents/batch", "frontend API calls onboarding batch endpoint");
 includes(lifecyclePage, "uploadOnboardingWorkspaceDocumentBatch", "Documents workspace uses batch upload helper");
-includes(lifecyclePage, "Add multiple document rows and upload the batch in one action.", "batch upload guidance is visible");
+includes(lifecyclePage, "Add multiple document rows and upload them together. Each row accepts one file.", "batch upload guidance is visible");
 includes(lifecyclePage, "createDocumentBatchRow", "batch rows can be added");
 includes(lifecyclePage, "removeRow", "batch rows can be removed");
 includes(lifecyclePage, "rowErrors", "batch upload tracks row-level errors");

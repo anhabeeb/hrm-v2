@@ -58,8 +58,8 @@ const documentComplianceText = read(documentComplianceRoute);
 const payrollFoundationsText = read(payrollFoundationsRoute);
 const seedText = read(seed);
 
-includes(lifecyclePage, "Add multiple document rows and upload the batch in one action.", "onboarding document upload supports batch submission");
-includes(lifecyclePage, "Upload one file at a time per row.", "onboarding document upload keeps each row single-file");
+includes(lifecyclePage, "Add multiple document rows and upload them together. Each row accepts one file.", "onboarding document upload supports batch submission");
+includes(lifecyclePage, "Each row accepts one file.", "onboarding document upload keeps each row single-file");
 includes(lifecyclePage, "This document type allows multiple active files; add one row for each file.", "multiple-active document type helper is visible");
 includes(lifecyclePage, "This document type allows only one active file. Uploading another later requires replacing the existing document.", "single-active document type helper is visible");
 includes(lifecyclePage, "handleFileChange", "file selection uses a validation handler");

@@ -1058,7 +1058,7 @@ function OffboardingUserAccessPanel({
   );
 }
 
-const onboardingWorkspaceTabs = ["Overview", "Employee Info", "Contacts", "Job Assignment", "Documents", "Contract", "Payroll", "Payment & Pension", "Attendance & Roster", "Assets & Uniforms", "User Access", "Checklist", "Approval Timeline"] as const;
+const onboardingWorkspaceTabs = ["Overview", "Employee Info", "Contacts", "Job Assignment", "Documents", "Contract", "Payroll", "Payment & Pension", "Attendance & Roster", "Assets & Uniforms", "User Access"] as const;
 type OnboardingWorkspaceTab = (typeof onboardingWorkspaceTabs)[number];
 
 const onboardingWorkspaceSectionTasks: Record<OnboardingWorkspaceTab, string[]> = {
@@ -1072,9 +1072,7 @@ const onboardingWorkspaceSectionTasks: Record<OnboardingWorkspaceTab, string[]> 
   "Payment & Pension": ["payment_method", "pension_profile"],
   "Attendance & Roster": ["attendance_biometric"],
   "Assets & Uniforms": ["assets_uniforms"],
-  "User Access": ["user_access"],
-  Checklist: [],
-  "Approval Timeline": []
+  "User Access": ["user_access"]
 };
 
 const completedOnboardingTaskStatuses = new Set(["COMPLETED", "WAIVED", "NOT_REQUIRED"]);
@@ -1243,7 +1241,7 @@ function onboardingBlockerTarget(value: unknown): OnboardingWorkspaceTab {
   if (/asset|uniform/.test(message)) return "Assets & Uniforms";
   if (/user|login|access|self-service|self service/.test(message)) return "User Access";
   if (/phone|email|contact|address/.test(message)) return "Contacts";
-  if (/approval|approve/.test(message)) return "Approval Timeline";
+  if (/approval|approve/.test(message)) return "Overview";
   return "Overview";
 }
 
@@ -1420,13 +1418,9 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const readiness = asRow(workspace.readiness);
   const tasks = asRows(checklist.tasks);
   const canActivate = readiness.can_activate === true;
-  const requiredTasks = tasks.filter((task) => Boolean(task.is_required || task.required));
-  const requiredComplete = requiredTasks.length > 0 && requiredTasks.every((task) => completedOnboardingTaskStatuses.has(String(task.task_status ?? task.status)));
   const taskByKey = new Map(tasks.map((task) => [String(task.task_key), task]));
   const sectionStatus = (tab: OnboardingWorkspaceTab) => {
     if (tab === "Overview") return canActivate;
-    if (tab === "Checklist") return requiredComplete || canActivate;
-    if (tab === "Approval Timeline") return ["SUBMITTED", "APPROVED", "ACTIVATED", "OVERRIDDEN"].includes(String(rowCase.activation_status ?? ""));
     const keys = onboardingWorkspaceSectionTasks[tab];
     if (!keys.length) return false;
     const existingTasks = keys.map((key) => taskByKey.get(key)).filter(Boolean) as Row[];
@@ -1525,8 +1519,6 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       {activeTab === "Attendance & Roster" ? <AttendanceRosterWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceBiometricMapping(token!, caseId, input), "Attendance/biometric setup saved.")} /> : null}
       {activeTab === "Assets & Uniforms" ? <AssetsWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceAssetsUniforms(token!, caseId, input), "Asset/uniform setup saved.")} /> : null}
       {activeTab === "User Access" ? <UserAccessWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceUserAccount(token!, caseId, input), "User access setup saved.")} /> : null}
-      {activeTab === "Checklist" ? <ChecklistWorkspaceTable tasks={tasks} /> : null}
-          {activeTab === "Approval Timeline" ? <Timeline items={asRows(workspace.events).map((event) => ({ title: text(event.action), description: text(event.new_status ?? event.note ?? event.reason), meta: text(event.created_at) }))} /> : null}
         </main>
         <aside className="onboarding-employee-info-panel order-1 min-w-0 max-w-full overflow-hidden lg:order-3 lg:sticky lg:top-0 lg:max-h-[calc(90vh-9rem)] lg:overflow-y-auto" aria-label="Employee information" data-onboarding-employee-info-panel>
           <Panel className="min-w-0 overflow-hidden p-3">
@@ -1990,14 +1982,14 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
     }
   }
   return (
-    <div className="grid gap-3 lg:grid-cols-[1fr_1.2fr]">
-      <Panel className="p-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+    <div className="grid min-w-0 max-w-full gap-4">
+      <Panel className="min-w-0 max-w-full overflow-hidden p-4">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold">Upload official documents</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Add multiple document rows and upload the batch in one action. Upload one file at a time per row.</p>
+            <p className="mt-1 max-w-2xl text-xs text-muted-foreground">Add multiple document rows and upload them together. Each row accepts one file.</p>
           </div>
-          <ActionTextButton intent="create" size="sm" onClick={addRow} disabled={uploading}>Add document</ActionTextButton>
+          <ActionTextButton intent="create" size="sm" className="shrink-0" onClick={addRow} disabled={uploading}>Add document</ActionTextButton>
         </div>
         <OptionalSectionNotice workspace={workspace} sectionKey="document_types" fallbackTitle="Document upload types" />
         {documentWarning ? <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{documentWarning}</p> : null}
@@ -2006,51 +1998,59 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
             const type = selectedType(row);
             const allowsMultiple = boolValue(type?.allow_multiple_files);
             return (
-              <div key={row.id} className="rounded-lg border border-slate-200 bg-white p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
+              <div key={row.id} className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-4">
+                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold">Document {index + 1}</p>
                     {rowFieldError(rowErrors, row.id, "row") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "row")}</p> : null}
                   </div>
-                  <ActionTextButton intent="remove" size="sm" disabled={rows.length === 1 || uploading} onClick={() => removeRow(row.id)}>Remove</ActionTextButton>
+                  <ActionTextButton intent="remove" size="sm" className="shrink-0" disabled={rows.length === 1 || uploading} onClick={() => removeRow(row.id)}>Remove</ActionTextButton>
                 </div>
-                <div className="mt-3 grid gap-3 md:grid-cols-6">
-                  <div className="md:col-span-3">
+                <div className="mt-4 grid min-w-0 max-w-full gap-3 xl:grid-cols-2">
+                  <div className="min-w-0">
                     <SelectField label="Document type" required value={row.document_type_id} onValueChange={(document_type_id) => updateRow(row.id, { document_type_id })}>
                       <option value="">Select document type</option>
                       {documentTypes.map((documentType) => <option key={String(documentType.id)} value={String(documentType.id)}>{text(documentType.name)}{documentType.is_sensitive ? " (Sensitive)" : ""}</option>)}
                     </SelectField>
                     {rowFieldError(rowErrors, row.id, "document_type_id") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "document_type_id")}</p> : null}
                   </div>
-                  <div className="md:col-span-3">
+                  <div className="min-w-0">
                     <Field label="File *">
-                      <Input type="file" accept={documentTypeAccept(type)} onChange={(event) => handleFileChange(row.id, event)} />
-                      {row.file ? <p className="text-xs text-muted-foreground">{row.file.name} / {formatFileSize(row.file.size)}</p> : null}
+                      <Input className="max-w-full file:max-w-full" type="file" accept={documentTypeAccept(type)} onChange={(event) => handleFileChange(row.id, event)} />
+                      {row.file ? <p className="min-w-0 truncate text-xs text-muted-foreground" title={row.file.name}>{row.file.name} / {formatFileSize(row.file.size)}</p> : null}
                       {rowFieldError(rowErrors, row.id, "file") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "file")}</p> : null}
                     </Field>
                   </div>
-                  {type ? (
-                    <div className="space-y-1 rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground md:col-span-6">
-                      <p>{documentTypeFileRuleText(type)}</p>
-                      <p>{allowsMultiple ? "This document type allows multiple active files; add one row for each file." : "This document type allows only one active file. Uploading another later requires replacing the existing document."}</p>
-                    </div>
-                  ) : null}
-                  <Field label={`Document number/reference${requiredNumber(type) ? " *" : ""}`}>
-                    <Input required={requiredNumber(type)} value={row.document_number} onChange={(event) => updateRow(row.id, { document_number: event.target.value })} />
-                    {rowFieldError(rowErrors, row.id, "document_number") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "document_number")}</p> : null}
-                  </Field>
-                  <Field label={`Issue date${requiredIssue(type) ? " *" : ""}`}>
-                    <Input type="date" required={requiredIssue(type)} value={row.issue_date} onChange={(event) => updateRow(row.id, { issue_date: event.target.value })} />
-                    {rowFieldError(rowErrors, row.id, "issue_date") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "issue_date")}</p> : null}
-                  </Field>
-                  <Field label={`Expiry date${requiredExpiry(type) ? " *" : ""}`}>
-                    <Input type="date" required={requiredExpiry(type)} value={row.expiry_date} onChange={(event) => updateRow(row.id, { expiry_date: event.target.value })} />
-                    {rowFieldError(rowErrors, row.id, "expiry_date") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "expiry_date")}</p> : null}
-                  </Field>
-                  <div className="md:col-span-3">
-                    <Field label="Notes"><Input value={row.notes} onChange={(event) => updateRow(row.id, { notes: event.target.value })} /></Field>
+                </div>
+                <div className="mt-3 grid min-w-0 max-w-full gap-3 xl:grid-cols-3">
+                  <div className="min-w-0">
+                    <Field label={`Document number/reference${requiredNumber(type) ? " *" : ""}`}>
+                      <Input required={requiredNumber(type)} value={row.document_number} onChange={(event) => updateRow(row.id, { document_number: event.target.value })} />
+                      {rowFieldError(rowErrors, row.id, "document_number") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "document_number")}</p> : null}
+                    </Field>
+                  </div>
+                  <div className="min-w-0">
+                    <Field label={`Issue date${requiredIssue(type) ? " *" : ""}`}>
+                      <Input type="date" required={requiredIssue(type)} value={row.issue_date} onChange={(event) => updateRow(row.id, { issue_date: event.target.value })} />
+                      {rowFieldError(rowErrors, row.id, "issue_date") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "issue_date")}</p> : null}
+                    </Field>
+                  </div>
+                  <div className="min-w-0">
+                    <Field label={`Expiry date${requiredExpiry(type) ? " *" : ""}`}>
+                      <Input type="date" required={requiredExpiry(type)} value={row.expiry_date} onChange={(event) => updateRow(row.id, { expiry_date: event.target.value })} />
+                      {rowFieldError(rowErrors, row.id, "expiry_date") ? <p className="text-xs text-red-700">{rowFieldError(rowErrors, row.id, "expiry_date")}</p> : null}
+                    </Field>
                   </div>
                 </div>
+                <div className="mt-3 min-w-0">
+                  <Field label="Notes"><Input value={row.notes} onChange={(event) => updateRow(row.id, { notes: event.target.value })} /></Field>
+                </div>
+                {type ? (
+                  <div className="mt-3 min-w-0 space-y-1 rounded-md border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                    <p className="break-words">{documentTypeFileRuleText(type)}</p>
+                    <p className="break-words">{allowsMultiple ? "This document type allows multiple active files; add one row for each file." : "This document type allows only one active file. Uploading another later requires replacing the existing document."}</p>
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -2062,22 +2062,30 @@ function DocumentsWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave:
           </ActionTextButton>
         </div>
       </Panel>
-      <Panel className="p-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+      <Panel className="min-w-0 max-w-full overflow-hidden p-4">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold">Required document checklist</h3>
             <p className="mt-1 text-xs text-muted-foreground">Required documents are based on the employee type, employment type, department, position, and location configured in Document Required Rules.</p>
           </div>
-          <Badge tone="info">Employee type: {employeeTypeLabel(employee.employee_type)}</Badge>
+          <Badge tone="info" className="shrink-0">Employee type: {employeeTypeLabel(employee.employee_type)}</Badge>
         </div>
         {checklistMessage ? <p className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">{checklistMessage}</p> : null}
         {noRulesMessage ? <p className="mt-3 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">{noRulesMessage}</p> : null}
-        <DataTableFrame empty={checklistRows.length === 0}>
-          <Table>
-            <TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Status</TableHead><TableHead>Uploaded</TableHead><TableHead>Expiry</TableHead><TableHead>Rule</TableHead><TableHead>Matched scope</TableHead></TableRow></TableHeader>
-            <TableBody>{checklistRows.map((row) => <TableRow key={String(row.document_type_id ?? row.id)}><TableCell>{text(row.document_type_name)}</TableCell><TableCell><StatusBadge value={row.requirement_status ?? row.compliance_status} /></TableCell><TableCell>{row.missing ? "Missing" : "Uploaded"}</TableCell><TableCell>{text(asRow(row.document).expiry_date ?? row.expiry_date)}</TableCell><TableCell>{displayText(row.matched_employee_type_label, "Any")}</TableCell><TableCell className="max-w-80 text-xs text-muted-foreground">{matchedScopeLabel(row)}</TableCell></TableRow>)}</TableBody>
-          </Table>
-        </DataTableFrame>
+        {checklistRows.length === 0 ? (
+          <EmptyState
+            className="mt-3 min-h-24 rounded-md border bg-slate-50 p-4"
+            title="No required document rules are configured for this employee."
+            description="Add document rules in Document Settings when this employee should have mandatory onboarding documents."
+          />
+        ) : (
+          <DataTableFrame className="mt-3">
+            <Table>
+              <TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Status</TableHead><TableHead>Uploaded</TableHead><TableHead>Expiry</TableHead><TableHead>Rule</TableHead><TableHead>Matched scope</TableHead></TableRow></TableHeader>
+              <TableBody>{checklistRows.map((row) => <TableRow key={String(row.document_type_id ?? row.id)}><TableCell>{text(row.document_type_name)}</TableCell><TableCell><StatusBadge value={row.requirement_status ?? row.compliance_status} /></TableCell><TableCell>{row.missing ? "Missing" : "Uploaded"}</TableCell><TableCell>{text(asRow(row.document).expiry_date ?? row.expiry_date)}</TableCell><TableCell>{displayText(row.matched_employee_type_label, "Any")}</TableCell><TableCell className="max-w-80 whitespace-normal break-words text-xs text-muted-foreground">{matchedScopeLabel(row)}</TableCell></TableRow>)}</TableBody>
+            </Table>
+          </DataTableFrame>
+        )}
       </Panel>
     </div>
   );
@@ -2426,19 +2434,6 @@ function OnboardingRoleScopeChecklist({ title: listTitle, rows, selected, onTogg
         }) : <p className="text-xs text-muted-foreground">No options available.</p>}
       </div>
     </div>
-  );
-}
-
-function ChecklistWorkspaceTable({ tasks }: { tasks: Row[] }) {
-  return (
-    <DataTableFrame empty={tasks.length === 0}>
-      <Table>
-        <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Group</TableHead><TableHead>Status</TableHead><TableHead>Required</TableHead><TableHead>Notes</TableHead></TableRow></TableHeader>
-        <TableBody>
-          {tasks.map((task) => <TableRow key={String(task.id)}><TableCell>{text(task.task_name ?? task.title ?? task.task_key)}</TableCell><TableCell>{text(task.task_group)}</TableCell><TableCell><StatusBadge value={task.task_status ?? task.status} /></TableCell><TableCell>{task.is_required || task.required ? "Yes" : "No"}</TableCell><TableCell>{text(task.notes ?? task.waiver_reason ?? task.blocked_reason)}</TableCell></TableRow>)}
-        </TableBody>
-      </Table>
-    </DataTableFrame>
   );
 }
 

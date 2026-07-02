@@ -57,6 +57,7 @@ const packageJson = JSON.parse(read("package.json"));
 
 const lifecycleText = read(lifecyclePage);
 const modalBlock = blockAfter(lifecyclePage, "function Modal", 2200);
+const tabDefinitionBlock = blockAfter(lifecyclePage, "const onboardingWorkspaceTabs =", 700);
 const workspaceBlock = blockAfter(lifecyclePage, "function OnboardingWorkspace", 26000);
 const headerBlock = blockAfter(lifecyclePage, "<header className=\"onboarding-popup-header", 2200);
 const overviewBlock = blockAfter(lifecyclePage, "function OnboardingWorkspaceOverview", 9000);
@@ -101,6 +102,9 @@ check(`${lifecyclePage}: employee info panel must be sticky on desktop`, /onboar
 check(`${lifecyclePage}: desktop layout order must be setup nav, main workspace, employee info`, workspaceBlock.indexOf("onboarding-setup-navigation-panel") < workspaceBlock.indexOf("onboarding-main-workspace") && workspaceBlock.indexOf("onboarding-main-workspace") < workspaceBlock.indexOf("onboarding-employee-info-panel"));
 check(`${lifecyclePage}: mobile order must place employee info before nav and main workspace`, employeeInfoBlock.includes("order-1") && setupNavBlock.includes("order-2") && mainWorkspaceBlock.includes("order-3"));
 check(`${lifecyclePage}: section sidebar must remain ticked/completed by validator state`, workspaceBlock.includes("data-onboarding-section-sidebar") && workspaceBlock.includes("sectionStatus(tab)") && workspaceBlock.includes("<CheckCircle2"));
+check(`${lifecyclePage}: setup tabs must remove Checklist and Approval Timeline`, !tabDefinitionBlock.includes("\"Checklist\"") && !tabDefinitionBlock.includes("\"Approval Timeline\""));
+check(`${lifecyclePage}: popup must not render removed Checklist or Approval Timeline branches`, !workspaceBlock.includes("activeTab === \"Checklist\"") && !workspaceBlock.includes("activeTab === \"Approval Timeline\""));
+check(`${lifecyclePage}: popup must not render checklist table or approval timeline as setup sections`, !workspaceBlock.includes("ChecklistWorkspaceTable") && !workspaceBlock.includes("Timeline items={asRows(workspace.events)"));
 check(`${lifecyclePage}: text-heavy popup containers must use min-w-0 safeguards`, (workspaceBlock.match(/min-w-0/g) ?? []).length >= 25);
 check(`${lifecyclePage}: long popup text must use truncate/line-clamp/break-words protections`, workspaceBlock.includes("truncate") && workspaceBlock.includes("line-clamp-2") && workspaceBlock.includes("break-words"));
 
@@ -144,8 +148,7 @@ for (const marker of [
   "PayrollWorkspaceForm",
   "JobAssignmentWorkspaceForm",
   "AssetsWorkspaceForm",
-  "ChecklistWorkspaceTable",
-  "Timeline items={asRows(workspace.events)"
+  "UserAccessWorkspaceForm"
 ]) {
   check(`${lifecyclePage}: main workspace must preserve ${marker}`, workspaceBlock.includes(marker));
 }
@@ -201,7 +204,7 @@ check(`${lifecyclePage}: destructive override action must be in dropdown, not th
 
 for (const marker of [
   "uploadOnboardingWorkspaceDocumentBatch",
-  "Add multiple document rows and upload the batch in one action.",
+  "Add multiple document rows and upload them together. Each row accepts one file.",
   "createDocumentBatchRow",
   "form.set(\"metadata\"",
   "form.set(`file_${index}`",
@@ -211,6 +214,15 @@ for (const marker of [
   check(`${lifecyclePage}: document batch/local-foreign behavior marker missing: ${marker}`, lifecycleText.includes(marker));
 }
 check(`${lifecyclePage}: document upload input must remain one file per row`, !/<Input[^>]+type="file"[^>]+multiple/.test(documentFormBlock));
+check(`${lifecyclePage}: documents workspace must use a single-column popup flow`, documentFormBlock.includes("grid min-w-0 max-w-full gap-4") && !documentFormBlock.includes("lg:grid-cols-[1fr_1.2fr]"));
+check(`${lifecyclePage}: document row fields must not use cramped six-column layout`, !documentFormBlock.includes("md:grid-cols-6") && documentFormBlock.includes("xl:grid-cols-2") && documentFormBlock.includes("xl:grid-cols-3"));
+check(`${lifecyclePage}: document type and file fields must have roomy guarded columns`, documentFormBlock.includes("Document type") && documentFormBlock.includes("File *") && (documentFormBlock.match(/className=\"min-w-0\"/g) ?? []).length >= 8);
+check(`${lifecyclePage}: file input and selected filename must not overflow`, documentFormBlock.includes("className=\"max-w-full file:max-w-full\"") && documentFormBlock.includes("title={row.file.name}") && documentFormBlock.includes("truncate text-xs text-muted-foreground"));
+check(`${lifecyclePage}: document number/date/notes fields must not be squeezed into tiny columns`, documentFormBlock.includes("Document number/reference") && documentFormBlock.includes("Issue date") && documentFormBlock.includes("Expiry date") && documentFormBlock.includes("<Field label=\"Notes\"") && documentFormBlock.includes("mt-3 min-w-0"));
+check(`${lifecyclePage}: document helper text must span safely`, documentFormBlock.includes("documentTypeFileRuleText(type)") && documentFormBlock.includes("break-words"));
+check(`${lifecyclePage}: document checklist employee type badge must use user-friendly labels`, documentFormBlock.includes("Employee type: {employeeTypeLabel(employee.employee_type)}") && !documentFormBlock.includes("Employee type: {employee.employee_type}") && !documentFormBlock.includes("Employee type: {text(employee.employee_type)"));
+check(`${lifecyclePage}: empty document checklist must use compact empty state instead of an empty table`, documentFormBlock.includes("No required document rules are configured for this employee.") && documentFormBlock.includes("min-h-24") && !documentFormBlock.includes("DataTableFrame empty={checklistRows.length === 0}"));
+check(`${lifecyclePage}: populated document checklist must scroll/wrap safely`, documentFormBlock.includes("<DataTableFrame className=\"mt-3\"") && documentFormBlock.includes("whitespace-normal break-words text-xs text-muted-foreground"));
 
 for (const marker of [
   "Cash payment does not require bank details.",
