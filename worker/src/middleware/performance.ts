@@ -1,63 +1,46 @@
-import type { Context, MiddlewareHandler } from "hono";
-import type { AppBindings } from "../types";
+import {
+  API_CRITICAL_THRESHOLD_MS,
+  API_WARNING_THRESHOLD_MS,
+  appendServerTiming,
+  logSlowApi,
+  timeD1,
+  withRequestTiming
+} from "../utils/performance";
 
-const SLOW_ROUTE_WARN_MS = 750;
-const SLOW_ROUTE_CRITICAL_MS = 2000;
+export {
+  appendServerTiming,
+  logSlowApi,
+  timeD1,
+  withRequestTiming,
+  withRequestTiming as withRouteTiming,
+  timeD1 as measureD1Query
+} from "../utils/performance";
 
-function safeRoutePattern(c: Context<AppBindings>) {
-  return (c.req as { routePath?: string }).routePath ?? c.req.path;
-}
+export const SLOW_ROUTE_WARN_MS = 750;
+export const SLOW_ROUTE_CRITICAL_MS = 2000;
 
-function safeUserId(c: Context<AppBindings>) {
-  try {
-    return c.get("currentUser")?.id ?? null;
-  } catch {
-    return null;
+type SlowRouteMetadata = {
+  duration_ms: number;
+  d1_query_count: number;
+  route_pattern: string;
+  method?: string;
+  status?: number;
+  d1_duration_ms?: number;
+};
+
+export function logSlowRoute(metadata: SlowRouteMetadata) {
+  const d1DurationMs = metadata.d1_duration_ms ?? 0;
+  if (metadata.duration_ms < API_WARNING_THRESHOLD_MS && d1DurationMs < API_CRITICAL_THRESHOLD_MS) {
+    return;
   }
-}
-
-export function logSlowRoute(input: {
-  method: string;
-  routePattern: string;
-  durationMs: number;
-  status: number;
-  queryCount: number | null;
-  userId: string | null;
-}) {
-  const level = input.durationMs >= SLOW_ROUTE_CRITICAL_MS ? "error" : input.durationMs >= SLOW_ROUTE_WARN_MS ? "warn" : "info";
-  if (level === "info") return;
-  console.warn(JSON.stringify({
-    level,
-    event: "worker.route_timing",
-    method: input.method,
-    route_pattern: input.routePattern,
-    duration_ms: Math.round(input.durationMs),
-    status: input.status,
-    d1_query_count: input.queryCount,
-    user_id: input.userId,
-    timestamp: new Date().toISOString()
-  }));
-}
-
-export async function measureD1Query<T>(c: Context<AppBindings>, operation: () => Promise<T>) {
-  const timing = c.get("routeTiming");
-  if (timing) timing.queryCount += 1;
-  return operation();
-}
-
-export function withRouteTiming(): MiddlewareHandler<AppBindings> {
-  return async (c, next) => {
-    const start = Date.now();
-    c.set("routeTiming", { queryCount: 0 });
-    await next();
-    const durationMs = Date.now() - start;
-    logSlowRoute({
-      method: c.req.method,
-      routePattern: safeRoutePattern(c),
-      durationMs,
-      status: c.res.status,
-      queryCount: c.get("routeTiming")?.queryCount ?? null,
-      userId: safeUserId(c)
-    });
-  };
+  logSlowApi({
+    durationMs: metadata.duration_ms,
+    method: metadata.method ?? "UNKNOWN",
+    routePattern: metadata.route_pattern,
+    status: metadata.status ?? 0,
+    queryCount: metadata.d1_query_count,
+    d1DurationMs,
+    payloadBytes: 0,
+    userId: null
+  });
 }

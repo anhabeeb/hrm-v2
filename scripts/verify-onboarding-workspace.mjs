@@ -140,10 +140,10 @@ assert(documents.includes("employee_documents") && documents.includes("employee_
   "AttendanceRosterWorkspaceForm",
   "AssetsWorkspaceForm",
   "UserAccessWorkspaceForm",
-  "ChecklistWorkspaceTable",
   "SubNavigationBar",
   "uploadOnboardingWorkspaceDocument"
 ].forEach((marker) => assert(lifecyclePage.includes(marker), `onboarding case page includes workspace UI marker: ${marker}`));
+assert(!lifecyclePage.includes("ChecklistWorkspaceTable"), "onboarding popup keeps the accepted simplified layout without the old checklist table");
 
 assert(!lifecyclePage.includes("WorkspaceNoticePopup") && !lifecyclePage.includes("setNotice(") && !lifecyclePage.includes("setMessage(success)") && !lifecyclePage.includes("Unable to save onboarding workspace section.</div>"), "onboarding workspace uses global popup alerts instead of legacy inline/local save alerts");
 assert(reportsPage.includes("canLoadPaymentInstitutions") && reportsPage.includes("Promise.resolve({ institutions: [] })"), "reports page skips payment institution reference API without permission");

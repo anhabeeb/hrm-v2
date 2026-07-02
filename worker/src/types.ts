@@ -59,6 +59,8 @@ export interface AppVariables {
   currentUser: AuthUser;
   routeTiming: {
     queryCount: number;
+    d1DurationMs: number;
+    d1Warnings: string[];
   };
 }
 

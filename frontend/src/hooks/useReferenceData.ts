@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { referenceDataCache } from "../lib/referenceDataCache";
+import { REFERENCE_DATA_STALE_TIME_MS } from "../lib/queryClient";
+import { createQueryScope, queryKeys } from "../lib/queryKeys";
+import { useApiQuery } from "./useApiQuery";
 
 export function useReferenceData<T>(input: {
   cacheKey: string;
@@ -10,54 +13,38 @@ export function useReferenceData<T>(input: {
   fallback: T;
 }) {
   const { cacheKey, token, enabled = true, ttlMs, load, fallback } = input;
-  const [data, setData] = useState<T>(() => referenceDataCache.get<T>(cacheKey, token) ?? fallback);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const loadRef = useRef(load);
   const fallbackRef = useRef(fallback);
+  const scope = useMemo(() => createQueryScope(token), [token]);
+  const initialData = useMemo(() => referenceDataCache.get<T>(cacheKey, token) ?? undefined, [cacheKey, token]);
 
   useEffect(() => {
     loadRef.current = load;
     fallbackRef.current = fallback;
   }, [fallback, load]);
 
+  const query = useApiQuery<T>({
+    queryKey: queryKeys.reference.custom(scope, cacheKey),
+    enabled: Boolean(token && enabled),
+    staleTime: ttlMs ?? REFERENCE_DATA_STALE_TIME_MS,
+    initialData,
+    placeholderData: (previousData) => previousData ?? initialData ?? fallbackRef.current,
+    queryFn: async () => {
+      return referenceDataCache.getOrLoad(cacheKey, token, () => loadRef.current(), ttlMs ?? REFERENCE_DATA_STALE_TIME_MS);
+    }
+  });
+
   const refresh = useCallback(async () => {
     if (!token || !enabled) return fallbackRef.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const value = await referenceDataCache.getOrLoad(cacheKey, token, () => loadRef.current(), ttlMs);
-      setData(value);
-      return value;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Reference data could not be loaded.");
-      return fallbackRef.current;
-    } finally {
-      setLoading(false);
-    }
-  }, [cacheKey, enabled, token, ttlMs]);
+    const result = await query.refetch();
+    return result.data ?? fallbackRef.current;
+  }, [enabled, query, token]);
 
-  useEffect(() => {
-    let active = true;
-    if (!token || !enabled) {
-      return () => { active = false; };
-    }
-    const cached = referenceDataCache.get<T>(cacheKey, token);
-    if (cached) {
-      setData(cached);
-      return () => { active = false; };
-    }
-    setLoading(true);
-    setError(null);
-    referenceDataCache.getOrLoad(cacheKey, token, () => loadRef.current(), ttlMs)
-      .then((value) => { if (active) setData(value); })
-      .catch((err) => {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "Reference data could not be loaded.");
-      })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [cacheKey, enabled, token, ttlMs]);
-
-  return { data, loading, error, refresh };
+  return {
+    data: query.data ?? initialData ?? fallback,
+    loading: query.isLoading && !query.data && !initialData,
+    refreshing: query.isFetching && Boolean(query.data ?? initialData),
+    error: query.error?.message ?? null,
+    refresh
+  };
 }

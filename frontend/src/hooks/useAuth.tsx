@@ -1,11 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { clearCacheOnPermissionChange, clearSensitiveIndexedDbCaches, permissionScopeHash } from "../lib/cache/hrmCache";
+import { preloadGlobalReferenceData } from "../lib/preloadReferenceData";
+import { clearQueryCacheForSessionChange, queryClient } from "../lib/queryClient";
+import { createQueryScope, queryKeys, queryScopeSignature } from "../lib/queryKeys";
 import { invalidateReferenceDataCache } from "../lib/referenceDataCache";
 import type { AuthUser, BootstrapStatus } from "../types/auth";
 
 const TOKEN_KEY = "hrm_v2_token";
 const USER_SECURITY_SIGNATURE_KEY = "hrm_v2_user_security_signature";
+const USER_QUERY_SCOPE_SIGNATURE_KEY = "hrm_v2_query_scope_signature";
 
 interface AuthContextValue {
   token: string | null;
@@ -32,20 +36,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const persistSession = useCallback((nextToken: string, nextUser: AuthUser) => {
     const nextSignature = permissionScopeHash({ permissions: nextUser.permissions, roles: nextUser.roles, employeeId: nextUser.employee_id });
     const previousSignature = localStorage.getItem(USER_SECURITY_SIGNATURE_KEY);
+    const nextQueryScopeSignature = queryScopeSignature(nextToken, nextUser);
+    const previousQueryScopeSignature = localStorage.getItem(USER_QUERY_SCOPE_SIGNATURE_KEY);
     if (previousSignature && previousSignature !== nextSignature) {
       void clearCacheOnPermissionChange(nextUser.id);
+      clearQueryCacheForSessionChange("permission-change");
+      invalidateReferenceDataCache();
+    }
+    if (previousQueryScopeSignature && previousQueryScopeSignature !== nextQueryScopeSignature) {
+      clearQueryCacheForSessionChange("scope-change");
       invalidateReferenceDataCache();
     }
     localStorage.setItem(TOKEN_KEY, nextToken);
     localStorage.setItem(USER_SECURITY_SIGNATURE_KEY, nextSignature);
+    localStorage.setItem(USER_QUERY_SCOPE_SIGNATURE_KEY, nextQueryScopeSignature);
     setToken(nextToken);
     setUser(nextUser);
+    const scope = createQueryScope(nextToken, nextUser);
+    queryClient.setQueryData(queryKeys.auth.currentUser(scope), { user: nextUser });
+    void preloadGlobalReferenceData({ token: nextToken, user: nextUser });
   }, []);
 
   const clearSession = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_SECURITY_SIGNATURE_KEY);
+    localStorage.removeItem(USER_QUERY_SCOPE_SIGNATURE_KEY);
     void clearSensitiveIndexedDbCaches();
+    clearQueryCacheForSessionChange("logout");
     invalidateReferenceDataCache();
     setToken(null);
     setUser(null);
@@ -87,8 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             const result = await loadCurrentUser(savedToken);
             if (mounted) {
-              setToken(savedToken);
-              setUser(result.user);
+              persistSession(savedToken, result.user);
             }
           } catch {
             if (mounted) {
@@ -107,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [clearSession, loadCurrentUser, refreshBootstrap]);
+  }, [clearSession, loadCurrentUser, persistSession, refreshBootstrap]);
 
   const login = useCallback(
     async (input: { email: string; password: string }) => {
