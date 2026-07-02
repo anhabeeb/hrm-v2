@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
+import { enqueueJob, jobToApi, markJobFailed, markJobRunning, markJobSucceeded, runJobWithWaitUntil, updateJobProgress, type BackgroundJobRow } from "../utils/background-jobs";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { readJsonBody, readString } from "../utils/validation";
@@ -335,6 +336,35 @@ function requireAny(c: Context<AppBindings>, permissions: string[]) {
     return fail(c, 403, "FORBIDDEN", "You do not have permission to perform this action.");
   }
   return null;
+}
+
+function executionCtx(c: Context<AppBindings>) {
+  return (c as unknown as { executionCtx?: ExecutionContext }).executionCtx;
+}
+
+function runTrackedDocumentJob(
+  c: Context<AppBindings>,
+  job: BackgroundJobRow,
+  task: () => Promise<Record<string, unknown> | void>,
+  messages: { running: string; complete: string }
+) {
+  runJobWithWaitUntil(executionCtx(c), (async () => {
+    const startedAt = Date.now();
+    try {
+      await markJobRunning(c.env.DB, job.id, messages.running);
+      await updateJobProgress(c.env.DB, job.id, { current: 1, total: 3, message: "Loading scoped document records." });
+      const result = await task();
+      await updateJobProgress(c.env.DB, job.id, { current: 3, total: 3, message: messages.complete });
+      await markJobSucceeded(c.env.DB, job.id, messages.complete, {
+        duration_ms: Date.now() - startedAt,
+        result: result ?? null
+      });
+    } catch (error) {
+      await markJobFailed(c.env.DB, job.id, "DOCUMENT_BACKGROUND_JOB_FAILED", error instanceof Error ? error.message : "Document background job failed.", {
+        duration_ms: Date.now() - startedAt
+      });
+    }
+  })(), { jobId: job.id, jobType: job.job_type });
 }
 
 function isSensitive(row: { is_sensitive?: number | null; sensitivity_level?: string | null }) {
@@ -1204,11 +1234,30 @@ documentComplianceRoutes.post("/compliance/refresh", async (c) => {
   const denied = requireAny(c, COMPLIANCE_REFRESH);
   if (denied) return denied;
   const employees = await employeeListForScope(c, "documents", "view");
-  const result = await refreshAllDocumentComplianceSnapshots(c.env.DB, employees.map((employee) => employee.id));
-  const alerts = await refreshDocumentExpiryAlerts(c.env.DB, employees.map((employee) => employee.id));
-  await audit(c, "document.compliance.refreshed", "document_compliance", "bulk", { newValue: { result, alerts } });
-  await publishAccessEvent(c.env, "dashboard.documents.changed", { actor_user_id: c.get("currentUser").id, entity_type: "dashboard", action: "document_compliance_refreshed" });
-  return ok(c, { ...result, alerts });
+  const employeeIds = employees.map((employee) => employee.id);
+  const { job, deduped } = await enqueueJob(c.env.DB, {
+    jobType: "DOCUMENT_COMPLIANCE_RECALCULATION",
+    moduleKey: "documents",
+    entityType: "document_compliance",
+    entityId: "bulk",
+    dedupeKey: `documents:compliance:refresh:${c.get("currentUser").id}:${employeeIds.length}`,
+    requestedByUserId: c.get("currentUser").id,
+    payload: { employee_count: employeeIds.length },
+    progressTotal: employeeIds.length || 1,
+    progressMessage: "Document compliance refresh queued."
+  });
+  if (!deduped) {
+    runTrackedDocumentJob(c, job, async () => {
+      await updateJobProgress(c.env.DB, job.id, { current: 1, total: 3, message: "Refreshing document compliance snapshots." });
+      const result = await refreshAllDocumentComplianceSnapshots(c.env.DB, employeeIds);
+      await updateJobProgress(c.env.DB, job.id, { current: 2, total: 3, message: "Refreshing document expiry alerts." });
+      const alerts = await refreshDocumentExpiryAlerts(c.env.DB, employeeIds);
+      await audit(c, "document.compliance.refreshed", "document_compliance", "bulk", { newValue: { result, alerts, background_job_id: job.id } });
+      await publishAccessEvent(c.env, "dashboard.documents.changed", { actor_user_id: c.get("currentUser").id, entity_type: "dashboard", action: "document_compliance_refreshed" });
+      return { refreshed_count: result.refreshed_count, alerts_created_or_existing_count: alerts.created_or_existing_count };
+    }, { running: "Refreshing document compliance.", complete: "Document compliance refresh completed." });
+  }
+  return ok(c, { job_id: job.id, job: jobToApi(job), queued: true, deduped, message: deduped ? "An active document compliance refresh is already running." : "Document compliance refresh queued." }, 202);
 });
 
 documentComplianceRoutes.get("/compliance/dashboard", async (c) => {
@@ -1278,9 +1327,25 @@ documentComplianceRoutes.post("/alerts/refresh", async (c) => {
   const denied = requireAny(c, COMPLIANCE_REFRESH);
   if (denied) return denied;
   const employees = await employeeListForScope(c, "documents", "view");
-  const result = await refreshDocumentExpiryAlerts(c.env.DB, employees.map((employee) => employee.id));
-  await audit(c, "document.alerts.refreshed", "document_expiry_alert", "bulk", { newValue: result });
-  return ok(c, result);
+  const employeeIds = employees.map((employee) => employee.id);
+  const { job, deduped } = await enqueueJob(c.env.DB, {
+    jobType: "DOCUMENT_EXPIRY_ALERT_GENERATION",
+    moduleKey: "documents",
+    entityType: "document_expiry_alert",
+    entityId: "bulk",
+    dedupeKey: `documents:alerts:refresh:${c.get("currentUser").id}:${employeeIds.length}`,
+    requestedByUserId: c.get("currentUser").id,
+    payload: { employee_count: employeeIds.length },
+    progressMessage: "Document expiry alert refresh queued."
+  });
+  if (!deduped) {
+    runTrackedDocumentJob(c, job, async () => {
+      const result = await refreshDocumentExpiryAlerts(c.env.DB, employeeIds);
+      await audit(c, "document.alerts.refreshed", "document_expiry_alert", "bulk", { newValue: { ...result, background_job_id: job.id } });
+      return { alerts_created_or_existing_count: result.created_or_existing_count, scanned_count: result.scanned_count };
+    }, { running: "Refreshing document expiry alerts.", complete: "Document expiry alert refresh completed." });
+  }
+  return ok(c, { job_id: job.id, job: jobToApi(job), queued: true, deduped, message: deduped ? "An active alert refresh is already running." : "Document expiry alert refresh queued." }, 202);
 });
 
 documentComplianceRoutes.post("/alerts/:alertId/acknowledge", (c) => alertAction(c, "ACKNOWLEDGED", "acknowledged"));
@@ -1467,9 +1532,24 @@ employeeDocumentComplianceRoutes.post("/:employeeId/documents/compliance/refresh
   if (denied) return denied;
   const employeeId = routeParam(c, "employeeId");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
-  const snapshot = await refreshComplianceAfterDocumentChange(c.env.DB, employeeId);
-  await audit(c, "employee.document_compliance.refreshed", "employee", employeeId, { newValue: snapshot });
-  return ok(c, { compliance: snapshot });
+  const { job, deduped } = await enqueueJob(c.env.DB, {
+    jobType: "DOCUMENT_COMPLIANCE_RECALCULATION",
+    moduleKey: "documents",
+    entityType: "employee",
+    entityId: employeeId,
+    dedupeKey: `documents:employee-compliance:${employeeId}`,
+    requestedByUserId: c.get("currentUser").id,
+    payload: { employee_id: employeeId },
+    progressMessage: "Employee document compliance refresh queued."
+  });
+  if (!deduped) {
+    runTrackedDocumentJob(c, job, async () => {
+      const snapshot = await refreshComplianceAfterDocumentChange(c.env.DB, employeeId);
+      await audit(c, "employee.document_compliance.refreshed", "employee", employeeId, { newValue: { snapshot, background_job_id: job.id } });
+      return { employee_id: employeeId, compliance_status: snapshot?.compliance_status ?? null };
+    }, { running: "Refreshing employee document compliance.", complete: "Employee document compliance refresh completed." });
+  }
+  return ok(c, { job_id: job.id, job: jobToApi(job), queued: true, deduped, message: deduped ? "An active employee document compliance refresh is already running." : "Employee document compliance refresh queued." }, 202);
 });
 
 employeeDocumentComplianceRoutes.post("/:employeeId/documents/waivers", async (c) => {

@@ -86,6 +86,10 @@ export const queryKeys = {
     unreadCount: (scope: QueryScope) => [...scopedRoot(scope), "notifications", "unread-count"] as const,
     list: (scope: QueryScope, limit = 8) => [...scopedRoot(scope), "notifications", "list", limit] as const
   },
+  backgroundJobs: {
+    list: (scope: QueryScope, limit = 10) => [...scopedRoot(scope), "background-jobs", "list", limit] as const,
+    detail: (scope: QueryScope, jobId: string) => [...scopedRoot(scope), "background-jobs", "detail", jobId] as const
+  },
   search: {
     global: (scope: QueryScope, query: string, limit: number) => [...scopedRoot(scope), "search", "global", query, limit] as const
   }

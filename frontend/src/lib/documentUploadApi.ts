@@ -52,6 +52,7 @@ export type CompleteDocumentUploadsResult = {
   results: Array<Record<string, unknown>>;
   readiness_updating?: boolean;
   recalculation_status?: string;
+  background_job_ids?: string[];
   targeted_workspace_slices?: string[];
 };
 

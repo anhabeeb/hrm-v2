@@ -503,6 +503,50 @@ CREATE INDEX IF NOT EXISTS idx_notifications_employee_read ON notifications(reci
 CREATE INDEX IF NOT EXISTS idx_notifications_module ON notifications(module_key, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_entity ON notifications(entity_type, entity_id);
 
+CREATE TABLE IF NOT EXISTS background_jobs (
+  id TEXT PRIMARY KEY,
+  job_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'QUEUED' CHECK (status IN ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'RETRYING')),
+  priority INTEGER NOT NULL DEFAULT 0,
+  dedupe_key TEXT,
+  entity_type TEXT,
+  entity_id TEXT,
+  module_key TEXT,
+  requested_by_user_id TEXT,
+  company_scope_id TEXT,
+  payload_json TEXT,
+  progress_current INTEGER NOT NULL DEFAULT 0 CHECK (progress_current >= 0),
+  progress_total INTEGER CHECK (progress_total IS NULL OR progress_total >= 0),
+  progress_message TEXT,
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  max_attempts INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts >= 1),
+  scheduled_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  started_at TEXT,
+  completed_at TEXT,
+  last_error_code TEXT,
+  last_error_message TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (requested_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS background_job_events (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  message TEXT,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (job_id) REFERENCES background_jobs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_background_jobs_status_scheduled ON background_jobs(status, scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_background_jobs_type_status ON background_jobs(job_type, status);
+CREATE INDEX IF NOT EXISTS idx_background_jobs_requested_by ON background_jobs(requested_by_user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_background_jobs_entity ON background_jobs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_background_jobs_dedupe_key ON background_jobs(dedupe_key);
+CREATE INDEX IF NOT EXISTS idx_background_job_events_job_created ON background_job_events(job_id, created_at);
+
 CREATE TABLE IF NOT EXISTS notification_preferences (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,

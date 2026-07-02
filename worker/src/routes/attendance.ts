@@ -8,6 +8,7 @@ import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
+import { enqueueJob, jobToApi, markJobFailed, markJobRunning, markJobSucceeded, runJobWithWaitUntil, updateJobProgress, type BackgroundJobRow } from "../utils/background-jobs";
 import { fail, getClientIp, ok } from "../utils/http";
 import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
@@ -116,6 +117,35 @@ async function auditAttendance(c: Context<AppBindings>, input: { action: string;
     ipAddress: getClientIp(c.req.raw),
     userAgent: c.req.header("User-Agent") ?? null
   });
+}
+
+function executionCtx(c: Context<AppBindings>) {
+  return (c as unknown as { executionCtx?: ExecutionContext }).executionCtx;
+}
+
+function runTrackedAttendanceJob(
+  c: Context<AppBindings>,
+  job: BackgroundJobRow,
+  task: () => Promise<Record<string, unknown> | void>,
+  messages: { running: string; complete: string }
+) {
+  runJobWithWaitUntil(executionCtx(c), (async () => {
+    const startedAt = Date.now();
+    try {
+      await markJobRunning(c.env.DB, job.id, messages.running);
+      await updateJobProgress(c.env.DB, job.id, { current: 1, total: 3, message: "Refreshing attendance records." });
+      const result = await task();
+      await updateJobProgress(c.env.DB, job.id, { current: 3, total: 3, message: messages.complete });
+      await markJobSucceeded(c.env.DB, job.id, messages.complete, {
+        duration_ms: Date.now() - startedAt,
+        result: result ?? null
+      });
+    } catch (error) {
+      await markJobFailed(c.env.DB, job.id, "ATTENDANCE_BACKGROUND_JOB_FAILED", error instanceof Error ? error.message : "Attendance background job failed.", {
+        duration_ms: Date.now() - startedAt
+      });
+    }
+  })(), { jobId: job.id, jobType: job.job_type });
 }
 
 async function requireAttendanceModuleEnabled(c: Context<AppBindings>, next: () => Promise<void>) {
@@ -512,9 +542,24 @@ attendanceRoutes.post("/daily/refresh", requireAnyPermission(["attendance.daily.
   const to = readString(body.date_to ?? body.attendance_date ?? from);
   if (!employeeId || !validDate(from) || !validDate(to)) return fail(c, 400, "VALIDATION_ERROR", "Employee and valid date range are required.");
   if (!(await canManageAttendanceForEmployee(c, employeeId))) return fail(c, 403, "FORBIDDEN", "You do not have access to this employee.");
-  const refreshed = await refreshAttendanceRange(c, employeeId, from, to);
-  await auditAttendance(c, { action: "attendance.daily.refreshed", entityType: "attendance_record", entityId: employeeId, newValue: { date_from: from, date_to: to, refreshed } });
-  return ok(c, { refreshed });
+  const { job, deduped } = await enqueueJob(c.env.DB, {
+    jobType: "ATTENDANCE_SUMMARY_RECALCULATION",
+    moduleKey: "attendance",
+    entityType: "employee",
+    entityId: employeeId,
+    dedupeKey: `attendance:daily-refresh:${employeeId}:${from}:${to}`,
+    requestedByUserId: c.get("currentUser").id,
+    payload: { employee_id: employeeId, date_from: from, date_to: to },
+    progressMessage: "Attendance refresh queued."
+  });
+  if (!deduped) {
+    runTrackedAttendanceJob(c, job, async () => {
+      const refreshed = await refreshAttendanceRange(c, employeeId, from, to);
+      await auditAttendance(c, { action: "attendance.daily.refreshed", entityType: "attendance_record", entityId: employeeId, newValue: { date_from: from, date_to: to, refreshed_count: refreshed.length, background_job_id: job.id } });
+      return { refreshed_count: refreshed.length };
+    }, { running: "Refreshing attendance range.", complete: "Attendance refresh completed." });
+  }
+  return ok(c, { job_id: job.id, job: jobToApi(job), queued: true, deduped, message: deduped ? "An active attendance refresh is already running." : "Attendance refresh queued." }, 202);
 });
 
 attendanceRoutes.get("/payroll-impact", requireAnyPermission(["attendance.payroll_impact.view", "payroll.attendance_impacts.view", "attendance.view"]), async (c) => {

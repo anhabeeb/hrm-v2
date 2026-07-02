@@ -26,6 +26,7 @@ import {
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { GlobalSearch } from "../components/global/GlobalSearch";
+import { BackgroundJobIndicator } from "../components/jobs/BackgroundJobIndicator";
 import { NotificationBell } from "../components/global/NotificationBell";
 import { PageLoader } from "../components/loading";
 import { Button } from "../components/ui/button";
@@ -352,6 +353,7 @@ export function AppShell() {
 
             <div className="flex min-w-0 items-center gap-2">
               <GlobalSearch />
+              <BackgroundJobIndicator />
               <NotificationBell />
               <div className="hidden text-right sm:block">
                 <p className="max-w-[160px] truncate text-sm font-medium">{user?.name}</p>

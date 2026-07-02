@@ -8,6 +8,7 @@ import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
 import { refreshComplianceAfterDocumentChange, resolveDocumentAlertForRenewedDocument } from "./document-compliance";
 import type { AppBindings } from "../types";
+import { enqueueJob, markJobFailed, markJobRunning, markJobSucceeded, runJobWithWaitUntil, updateJobProgress, type BackgroundJobRow } from "../utils/background-jobs";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
@@ -224,6 +225,7 @@ export type DocumentUploadPrepareContext = {
 type DocumentUploadCompleteResult = EmployeeDocumentUploadResult & {
   uploadId: string;
   clientRowId: string | null;
+  backgroundJobId?: string | null;
 };
 
 type DocumentUploadValidationIssue = {
@@ -1238,6 +1240,54 @@ async function markUploadSessionFailed(c: Context<AppBindings>, session: Prepare
     .run();
 }
 
+async function runTrackedUploadFollowUp(c: Context<AppBindings>, job: BackgroundJobRow, session: PreparedDocumentUploadSessionRow) {
+  const startedAt = Date.now();
+  try {
+    await markJobRunning(c.env.DB, job.id, "Refreshing document and onboarding readiness.");
+    await updateJobProgress(c.env.DB, job.id, { current: 1, total: 3, message: "Refreshing document compliance." });
+    const snapshot = await refreshComplianceAfterDocumentChange(c.env.DB, session.employee_id, session.document_id);
+    await updateJobProgress(c.env.DB, job.id, { current: 2, total: 3, message: session.onboarding_case_id ? "Readiness will refresh from updated workspace slices." : "Document summary will refresh from updated workspace slices." });
+    await updateJobProgress(c.env.DB, job.id, { current: 3, total: 3, message: "Follow-up refresh completed." });
+    await markJobSucceeded(c.env.DB, job.id, "Upload follow-up refresh completed.", {
+      duration_ms: Date.now() - startedAt,
+      employee_id: session.employee_id,
+      onboarding_case_id: session.onboarding_case_id,
+      compliance_status: snapshot?.compliance_status ?? null
+    });
+  } catch (error) {
+    await markJobFailed(c.env.DB, job.id, "DOCUMENT_UPLOAD_FOLLOW_UP_FAILED", error instanceof Error ? error.message : "Upload follow-up refresh failed.", {
+      duration_ms: Date.now() - startedAt,
+      employee_id: session.employee_id,
+      onboarding_case_id: session.onboarding_case_id
+    });
+  }
+}
+
+async function enqueueUploadFollowUpJob(c: Context<AppBindings>, session: PreparedDocumentUploadSessionRow) {
+  const isOnboarding = Boolean(session.onboarding_case_id);
+  const { job, deduped } = await enqueueJob(c.env.DB, {
+    jobType: isOnboarding ? "ONBOARDING_READINESS_RECALCULATION" : "DOCUMENT_COMPLIANCE_RECALCULATION",
+    moduleKey: isOnboarding ? "onboarding" : "documents",
+    entityType: isOnboarding ? "onboarding_case" : "employee",
+    entityId: isOnboarding ? session.onboarding_case_id : session.employee_id,
+    dedupeKey: isOnboarding ? `onboarding:readiness:${session.onboarding_case_id}` : `documents:employee-compliance:${session.employee_id}`,
+    requestedByUserId: c.get("currentUser").id,
+    payload: {
+      employee_id: session.employee_id,
+      onboarding_case_id: session.onboarding_case_id,
+      document_id: session.document_id,
+      upload_id: session.id,
+      batch_id: session.batch_id
+    },
+    progressTotal: 3,
+    progressMessage: isOnboarding ? "Onboarding readiness refresh queued." : "Document compliance refresh queued."
+  });
+  if (!deduped) {
+    runJobWithWaitUntil((c as unknown as { executionCtx?: ExecutionContext }).executionCtx, runTrackedUploadFollowUp(c, job, session), { jobId: job.id, jobType: job.job_type });
+  }
+  return job;
+}
+
 async function createDocumentVersionFromUploadedObject(c: Context<AppBindings>, session: PreparedDocumentUploadSessionRow) {
   const versionId = crypto.randomUUID();
   await c.env.DB.prepare(
@@ -1307,7 +1357,7 @@ async function commitUploadedDocumentSession(c: Context<AppBindings>, session: P
     await c.env.DB.prepare("UPDATE document_upload_sessions SET status = 'COMPLETED', completed_document_id = ?, completed_version_id = ?, completed_at = ?, updated_at = ? WHERE id = ?")
       .bind(session.document_id, versionId, nowIso(), nowIso(), session.id)
       .run();
-    runDocumentBackgroundTask(c, refreshComplianceAfterDocumentChange(c.env.DB, session.employee_id, session.document_id), "document.upload.background_compliance_refresh", { upload_id: session.id, batch_id: session.batch_id });
+    const backgroundJob = await enqueueUploadFollowUpJob(c, session);
     return {
       uploadId: session.id,
       clientRowId: session.client_row_id,
@@ -1315,7 +1365,8 @@ async function commitUploadedDocumentSession(c: Context<AppBindings>, session: P
       documentId: session.document_id,
       versionId,
       r2Key: session.r2_key,
-      createdNewDocument: true
+      createdNewDocument: true,
+      backgroundJobId: backgroundJob.id
     };
   } catch (error) {
     if (insertedDocument) {
@@ -1340,6 +1391,7 @@ export async function completeDocumentUploadSessions(c: Context<AppBindings>, up
   }
   const documents: Array<ReturnType<typeof maskDocument> | null> = [];
   const results: Array<Record<string, unknown>> = [];
+  const backgroundJobIds = new Set<string>();
   for (const uploadId of uploadIds) {
     const session = await getUploadSessionForActor(c, uploadId);
     if (!session) {
@@ -1357,12 +1409,14 @@ export async function completeDocumentUploadSessions(c: Context<AppBindings>, up
     try {
       const completed = await commitUploadedDocumentSession(c, session);
       documents.push(completed.document);
+      if (completed.backgroundJobId) backgroundJobIds.add(completed.backgroundJobId);
       results.push({
         upload_id: completed.uploadId,
         client_row_id: completed.clientRowId,
         status: "UPLOADED",
         document_id: completed.documentId,
-        version_id: completed.versionId
+        version_id: completed.versionId,
+        background_job_id: completed.backgroundJobId ?? null
       });
     } catch (error) {
       results.push({
@@ -1380,7 +1434,10 @@ export async function completeDocumentUploadSessions(c: Context<AppBindings>, up
     failed_count: results.length - completedCount,
     documents: documents.filter(Boolean),
     results,
-    recalculation_status: completedCount > 0 ? "queued" : "not_queued"
+    recalculation_status: completedCount > 0 ? "queued" : "not_queued",
+    readiness_updating: completedCount > 0,
+    background_job_ids: [...backgroundJobIds],
+    targeted_workspace_slices: completedCount > 0 ? ["documents", "document-checklist", "employee-document-summary", "readiness"] : []
   };
 }
 
