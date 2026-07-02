@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { emitQueryInvalidationEvent, eventQueryFamilies } from "../utils/app-events";
 
 export type AccessRealtimeEvent =
   | "users.changed"
@@ -108,7 +109,23 @@ export type AccessRealtimeEvent =
   | "dashboard.assets.changed"
   | "self_service.changed"
   | "kyc_request.submitted"
-  | "kyc_request.reviewed";
+  | "kyc_request.reviewed"
+  | "background_job.queued"
+  | "background_job.updated"
+  | "background_job.completed"
+  | "background_job.failed"
+  | "notification.created"
+  | "notification.read"
+  | "document.compliance.updated"
+  | "onboarding.readiness.updated"
+  | "payroll.payment_method.updated"
+  | "attendance.summary.updated"
+  | "payroll.summary.updated"
+  | "report.artifact.ready"
+  | "import.validation.completed"
+  | "import.apply.completed"
+  | "dashboard.summary.updated"
+  | "module.visibility.updated";
 
 export interface AccessRealtimePayload {
   actor_user_id?: string;
@@ -193,6 +210,10 @@ export interface AccessRealtimePayload {
     | "audit_log"
     | "audit_export"
     | "report"
+    | "report_artifact"
+    | "background_job"
+    | "import_batch"
+    | "module_control_setting"
     | "contract"
     | "contract_alert"
     | "dashboard"
@@ -202,7 +223,56 @@ export interface AccessRealtimePayload {
   action: string;
 }
 
-export async function publishAccessEvent(_env: Env, _event: AccessRealtimeEvent, _payload: AccessRealtimePayload) {
-  // Placeholder for the future shared realtime dispatcher.
-  // The REST route owns the source of truth; websocket fan-out can be wired here later.
+function moduleKeyFromEvent(event: string, payload: AccessRealtimePayload) {
+  const prefix = event.split(".")[0] ?? "";
+  if (event.includes("document")) return "documents";
+  if (event.includes("onboarding")) return "onboarding";
+  if (event.includes("payroll")) return "payroll";
+  if (event.includes("attendance")) return "attendance";
+  if (event.includes("roster")) return "roster";
+  if (event.includes("leave")) return "leave";
+  if (event.includes("asset")) return "assets_uniforms";
+  if (event.includes("contract")) return "contracts";
+  if (event.includes("report")) return "reports";
+  if (event.includes("dashboard")) return "dashboard";
+  if (event.includes("role") || event.includes("permission") || event.includes("access") || event.includes("user")) return "admin";
+  if (payload.entity_type === "employee") return "employees";
+  return prefix || "general";
+}
+
+function queryFamiliesForPublishedEvent(event: string, moduleKey: string, payload: AccessRealtimePayload) {
+  const employeeId = payload.employee_id ?? (payload.entity_type === "employee" ? payload.entity_id : null);
+  return eventQueryFamilies({
+    eventType: event,
+    moduleKey,
+    entityType: payload.entity_type,
+    entityId: payload.entity_id,
+    payload: {
+      action: payload.action,
+      employee_id: employeeId,
+      user_id: payload.user_id ?? null
+    }
+  });
+}
+
+export async function publishAccessEvent(env: Env, event: AccessRealtimeEvent, payload: AccessRealtimePayload) {
+  const moduleKey = moduleKeyFromEvent(event, payload);
+  const employeeId = payload.employee_id ?? (payload.entity_type === "employee" ? payload.entity_id : null);
+  await emitQueryInvalidationEvent(env.DB, {
+    eventType: event,
+    moduleKey,
+    entityType: payload.entity_type,
+    entityId: payload.entity_id ?? employeeId ?? null,
+    visibility: payload.user_id ? "USER" : "COMPANY",
+    userScopeId: payload.user_id ?? null,
+    createdByUserId: payload.actor_user_id ?? null,
+    payload: {
+      action: payload.action,
+      employee_id: employeeId ?? null,
+      user_id: payload.user_id ?? null,
+      safe_label: event.replace(/[_.]/g, " ")
+    },
+    queryKeys: queryFamiliesForPublishedEvent(event, moduleKey, payload),
+    dedupeKey: `publish:${event}:${payload.entity_type}:${payload.entity_id ?? employeeId ?? "none"}:${payload.action}`
+  });
 }

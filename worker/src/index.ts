@@ -8,6 +8,7 @@ import { assetUniformAdvancedRoutes, employeeAssetUniformRoutes, selfServiceAsse
 import { assetRoutes, auditRoutes, employeeAssetRoutes, employeeNoteCategoryRoutes, employeeNoteRoutes } from "./routes/assets-notes-audit";
 import { attendanceDeviceSyncRoutes, employeeAttendanceDeviceSyncRoutes, selfServiceAttendanceDeviceSyncRoutes } from "./routes/attendance-devices-zkteco";
 import { attendanceRoutes, employeeAttendanceRoutes } from "./routes/attendance";
+import { appEventRoutes } from "./routes/app-events";
 import { backgroundJobRoutes } from "./routes/background-jobs";
 import { bootstrapRoutes } from "./routes/bootstrap";
 import { dashboardRoutes } from "./routes/dashboard";
@@ -109,6 +110,7 @@ app.route("/api/v1/role-mappings", roleMappingRoutes);
 app.route("/api/v1/access-scopes", accessScopeRoutes);
 app.route("/api/v1/search", searchRoutes);
 app.route("/api/v1/notifications", notificationRoutes);
+app.route("/api/v1/app-events", appEventRoutes);
 app.route("/api/v1/background-jobs", backgroundJobRoutes);
 app.route("/api/v1/admin", adminRoutes);
 app.route("/api/v1/admin", dataTransferAdminRoutes);

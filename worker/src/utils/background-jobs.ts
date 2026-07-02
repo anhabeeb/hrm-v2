@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { safeEmitAppEvent } from "./app-events";
 import { nowIso } from "./http";
 
 type BindValue = string | number | null;
@@ -179,6 +180,33 @@ export async function getJob(db: Env["DB"], jobId: string) {
   return db.prepare("SELECT * FROM background_jobs WHERE id = ?").bind(jobId).first<BackgroundJobRow>();
 }
 
+async function emitJobAppEvent(db: Env["DB"], jobId: string, eventType: "background_job.queued" | "background_job.updated" | "background_job.completed" | "background_job.failed") {
+  const job = await getJob(db, jobId);
+  if (!job) return null;
+  return safeEmitAppEvent(db, {
+    eventType,
+    moduleKey: job.module_key ?? "background_jobs",
+    entityType: "background_job",
+    entityId: job.id,
+    visibility: job.requested_by_user_id ? "USER" : "COMPANY",
+    userScopeId: job.requested_by_user_id,
+    createdByUserId: job.requested_by_user_id,
+    payload: {
+      job_id: job.id,
+      job_type: job.job_type,
+      status: job.status,
+      module_key: job.module_key,
+      entity_type: job.entity_type,
+      entity_id: job.entity_id,
+      progress_current: job.progress_current,
+      progress_total: job.progress_total,
+      safe_label: job.progress_message ?? job.status
+    },
+    queryKeys: ["background-jobs", job.module_key ?? "background_jobs", job.entity_type ?? "background_job"],
+    dedupeKey: `background_job:${job.id}:${eventType}:${job.status}:${job.progress_current}:${job.updated_at}`
+  });
+}
+
 export async function listJobs(db: Env["DB"], input: {
   limit: number;
   offset: number;
@@ -294,6 +322,7 @@ export async function enqueueJob(db: Env["DB"], input: EnqueueJobInput) {
     entity_type: input.entityType ?? null,
     entity_id: input.entityId ?? null
   });
+  await emitJobAppEvent(db, job.id, "background_job.queued");
   return { job, deduped: false };
 }
 
@@ -329,6 +358,7 @@ export async function markJobRunning(db: Env["DB"], jobId: string, message = "Ru
      WHERE id = ? AND status IN ('QUEUED', 'RETRYING', 'RUNNING')`
   ).bind(now, truncate(message), now, jobId).run();
   await appendJobEvent(db, jobId, "running", message);
+  await emitJobAppEvent(db, jobId, "background_job.updated");
 }
 
 export async function updateJobProgress(db: Env["DB"], jobId: string, input: JobProgressInput) {
@@ -351,6 +381,7 @@ export async function updateJobProgress(db: Env["DB"], jobId: string, input: Job
   }
   params.push(jobId);
   await db.prepare(`UPDATE background_jobs SET ${sets.join(", ")} WHERE id = ? AND status IN ('QUEUED', 'RUNNING', 'RETRYING')`).bind(...params).run();
+  await emitJobAppEvent(db, jobId, "background_job.updated");
 }
 
 export async function markJobSucceeded(db: Env["DB"], jobId: string, message = "Completed", metadata?: Record<string, unknown> | null) {
@@ -361,6 +392,7 @@ export async function markJobSucceeded(db: Env["DB"], jobId: string, message = "
      WHERE id = ?`
   ).bind(now, truncate(message, 300), now, jobId).run();
   await appendJobEvent(db, jobId, "succeeded", message, metadata);
+  await emitJobAppEvent(db, jobId, "background_job.completed");
 }
 
 export async function markJobFailed(db: Env["DB"], jobId: string, code: string, message: string, metadata?: Record<string, unknown> | null) {
@@ -371,6 +403,7 @@ export async function markJobFailed(db: Env["DB"], jobId: string, code: string, 
      WHERE id = ?`
   ).bind(now, truncate(code, 80), truncate(message, 500), truncate(message, 300), now, jobId).run();
   await appendJobEvent(db, jobId, "failed", message, metadata);
+  await emitJobAppEvent(db, jobId, "background_job.failed");
 }
 
 export async function retryJob(db: Env["DB"], jobId: string, requestedByUserId?: string | null) {
@@ -385,6 +418,7 @@ export async function retryJob(db: Env["DB"], jobId: string, requestedByUserId?:
      WHERE id = ?`
   ).bind(now, now, jobId).run();
   await appendJobEvent(db, jobId, "retry_queued", "Retry queued for background job.", { requested_by_user_id: requestedByUserId ?? null });
+  await emitJobAppEvent(db, jobId, "background_job.updated");
   return getJob(db, jobId);
 }
 
@@ -399,6 +433,7 @@ export async function cancelJob(db: Env["DB"], jobId: string, requestedByUserId?
      WHERE id = ? AND status IN ('QUEUED', 'RETRYING')`
   ).bind(now, now, jobId).run();
   await appendJobEvent(db, jobId, "cancelled", "Queued background job cancelled.", { requested_by_user_id: requestedByUserId ?? null });
+  await emitJobAppEvent(db, jobId, "background_job.updated");
   return getJob(db, jobId);
 }
 

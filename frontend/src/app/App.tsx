@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { AlertProvider } from "../components/alerts/AlertProvider";
 import { AuthProvider } from "../hooks/useAuth";
 import { IdleTimeoutProvider } from "../hooks/useIdleTimeout";
+import { LiveQueryInvalidationBridge } from "../hooks/useLiveQueryInvalidation";
 import { queryClient } from "../lib/queryClient";
 import { AppRoutes } from "../routes/AppRoutes";
 
@@ -11,6 +12,7 @@ export function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <IdleTimeoutProvider>
+            <LiveQueryInvalidationBridge />
             <AppRoutes />
           </IdleTimeoutProvider>
         </AuthProvider>

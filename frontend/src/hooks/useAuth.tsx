@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { clearCacheOnPermissionChange, clearSensitiveIndexedDbCaches, permissionScopeHash } from "../lib/cache/hrmCache";
+import { broadcastSessionEvent, subscribeCrossTabSessionEvents } from "../lib/crossTabSync";
 import { preloadGlobalReferenceData } from "../lib/preloadReferenceData";
 import { clearQueryCacheForSessionChange, queryClient } from "../lib/queryClient";
 import { createQueryScope, queryKeys, queryScopeSignature } from "../lib/queryKeys";
@@ -46,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (previousQueryScopeSignature && previousQueryScopeSignature !== nextQueryScopeSignature) {
       clearQueryCacheForSessionChange("scope-change");
       invalidateReferenceDataCache();
+      broadcastSessionEvent("scope-change", nextQueryScopeSignature);
     }
     localStorage.setItem(TOKEN_KEY, nextToken);
     localStorage.setItem(USER_SECURITY_SIGNATURE_KEY, nextSignature);
@@ -57,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void preloadGlobalReferenceData({ token: nextToken, user: nextUser });
   }, []);
 
-  const clearSession = useCallback(() => {
+  const clearSession = useCallback((options: { broadcast?: boolean } = {}) => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_SECURITY_SIGNATURE_KEY);
     localStorage.removeItem(USER_QUERY_SCOPE_SIGNATURE_KEY);
@@ -66,7 +68,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     invalidateReferenceDataCache();
     setToken(null);
     setUser(null);
+    if (options.broadcast !== false) broadcastSessionEvent("logout");
   }, []);
+
+  useEffect(() => subscribeCrossTabSessionEvents((message) => {
+    if (message.type === "logout") {
+      clearSession({ broadcast: false });
+      return;
+    }
+    if (message.type === "scope-change") {
+      clearQueryCacheForSessionChange("scope-change");
+      invalidateReferenceDataCache();
+    }
+  }), [clearSession]);
 
   const refreshBootstrap = useCallback(async () => {
     bootstrapInflightRef.current ??= api.getBootstrapStatus().finally(() => {

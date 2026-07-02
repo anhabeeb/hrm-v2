@@ -9,6 +9,7 @@ import { hasValidationErrors, validateAccessScope, validateDateRange, validateDu
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, DbUser, UserStatus } from "../types";
+import { safeEmitAppEvent } from "../utils/app-events";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
@@ -641,11 +642,33 @@ async function markLifecycleUserAccountDeactivated(c: Context<AppBindings>, empl
 }
 
 async function refreshWorkspaceReadiness(c: Context<AppBindings>, caseId: string, taskKey?: string, action?: string) {
+  let employeeId: string | null = null;
   if (taskKey && action) {
     const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
-    if (gate) await createLifecycleEvent(c, { employeeId: String(gate.row.employee_id), caseType: "ONBOARDING", caseId, action, previousStatus: String(gate.row.onboarding_status), newStatus: String(gate.row.onboarding_status), metadata: { source_of_truth: "source_module", task_key: taskKey } });
+    if (gate) {
+      employeeId = String(gate.row.employee_id);
+      await createLifecycleEvent(c, { employeeId, caseType: "ONBOARDING", caseId, action, previousStatus: String(gate.row.onboarding_status), newStatus: String(gate.row.onboarding_status), metadata: { source_of_truth: "source_module", task_key: taskKey } });
+    }
   }
-  return getEmployeeOnboardingReadiness(c, caseId);
+  const readiness = await getEmployeeOnboardingReadiness(c, caseId);
+  await safeEmitAppEvent(c.env.DB, {
+    eventType: "onboarding.readiness.updated",
+    moduleKey: "onboarding",
+    entityType: "onboarding_case",
+    entityId: caseId,
+    visibility: "COMPANY",
+    createdByUserId: c.get("currentUser").id,
+    payload: {
+      employee_id: employeeId,
+      onboarding_case_id: caseId,
+      can_activate: Boolean(readiness?.can_activate),
+      task_key: taskKey ?? null,
+      safe_label: "Onboarding readiness updated"
+    },
+    queryKeys: ["onboarding.workspace", "onboarding.readiness", "background-jobs"],
+    dedupeKey: `onboarding.readiness.updated:${caseId}:${taskKey ?? "manual"}:${Boolean(readiness?.can_activate) ? 1 : 0}`
+  });
+  return readiness;
 }
 
 function runLifecycleBackgroundTask(c: Context<AppBindings>, task: Promise<unknown>, label: string, meta: Record<string, unknown>) {
@@ -694,6 +717,33 @@ async function auditLifecycle(c: Context<AppBindings>, action: string, entityTyp
 
 async function publishLifecycle(c: Context<AppBindings>, employeeId: string, action: string) {
   await publishAccessEvent(c.env, "employees.changed", { actor_user_id: c.get("currentUser").id, entity_type: "employee", entity_id: employeeId, action });
+}
+
+async function emitOnboardingWorkspaceEvent(c: Context<AppBindings>, input: {
+  eventType: string;
+  moduleKey: string;
+  caseId: string;
+  employeeId: string;
+  taskKey: string;
+  queryKeys: string[];
+  safeLabel: string;
+}) {
+  await safeEmitAppEvent(c.env.DB, {
+    eventType: input.eventType,
+    moduleKey: input.moduleKey,
+    entityType: input.eventType.startsWith("payroll.") ? "employee_payment_method" : "employee",
+    entityId: input.employeeId,
+    visibility: "COMPANY",
+    createdByUserId: c.get("currentUser").id,
+    payload: {
+      employee_id: input.employeeId,
+      onboarding_case_id: input.caseId,
+      task_key: input.taskKey,
+      safe_label: input.safeLabel
+    },
+    queryKeys: input.queryKeys,
+    dedupeKey: `${input.eventType}:${input.caseId}:${input.taskKey}:${input.employeeId}`
+  });
 }
 
 async function ensureOnboardingSettings(db: D1Database) {
@@ -2444,6 +2494,15 @@ onboardingRoutes.patch("/cases/:caseId/employee-info", requireAnyPermission([...
   ).run();
   await setOnboardingTaskState(c, c.req.param("caseId"), "personal_info", "COMPLETED", "Employee information saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.employee_info_saved", "employee", String(gate.row.employee_id), gate.employee, body);
+  await emitOnboardingWorkspaceEvent(c, {
+    eventType: "employee.updated",
+    moduleKey: "employees",
+    caseId: c.req.param("caseId"),
+    employeeId: String(gate.row.employee_id),
+    taskKey: "personal_info",
+    queryKeys: ["employees", "employee.profile", "onboarding.workspace", "onboarding.readiness"],
+    safeLabel: "Employee information saved"
+  });
   return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
 });
 
@@ -2478,6 +2537,15 @@ onboardingRoutes.patch("/cases/:caseId/contact-info", requireAnyPermission([...o
   }
   await setOnboardingTaskState(c, c.req.param("caseId"), "contact_info", "COMPLETED", "Contact information saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.contact_info_saved", "employee", employeeId, null, body);
+  await emitOnboardingWorkspaceEvent(c, {
+    eventType: "employee.updated",
+    moduleKey: "employees",
+    caseId: c.req.param("caseId"),
+    employeeId,
+    taskKey: "contact_info",
+    queryKeys: ["employee.profile", "onboarding.workspace", "onboarding.readiness"],
+    safeLabel: "Employee contact information saved"
+  });
   return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
 });
 
@@ -2509,6 +2577,15 @@ onboardingRoutes.patch("/cases/:caseId/job-assignment", requireAnyPermission([..
   ).bind(id("employee_job_history"), employeeId, previous.primary_department_id ?? null, next.primary_department_id, previous.primary_position_id ?? null, next.primary_position_id, previous.primary_location_id ?? null, next.primary_location_id, previous.job_level_id ?? null, next.job_level_id, previous.reporting_manager_employee_id ?? null, next.reporting_manager_employee_id, optionalText(body.effective_date) ?? new Date().toISOString().slice(0, 10), optionalText(body.reason) ?? "Saved from onboarding workspace", c.get("currentUser").id).run();
   await setOnboardingTaskState(c, c.req.param("caseId"), "job_assignment", "COMPLETED", "Job assignment saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.job_assignment_saved", "employee", employeeId, previous, next, optionalText(body.reason));
+  await emitOnboardingWorkspaceEvent(c, {
+    eventType: "employee.updated",
+    moduleKey: "employees",
+    caseId: c.req.param("caseId"),
+    employeeId,
+    taskKey: "job_assignment",
+    queryKeys: ["employees", "employee.profile", "onboarding.workspace", "onboarding.readiness", "dashboard.command-center"],
+    safeLabel: "Employee job assignment saved"
+  });
   return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
 });
 
@@ -2838,6 +2915,15 @@ onboardingRoutes.post("/cases/:caseId/payment-methods", requireAnyPermission(["o
   ).bind(methodId, employeeId, methodType, institutionId, institution ? `${String(institution.code)} - ${String(institution.name)}` : null, accountName, accountNumber, maskAccount(accountNumber), optionalText(body.allocation_type) ?? "FULL", numberOrNull(body.allocation_percentage), numberOrNull(body.allocation_amount), optionalText(body.currency) ?? "MVR", optionalText(body.effective_date) ?? new Date().toISOString().slice(0, 10), optionalText(body.notes), c.get("currentUser").id, c.get("currentUser").id).run();
   await setOnboardingTaskState(c, c.req.param("caseId"), "payment_method", "COMPLETED", "Payment method saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.payment_method_saved", "employee_payment_method", methodId, null, body);
+  await emitOnboardingWorkspaceEvent(c, {
+    eventType: "payroll.payment_method.updated",
+    moduleKey: "payroll",
+    caseId: c.req.param("caseId"),
+    employeeId,
+    taskKey: "payment_method",
+    queryKeys: ["payroll", "employee.profile", "onboarding.workspace", "onboarding.readiness"],
+    safeLabel: "Payment method saved"
+  });
   return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) }, 201);
 });
 

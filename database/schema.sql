@@ -503,6 +503,34 @@ CREATE INDEX IF NOT EXISTS idx_notifications_employee_read ON notifications(reci
 CREATE INDEX IF NOT EXISTS idx_notifications_module ON notifications(module_key, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_entity ON notifications(entity_type, entity_id);
 
+CREATE TABLE IF NOT EXISTS app_events (
+  id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  module_key TEXT,
+  entity_type TEXT,
+  entity_id TEXT,
+  company_scope_id TEXT NOT NULL DEFAULT 'default-company',
+  user_scope_id TEXT,
+  role_scope_key TEXT,
+  visibility TEXT NOT NULL DEFAULT 'COMPANY' CHECK (visibility IN ('USER', 'ROLE', 'COMPANY', 'SYSTEM')),
+  payload_json TEXT,
+  query_keys_json TEXT,
+  dedupe_key TEXT,
+  created_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  expires_at TEXT,
+  delivered_at TEXT,
+  is_sensitive INTEGER NOT NULL DEFAULT 0 CHECK (is_sensitive IN (0, 1)),
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_events_company_created ON app_events(company_scope_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_app_events_user_created ON app_events(user_scope_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_app_events_module_created ON app_events(module_key, created_at);
+CREATE INDEX IF NOT EXISTS idx_app_events_entity_created ON app_events(entity_type, entity_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_app_events_dedupe_key ON app_events(dedupe_key);
+CREATE INDEX IF NOT EXISTS idx_app_events_expires_at ON app_events(expires_at);
+
 CREATE TABLE IF NOT EXISTS background_jobs (
   id TEXT PRIMARY KEY,
   job_type TEXT NOT NULL,

@@ -6,6 +6,7 @@ import {
   updateJobProgress,
   type BackgroundJobRow
 } from "./background-jobs";
+import { safeEmitAppEvent } from "./app-events";
 import { markReportArtifactFailed, type ReportArtifactRow } from "./report-artifacts";
 
 export type ReportJobResult = {
@@ -28,6 +29,24 @@ export async function runReportExportJob(env: Env, job: BackgroundJobRow, task: 
       row_count: result.rowCount ?? result.artifact?.row_count ?? 0,
       file_name: result.fileName ?? result.artifact?.file_name ?? null,
       duration_ms: Date.now() - startedAt
+    });
+    await safeEmitAppEvent(env.DB, {
+      eventType: "report.artifact.ready",
+      moduleKey: "reports",
+      entityType: "report_artifact",
+      entityId: artifactId,
+      visibility: job.requested_by_user_id ? "USER" : "COMPANY",
+      userScopeId: job.requested_by_user_id,
+      createdByUserId: job.requested_by_user_id,
+      payload: {
+        job_id: job.id,
+        artifact_id: artifactId,
+        report_key: result.artifact?.report_key ?? job.entity_id ?? null,
+        status: "READY",
+        safe_label: "Report export ready"
+      },
+      queryKeys: ["reports", "report-artifacts", "background-jobs"],
+      dedupeKey: `report.artifact.ready:${artifactId ?? job.id}`
     });
     reportJobLog("report_export_job.succeeded", { job_id: job.id, artifact_id: artifactId, duration_ms: Date.now() - startedAt });
   } catch (error) {

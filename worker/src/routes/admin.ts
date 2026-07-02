@@ -6,6 +6,7 @@ import { recordAudit } from "../db/audit";
 import { createSyncChangeLogEntry, syncWriteMetadata } from "../db/sync";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
+import { safeEmitAppEvent } from "../utils/app-events";
 import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
 
@@ -1012,6 +1013,17 @@ adminRoutes.patch("/modules/:moduleKey", requireAnyPermission(["admin.modules.up
   const updated = await updateModuleEnabledState(c.env.DB, moduleKey, bool(body.is_enabled), { updated_by: c.get("currentUser").id, reason: readString(body.reason) || null });
   await audit(c, "admin.module_setting_changed", "module_control_setting", moduleKey, toModuleApi(module), updated ? toModuleApi(updated) : null, readString(body.reason) || null);
   await createSecurityEventLog(c.env.DB, { eventType: "MODULE_SETTING_CHANGE", severity: "WARNING", actorUserId: c.get("currentUser").id, actorEmailSnapshot: c.get("currentUser").email, moduleKey, actionKey: "module_toggle", result: "SUCCESS", message: "Module enabled state changed.", metadata: { is_enabled: bool(body.is_enabled), warnings } });
+  await safeEmitAppEvent(c.env.DB, {
+    eventType: "module.visibility.updated",
+    moduleKey: "module_visibility",
+    entityType: "module_control_setting",
+    entityId: moduleKey,
+    visibility: "COMPANY",
+    createdByUserId: c.get("currentUser").id,
+    payload: { module_key: moduleKey, enabled: bool(body.is_enabled), safe_label: "Module visibility updated" },
+    queryKeys: ["module-visibility", "auth.me", "dashboard.command-center", "search"],
+    dedupeKey: `module.visibility.updated:${moduleKey}:${bool(body.is_enabled) ? 1 : 0}`
+  });
   return ok(c, { module: updated ? toModuleApi(updated) : null, warnings });
 });
 

@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { safeEmitAppEvent } from "./app-events";
 import { nowIso } from "./http";
 
 type SnapshotKind = "attendance" | "payroll" | "dashboard";
@@ -194,6 +195,22 @@ export async function recalculateAttendanceSnapshot(db: Env["DB"], input: { empl
     source_version: row?.source_version ?? null
   };
   const id = await upsertSnapshot(db, "attendance", snapshot);
+  await safeEmitAppEvent(db, {
+    eventType: "attendance.summary.updated",
+    moduleKey: "attendance",
+    entityType: "employee",
+    entityId: input.employeeId,
+    visibility: "COMPANY",
+    payload: {
+      employee_id: input.employeeId,
+      period_key: periodKey,
+      summary_date: input.summaryDate ?? null,
+      status: "UPDATED",
+      safe_label: "Attendance summary refreshed"
+    },
+    queryKeys: ["attendance", "dashboard.command-center"],
+    dedupeKey: `attendance.summary.updated:${input.employeeId}:${periodKey}:${input.summaryDate ?? "period"}`
+  });
   return { id, snapshot };
 }
 
@@ -232,6 +249,22 @@ export async function recalculatePayrollSnapshot(db: Env["DB"], input: { employe
     source_version: row?.source_version ?? null
   };
   const id = await upsertSnapshot(db, "payroll", snapshot);
+  await safeEmitAppEvent(db, {
+    eventType: "payroll.summary.updated",
+    moduleKey: "payroll",
+    entityType: "employee",
+    entityId: input.employeeId,
+    visibility: "COMPANY",
+    payload: {
+      employee_id: input.employeeId,
+      payroll_period_id: snapshot.payroll_period_id,
+      payroll_run_id: snapshot.payroll_run_id,
+      status: snapshot.status,
+      safe_label: "Payroll summary refreshed"
+    },
+    queryKeys: ["payroll", "dashboard.command-center"],
+    dedupeKey: `payroll.summary.updated:${input.employeeId}:${snapshot.payroll_period_id ?? "none"}:${snapshot.payroll_run_id ?? "none"}`
+  });
   return { id, snapshot };
 }
 

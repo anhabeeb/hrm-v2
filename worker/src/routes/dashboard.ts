@@ -4,6 +4,7 @@ import { buildEmployeeScopeWhereClause, type EmployeeScopeFilter } from "../auth
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import type { AppBindings } from "../types";
+import { safeEmitAppEvent } from "../utils/app-events";
 import { ok } from "../utils/http";
 import { timeD1 } from "../utils/performance";
 import { getFreshSnapshot, upsertSnapshot } from "../utils/snapshots";
@@ -289,6 +290,17 @@ async function refreshCommandCenterSnapshot(c: Context<AppBindings>, scopeHash: 
     payload_json: JSON.stringify(summary),
     source_version: summary.generated_at,
     expires_at: new Date(Date.now() + 60000).toISOString()
+  });
+  await safeEmitAppEvent(c.env.DB, {
+    eventType: "dashboard.summary.updated",
+    moduleKey: "dashboard",
+    entityType: "dashboard",
+    entityId: "command-center-summary",
+    visibility: "COMPANY",
+    createdByUserId: c.get("currentUser").id,
+    payload: { snapshot_key: "command-center-summary", status: "UPDATED", safe_label: "Command Center refreshed" },
+    queryKeys: ["dashboard.command-center"],
+    dedupeKey: `dashboard.summary.updated:${scopeHash}`
   });
   return summary;
 }

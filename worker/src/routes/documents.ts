@@ -9,6 +9,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import { refreshComplianceAfterDocumentChange, resolveDocumentAlertForRenewedDocument } from "./document-compliance";
 import type { AppBindings } from "../types";
 import { enqueueJob, markJobFailed, markJobRunning, markJobSucceeded, runJobWithWaitUntil, updateJobProgress, type BackgroundJobRow } from "../utils/background-jobs";
+import { safeEmitAppEvent } from "../utils/app-events";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
@@ -1253,6 +1254,25 @@ async function runTrackedUploadFollowUp(c: Context<AppBindings>, job: Background
       employee_id: session.employee_id,
       onboarding_case_id: session.onboarding_case_id,
       compliance_status: snapshot?.compliance_status ?? null
+    });
+    await safeEmitAppEvent(c.env.DB, {
+      eventType: session.onboarding_case_id ? "onboarding.readiness.updated" : "document.compliance.updated",
+      moduleKey: session.onboarding_case_id ? "onboarding" : "documents",
+      entityType: session.onboarding_case_id ? "onboarding_case" : "employee",
+      entityId: session.onboarding_case_id ?? session.employee_id,
+      visibility: "COMPANY",
+      createdByUserId: c.get("currentUser").id,
+      payload: {
+        employee_id: session.employee_id,
+        onboarding_case_id: session.onboarding_case_id,
+        document_id: session.document_id,
+        compliance_status: snapshot?.compliance_status ?? null,
+        safe_label: session.onboarding_case_id ? "Onboarding readiness refreshed" : "Document compliance refreshed"
+      },
+      queryKeys: session.onboarding_case_id
+        ? ["onboarding.workspace", "onboarding.readiness", "documents", "document-checklist", "employee-document-summary", "background-jobs"]
+        : ["documents", "employee.profile", "background-jobs"],
+      dedupeKey: `document.follow_up:${session.onboarding_case_id ?? session.employee_id}:${session.document_id}`
     });
   } catch (error) {
     await markJobFailed(c.env.DB, job.id, "DOCUMENT_UPLOAD_FOLLOW_UP_FAILED", error instanceof Error ? error.message : "Upload follow-up refresh failed.", {

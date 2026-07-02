@@ -6,6 +6,7 @@ import {
   updateJobProgress,
   type BackgroundJobRow
 } from "./background-jobs";
+import { safeEmitAppEvent } from "./app-events";
 
 export type ImportJobResult = {
   batch?: Record<string, unknown> | null;
@@ -32,6 +33,26 @@ async function runTrackedImportJob(env: Env, job: BackgroundJobRow, runningMessa
       processed_rows: result.processedRows ?? result.batch?.row_count ?? null,
       error_rows: result.errorRows ?? result.batch?.error_count ?? null,
       duration_ms: Date.now() - startedAt
+    });
+    const completedEvent = failureCode === "IMPORT_APPLY_FAILED" ? "import.apply.completed" : "import.validation.completed";
+    await safeEmitAppEvent(env.DB, {
+      eventType: completedEvent,
+      moduleKey: "data_import",
+      entityType: "import_batch",
+      entityId: job.entity_id ?? (typeof result.batch?.id === "string" ? result.batch.id : job.id),
+      visibility: job.requested_by_user_id ? "USER" : "COMPANY",
+      userScopeId: job.requested_by_user_id,
+      createdByUserId: job.requested_by_user_id,
+      payload: {
+        job_id: job.id,
+        batch_id: job.entity_id ?? (typeof result.batch?.id === "string" ? result.batch.id : null),
+        status: "COMPLETED",
+        processed_rows: result.processedRows ?? result.batch?.row_count ?? null,
+        error_rows: result.errorRows ?? result.batch?.error_count ?? null,
+        safe_label: successMessage
+      },
+      queryKeys: ["data_import", "background-jobs"],
+      dedupeKey: `${completedEvent}:${job.entity_id ?? job.id}`
     });
     importJobLog("import_job.succeeded", { job_id: job.id, duration_ms: Date.now() - startedAt });
   } catch (error) {

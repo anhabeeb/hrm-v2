@@ -66,6 +66,7 @@
     "verify:large-list-table-performance": "node scripts/verify-large-list-table-performance.mjs",
     "verify:background-jobs-phase7": "node scripts/verify-background-jobs-phase7.mjs",
     "verify:reports-imports-snapshots-phase8": "node scripts/verify-reports-imports-snapshots-phase8.mjs",
+    "verify:realtime-events-phase9": "node scripts/verify-realtime-events-phase9.mjs",
     "verify:cors-request-id-hotfix": "node scripts/verify-cors-request-id-hotfix.mjs",
     "verify:branding-standardization": "node scripts/verify-branding-standardization.mjs",
     "verify:login-brand-layout": "node scripts/verify-login-brand-layout.mjs",

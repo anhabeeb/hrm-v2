@@ -6,6 +6,7 @@ import { measureD1Query } from "../middleware/performance";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
+import { safeEmitAppEvent } from "../utils/app-events";
 import { isOperationalModuleEnabled } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { readJsonBody } from "../utils/validation";
@@ -230,6 +231,18 @@ export async function markNotificationRead(c: Context<AppBindings>, notification
     ipAddress: getClientIp(c.req.raw),
     userAgent: c.req.header("User-Agent")
   });
+  await safeEmitAppEvent(c.env.DB, {
+    eventType: "notification.read",
+    moduleKey: "notifications",
+    entityType: "notification",
+    entityId: notificationId,
+    visibility: "USER",
+    userScopeId: c.get("currentUser").id,
+    createdByUserId: c.get("currentUser").id,
+    payload: { notification_id: notificationId, status: "READ", safe_label: "Notification read" },
+    queryKeys: ["notifications", "notifications.unread"],
+    dedupeKey: `notification.read:${notificationId}:${c.get("currentUser").id}`
+  });
   return ok(c, { read: true });
 }
 
@@ -252,6 +265,18 @@ export async function markAllNotificationsRead(c: Context<AppBindings>) {
     newValue: { count: ids.length },
     ipAddress: getClientIp(c.req.raw),
     userAgent: c.req.header("User-Agent")
+  });
+  await safeEmitAppEvent(c.env.DB, {
+    eventType: "notification.read",
+    moduleKey: "notifications",
+    entityType: "notification",
+    entityId: "bulk",
+    visibility: "USER",
+    userScopeId: c.get("currentUser").id,
+    createdByUserId: c.get("currentUser").id,
+    payload: { count: ids.length, status: "READ", safe_label: "Notifications marked read" },
+    queryKeys: ["notifications", "notifications.unread"],
+    dedupeKey: `notifications.read_all:${c.get("currentUser").id}:${ids.length}`
   });
   return ok(c, { read: true, count: ids.length });
 }
@@ -278,6 +303,23 @@ export async function createNotificationForUser(db: Env["DB"], input: {
     )
     .bind(id, input.userId, input.moduleKey, input.entityType ?? null, input.entityId ?? null, input.employeeId ?? null, input.title, input.message, input.severity ?? "INFO", input.notificationType ?? "GENERAL", getNotificationRouteForEntity({ module_key: input.moduleKey, entity_type: input.entityType, entity_id: input.entityId, route: input.route }), input.metadata === undefined ? null : JSON.stringify(input.metadata))
     .run();
+  await safeEmitAppEvent(db, {
+    eventType: "notification.created",
+    moduleKey: "notifications",
+    entityType: "notification",
+    entityId: id,
+    visibility: "USER",
+    userScopeId: input.userId,
+    payload: {
+      notification_id: id,
+      module_key: input.moduleKey,
+      severity: input.severity ?? "INFO",
+      employee_id: input.employeeId ?? null,
+      safe_label: input.title
+    },
+    queryKeys: ["notifications", "notifications.unread"],
+    dedupeKey: `notification.created:${id}`
+  });
   return id;
 }
 
@@ -302,6 +344,24 @@ export async function createNotificationForEmployee(db: Env["DB"], input: {
     )
     .bind(id, input.employeeId, input.employeeId, input.moduleKey, input.entityType ?? null, input.entityId ?? null, input.title, input.message, input.severity ?? "INFO", input.notificationType ?? "GENERAL", getNotificationRouteForEntity({ module_key: input.moduleKey, entity_type: input.entityType, entity_id: input.entityId, route: input.route }), input.metadata === undefined ? null : JSON.stringify(input.metadata))
     .run();
+  const linkedUser = await db.prepare("SELECT id FROM users WHERE employee_id = ? AND status = 'ACTIVE' LIMIT 1").bind(input.employeeId).first<{ id: string }>();
+  await safeEmitAppEvent(db, {
+    eventType: "notification.created",
+    moduleKey: "notifications",
+    entityType: "notification",
+    entityId: id,
+    visibility: linkedUser?.id ? "USER" : "COMPANY",
+    userScopeId: linkedUser?.id ?? null,
+    payload: {
+      notification_id: id,
+      module_key: input.moduleKey,
+      severity: input.severity ?? "INFO",
+      employee_id: input.employeeId,
+      safe_label: input.title
+    },
+    queryKeys: ["notifications", "notifications.unread"],
+    dedupeKey: `notification.created:${id}`
+  });
   return id;
 }
 
