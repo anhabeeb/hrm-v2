@@ -1381,7 +1381,6 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const { token } = useAuth();
   const alerts = useAlert();
   const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
-  const [moduleStatesOpen, setModuleStatesOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   async function save(action: () => Promise<unknown>, success: string) {
     if (!token) return;
@@ -1420,10 +1419,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const checklist = asRow(workspace.checklist);
   const readiness = asRow(workspace.readiness);
   const tasks = asRows(checklist.tasks);
-  const blockers = asRows(readiness.blocking_items);
-  const warnings = asRows(readiness.warning_items);
   const canActivate = readiness.can_activate === true;
-  const readinessState = onboardingReadinessState(rowCase, readiness, tasks);
   const requiredTasks = tasks.filter((task) => Boolean(task.is_required || task.required));
   const requiredComplete = requiredTasks.length > 0 && requiredTasks.every((task) => completedOnboardingTaskStatuses.has(String(task.task_status ?? task.status)));
   const taskByKey = new Map(tasks.map((task) => [String(task.task_key), task]));
@@ -1436,8 +1432,6 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
     const existingTasks = keys.map((key) => taskByKey.get(key)).filter(Boolean) as Row[];
     return existingTasks.length > 0 && existingTasks.every((task) => completedOnboardingTaskStatuses.has(String(task.task_status ?? task.status)));
   };
-  const visibleBlockers = visibleOnboardingBlockers(blockers);
-  const readinessRows = onboardingReadinessRows(workspace, readiness, tasks);
   const employeeName = employeeDisplayName(employee);
   const employeeCode = displayText(employee.employee_no ?? employee.employee_code, "No employee code");
   const employeeType = employeeTypeLabel(employee.employee_type);
@@ -1446,12 +1440,10 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const phone = workspaceContactValue(workspace, ["PERSONAL_PHONE", "PHONE", "MOBILE", "WORK_PHONE"], ["phone", "mobile", "personal_phone"]);
   const email = workspaceContactValue(workspace, ["PERSONAL_EMAIL", "EMAIL", "WORK_EMAIL"], ["email", "personal_email", "work_email"]);
   const activeSectionComplete = sectionStatus(activeTab);
-  const showReadyState = canActivate && visibleBlockers.length === 0;
-  const attentionRows = attentionReadinessRows(readinessRows);
-  const moduleStateRows = onboardingModuleStateRows(workspace);
-  const moduleSummary = onboardingModuleStateSummary(moduleStateRows);
   const activationStatus = String(rowCase.activation_status ?? "");
   const onboardingStatus = String(rowCase.onboarding_status ?? "");
+  const activationBadgeLabel = activationStatus ? title(activationStatus) : "Pending";
+  const activationBadgeTone: "neutral" | "success" | "warning" | "danger" | "info" = ["ACTIVATED", "APPROVED", "OVERRIDDEN"].includes(activationStatus) ? "success" : activationStatus === "SUBMITTED" ? "info" : activationStatus === "REJECTED" ? "danger" : "warning";
   const approvalRequired = tasks.some((task) => String(task.task_key ?? task.key ?? "").toLowerCase() === "activation_approval" && (task.is_required || task.required)) || ["SUBMITTED", "APPROVED"].includes(activationStatus) || onboardingStatus === "PENDING_APPROVAL";
   const primaryAction = (() => {
     if (["ACTIVATED", "OVERRIDDEN"].includes(activationStatus)) {
@@ -1465,12 +1457,6 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
     }
     return { label: "Activate Employee", intent: "confirm" as const, disabled: !canActivate, title: canActivate ? "Activate employee." : "Complete required onboarding items before activation.", run: () => runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.") };
   })();
-  const readinessMetrics = [
-    { label: "Activation", value: canActivate ? "Allowed" : "Blocked" },
-    { label: "Blockers", value: visibleBlockers.length },
-    { label: "Missing", value: attentionRows.length },
-    { label: "Ready", value: showReadyState ? "Yes" : "No" }
-  ];
   return (
     <div className="OnboardingEmployeePopupLayout flex h-full min-h-0 flex-col overflow-hidden bg-slate-50" data-onboarding-employee-popup-layout>
       <header className="onboarding-popup-header shrink-0 border-b bg-white px-4 py-3 sm:px-5">
@@ -1480,7 +1466,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <h2 className="min-w-0 max-w-full truncate text-lg font-semibold text-slate-950 sm:text-xl">{employeeName}</h2>
               <Badge tone="info">{employeeType}</Badge>
               <StatusBadge value={rowCase.onboarding_status} />
-              <Badge tone={canActivate ? "success" : visibleBlockers.length ? "danger" : "warning"}>{readinessState}</Badge>
+              <Badge tone={activationBadgeTone}>{activationBadgeLabel}</Badge>
             </div>
             <div className="mt-1 grid min-w-0 max-w-full gap-x-3 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
               <span className="min-w-0 truncate" title={employeeCode}>{employeeCode}</span>
@@ -1494,34 +1480,12 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4">
-      <div className="grid min-w-0 max-w-full gap-4 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_340px]">
-        <aside className="onboarding-employee-summary-panel min-w-0 max-w-full space-y-3 overflow-hidden lg:sticky lg:top-0 lg:max-h-[calc(90vh-9rem)] lg:overflow-y-auto" aria-label="Employee summary">
-          <Panel className="min-w-0 overflow-hidden p-3">
-            <div className="flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-slate-100 text-sm font-semibold text-slate-700">
-                {employeePhoto ? <img src={employeePhoto} alt={`${employeeName} profile`} className="h-full w-full object-cover" /> : employeeInitials(employee)}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-950">{employeeName}</p>
-                <p className="truncate text-xs text-muted-foreground">{employeeTitle}</p>
-              </div>
-            </div>
-            <div className="mt-4">
-              <OnboardingEmployeeSummaryRow label="Code" value={employeeCode} />
-              <OnboardingEmployeeSummaryRow label="Department" value={employee.department_name} />
-              <OnboardingEmployeeSummaryRow label="Position" value={employee.position_name ?? employee.job_title ?? employee.designation} />
-              <OnboardingEmployeeSummaryRow label="Job level" value={employee.job_level_name} />
-              <OnboardingEmployeeSummaryRow label="Employment" value={employee.employment_type} />
-              <OnboardingEmployeeSummaryRow label="Joining" value={employee.joining_date} />
-              <OnboardingEmployeeSummaryRow label="Phone" value={phone} />
-              <OnboardingEmployeeSummaryRow label="Email" value={email} />
-              <OnboardingEmployeeSummaryRow label="Location" value={employee.location_name ?? employee.primary_location_name} />
-            </div>
-          </Panel>
+      <div className="grid min-w-0 max-w-full gap-4 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)_340px] xl:grid-cols-[260px_minmax(0,1fr)_360px]">
+        <aside className="onboarding-setup-navigation-panel order-2 min-w-0 max-w-full overflow-hidden lg:order-1 lg:sticky lg:top-0 lg:max-h-[calc(90vh-9rem)] lg:overflow-y-auto" aria-label="Onboarding setup navigation">
           <nav aria-label="Onboarding setup sections" className="min-w-0 overflow-hidden rounded-lg border bg-white p-2 shadow-panel" data-onboarding-section-sidebar>
             <div className="px-2 pb-2 pt-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Setup sections</p>
-              <p className="mt-1 text-xs text-muted-foreground">{canActivate ? "Ready to activate" : "Complete required validator items"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Complete required setup items.</p>
             </div>
             <div className="space-y-1">
               {onboardingWorkspaceTabs.map((tab) => {
@@ -1537,20 +1501,20 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
             </div>
           </nav>
         </aside>
-        <main className="onboarding-main-workspace min-w-0 max-w-full space-y-4 overflow-hidden" aria-label="Onboarding workspace">
+        <main className="onboarding-main-workspace order-3 min-w-0 max-w-full space-y-4 overflow-hidden lg:order-2" aria-label="Onboarding workspace">
           <Panel className="min-w-0 overflow-hidden p-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current section</p>
                 <h3 className="mt-1 truncate text-base font-semibold text-slate-950">{activeTab}</h3>
                 <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                  {activeSectionComplete ? "This section is complete for activation readiness." : "Review and save this section to update readiness."}
+                  {activeSectionComplete ? "This section has the required setup saved." : "Review and save this section to update setup status."}
                 </p>
               </div>
               <Badge tone={activeSectionComplete ? "success" : "warning"}>{activeSectionComplete ? "Complete" : "Needs review"}</Badge>
             </div>
           </Panel>
-      {activeTab === "Overview" ? <OnboardingWorkspaceOverview readiness={readiness} blockers={visibleBlockers} warnings={warnings} tasks={tasks} workspace={workspace} /> : null}
+      {activeTab === "Overview" ? <OnboardingWorkspaceOverview readiness={readiness} tasks={tasks} workspace={workspace} /> : null}
       {activeTab === "Employee Info" ? <EmployeeInfoWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceEmployeeInfo(token!, caseId, input), "Employee information saved.")} /> : null}
       {activeTab === "Contacts" ? <ContactWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceContactInfo(token!, caseId, input), "Contact information saved.")} /> : null}
       {activeTab === "Job Assignment" ? <JobAssignmentWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceJobAssignment(token!, caseId, input), "Job assignment saved.")} /> : null}
@@ -1564,78 +1528,29 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       {activeTab === "Checklist" ? <ChecklistWorkspaceTable tasks={tasks} /> : null}
           {activeTab === "Approval Timeline" ? <Timeline items={asRows(workspace.events).map((event) => ({ title: text(event.action), description: text(event.new_status ?? event.note ?? event.reason), meta: text(event.created_at) }))} /> : null}
         </main>
-        <aside className="onboarding-readiness-blockers-panel min-w-0 max-w-full space-y-3 overflow-hidden lg:sticky lg:top-0 lg:max-h-[calc(90vh-9rem)] lg:overflow-y-auto" aria-label="Readiness and blockers">
+        <aside className="onboarding-employee-info-panel order-1 min-w-0 max-w-full overflow-hidden lg:order-3 lg:sticky lg:top-0 lg:max-h-[calc(90vh-9rem)] lg:overflow-y-auto" aria-label="Employee information" data-onboarding-employee-info-panel>
           <Panel className="min-w-0 overflow-hidden p-3">
-            <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-slate-100 text-sm font-semibold text-slate-700">
+                {employeePhoto ? <img src={employeePhoto} alt={`${employeeName} profile`} className="h-full w-full object-cover" /> : employeeInitials(employee)}
+              </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Readiness</p>
-                <h3 className="mt-1 truncate text-base font-semibold text-slate-950">{showReadyState ? "Ready for activation" : "Activation blocked"}</h3>
-                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{showReadyState ? "All required validator items are complete." : "Resolve the required setup items before activation."}</p>
+                <p className="truncate text-sm font-semibold text-slate-950" title={employeeName}>{employeeName}</p>
+                <p className="truncate text-xs text-muted-foreground" title={employeeTitle}>{employeeTitle}</p>
               </div>
-              <Badge tone={canActivate ? "success" : visibleBlockers.length ? "danger" : "warning"}>{readinessState}</Badge>
             </div>
-            <div className="mt-3 grid min-w-0 max-w-full grid-cols-2 gap-2 text-sm" data-onboarding-metric-grid>
-              {readinessMetrics.map((metric) => (
-                <div key={metric.label} data-onboarding-metric-card className="min-w-0 max-w-full rounded-md border bg-slate-50 px-2.5 py-2">
-                  <p className="truncate text-[11px] font-medium uppercase tracking-wide text-slate-500">{metric.label}</p>
-                  <p className="mt-1 truncate font-semibold text-slate-900" title={String(metric.value)}>{metric.value}</p>
-                </div>
-              ))}
+            <div className="mt-4">
+              <OnboardingEmployeeSummaryRow label="Code" value={employeeCode} />
+              <OnboardingEmployeeSummaryRow label="Type" value={employeeType} />
+              <OnboardingEmployeeSummaryRow label="Department" value={employee.department_name} />
+              <OnboardingEmployeeSummaryRow label="Position" value={employee.position_name ?? employee.job_title ?? employee.designation} />
+              <OnboardingEmployeeSummaryRow label="Job level" value={employee.job_level_name} />
+              <OnboardingEmployeeSummaryRow label="Employment" value={employee.employment_type} />
+              <OnboardingEmployeeSummaryRow label="Joining" value={employee.joining_date} />
+              <OnboardingEmployeeSummaryRow label="Phone" value={phone} />
+              <OnboardingEmployeeSummaryRow label="Email" value={email} />
+              <OnboardingEmployeeSummaryRow label="Location" value={employee.location_name ?? employee.primary_location_name} />
             </div>
-          </Panel>
-
-          <Panel className="min-w-0 overflow-hidden p-3">
-            <div className="flex min-w-0 items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold">Missing items</h3>
-              <Badge tone={visibleBlockers.length ? "danger" : "success"}>{visibleBlockers.length ? `${visibleBlockers.length} open` : "None"}</Badge>
-            </div>
-            {visibleBlockers.length ? (
-              <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
-                {visibleBlockers.map((blocker, index) => {
-                  const target = onboardingBlockerTarget(blocker);
-                  return (
-                    <Button key={`${objectMessage(blocker)}-${index}`} variant="ghost" size="sm" className="h-auto w-full min-w-0 justify-start rounded-md border border-red-100 bg-red-50 px-3 py-2 text-left text-red-700 hover:bg-red-100" onClick={() => setActiveTab(target)}>
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      <span className="min-w-0 flex-1 break-words text-sm">{objectMessage(blocker)}</span>
-                    </Button>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="mt-3 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">No required blockers are open.</p>
-            )}
-            {warnings.length ? (
-              <div className="mt-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Warnings</p>
-                <div className="max-h-32 overflow-y-auto pr-1"><List values={warnings} /></div>
-              </div>
-            ) : null}
-          </Panel>
-
-          <Panel className="min-w-0 overflow-hidden p-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-auto w-full min-w-0 justify-between rounded-md border bg-slate-50 px-3 py-2 text-left hover:bg-slate-100"
-              aria-expanded={moduleStatesOpen}
-              onClick={() => setModuleStatesOpen((value) => !value)}
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold text-slate-900">Module states</span>
-                <span className="block truncate text-xs text-muted-foreground">Enabled: {moduleSummary.enabled} / Not required: {moduleSummary.notRequired} / Disabled: {moduleSummary.disabled}</span>
-              </span>
-              <span className="shrink-0 text-xs text-muted-foreground">{moduleStatesOpen ? "Hide" : "Show"}</span>
-            </Button>
-            {moduleStatesOpen ? (
-              <div className="mt-3 max-h-56 space-y-1 overflow-y-auto pr-1">
-                {moduleStateRows.map((row) => (
-                  <div key={row.key} className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-slate-100 px-2.5 py-1.5 text-sm">
-                    <span className="min-w-0 truncate text-slate-700" title={row.label}>{row.label}</span>
-                    <Badge tone={row.status === "Enabled" || row.status === "Complete" ? "success" : row.status === "Disabled" || row.status === "Not required" || row.status === "Not Required" ? "neutral" : "warning"}>{row.status}</Badge>
-                  </div>
-                ))}
-              </div>
-            ) : null}
           </Panel>
         </aside>
       </div>
@@ -1673,26 +1588,24 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   );
 }
 
-function OnboardingWorkspaceOverview({ readiness, blockers, warnings, tasks, workspace }: { readiness: Row; blockers: Row[]; warnings: Row[]; tasks: Row[]; workspace: Row }) {
+function OnboardingWorkspaceOverview({ readiness, tasks, workspace }: { readiness: Row; tasks: Row[]; workspace: Row }) {
   const rows = onboardingReadinessRows(workspace, readiness, tasks);
   const summary = summarizeReadinessRows(rows);
-  const attentionRows = attentionReadinessRows(rows);
-  const keyRows = rows.filter((row) => ["Employee profile", "Job assignment", "Required documents", "Payroll/payment setup", "User access"].includes(row.label));
+  const reviewCount = (summary.Missing ?? 0) + (summary.Blocked ?? 0) + (summary["No Permission"] ?? 0);
   const counters = [
     { label: "Completed", value: summary.Complete ?? 0, tone: "success" as const },
-    { label: "Missing", value: (summary.Missing ?? 0) + (summary.Blocked ?? 0) + (summary["No Permission"] ?? 0), tone: "warning" as const },
+    { label: "To review", value: reviewCount, tone: "warning" as const },
     { label: "Not required", value: summary["Not Required"] ?? 0, tone: "neutral" as const },
     { label: "Disabled", value: summary.Disabled ?? 0, tone: "neutral" as const }
   ];
   return (
-    <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
-      <Panel className="min-w-0 overflow-hidden p-3">
+    <div className="space-y-3">
+      <Panel className="min-w-0 overflow-hidden p-4">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold">Setup progress summary</h3>
-            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">Focus on missing or blocked setup before activation.</p>
+            <h3 className="truncate text-sm font-semibold">Workspace overview</h3>
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">Use the setup navigation to complete each onboarding section. Section-specific messages appear inside the section that needs action.</p>
           </div>
-          <Badge tone={readiness.can_activate ? "success" : "warning"}>{readiness.can_activate ? "Ready" : "Needs attention"}</Badge>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
           {counters.map((counter) => (
@@ -1702,45 +1615,14 @@ function OnboardingWorkspaceOverview({ readiness, blockers, warnings, tasks, wor
             </div>
           ))}
         </div>
-        <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Needs attention</p>
-            {blockers.length ? (
-              <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
-                {blockers.map((blocker, index) => (
-                  <div key={`${objectMessage(blocker)}-${index}`} className="min-w-0 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    <span className="block break-words">{objectMessage(blocker)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : attentionRows.length ? (
-              <div className="mt-2 space-y-2">
-                {attentionRows.map((row) => (
-                  <div key={row.label} className="flex min-w-0 items-center justify-between gap-2 rounded-md border bg-slate-50 px-3 py-2 text-sm">
-                    <span className="min-w-0 truncate">{row.label}</span>
-                    <Badge tone={readinessPillTone(readinessStatusLabel(row.status))}>{readinessStatusLabel(row.status)}</Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-2 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">No setup items need attention.</p>
-            )}
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Warnings</p>
-            {warnings.length ? <div className="max-h-44 overflow-y-auto pr-1"><List values={warnings} /></div> : <p className="mt-2 rounded-md border bg-slate-50 px-3 py-2 text-sm text-muted-foreground">None.</p>}
-          </div>
-        </div>
       </Panel>
-      <Panel className="min-w-0 overflow-hidden p-3">
-        <h3 className="truncate text-sm font-semibold">Key setup</h3>
-        <div className="mt-3 space-y-2 text-sm">
-          {keyRows.map((row) => (
-            <div key={row.label} className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-slate-100 px-2.5 py-1.5">
-              <span className="min-w-0 truncate text-slate-700">{row.label}</span>
-              <Badge tone={readinessPillTone(readinessStatusLabel(row.status))}>{readinessStatusLabel(row.status)}</Badge>
-            </div>
-          ))}
+      <Panel className="min-w-0 overflow-hidden p-4">
+        <h3 className="truncate text-sm font-semibold">How to finish onboarding</h3>
+        <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
+          <div className="break-words rounded-md border bg-slate-50 px-3 py-2">Select a setup section from the left navigation.</div>
+          <div className="break-words rounded-md border bg-slate-50 px-3 py-2">Save the section form to update the completion tick.</div>
+          <div className="break-words rounded-md border bg-slate-50 px-3 py-2">Resolve section-specific messages where they appear.</div>
+          <div className="break-words rounded-md border bg-slate-50 px-3 py-2">Use the footer action when activation becomes available.</div>
         </div>
       </Panel>
     </div>

@@ -39,6 +39,16 @@ function blockAfter(file, marker, length = 6000) {
   return content.slice(start, start + length);
 }
 
+function blockBetween(content, startMarker, endMarker, label) {
+  const start = content.indexOf(startMarker);
+  const end = content.indexOf(endMarker, start + startMarker.length);
+  if (start < 0 || end < 0 || end <= start) {
+    failures.push(`${label}: missing block boundary ${startMarker} -> ${endMarker}`);
+    return "";
+  }
+  return content.slice(start, end);
+}
+
 const lifecyclePage = "frontend/src/pages/LifecyclePage.tsx";
 const password = "worker/src/auth/password.ts";
 const wrangler = "worker/wrangler.toml";
@@ -49,11 +59,10 @@ const lifecycleText = read(lifecyclePage);
 const modalBlock = blockAfter(lifecyclePage, "function Modal", 2200);
 const workspaceBlock = blockAfter(lifecyclePage, "function OnboardingWorkspace", 26000);
 const headerBlock = blockAfter(lifecyclePage, "<header className=\"onboarding-popup-header", 2200);
-const leftSummaryBlock = blockAfter(lifecyclePage, "onboarding-employee-summary-panel", 3600);
 const overviewBlock = blockAfter(lifecyclePage, "function OnboardingWorkspaceOverview", 9000);
-const rightPanelBlock = blockAfter(lifecyclePage, "onboarding-readiness-blockers-panel", 9000);
-const readinessMetricsBlock = blockAfter(lifecyclePage, "const readinessMetrics = [", 900);
-const metricGridBlock = blockAfter(lifecyclePage, "className=\"mt-3 grid min-w-0 max-w-full grid-cols-2", 1700);
+const setupNavBlock = blockBetween(workspaceBlock, "onboarding-setup-navigation-panel", "onboarding-main-workspace", `${lifecyclePage}: setup navigation block`);
+const mainWorkspaceBlock = blockBetween(workspaceBlock, "onboarding-main-workspace", "onboarding-employee-info-panel", `${lifecyclePage}: main workspace block`);
+const employeeInfoBlock = blockBetween(workspaceBlock, "onboarding-employee-info-panel", "<footer className=\"onboarding-popup-footer", `${lifecyclePage}: employee info block`);
 const footerBlock = blockAfter(lifecyclePage, "<footer className=\"onboarding-popup-footer", 5000);
 const footerVisibleStart = lifecycleText.indexOf("data-onboarding-footer-visible-actions");
 const footerVisibleEnd = footerVisibleStart >= 0 ? lifecycleText.indexOf("{moreActionsOpen ?", footerVisibleStart) : -1;
@@ -75,22 +84,24 @@ for (const marker of [
   "OnboardingEmployeePopupLayout",
   "data-onboarding-employee-popup-layout",
   "onboarding-popup-header",
-  "onboarding-employee-summary-panel",
+  "onboarding-setup-navigation-panel",
   "onboarding-main-workspace",
-  "onboarding-readiness-blockers-panel",
+  "onboarding-employee-info-panel",
   "onboarding-popup-footer"
 ]) {
   check(`${lifecyclePage}: missing popup region ${marker}`, workspaceBlock.includes(marker));
 }
 
-check(`${lifecyclePage}: popup must use compact desktop three-column grid`, workspaceBlock.includes("lg:grid-cols-[280px_minmax(0,1fr)_320px]"));
-check(`${lifecyclePage}: popup must preserve larger desktop panel sizing without crowding`, workspaceBlock.includes("xl:grid-cols-[300px_minmax(0,1fr)_340px]"));
+check(`${lifecyclePage}: popup must use simplified desktop three-column grid`, workspaceBlock.includes("lg:grid-cols-[240px_minmax(0,1fr)_340px]"));
+check(`${lifecyclePage}: popup must preserve right employee panel sizing without crowding`, workspaceBlock.includes("xl:grid-cols-[260px_minmax(0,1fr)_360px]"));
 check(`${lifecyclePage}: modal content must scroll internally without horizontal overflow`, workspaceBlock.includes("overflow-x-hidden overflow-y-auto"));
 check(`${lifecyclePage}: popup shell must guard against horizontal overflow`, workspaceBlock.includes("max-w-full") && workspaceBlock.includes("overflow-hidden"));
-check(`${lifecyclePage}: left summary panel must be sticky on desktop`, /onboarding-employee-summary-panel[\s\S]+lg:sticky/.test(workspaceBlock));
-check(`${lifecyclePage}: right readiness panel must be sticky on desktop`, /onboarding-readiness-blockers-panel[\s\S]+lg:sticky/.test(workspaceBlock));
+check(`${lifecyclePage}: setup navigation panel must be sticky on desktop`, /onboarding-setup-navigation-panel[\s\S]+lg:sticky/.test(workspaceBlock));
+check(`${lifecyclePage}: employee info panel must be sticky on desktop`, /onboarding-employee-info-panel[\s\S]+lg:sticky/.test(workspaceBlock));
+check(`${lifecyclePage}: desktop layout order must be setup nav, main workspace, employee info`, workspaceBlock.indexOf("onboarding-setup-navigation-panel") < workspaceBlock.indexOf("onboarding-main-workspace") && workspaceBlock.indexOf("onboarding-main-workspace") < workspaceBlock.indexOf("onboarding-employee-info-panel"));
+check(`${lifecyclePage}: mobile order must place employee info before nav and main workspace`, employeeInfoBlock.includes("order-1") && setupNavBlock.includes("order-2") && mainWorkspaceBlock.includes("order-3"));
 check(`${lifecyclePage}: section sidebar must remain ticked/completed by validator state`, workspaceBlock.includes("data-onboarding-section-sidebar") && workspaceBlock.includes("sectionStatus(tab)") && workspaceBlock.includes("<CheckCircle2"));
-check(`${lifecyclePage}: text-heavy popup containers must use min-w-0 safeguards`, (workspaceBlock.match(/min-w-0/g) ?? []).length >= 35);
+check(`${lifecyclePage}: text-heavy popup containers must use min-w-0 safeguards`, (workspaceBlock.match(/min-w-0/g) ?? []).length >= 25);
 check(`${lifecyclePage}: long popup text must use truncate/line-clamp/break-words protections`, workspaceBlock.includes("truncate") && workspaceBlock.includes("line-clamp-2") && workspaceBlock.includes("break-words"));
 
 for (const marker of [
@@ -98,6 +109,7 @@ for (const marker of [
   "employeeCode",
   "employeeTypeLabel(employee.employee_type)",
   "StatusBadge value={rowCase.onboarding_status}",
+  "activationBadgeLabel",
   "displayText(employee.joining_date",
   "Button variant=\"ghost\" size=\"sm\" className=\"shrink-0\" onClick={onClose}>Close"
 ]) {
@@ -105,9 +117,9 @@ for (const marker of [
 }
 check(`${lifecyclePage}: header must not render undefined/null employee identity text`, workspaceBlock.includes("displayText(") && workspaceBlock.includes("employeeDisplayName"));
 check(`${lifecyclePage}: header must show no more than three high-signal badges`, (headerBlock.match(/<Badge|<StatusBadge/g) ?? []).length <= 3);
-check(`${lifecyclePage}: header must not show duplicate activation status badge`, !headerBlock.includes("rowCase.activation_status"));
+check(`${lifecyclePage}: header must not show duplicate readiness status badge`, !headerBlock.includes("readinessState") && !headerBlock.includes("Ready for Activation"));
 check(`${lifecyclePage}: header metadata row must protect long values`, headerBlock.includes("grid min-w-0 max-w-full") && (headerBlock.match(/truncate/g) ?? []).length >= 4);
-check(`${lifecyclePage}: left employee summary must not repeat header workflow/status badges`, !leftSummaryBlock.includes("<Badge") && !leftSummaryBlock.includes("<StatusBadge"));
+check(`${lifecyclePage}: old left employee summary panel must be removed`, !workspaceBlock.includes("onboarding-employee-summary-panel"));
 
 for (const marker of [
   "employeeProfilePhoto(employee)",
@@ -120,9 +132,11 @@ for (const marker of [
   "OnboardingEmployeeSummaryRow label=\"Email\"",
   "OnboardingEmployeeSummaryRow label=\"Location\""
 ]) {
-  check(`${lifecyclePage}: left summary marker missing: ${marker}`, lifecycleText.includes(marker));
+  check(`${lifecyclePage}: right employee info marker missing: ${marker}`, employeeInfoBlock.includes(marker) || lifecycleText.includes(marker));
 }
-check(`${lifecyclePage}: left summary value rows must truncate long fields`, lifecycleText.includes("OnboardingEmployeeSummaryRow") && lifecycleText.includes("title={display}") && lifecycleText.includes("grid min-w-0"));
+check(`${lifecyclePage}: left setup navigation must not contain employee summary content`, !setupNavBlock.includes("OnboardingEmployeeSummaryRow") && !setupNavBlock.includes("employeeProfilePhoto") && !setupNavBlock.includes("<Badge"));
+check(`${lifecyclePage}: right employee info must not contain readiness/missing/module state content`, !employeeInfoBlock.includes("Readiness") && !employeeInfoBlock.includes("Missing items") && !employeeInfoBlock.includes("Module states") && !employeeInfoBlock.includes("moduleStateRows") && !employeeInfoBlock.includes("visibleBlockers"));
+check(`${lifecyclePage}: right employee info value rows must truncate long fields`, employeeInfoBlock.includes("OnboardingEmployeeSummaryRow") && lifecycleText.includes("title={display}") && lifecycleText.includes("grid min-w-0"));
 
 for (const marker of [
   "DocumentsWorkspaceForm workspace={workspace} onSave={saveDocumentBatch}",
@@ -137,20 +151,17 @@ for (const marker of [
 }
 
 for (const marker of [
-  "visibleOnboardingBlockers(blockers)",
   "onboardingReadinessRows(workspace, readiness, tasks)",
-  "onboardingBlockerTarget(blocker)",
-  "setActiveTab(target)",
   "Not Required",
-  "No required blockers are open."
+  "readiness.can_activate === true"
 ]) {
-  check(`${lifecyclePage}: right readiness/blocker behavior missing ${marker}`, lifecycleText.includes(marker));
+  check(`${lifecyclePage}: internal activation/readiness logic marker missing ${marker}`, lifecycleText.includes(marker));
 }
 check(`${lifecyclePage}: disabled modules must be filtered from blockers`, /visibleOnboardingBlockers[\s\S]+NOT_REQUIRED[\s\S]+disabled\|not required/.test(lifecycleText));
 check(`${lifecyclePage}: disabled modules must show Not Required instead of blocking`, /modules\.assets_uniforms === false[\s\S]+Not Required/.test(lifecycleText));
 check(`${lifecyclePage}: old overview/readiness chip wall must be removed`, !lifecycleText.includes("data-onboarding-readiness-pills") && !workspaceBlock.includes("<OnboardingReadinessPills"));
-check(`${lifecyclePage}: overview must use compact summary counters`, overviewBlock.includes("Setup progress summary") && overviewBlock.includes("Completed") && overviewBlock.includes("Missing") && overviewBlock.includes("Not required") && overviewBlock.includes("Disabled"));
-check(`${lifecyclePage}: overview must focus on attention items instead of every status chip`, overviewBlock.includes("Needs attention") && overviewBlock.includes("attentionReadinessRows") && !overviewBlock.includes("Object.entries(asRow(workspace.module_statuses))"));
+check(`${lifecyclePage}: overview must use compact summary counters without a visible missing panel`, overviewBlock.includes("Workspace overview") && overviewBlock.includes("Completed") && overviewBlock.includes("To review") && overviewBlock.includes("Not required") && overviewBlock.includes("Disabled"));
+check(`${lifecyclePage}: overview must not render blocker/warning/readiness lists`, !overviewBlock.includes("Needs attention") && !overviewBlock.includes("Warnings") && !overviewBlock.includes("attentionRows.map") && !overviewBlock.includes("blockers.map") && !overviewBlock.includes("Key setup"));
 check(`${lifecyclePage}: overview must avoid raw snake_case module labels`, !overviewBlock.includes("title(key)") && !overviewBlock.includes("Assets / Uniforms"));
 
 for (const marker of [
@@ -167,12 +178,9 @@ for (const marker of [
 ]) {
   check(`${lifecyclePage}: professional module label marker missing ${marker}`, lifecycleText.includes(marker));
 }
-check(`${lifecyclePage}: module states must be summarized/collapsible by default`, rightPanelBlock.includes("Module states") && rightPanelBlock.includes("moduleStatesOpen ?") && rightPanelBlock.includes("Enabled: {moduleSummary.enabled}") && rightPanelBlock.includes("aria-expanded={moduleStatesOpen}"));
-check(`${lifecyclePage}: right panel must use compact counters instead of every readiness row`, rightPanelBlock.includes("Activation") && rightPanelBlock.includes("Blockers") && rightPanelBlock.includes("Missing") && rightPanelBlock.includes("Ready") && !rightPanelBlock.includes("readinessRows.map"));
-check(`${lifecyclePage}: readiness metric definitions must contain exactly four metrics`, ["Activation", "Blockers", "Missing", "Ready"].every((label) => readinessMetricsBlock.includes(`label: "${label}"`)) && (readinessMetricsBlock.match(/label: "/g) ?? []).length === 4);
-check(`${lifecyclePage}: readiness metric grid must render metric cards as direct mapped children`, metricGridBlock.includes("grid min-w-0 max-w-full grid-cols-2") && metricGridBlock.includes("readinessMetrics.map((metric) => (") && metricGridBlock.includes("<div key={metric.label} data-onboarding-metric-card"));
-check(`${lifecyclePage}: readiness metric cards must guard against horizontal overflow`, metricGridBlock.includes("max-w-full") && (metricGridBlock.match(/truncate/g) ?? []).length >= 2);
-check(`${lifecyclePage}: right panel blockers must scroll internally`, rightPanelBlock.includes("max-h-56") && rightPanelBlock.includes("overflow-y-auto") && rightPanelBlock.includes("break-words"));
+check(`${lifecyclePage}: visible readiness panel must be removed from popup body`, !workspaceBlock.includes("onboarding-readiness-blockers-panel") && !workspaceBlock.includes("data-onboarding-metric-grid") && !workspaceBlock.includes("data-onboarding-metric-card"));
+check(`${lifecyclePage}: visible missing items panel must be removed from popup body`, !workspaceBlock.includes("Missing items") && !workspaceBlock.includes("No required blockers are open.") && !workspaceBlock.includes("visibleBlockers.map"));
+check(`${lifecyclePage}: visible module readiness/states panel must be removed from popup body`, !workspaceBlock.includes("Module states") && !workspaceBlock.includes("moduleStatesOpen") && !workspaceBlock.includes("moduleStateRows.map") && !workspaceBlock.includes("Enabled: {moduleSummary.enabled}"));
 
 for (const marker of [
   "Refresh readiness",

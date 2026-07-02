@@ -100,21 +100,25 @@ assert(lifecycle.includes("EMPLOYEE_ACTIVATION_NOT_READY") && lifecycle.includes
 ].forEach((marker) => assert(lifecycle.includes(marker), `blocker summary marker exists: ${marker}`));
 
 [
-  "Setup progress summary",
-  "Needs attention",
-  "Module states",
-  "moduleStatesOpen",
-  "Setup Readiness",
-  "Activation Readiness",
-  "Key setup",
-  "Ready for Activation",
+  "onboarding-setup-navigation-panel",
+  "onboarding-main-workspace",
+  "onboarding-employee-info-panel",
+  "Workspace overview",
+  "To review",
+  "How to finish onboarding",
   "No Permission",
   "Disabled",
   "Not Required",
-  "Complete",
-  "Blocked",
-  "Missing"
-].forEach((marker) => assert(lifecyclePage.includes(marker), `workspace readiness marker exists: ${marker}`));
+  "Complete"
+].forEach((marker) => assert(lifecyclePage.includes(marker), `workspace simplified popup marker exists: ${marker}`));
+
+[
+  "onboarding-readiness-blockers-panel",
+  "data-onboarding-metric-grid",
+  "Module states",
+  "Missing items",
+  "moduleStatesOpen"
+].forEach((marker) => assert(!lifecyclePage.includes(marker), `removed onboarding popup panel marker stays absent: ${marker}`));
 
 assert(lifecyclePage.includes("Refresh readiness") && !lifecyclePage.includes("Refresh checklist</ActionTextButton>"), "workspace setup action avoids incorrect checklist wording");
 assert(!lifecyclePage.includes("data-onboarding-readiness-pills") && !lifecyclePage.includes("OnboardingReadinessPills"), "workspace overview no longer renders the overcrowded readiness chip wall");
