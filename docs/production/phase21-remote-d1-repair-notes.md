@@ -1,13 +1,22 @@
 # Phase 21 Remote D1 Additive Repair Notes
 
-Generated: 2026-07-03T16:45:57.399Z
+Generated: 2026-07-03T17:18:10.199Z
 
-Accepted baseline: HRM-v2-d1-deferred-audit-remediation-phase20-clean.zip
+Source status: **PASS WITH ADDITIVE REPAIR AVAILABLE**
 
-Status: **BLOCKED**
+Repair needed: **YES**
 
-Could not query remote D1 through Wrangler: Wrangler D1 command failed for SQL "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqli" with exit code 1. stderr: (empty)
+Missing tables: 1
 
-The placeholder repair SQL at `docs/production/phase21-remote-d1-additive-repair.sql` contains no destructive or schema-changing statements. Configure Cloudflare/Wrangler credentials, run `npm run verify:phase21-remote-d1-live`, then rerun this generator.
+Missing columns: 0
 
-No secrets, credentials, response bodies, or sensitive HR/payroll/document data are stored in this report.
+Missing indexes: 2
+
+Safety rules:
+
+- Back up remote D1 before repair.
+- Run in staging first if possible.
+- Apply only after reviewing `docs/production/phase21-remote-d1-additive-repair.sql`.
+- This repair is additive only.
+- Never drop production data.
+- Never seed production company data as part of Phase 21.

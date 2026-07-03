@@ -264,6 +264,7 @@ export function parseSchema(sql = readText(schemaPath)) {
 export function runWranglerSql(command) {
   const sql = String(command);
   const sqlLabel = sql.replace(/\s+/g, " ").trim().slice(0, 80);
+  const timeoutMs = Math.max(5000, Number(process.env.HRM_REMOTE_D1_COMMAND_TIMEOUT_MS ?? 30000));
   const wranglerCliPath = path.join(rootDir, "node_modules", "wrangler", "bin", "wrangler.js");
   if (!fs.existsSync(wranglerCliPath)) {
     throw new Error("Local Wrangler CLI was not found. Run npm ci before using remote D1 schema repair tooling.");
@@ -285,6 +286,7 @@ export function runWranglerSql(command) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     shell: false,
+    timeout: timeoutMs,
     maxBuffer: 20 * 1024 * 1024,
     env: {
       ...process.env,

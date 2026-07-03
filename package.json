@@ -107,6 +107,7 @@
     "verify:r2-cors-direct-upload-phase18": "node scripts/verify-r2-cors-direct-upload-phase18.mjs",
     "verify:sse-live-events-phase19": "node scripts/verify-sse-live-events-phase19.mjs",
     "verify:cors-request-id-hotfix": "node scripts/verify-cors-request-id-hotfix.mjs",
+    "verify:production-hotfix-stream-notifications-preload": "node scripts/verify-production-hotfix-stream-notifications-preload.mjs",
     "verify:branding-standardization": "node scripts/verify-branding-standardization.mjs",
     "verify:login-brand-layout": "node scripts/verify-login-brand-layout.mjs",
     "verify:filter-search-date-standardization": "node scripts/verify-filter-search-date-standardization.mjs",

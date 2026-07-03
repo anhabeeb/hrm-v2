@@ -20,6 +20,8 @@ const HIDDEN_INTERVAL_MS = 60000;
 const ERROR_BACKOFF_MS = 45000;
 const STREAM_RECONNECT_BASE_MS = 2000;
 const STREAM_RECONNECT_MAX_MS = 30000;
+const STREAM_MAX_RECONNECT_ATTEMPTS = 2;
+const STREAM_RETRY_WINDOW_MS = 5 * 60 * 1000;
 const PROCESSED_EVENT_LIMIT = 400;
 
 type SseFrame = {
@@ -133,6 +135,8 @@ export function useAppEvents(input: UseAppEventsInput) {
     let streamStartedAt = 0;
     let currentDeliveryMode: AppEventDeliveryMode | "idle" = "idle";
     let leaderActive = false;
+    let streamFallbackLocked = false;
+    let nextStreamRetryAt = 0;
 
     function rememberEvent(id: string) {
       if (processedSet.has(id)) return false;
@@ -240,9 +244,27 @@ export function useAppEvents(input: UseAppEventsInput) {
     function scheduleReconnect(reason: string) {
       if (stoppedRef.current || !leaderActive) return;
       reconnectCount += 1;
+      if (reconnectCount >= STREAM_MAX_RECONNECT_ATTEMPTS) {
+        streamFallbackLocked = true;
+        nextStreamRetryAt = Date.now() + STREAM_RETRY_WINDOW_MS;
+        streamAbortController?.abort();
+        streamAbortController = null;
+        updateHealth("fallback_polling", {
+          deliveryMode: "polling_fallback",
+          streamError: `${reason}; using polling fallback until the stream retry window opens.`
+        });
+        void pollFallback("stream-unhealthy");
+        reconnectTimer = window.setTimeout(() => {
+          if (stoppedRef.current || !leaderActive || Date.now() < nextStreamRetryAt) return;
+          streamFallbackLocked = false;
+          reconnectCount = 0;
+          void connectStream();
+        }, STREAM_RETRY_WINDOW_MS);
+        return;
+      }
       const delay = Math.min(STREAM_RECONNECT_MAX_MS, STREAM_RECONNECT_BASE_MS * 2 ** Math.min(reconnectCount, 5));
       updateHealth("reconnecting", { deliveryMode: currentDeliveryMode === "idle" ? "fetch_stream" : currentDeliveryMode, streamError: reason });
-      if (reconnectCount >= 2) void pollFallback("stream-reconnect");
+      void pollFallback("stream-reconnect");
       reconnectTimer = window.setTimeout(() => void connectStream(), delay);
     }
 
@@ -277,6 +299,12 @@ export function useAppEvents(input: UseAppEventsInput) {
 
     async function connectStream() {
       if (stoppedRef.current || !input.token || !leaderActive) return;
+      if (streamFallbackLocked && Date.now() < nextStreamRetryAt) {
+        void pollFallback("stream-fallback-locked");
+        return;
+      }
+      if (pollTimer) window.clearTimeout(pollTimer);
+      pollTimer = undefined;
       streamAbortController?.abort();
       streamAbortController = new AbortController();
       currentDeliveryMode = "fetch_stream";
@@ -290,6 +318,8 @@ export function useAppEvents(input: UseAppEventsInput) {
         if (!response.ok) throw new Error(`Live event stream unavailable (${response.status}).`);
         const contentType = response.headers.get("Content-Type") ?? "";
         if (!contentType.includes("text/event-stream")) throw new Error("Live event stream returned a non-stream response.");
+        streamFallbackLocked = false;
+        nextStreamRetryAt = 0;
         reconnectCount = 0;
         currentDeliveryMode = "fetch_stream";
         updateHealth("connected", { deliveryMode: "fetch_stream", lastSeenAt: Date.now() });
@@ -309,7 +339,8 @@ export function useAppEvents(input: UseAppEventsInput) {
       if (!leaderActive) return;
       if (document.visibilityState === "visible") {
         if (pollTimer) window.clearTimeout(pollTimer);
-        if (!streamAbortController) void connectStream();
+        if (streamFallbackLocked) void pollFallback("visible-fallback");
+        else if (!streamAbortController) void connectStream();
       }
     }
 

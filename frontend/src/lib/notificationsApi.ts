@@ -19,6 +19,12 @@ export interface HrmNotification {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface UnreadNotificationCountResponse {
+  unread_count: number;
+  unavailable?: boolean;
+  reason?: string;
+}
+
 function query(params?: Record<string, string | number | boolean | null | undefined>) {
   if (!params) return "";
   const search = new URLSearchParams();
@@ -31,7 +37,7 @@ function query(params?: Record<string, string | number | boolean | null | undefi
 
 export const notificationsApi = {
   getUnreadNotificationCount(token: string, signal?: AbortSignal) {
-    return apiClient.get<{ unread_count: number }>("/api/v1/notifications/unread-count", { token, signal, requestLabel: "notifications.unread-count" });
+    return apiClient.get<UnreadNotificationCountResponse>("/api/v1/notifications/unread-count", { token, signal, requestLabel: "notifications.unread-count" });
   },
   listNotifications(token: string, params?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
     return apiClient.get<{ notifications: HrmNotification[]; unread_count: number; pagination?: Record<string, unknown> }>(`/api/v1/notifications${query(params)}`, { token, signal, requestLabel: "notifications.list" });

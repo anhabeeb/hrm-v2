@@ -8,6 +8,16 @@ function moduleEnabled(user: AuthUser, moduleKey: string) {
   return user.module_visibility?.[moduleKey] !== false;
 }
 
+function hasAnyPermission(user: AuthUser, permissions: string[]) {
+  return user.is_owner || permissions.some((permission) => user.permissions.includes(permission));
+}
+
+function canPreloadPaymentInstitutions(user: AuthUser) {
+  return moduleEnabled(user, "payroll")
+    && moduleEnabled(user, "payroll_payment_institutions")
+    && hasAnyPermission(user, ["payroll.payment_institutions.view", "payroll.payment_institutions.manage", "payroll.view"]);
+}
+
 async function quietPrefetch<T>(client: QueryClient, input: { queryKey: readonly unknown[]; queryFn: () => Promise<T>; enabled?: boolean }) {
   if (input.enabled === false) return;
   try {
@@ -52,7 +62,7 @@ export function preloadGlobalReferenceData(input: { token: string; user: AuthUse
   void quietPrefetch(client, { queryKey: queryKeys.reference.permissions(scope), queryFn: () => api.listPermissions(input.token) });
   void quietPrefetch(client, { queryKey: queryKeys.reference.documentTypes(scope), queryFn: () => api.listDocumentTypes(input.token), enabled: moduleEnabled(input.user, "documents") });
   void quietPrefetch(client, { queryKey: queryKeys.reference.documentRequiredRules(scope), queryFn: () => api.listDocumentRequiredRules(input.token), enabled: moduleEnabled(input.user, "document_compliance") || moduleEnabled(input.user, "documents") });
-  void quietPrefetch(client, { queryKey: queryKeys.reference.paymentInstitutions(scope), queryFn: () => api.listPaymentInstitutions(input.token), enabled: moduleEnabled(input.user, "payroll") });
+  void quietPrefetch(client, { queryKey: queryKeys.reference.paymentInstitutions(scope), queryFn: () => api.listPaymentInstitutions(input.token), enabled: canPreloadPaymentInstitutions(input.user) });
   void quietPrefetch(client, { queryKey: queryKeys.reference.approvalWorkflows(scope), queryFn: () => api.listApprovalWorkflows(input.token), enabled: moduleEnabled(input.user, "approvals") });
   void quietPrefetch(client, { queryKey: queryKeys.reference.leaveTypes(scope), queryFn: () => api.listLeaveTypes(input.token), enabled: moduleEnabled(input.user, "leave") });
 }

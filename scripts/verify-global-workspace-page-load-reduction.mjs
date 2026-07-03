@@ -154,7 +154,7 @@ includes(searchResults, "controller.abort()", "search results page cancels stale
 includes(searchResults, "signal?.aborted", "search results page ignores stale abort errors");
 includes(globalSearchApi, "globalSearch(token: string, params: { q?: string; limit?: number }, signal?: AbortSignal)", "global search API helper accepts AbortSignal");
 
-includes(notificationBell, "useWorkspaceQuery<{ unread_count: number }>", "notification unread count uses query cache");
+check(`${notificationBell}: notification unread count uses query cache`, read(notificationBell).includes("useWorkspaceQuery<{ unread_count: number }>") || read(notificationBell).includes("useWorkspaceQuery<UnreadNotificationCountResponse>"));
 includes(notificationBell, "queryKeys.notifications.unreadCount(scope)", "notification unread count uses scoped key");
 includes(notificationBell, "queryKeys.notifications.list(scope, 8)", "notification list uses scoped key");
 includes(notificationBell, "queryClient.setQueryData<{ unread_count: number }>", "mark-read mutation updates unread count immediately");

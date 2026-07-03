@@ -3,17 +3,19 @@ import type { Context } from "hono";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings } from "../types";
 import { cleanupExpiredEvents, getLiveEventStreamConfig, listAppEventsSince } from "../utils/app-events";
+import { applyCorsHeaders, getCorsHeaders } from "../utils/cors";
 import { fail, ok } from "../utils/http";
 import { readString } from "../utils/validation";
 
 export const appEventRoutes = new Hono<AppBindings>();
 
-appEventRoutes.use("*", requireAuth);
 appEventRoutes.use("*", async (c, next) => {
+  applyCorsHeaders(c, "Authorization, Origin, Last-Event-ID");
   c.header("Cache-Control", "private, no-store");
-  c.header("Vary", "Authorization, Origin");
+  c.header("Vary", "Authorization, Origin, Last-Event-ID");
   await next();
 });
+appEventRoutes.use("*", requireAuth);
 
 function executionCtx(c: Context<AppBindings>) {
   return (c as unknown as { executionCtx?: ExecutionContext }).executionCtx;
@@ -42,8 +44,9 @@ function encodeSse(input: { event?: string; id?: string | null; data?: unknown; 
   return `${lines.join("\n")}\n\n`;
 }
 
-function streamHeaders() {
+function streamHeaders(c: Context<AppBindings>) {
   return {
+    ...getCorsHeaders(c.req.raw, c.env.CORS_ORIGIN, "Authorization, Origin, Last-Event-ID"),
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "private, no-store",
     "Connection": "keep-alive",
@@ -203,5 +206,5 @@ appEventRoutes.get("/stream", async (c) => {
     }
   });
 
-  return new Response(stream, { status: 200, headers: streamHeaders() });
+  return new Response(stream, { status: 200, headers: streamHeaders(c) });
 });

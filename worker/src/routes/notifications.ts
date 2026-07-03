@@ -55,11 +55,18 @@ function logNotificationRuntimeError(input: { area: string; error: unknown; user
   }));
 }
 
-async function withNotificationRuntimeError(c: Context<AppBindings>, area: string, action: () => Promise<Response> | Response) {
+async function withNotificationRuntimeError(c: Context<AppBindings>, area: string, action: () => Promise<Response> | Response, options: { unreadCountFallback?: boolean } = {}) {
   try {
     return await action();
   } catch (error) {
     logNotificationRuntimeError({ area, error, userId: c.get("currentUser")?.id ?? null });
+    if (options.unreadCountFallback) {
+      return ok(c, {
+        unread_count: 0,
+        unavailable: true,
+        reason: "notifications_temporarily_unavailable"
+      });
+    }
     return fail(c, 503, "NOTIFICATIONS_RUNTIME_ERROR", "Notifications are temporarily unavailable.");
   }
 }
@@ -381,8 +388,16 @@ notificationRoutes.get("/unread-count", (c) => withNotificationRuntimeError(c, "
   if (!hasAny(c.get("currentUser"), ["notifications.view", "notifications.admin.view", "notifications.manage", "self_service.notifications.view", "self_service.view"])) {
     return fail(c, 403, "NOTIFICATION_PERMISSION_DENIED", "You do not have permission to view notifications.");
   }
+  const notificationsEnabled = await isOperationalModuleEnabled(c.env.DB, "notifications");
+  if (!notificationsEnabled) {
+    return ok(c, {
+      unread_count: 0,
+      unavailable: true,
+      reason: "notifications_module_disabled"
+    });
+  }
   return ok(c, { unread_count: await measureD1Query(c, () => getUnreadNotificationCount(c)) });
-}));
+}, { unreadCountFallback: true }));
 
 notificationRoutes.post("/:notificationId/mark-read", (c) => withNotificationRuntimeError(c, "mark-read", () => markNotificationRead(c, c.req.param("notificationId"))));
 notificationRoutes.post("/mark-all-read", (c) => withNotificationRuntimeError(c, "mark-all-read", () => markAllNotificationsRead(c)));

@@ -1,0 +1,122 @@
+{
+  "required_table_count": 192,
+  "remote_table_count": 191,
+  "missing_tables": [
+    "data_retention_policies"
+  ],
+  "missing_columns": [],
+  "missing_indexes": [
+    {
+      "table": "employee_bank_loan_payments",
+      "index": "idx_phase20_bank_loan_payments_result",
+      "definition": "CREATE INDEX IF NOT EXISTS idx_phase20_bank_loan_payments_result ON employee_bank_loan_payments(payroll_employee_result_id, payment_status);"
+    },
+    {
+      "table": "payroll_pension_contributions",
+      "index": "idx_phase20_pension_contributions_result",
+      "definition": "CREATE INDEX IF NOT EXISTS idx_phase20_pension_contributions_result ON payroll_pension_contributions(payroll_employee_result_id, contribution_status);"
+    }
+  ],
+  "recent_system_checks": [
+    {
+      "table": "notifications",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "notification_preferences",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "approval_notification_templates",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "background_jobs",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "background_job_events",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "app_events",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "report_export_artifacts",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "data_import_batches",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "data_import_rows",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "attendance_summary_snapshots",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "payroll_summary_snapshots",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "dashboard_summary_snapshots",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "system_health_snapshots",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "document_upload_sessions",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "performance_api_metrics",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "performance_frontend_metrics",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "performance_job_metrics",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "performance_build_metrics",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "data_retention_settings",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "data_retention_policies",
+      "exists": false,
+      "local": true
+    }
+  ]
+}

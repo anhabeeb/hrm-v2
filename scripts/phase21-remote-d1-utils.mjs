@@ -12,6 +12,9 @@ export const phase21RepairSqlPath = "docs/production/phase21-remote-d1-additive-
 export const phase21RepairNotesPath = "docs/production/phase21-remote-d1-repair-notes.md";
 
 export const recentPhase21SchemaTables = [
+  "notifications",
+  "notification_preferences",
+  "approval_notification_templates",
   "background_jobs",
   "background_job_events",
   "app_events",

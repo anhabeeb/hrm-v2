@@ -9,7 +9,7 @@ import { StatusBadge } from "../ui/status-badge";
 import { useAuth } from "../../hooks/useAuth";
 import { useWorkspaceMutation } from "../../hooks/useWorkspaceMutation";
 import { useWorkspaceQuery } from "../../hooks/useWorkspaceQuery";
-import { notificationsApi, type HrmNotification } from "../../lib/notificationsApi";
+import { notificationsApi, type HrmNotification, type UnreadNotificationCountResponse } from "../../lib/notificationsApi";
 import { queryClient } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
 import { invalidateNotificationQueries, workspaceScope } from "../../lib/workspaceInvalidation";
@@ -18,7 +18,8 @@ import { cn } from "../../lib/utils";
 const NOTIFICATIONS_UNAVAILABLE_MESSAGE = "Notifications unavailable. Try again shortly.";
 const NOTIFICATIONS_UPDATE_ERROR_MESSAGE = "Could not update notifications. Please try again.";
 const NOTIFICATION_UNREAD_POLL_INTERVAL_MS = Number(import.meta.env.VITE_NOTIFICATION_POLL_INTERVAL_MS ?? 90000);
-const NOTIFICATION_FAILURE_BACKOFF_MS = 30000;
+const NOTIFICATION_FAILURE_BACKOFF_BASE_MS = 30000;
+const NOTIFICATION_FAILURE_BACKOFF_MAX_MS = 5 * 60 * 1000;
 
 function isInternalRoute(route: string | null | undefined) {
   return Boolean(route && route.startsWith("/") && !route.startsWith("//") && !/^\/?https?:/i.test(route));
@@ -41,9 +42,11 @@ export function NotificationBell() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notificationsUnavailable, setNotificationsUnavailable] = useState(false);
   const lastNotificationFailureAtRef = useRef(0);
+  const notificationFailureCountRef = useRef(0);
   const scope = useMemo(() => workspaceScope(token, user), [token, user]);
-  const unreadQuery = useWorkspaceQuery<{ unread_count: number }>({
+  const unreadQuery = useWorkspaceQuery<UnreadNotificationCountResponse>({
     queryKey: (scope) => queryKeys.notifications.unreadCount(scope),
     enabled: Boolean(token),
     staleTime: NOTIFICATION_UNREAD_POLL_INTERVAL_MS,
@@ -56,20 +59,46 @@ export function NotificationBell() {
     queryFn: ({ token, signal }) => notificationsApi.listNotifications(token, { limit: 8 }, signal)
   });
   const notifications = listQuery.data?.notifications ?? [];
-  const unreadCount = listQuery.data?.unread_count ?? unreadQuery.data?.unread_count ?? 0;
+  const unreadCount = notificationsUnavailable ? 0 : listQuery.data?.unread_count ?? unreadQuery.data?.unread_count ?? 0;
   const loading = listQuery.firstLoad && open;
 
+  function notificationBackoffMs() {
+    return Math.min(
+      NOTIFICATION_FAILURE_BACKOFF_MAX_MS,
+      NOTIFICATION_FAILURE_BACKOFF_BASE_MS * 2 ** Math.min(notificationFailureCountRef.current, 4)
+    );
+  }
+
   function failureBackoffActive() {
-    return Date.now() - lastNotificationFailureAtRef.current < NOTIFICATION_FAILURE_BACKOFF_MS;
+    return Date.now() - lastNotificationFailureAtRef.current < notificationBackoffMs();
+  }
+
+  function markNotificationFailure() {
+    notificationFailureCountRef.current += 1;
+    lastNotificationFailureAtRef.current = Date.now();
+    setNotificationsUnavailable(true);
+  }
+
+  function clearNotificationFailure() {
+    notificationFailureCountRef.current = 0;
+    lastNotificationFailureAtRef.current = 0;
+    setNotificationsUnavailable(false);
+    setError(null);
+  }
+
+  function unreadUnavailable(data: UnreadNotificationCountResponse | undefined) {
+    return Boolean(data?.unavailable);
   }
 
   async function loadUnreadCount() {
     if (!token || document.visibilityState === "hidden" || failureBackoffActive()) return;
     try {
-      await unreadQuery.refetch();
-      lastNotificationFailureAtRef.current = 0;
+      const result = await unreadQuery.refetch();
+      if (result.error) throw result.error;
+      if (unreadUnavailable(result.data)) markNotificationFailure();
+      else clearNotificationFailure();
     } catch {
-      lastNotificationFailureAtRef.current = Date.now();
+      markNotificationFailure();
     }
   }
 
@@ -78,10 +107,11 @@ export function NotificationBell() {
     if (!showLoading && failureBackoffActive()) return;
     setError(null);
     try {
-      await listQuery.refetch();
-      lastNotificationFailureAtRef.current = 0;
+      const result = await listQuery.refetch();
+      if (result.error) throw result.error;
+      clearNotificationFailure();
     } catch {
-      lastNotificationFailureAtRef.current = Date.now();
+      markNotificationFailure();
       setError(NOTIFICATIONS_UNAVAILABLE_MESSAGE);
     }
   }
@@ -100,10 +130,20 @@ export function NotificationBell() {
 
   useEffect(() => {
     if (listQuery.error) {
-      lastNotificationFailureAtRef.current = Date.now();
+      markNotificationFailure();
       setError(NOTIFICATIONS_UNAVAILABLE_MESSAGE);
     }
   }, [listQuery.error]);
+
+  useEffect(() => {
+    if (unreadQuery.error) markNotificationFailure();
+  }, [unreadQuery.error]);
+
+  useEffect(() => {
+    if (!unreadQuery.data) return;
+    if (unreadQuery.data.unavailable) markNotificationFailure();
+    else clearNotificationFailure();
+  }, [unreadQuery.data?.unavailable]);
 
   const markReadMutation = useWorkspaceMutation<{ read: boolean }, { notification: HrmNotification }>({
     mutationFn: ({ notification }) => notificationsApi.markNotificationRead(token!, notification.id),
@@ -165,7 +205,7 @@ export function NotificationBell() {
           <div className="flex items-center justify-between border-b bg-slate-50 px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-slate-950">Notifications</p>
-              <p className="text-xs text-muted-foreground">{unreadCount ? `${unreadCount} unread` : "All caught up"}</p>
+              <p className="text-xs text-muted-foreground">{notificationsUnavailable ? "Temporarily unavailable" : unreadCount ? `${unreadCount} unread` : "All caught up"}</p>
             </div>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="sm" onClick={() => void markAllRead()} disabled={!unreadCount}>
