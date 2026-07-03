@@ -5,7 +5,7 @@ import { backgroundJobsApi } from "../lib/backgroundJobsApi";
 import { createQueryScope, queryKeys } from "../lib/queryKeys";
 import type { BackgroundJobDetailResponse } from "../types/background-jobs";
 
-const TERMINAL_STATUSES = new Set(["SUCCEEDED", "FAILED", "CANCELLED"]);
+const TERMINAL_STATUSES = new Set(["SUCCEEDED", "FAILED", "CANCELLED", "DEAD_LETTERED"]);
 
 export function useBackgroundJob(jobId: string | null | undefined) {
   const { token, user } = useAuth();

@@ -1,11 +1,11 @@
 {
-  "backup_id": "backup_example_2026-07-03T14-19-21-507Z",
-  "created_at": "2026-07-03T14:19:21.507Z",
+  "backup_id": "backup_example_2026-07-03T14-49-22-062Z",
+  "created_at": "2026-07-03T14:49:22.062Z",
   "environment": "source-validation",
   "database": {
     "label": "hrm-v2",
     "binding": "DB",
-    "schema_hash_sha256": "73698fba19f5d075b87b60cd9432afa21747582eb05db3d7838e0ce5fb1c728c",
+    "schema_hash_sha256": "f45117943bcc1f989185ff3239faee9e05fd7bd61bf1c5d8220fce54a1038b01",
     "schema_table_count": 192,
     "table_count": 192,
     "row_counts_by_table": {
@@ -35,7 +35,7 @@
     "restore_dry_run_report": "phase16-d1-restore-dry-run-report.md"
   },
   "checksums": {
-    "schema_sql_sha256": "73698fba19f5d075b87b60cd9432afa21747582eb05db3d7838e0ce5fb1c728c",
+    "schema_sql_sha256": "f45117943bcc1f989185ff3239faee9e05fd7bd61bf1c5d8220fce54a1038b01",
     "d1_export_sha256": "fill_after_live_export",
     "r2_inventory_sha256": "fill_after_live_inventory"
   },

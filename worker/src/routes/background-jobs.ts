@@ -32,7 +32,7 @@ export const backgroundJobRoutes = new Hono<AppBindings>();
 const VIEW_ALL_PERMISSIONS = ["background_jobs.view", "background_jobs.manage", "background_jobs.run", "admin.system_health.view", "admin.system_health.manage"];
 const MANAGE_PERMISSIONS = ["background_jobs.manage", "admin.system_health.manage", "settings.manage"];
 const RUN_PERMISSIONS = ["background_jobs.run", "background_jobs.manage", "admin.system_health.manage", "admin.production_readiness.run"];
-const JOB_STATUSES = new Set(["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "RETRYING"]);
+const JOB_STATUSES = new Set(["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED", "RETRYING", "DEAD_LETTERED"]);
 
 backgroundJobRoutes.use("*", requireAuth);
 backgroundJobRoutes.use("*", async (c, next) => {

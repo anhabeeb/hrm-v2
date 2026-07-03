@@ -41,7 +41,7 @@ function badgeTone(value: unknown): "neutral" | "success" | "warning" | "danger"
   const text = String(value ?? "").toUpperCase();
   if (["PASS", "SUCCEEDED", "200", "201", "202"].includes(text)) return "success";
   if (["WARNING", "RETRYING", "QUEUED", "RUNNING"].includes(text)) return "warning";
-  if (["FAIL", "FAILED", "ERROR", "CRITICAL"].includes(text) || Number(text) >= 500) return "danger";
+  if (["FAIL", "FAILED", "DEAD_LETTERED", "ERROR", "CRITICAL"].includes(text) || Number(text) >= 500) return "danger";
   return "neutral";
 }
 

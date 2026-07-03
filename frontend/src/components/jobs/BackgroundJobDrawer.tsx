@@ -61,7 +61,7 @@ export function BackgroundJobDrawer({
           ) : (
             <div className="space-y-3">
               {jobs.map((job) => {
-                const canRetry = job.status === "FAILED" || job.status === "CANCELLED";
+                const canRetry = job.status === "FAILED" || job.status === "CANCELLED" || job.status === "DEAD_LETTERED";
                 const canCancel = job.status === "QUEUED" || job.status === "RETRYING";
                 return (
                   <div key={job.id} className="rounded-lg border bg-white p-3 shadow-sm">

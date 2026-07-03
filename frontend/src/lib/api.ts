@@ -2475,6 +2475,9 @@ export const api = {
   getBackupRetentionStatus(token: string) {
     return request<{ status: Record<string, unknown>; recent_cleanup_jobs: Record<string, unknown>[] }>("/api/v1/admin/backup-retention/status", {}, token);
   },
+  getBackgroundProcessingStatus(token: string) {
+    return request<{ background_processing: Record<string, unknown> }>("/api/v1/admin/background-processing/status", {}, token);
+  },
   listDataRetentionPolicies(token: string) {
     return request<{ policies: Record<string, unknown>[] }>("/api/v1/admin/data-retention/policies", {}, token);
   },

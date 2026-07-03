@@ -1,5 +1,6 @@
-import type { Env } from "../types";
+import type { BackgroundJobQueueMessage, Env } from "../types";
 import { safeEmitAppEvent } from "./app-events";
+import { runDataRetentionCleanup } from "./data-retention-cleanup";
 import { nowIso } from "./http";
 import { recordJobPerformanceMetric } from "./performance-metrics";
 
@@ -28,7 +29,7 @@ async function recordBackgroundJobMetric(db: Env["DB"], jobId: string, status: B
   });
 }
 
-export type BackgroundJobStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "RETRYING";
+export type BackgroundJobStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "RETRYING" | "DEAD_LETTERED";
 
 export type BackgroundJobRow = {
   id: string;
@@ -81,6 +82,13 @@ export type EnqueueJobInput = {
   progressMessage?: string | null;
 };
 
+export type EnqueueJobOptions = {
+  env?: Env;
+  requestId?: string | null;
+  executionCtx?: ExecutionContext;
+  queue?: boolean;
+};
+
 export type JobProgressInput = {
   current?: number | null;
   total?: number | null;
@@ -88,8 +96,23 @@ export type JobProgressInput = {
 };
 
 const ACTIVE_JOB_STATUSES: BackgroundJobStatus[] = ["QUEUED", "RUNNING", "RETRYING"];
-const TERMINAL_JOB_STATUSES: BackgroundJobStatus[] = ["SUCCEEDED", "FAILED", "CANCELLED"];
+const TERMINAL_JOB_STATUSES: BackgroundJobStatus[] = ["SUCCEEDED", "FAILED", "CANCELLED", "DEAD_LETTERED"];
 const SENSITIVE_PAYLOAD_KEY = /(password|token|secret|credential|document_number|file|raw|account|iban|swift|salary|amount|payload|contents|private|hash)/i;
+const QUEUE_ENABLED_VALUES = new Set(["1", "true", "yes", "enabled", "queue", "hybrid"]);
+const DEFAULT_SCHEDULED_RUN_LIMIT = 10;
+
+export const QUEUE_SUPPORTED_JOB_TYPES = [
+  "DATA_RETENTION_CLEANUP",
+  "REPORT_EXPORT",
+  "REPORT_SNAPSHOT_REFRESH",
+  "DATA_IMPORT_VALIDATION",
+  "DATA_IMPORT_APPLY",
+  "DOCUMENT_COMPLIANCE_RECALCULATION",
+  "DOCUMENT_EXPIRY_ALERT_GENERATION",
+  "ONBOARDING_READINESS_RECALCULATION",
+  "ATTENDANCE_SUMMARY_RECALCULATION",
+  "DOCUMENT_UPLOAD_FOLLOW_UP"
+] as const;
 
 function safeJsonParse(value: string | null): unknown {
   if (!value) return null;
@@ -263,7 +286,95 @@ export async function listJobs(db: Env["DB"], input: {
   return rows.results;
 }
 
-export async function enqueueJob(db: Env["DB"], input: EnqueueJobInput) {
+function normalizeMode(env: Env | undefined) {
+  const mode = String(env?.HRM_BACKGROUND_JOB_MODE ?? "").toLowerCase();
+  if (mode === "queue" || mode === "hybrid") return mode;
+  return "d1";
+}
+
+function queueFlagEnabled(env: Env | undefined) {
+  const flag = String(env?.HRM_QUEUE_ENABLED ?? env?.HRM_BACKGROUND_JOB_MODE ?? "").toLowerCase();
+  return QUEUE_ENABLED_VALUES.has(flag);
+}
+
+export function getBackgroundProcessingMode(env: Env | undefined) {
+  const mode = normalizeMode(env);
+  const queueConfigured = Boolean(env?.BACKGROUND_JOB_QUEUE);
+  const queueProducerEnabled = queueFlagEnabled(env);
+  if (!queueConfigured || !queueProducerEnabled) return "d1" as const;
+  return mode;
+}
+
+export function isQueueProducerEnabled(env: Env | undefined) {
+  return Boolean(env?.BACKGROUND_JOB_QUEUE && queueFlagEnabled(env) && ["queue", "hybrid"].includes(normalizeMode(env)));
+}
+
+export function isQueueConsumerEnabled(env: Env | undefined) {
+  return isQueueProducerEnabled(env) && String(env?.HRM_QUEUE_CONSUMER_ENABLED ?? "true").toLowerCase() !== "false";
+}
+
+export function getQueueRetryLimit(env: Env | undefined) {
+  const parsed = Number(env?.HRM_QUEUE_RETRY_LIMIT ?? 5);
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(20, Math.trunc(parsed))) : 5;
+}
+
+function retryDelaySeconds(attemptCount: number) {
+  return Math.min(3600, Math.max(30, 2 ** Math.max(0, attemptCount) * 30));
+}
+
+export function buildSafeQueueMessage(job: BackgroundJobRow, requestId?: string | null): BackgroundJobQueueMessage {
+  return {
+    job_id: job.id,
+    job_type: job.job_type,
+    module_key: job.module_key,
+    entity_type: job.entity_type,
+    entity_id: job.entity_id,
+    request_id: requestId ?? null,
+    correlation_id: requestId ?? job.id,
+    enqueued_at: nowIso(),
+    source: "background_jobs"
+  };
+}
+
+export async function sendJobToQueueIfEnabled(env: Env | undefined, db: Env["DB"], job: BackgroundJobRow, requestId?: string | null) {
+  if (!isQueueProducerEnabled(env)) {
+    await appendJobEvent(db, job.id, "queue_fallback_d1", "Cloudflare Queue producer is disabled or not configured; D1 runner remains source of truth.", {
+      mode: getBackgroundProcessingMode(env),
+      queue_binding_configured: Boolean(env?.BACKGROUND_JOB_QUEUE)
+    });
+    return { queued: false, fallback: "d1" as const };
+  }
+
+  try {
+    const message = buildSafeQueueMessage(job, requestId);
+    await env!.BACKGROUND_JOB_QUEUE!.send(message, { contentType: "json" });
+    await appendJobEvent(db, job.id, "queued_to_cloudflare_queue", "Safe job identifier was sent to Cloudflare Queue.", {
+      job_type: job.job_type,
+      module_key: job.module_key,
+      request_id: requestId ?? null
+    });
+    safeJobLog("background_job.queue_sent", {
+      job_id: job.id,
+      job_type: job.job_type,
+      request_id: requestId ?? null
+    });
+    return { queued: true, fallback: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Queue send failed.";
+    await appendJobEvent(db, job.id, "queue_send_failed_d1_fallback", "Cloudflare Queue send failed; job remains queued in D1 for fallback runner.", {
+      job_type: job.job_type,
+      message
+    });
+    safeJobLog("background_job.queue_send_failed_d1_fallback", {
+      job_id: job.id,
+      job_type: job.job_type,
+      message
+    });
+    return { queued: false, fallback: "d1" as const };
+  }
+}
+
+export async function enqueueJob(db: Env["DB"], input: EnqueueJobInput, options: EnqueueJobOptions = {}) {
   const dedupeKey = input.dedupeKey?.trim() || null;
   if (dedupeKey) {
     const existing = await db.prepare(
@@ -278,7 +389,13 @@ export async function enqueueJob(db: Env["DB"], input: EnqueueJobInput) {
         entity_type: input.entityType ?? existing.entity_type,
         entity_id: input.entityId ?? existing.entity_id
       });
-      return { job: existing, deduped: true };
+      let queueStatus: Awaited<ReturnType<typeof sendJobToQueueIfEnabled>> | null = null;
+      if (options.queue !== false && options.env) {
+        const queueTask = sendJobToQueueIfEnabled(options.env, db, existing, options.requestId);
+        if (options.executionCtx) options.executionCtx.waitUntil(queueTask);
+        else queueStatus = await queueTask;
+      }
+      return { job: existing, deduped: true, queue: queueStatus };
     }
   }
 
@@ -347,7 +464,13 @@ export async function enqueueJob(db: Env["DB"], input: EnqueueJobInput) {
     entity_id: input.entityId ?? null
   });
   await emitJobAppEvent(db, job.id, "background_job.queued");
-  return { job, deduped: false };
+  let queueStatus: Awaited<ReturnType<typeof sendJobToQueueIfEnabled>> | null = null;
+  if (options.queue !== false && options.env) {
+    const queueTask = sendJobToQueueIfEnabled(options.env, db, job, options.requestId);
+    if (options.executionCtx) options.executionCtx.waitUntil(queueTask);
+    else queueStatus = await queueTask;
+  }
+  return { job, deduped: false, queue: queueStatus };
 }
 
 export async function claimNextJob(db: Env["DB"], jobTypes: string[] = []) {
@@ -432,10 +555,51 @@ export async function markJobFailed(db: Env["DB"], jobId: string, code: string, 
   await recordBackgroundJobMetric(db, jobId, "FAILED");
 }
 
+export async function markJobRetrying(db: Env["DB"], jobId: string, code: string, message: string, delaySeconds = 60, metadata?: Record<string, unknown> | null) {
+  const now = nowIso();
+  const scheduledAt = new Date(Date.now() + Math.max(1, Math.trunc(delaySeconds)) * 1000).toISOString();
+  await db.prepare(
+    `UPDATE background_jobs
+     SET status = 'RETRYING', completed_at = NULL, scheduled_at = ?, last_error_code = ?,
+         last_error_message = ?, progress_message = ?, updated_at = ?
+     WHERE id = ?`
+  ).bind(scheduledAt, truncate(code, 80), truncate(message, 500), truncate(`Retry scheduled: ${message}`, 300), now, jobId).run();
+  await appendJobEvent(db, jobId, "retry_scheduled", "Background job retry scheduled with backoff.", {
+    delay_seconds: delaySeconds,
+    ...metadata
+  });
+  await emitJobAppEvent(db, jobId, "background_job.updated");
+}
+
+export async function markJobDeadLettered(db: Env["DB"], jobId: string, code: string, message: string, metadata?: Record<string, unknown> | null) {
+  const now = nowIso();
+  await db.prepare(
+    `UPDATE background_jobs
+     SET status = 'DEAD_LETTERED', completed_at = ?, last_error_code = ?,
+         last_error_message = ?, progress_message = ?, updated_at = ?
+     WHERE id = ?`
+  ).bind(now, truncate(code, 80), truncate(message, 500), truncate(`Dead-lettered: ${message}`, 300), now, jobId).run();
+  await appendJobEvent(db, jobId, "dead_lettered", "Background job moved to dead letter state.", metadata);
+  await emitJobAppEvent(db, jobId, "background_job.failed");
+  await recordBackgroundJobMetric(db, jobId, "FAILED");
+}
+
+export async function handleJobFailureWithRetry(db: Env["DB"], jobId: string, code: string, message: string, metadata?: Record<string, unknown> | null) {
+  const job = await getJob(db, jobId);
+  if (!job) return null;
+  if (job.attempt_count < job.max_attempts) {
+    const delay = retryDelaySeconds(job.attempt_count);
+    await markJobRetrying(db, jobId, code, message, delay, metadata);
+    return getJob(db, jobId);
+  }
+  await markJobDeadLettered(db, jobId, code, message, metadata);
+  return getJob(db, jobId);
+}
+
 export async function retryJob(db: Env["DB"], jobId: string, requestedByUserId?: string | null) {
   const job = await getJob(db, jobId);
   if (!job) return null;
-  if (!["FAILED", "CANCELLED"].includes(job.status) || job.attempt_count >= job.max_attempts) return job;
+  if (!["FAILED", "CANCELLED", "DEAD_LETTERED"].includes(job.status) || job.attempt_count >= job.max_attempts) return job;
   const now = nowIso();
   await db.prepare(
     `UPDATE background_jobs
@@ -468,6 +632,26 @@ export async function runJobByType(db: Env["DB"], job: BackgroundJobRow) {
   const startedAt = Date.now();
   try {
     await markJobRunning(db, job.id, "Running background job.");
+    if (job.job_type === "DATA_RETENTION_CLEANUP") {
+      const payload = safeJsonParse(job.payload_json) as Record<string, unknown> | null;
+      const dryRun = payload?.dry_run !== false;
+      const limit = Number(payload?.limit ?? 250);
+      await updateJobProgress(db, job.id, { current: 1, total: 3, message: dryRun ? "Running retention dry-run." : "Running guarded retention cleanup." });
+      const cleanup = await runDataRetentionCleanup(db, { dryRun, limit: Number.isFinite(limit) ? limit : 250 });
+      await updateJobProgress(db, job.id, { current: 2, total: 3, message: "Retention targets evaluated." });
+      await updateJobProgress(db, job.id, { current: 3, total: 3, message: dryRun ? "Dry-run complete." : "Guarded cleanup complete." });
+      await markJobSucceeded(db, job.id, dryRun ? "Data retention dry-run completed." : "Data retention cleanup completed.", {
+        dry_run: dryRun,
+        duration_ms: Date.now() - startedAt,
+        totals: cleanup.totals
+      });
+      safeJobLog("background_job.succeeded", {
+        job_id: job.id,
+        job_type: job.job_type,
+        duration_ms: Date.now() - startedAt
+      });
+      return;
+    }
     await updateJobProgress(db, job.id, { current: 1, total: 3, message: "Preparing safe worker task." });
     await appendJobEvent(db, job.id, "step", "Job runner validated the safe background task.", {
       job_type: job.job_type,
@@ -488,7 +672,7 @@ export async function runJobByType(db: Env["DB"], job: BackgroundJobRow) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Background job failed.";
-    await markJobFailed(db, job.id, "BACKGROUND_JOB_FAILED", message, {
+    await handleJobFailureWithRetry(db, job.id, "BACKGROUND_JOB_FAILED", message, {
       job_type: job.job_type,
       duration_ms: Date.now() - startedAt
     });
@@ -499,6 +683,162 @@ export async function runJobByType(db: Env["DB"], job: BackgroundJobRow) {
       message
     });
   }
+}
+
+function isQueueMessage(value: unknown): value is BackgroundJobQueueMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Record<string, unknown>;
+  return message.source === "background_jobs" && typeof message.job_id === "string" && typeof message.job_type === "string";
+}
+
+async function runClaimedJobFromMessage(db: Env["DB"], message: BackgroundJobQueueMessage) {
+  const existing = await getJob(db, message.job_id);
+  if (!existing || isTerminalJobStatus(existing.status)) return existing;
+  if (!["QUEUED", "RETRYING", "RUNNING"].includes(existing.status)) return existing;
+  if (existing.status !== "RUNNING") {
+    const now = nowIso();
+    const update = await db.prepare(
+      `UPDATE background_jobs
+       SET status = 'RUNNING', attempt_count = attempt_count + 1, started_at = COALESCE(started_at, ?),
+           progress_message = 'Running from Cloudflare Queue', updated_at = ?
+       WHERE id = ? AND status IN ('QUEUED', 'RETRYING')`
+    ).bind(now, now, existing.id).run();
+    if (!update.success) return getJob(db, existing.id);
+  }
+  const claimed = await getJob(db, existing.id);
+  if (claimed) await runJobByType(db, claimed);
+  return getJob(db, existing.id);
+}
+
+export async function runQueuedBackgroundJobMessage(env: Env, messageBody: unknown) {
+  if (!isQueueConsumerEnabled(env)) {
+    safeJobLog("background_job.queue_consumer_disabled", { source: "cloudflare_queue" });
+    return;
+  }
+  if (!isQueueMessage(messageBody)) {
+    safeJobLog("background_job.queue_message_ignored", { reason: "invalid_safe_message" });
+    return;
+  }
+  const job = await getJob(env.DB, messageBody.job_id);
+  if (!job) {
+    safeJobLog("background_job.queue_missing_d1_row", { job_id: messageBody.job_id, job_type: messageBody.job_type });
+    return;
+  }
+  await appendJobEvent(env.DB, job.id, "queue_consumer_received", "Cloudflare Queue consumer received safe job identifier.", {
+    job_type: messageBody.job_type,
+    request_id: messageBody.request_id ?? null
+  });
+  await runClaimedJobFromMessage(env.DB, messageBody);
+}
+
+export async function handleBackgroundJobQueue(batch: MessageBatch<unknown>, env: Env, ctx: ExecutionContext) {
+  const tasks = batch.messages.map(async (message) => {
+    try {
+      await runQueuedBackgroundJobMessage(env, message.body);
+      message.ack();
+    } catch (error) {
+      const body = isQueueMessage(message.body) ? message.body : null;
+      const retryLimit = getQueueRetryLimit(env);
+      const retryable = message.attempts < retryLimit;
+      const text = error instanceof Error ? error.message : "Queue message failed.";
+      if (body?.job_id) {
+        const job = await getJob(env.DB, body.job_id);
+        if (job) {
+          if (retryable) await markJobRetrying(env.DB, job.id, "QUEUE_CONSUMER_FAILED", text, retryDelaySeconds(job.attempt_count), { queue_attempts: message.attempts });
+          else await markJobDeadLettered(env.DB, job.id, "QUEUE_CONSUMER_DEAD_LETTERED", text, { queue_attempts: message.attempts });
+        }
+      }
+      safeJobLog("background_job.queue_message_failed", {
+        job_id: body?.job_id ?? null,
+        job_type: body?.job_type ?? null,
+        retryable,
+        attempts: message.attempts,
+        message: text
+      });
+      if (retryable) message.retry({ delaySeconds: retryDelaySeconds(message.attempts) });
+      else message.ack();
+    }
+  });
+  ctx.waitUntil(Promise.all(tasks));
+  await Promise.all(tasks);
+}
+
+export async function runScheduledBackgroundJobs(env: Env, options: { limit?: number; requestId?: string | null } = {}) {
+  const limit = Math.max(1, Math.min(25, Math.trunc(Number(options.limit ?? DEFAULT_SCHEDULED_RUN_LIMIT))));
+  const startedAt = Date.now();
+  const ran: Array<{ job_id: string; job_type: string; status: string }> = [];
+  if (String(env.HRM_SCHEDULED_JOB_RUNNER_ENABLED ?? "true").toLowerCase() === "false") {
+    safeJobLog("background_job.scheduled_runner_disabled", { request_id: options.requestId ?? null });
+    return { ran, disabled: true };
+  }
+  for (let index = 0; index < limit; index += 1) {
+    const job = await claimNextJob(env.DB);
+    if (!job) break;
+    await appendJobEvent(env.DB, job.id, "scheduled_runner_claimed", "Scheduled D1 fallback runner claimed this job.", {
+      request_id: options.requestId ?? null
+    });
+    await runJobByType(env.DB, job);
+    const latest = await getJob(env.DB, job.id);
+    ran.push({ job_id: job.id, job_type: job.job_type, status: latest?.status ?? job.status });
+  }
+  safeJobLog("background_job.scheduled_runner_completed", {
+    request_id: options.requestId ?? null,
+    jobs_ran: ran.length,
+    duration_ms: Date.now() - startedAt
+  });
+  return { ran, disabled: false, duration_ms: Date.now() - startedAt };
+}
+
+export async function getBackgroundProcessingStatus(db: Env["DB"], env: Env) {
+  const counts = await db.prepare(
+    `SELECT status, COUNT(*) AS count
+     FROM background_jobs
+     GROUP BY status`
+  ).all<{ status: string; count: number }>();
+  const oldest = await db.prepare(
+    `SELECT id, job_type, scheduled_at
+     FROM background_jobs
+     WHERE status IN ('QUEUED', 'RETRYING')
+     ORDER BY scheduled_at ASC
+     LIMIT 1`
+  ).first<{ id: string; job_type: string; scheduled_at: string }>();
+  const recentFailures = await db.prepare(
+    `SELECT id, job_type, status, last_error_code, updated_at
+     FROM background_jobs
+     WHERE status IN ('FAILED', 'DEAD_LETTERED')
+     ORDER BY updated_at DESC
+     LIMIT 10`
+  ).all<Record<string, unknown>>();
+  const lastScheduled = await db.prepare(
+    `SELECT job_id, created_at
+     FROM background_job_events
+     WHERE event_type = 'scheduled_runner_claimed'
+     ORDER BY created_at DESC
+     LIMIT 1`
+  ).first<{ job_id: string; created_at: string }>();
+  return {
+    generated_at: nowIso(),
+    mode: getBackgroundProcessingMode(env),
+    d1_source_of_truth: true,
+    queue: {
+      binding_configured: Boolean(env.BACKGROUND_JOB_QUEUE),
+      producer_enabled: isQueueProducerEnabled(env),
+      consumer_enabled: isQueueConsumerEnabled(env),
+      retry_limit: getQueueRetryLimit(env),
+      safe_message_fields: ["job_id", "job_type", "module_key", "entity_type", "entity_id", "request_id", "correlation_id"],
+      sensitive_payloads_sent_to_queue: false
+    },
+    scheduled_runner: {
+      enabled: String(env.HRM_SCHEDULED_JOB_RUNNER_ENABLED ?? "true").toLowerCase() !== "false",
+      fallback_to_d1_enabled: true,
+      last_claimed_job_id: lastScheduled?.job_id ?? null,
+      last_claimed_at: lastScheduled?.created_at ?? null
+    },
+    supported_job_types: QUEUE_SUPPORTED_JOB_TYPES,
+    job_counts: counts.results,
+    oldest_ready_job: oldest ?? null,
+    recent_failures: recentFailures.results
+  };
 }
 
 export function runJobWithWaitUntil(executionCtx: ExecutionContext | undefined, task: Promise<unknown>, metadata: { jobId: string; jobType: string }) {

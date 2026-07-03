@@ -45,7 +45,7 @@ interface CleanupTarget {
   params: (cutoffAt: string, limit: number) => BindValue[];
 }
 
-const TERMINAL_JOB_STATUSES = ["SUCCEEDED", "FAILED", "CANCELLED"];
+const TERMINAL_JOB_STATUSES = ["SUCCEEDED", "FAILED", "CANCELLED", "DEAD_LETTERED"];
 const DEFAULT_LIMIT = 250;
 const BUSINESS_CRITICAL_TABLES = new Set([
   "employees",

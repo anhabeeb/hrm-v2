@@ -85,6 +85,7 @@ export function AdminBackupRetentionPage() {
   const alerts = useAlert();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<Row>({});
+  const [backgroundProcessing, setBackgroundProcessing] = useState<Row>({});
   const [recentJobs, setRecentJobs] = useState<Row[]>([]);
   const [limit, setLimit] = useState("250");
   const [confirmCleanup, setConfirmCleanup] = useState(false);
@@ -98,7 +99,9 @@ export function AdminBackupRetentionPage() {
     setLoading(true);
     try {
       const data = await api.getBackupRetentionStatus(token);
+      const background = await api.getBackgroundProcessingStatus(token);
       setStatus(data.status ?? {});
+      setBackgroundProcessing(background.background_processing ?? {});
       setRecentJobs(data.recent_cleanup_jobs ?? []);
     } catch (error) {
       alerts.showApiError(error, "Unable to load backup and retention status");
@@ -144,6 +147,10 @@ export function AdminBackupRetentionPage() {
   const policies = rows(status.policies);
   const tableCounts = status.table_counts && typeof status.table_counts === "object" ? Object.entries(status.table_counts as Record<string, unknown>).map(([table, count]) => ({ table, count })) : [];
   const runbookLinks = Array.isArray(status.runbook_links) ? status.runbook_links.map((link) => ({ path: link })) : [];
+  const queue = (backgroundProcessing.queue ?? {}) as Row;
+  const scheduledRunner = (backgroundProcessing.scheduled_runner ?? {}) as Row;
+  const jobCounts = rows(backgroundProcessing.job_counts);
+  const recentFailures = rows(backgroundProcessing.recent_failures);
 
   return (
     <PageShell>
@@ -166,6 +173,29 @@ export function AdminBackupRetentionPage() {
         <SummaryCard label="Restore dry-run script" value={readiness.d1_restore_dry_run_script} icon={FileCheck2} />
         <SummaryCard label="Browser live restore" value={readiness.restore_from_browser ? "Enabled" : "Disabled"} icon={ShieldAlert} />
       </div>
+
+      <Panel className="space-y-4 p-4">
+        <div>
+          <h2 className="text-sm font-semibold">Background processing</h2>
+          <p className="text-xs text-muted-foreground">D1 remains the source of truth. Cloudflare Queues are optional and fall back to the D1 runner if unavailable.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard label="Processing mode" value={backgroundProcessing.mode ?? "d1"} icon={RefreshCw} />
+          <SummaryCard label="Queue producer" value={bool(queue.producer_enabled) ? "Enabled" : "Fallback"} icon={Archive} />
+          <SummaryCard label="Queue consumer" value={bool(queue.consumer_enabled) ? "Enabled" : "Disabled"} icon={DatabaseBackup} />
+          <SummaryCard label="Scheduled runner" value={bool(scheduledRunner.enabled) ? "Enabled" : "Disabled"} icon={FileCheck2} />
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">Job status counts</h3>
+            <SimpleTable rows={jobCounts} columns={["status", "count"]} empty="No background jobs found." />
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">Recent failures / dead letters</h3>
+            <SimpleTable rows={recentFailures} columns={["job_type", "status", "last_error_code", "updated_at"]} empty="No recent failed jobs." />
+          </div>
+        </div>
+      </Panel>
 
       <Panel className="space-y-4 p-4">
         <div>

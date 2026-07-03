@@ -59,3 +59,13 @@ Use this checklist before each production release of OmniCore - HR.
 - [ ] Any real retention cleanup uses `RUN_RETENTION_CLEANUP` confirmation and is approved by an authorized admin.
 - [ ] No backup dump, R2 downloaded object, env file, secret, log, or nested ZIP is included in the release ZIP.
 - [ ] Active employee documents, payroll results, audit logs, and employee master records are confirmed excluded from automated cleanup targets.
+
+## Phase 17 Background Processing
+
+- [ ] Cloudflare Queues remain disabled unless the optional binding and feature flags are intentionally configured.
+- [ ] D1 fallback background job runner verified.
+- [ ] `npm run verify:cloudflare-queues-phase17` passed.
+- [ ] `npm run verify:queue-readiness-phase17` passed.
+- [ ] `npm run smoke:background-processing-phase17` passed.
+- [ ] Queue messages are confirmed to contain safe identifiers only.
+- [ ] Backup & Retention admin page shows background processing status.

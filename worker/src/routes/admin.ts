@@ -6,7 +6,7 @@ import { recordAudit } from "../db/audit";
 import { createSyncChangeLogEntry, syncWriteMetadata } from "../db/sync";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
-import { enqueueJob, jobToApi, markJobFailed, markJobRunning, markJobSucceeded, runJobWithWaitUntil, updateJobProgress } from "../utils/background-jobs";
+import { enqueueJob, getBackgroundProcessingStatus, jobToApi, markJobFailed, markJobRunning, markJobSucceeded, runJobWithWaitUntil, updateJobProgress } from "../utils/background-jobs";
 import { safeEmitAppEvent } from "../utils/app-events";
 import { getBackupRetentionStatus, listDataRetentionPolicies, runDataRetentionCleanup, updateDataRetentionPolicy } from "../utils/data-retention-cleanup";
 import { fail, getClientIp, ok } from "../utils/http";
@@ -1220,6 +1220,13 @@ adminRoutes.get("/backup-retention/status", requireAnyPermission(["admin.backup_
   });
 });
 
+adminRoutes.get("/background-processing/status", requireAnyPermission(["background_jobs.view", "background_jobs.manage", "background_jobs.run", "admin.system_health.view", "admin.backup_retention.view"]), async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  return ok(c, {
+    background_processing: await getBackgroundProcessingStatus(c.env.DB, c.env)
+  });
+});
+
 adminRoutes.get("/data-retention/policies", requireAnyPermission(["admin.data_retention.view", "admin.backup_retention.view"]), async (c) => {
   c.header("Cache-Control", "private, no-store");
   return ok(c, { policies: await listDataRetentionPolicies(c.env.DB) });
@@ -1252,7 +1259,7 @@ adminRoutes.post("/data-retention/cleanup", requireAnyPermission(["admin.data_re
   }
   const limitRaw = Number(body.limit ?? 250);
   const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(1000, Math.trunc(limitRaw))) : 250;
-  const { job, deduped } = await enqueueJob(c.env.DB, {
+  const { job, deduped, queue } = await enqueueJob(c.env.DB, {
     jobType: "DATA_RETENTION_CLEANUP",
     moduleKey: "admin",
     entityType: "data_retention_policy",
@@ -1267,10 +1274,15 @@ adminRoutes.post("/data-retention/cleanup", requireAnyPermission(["admin.data_re
     },
     progressTotal: 3,
     progressMessage: dryRun ? "Dry-run queued" : "Guarded cleanup queued"
+  }, {
+    env: c.env,
+    requestId: c.req.header("x-request-id") ?? c.req.header("x-correlation-id") ?? null
   });
-  runJobWithWaitUntil(executionCtx(c), runRetentionCleanupJob(c.env.DB, job.id, { dryRun, limit }), { jobId: job.id, jobType: job.job_type });
+  if (!queue?.queued) {
+    runJobWithWaitUntil(executionCtx(c), runRetentionCleanupJob(c.env.DB, job.id, { dryRun, limit }), { jobId: job.id, jobType: job.job_type });
+  }
   await audit(c, dryRun ? "admin.data_retention.cleanup.dry_run_queued" : "admin.data_retention.cleanup.queued", "background_job", job.id, undefined, { dry_run: dryRun, limit, deduped }, readString(body.reason) || null);
-  return ok(c, { job_id: job.id, job: jobToApi(job), deduped, dry_run: dryRun }, 202);
+  return ok(c, { job_id: job.id, job: jobToApi(job), deduped, dry_run: dryRun, queue }, 202);
 });
 
 adminRoutes.get("/export-security-settings", requireAnyPermission(["admin.export_security.view"]), async (c) => {

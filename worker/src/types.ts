@@ -1,9 +1,27 @@
 export interface Env {
   DB: D1Database;
   DOCUMENTS_BUCKET: R2Bucket;
+  BACKGROUND_JOB_QUEUE?: Queue<BackgroundJobQueueMessage>;
   JWT_SECRET: string;
   CORS_ORIGIN?: string;
   ENVIRONMENT?: string;
+  HRM_BACKGROUND_JOB_MODE?: "d1" | "queue" | "hybrid";
+  HRM_QUEUE_ENABLED?: string;
+  HRM_QUEUE_CONSUMER_ENABLED?: string;
+  HRM_QUEUE_RETRY_LIMIT?: string;
+  HRM_SCHEDULED_JOB_RUNNER_ENABLED?: string;
+}
+
+export interface BackgroundJobQueueMessage {
+  job_id: string;
+  job_type: string;
+  module_key?: string | null;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  request_id?: string | null;
+  correlation_id?: string | null;
+  enqueued_at: string;
+  source: "background_jobs";
 }
 
 export type UserStatus = "ACTIVE" | "DISABLED" | "LOCKED";

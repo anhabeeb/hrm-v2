@@ -50,7 +50,7 @@ includesAll(schema, [
   "idx_background_jobs_entity",
   "idx_background_jobs_dedupe_key",
   "idx_background_job_events_job_created",
-  "CHECK (status IN ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'RETRYING'))"
+  "CHECK (status IN ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'RETRYING', 'DEAD_LETTERED'))"
 ], "background job schema");
 
 includesAll(seed, [
@@ -72,6 +72,7 @@ includesAll(jobService, [
   "retryJob",
   "cancelJob",
   "runJobByType",
+  "markJobDeadLettered",
   "dedupe_key = ? AND status IN ('QUEUED', 'RUNNING', 'RETRYING')",
   "sanitizeJobPayload",
   "SENSITIVE_PAYLOAD_KEY",

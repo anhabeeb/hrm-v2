@@ -10,7 +10,7 @@ import { invalidateBackgroundJobTargets } from "../../lib/workspaceInvalidation"
 import type { BackgroundJob } from "../../types/background-jobs";
 import { cn } from "../../lib/utils";
 
-const TERMINAL_STATUSES = new Set(["SUCCEEDED", "FAILED", "CANCELLED"]);
+const TERMINAL_STATUSES = new Set(["SUCCEEDED", "FAILED", "CANCELLED", "DEAD_LETTERED"]);
 const BackgroundJobDrawer = lazy(() => import("./BackgroundJobDrawer").then((module) => ({ default: module.BackgroundJobDrawer })));
 
 function jobLabel(job: BackgroundJob) {
@@ -29,7 +29,7 @@ export function BackgroundJobIndicator() {
   const jobs = jobsQuery.data?.jobs ?? [];
   const active = hasActiveBackgroundJobs(jobs);
   const activeCount = jobs.filter((job) => ["QUEUED", "RUNNING", "RETRYING"].includes(job.status)).length;
-  const failedCount = jobs.filter((job) => job.status === "FAILED").length;
+  const failedCount = jobs.filter((job) => job.status === "FAILED" || job.status === "DEAD_LETTERED").length;
 
   useEffect(() => {
     if (!jobs.length) return;
@@ -47,7 +47,7 @@ export function BackgroundJobIndicator() {
       invalidateBackgroundJobTargets(scope, job, queryClient);
       if (job.status === "SUCCEEDED") {
         alerts.showSuccess("Background job completed", `${jobLabel(job)} finished. The affected workspace is refreshing.`);
-      } else if (job.status === "FAILED") {
+      } else if (job.status === "FAILED" || job.status === "DEAD_LETTERED") {
         alerts.showError("Background job failed", job.last_error_message ?? `${jobLabel(job)} failed. Open Background Jobs to retry.`);
       }
     }

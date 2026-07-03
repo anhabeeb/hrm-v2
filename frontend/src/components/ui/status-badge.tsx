@@ -19,7 +19,7 @@ export function statusTone(value: unknown): "neutral" | "success" | "warning" | 
   ].includes(text)) return "warning";
   if ([
     "DISABLED", "LOCKED", "REJECTED", "CANCELLED", "EXPIRED", "ABSENT", "LOST", "DAMAGED", "SOFT_DELETED",
-    "CRITICAL", "ERROR", "FAILED", "FAIL", "BLOCKED", "NOT_READY", "OFFLINE"
+    "CRITICAL", "ERROR", "FAILED", "DEAD_LETTERED", "FAIL", "BLOCKED", "NOT_READY", "OFFLINE"
   ].includes(text)) return "danger";
   if (["ON_LEAVE", "LEAVE", "PROCESSING", "OPEN", "RETURNED", "ARCHIVED", "INACTIVE", "CALCULATING", "APPLYING"].includes(text)) return "info";
   return "neutral";

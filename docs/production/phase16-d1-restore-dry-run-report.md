@@ -1,6 +1,6 @@
 # Phase 16 D1 Restore Dry-Run Report
 
-Generated: 2026-07-03T14:19:21.733Z
+Generated: 2026-07-03T14:49:32.697Z
 
 This report is dry-run only. It does not mutate local, staging, or production D1.
 
@@ -9,7 +9,7 @@ This report is dry-run only. It does not mutate local, staging, or production D1
 | Check | Status | Detail |
 | --- | --- | --- |
 | schema.sql exists | PASS | Local source schema is available. |
-| schema hash calculated | PASS | 73698fba19f5d075b87b60cd9432afa21747582eb05db3d7838e0ce5fb1c728c |
+| schema hash calculated | PASS | f45117943bcc1f989185ff3239faee9e05fd7bd61bf1c5d8220fce54a1038b01 |
 | live production mutation | PASS | This script never executes SQL against production. |
 | backup file supplied | SKIPPED | HRM_D1_RESTORE_BACKUP_FILE was not set; source-only dry-run completed. |
 | manifest supplied | SKIPPED | HRM_D1_RESTORE_MANIFEST_FILE was not set. |

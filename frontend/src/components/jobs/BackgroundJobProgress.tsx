@@ -29,7 +29,7 @@ export function BackgroundJobProgress({ job, compact = false }: { job: Backgroun
         <div
           className={cn(
             "h-full rounded-full transition-all",
-            job.status === "FAILED" ? "bg-red-500" : job.status === "CANCELLED" ? "bg-slate-400" : job.status === "SUCCEEDED" ? "bg-emerald-500" : "bg-primary",
+            job.status === "FAILED" || job.status === "DEAD_LETTERED" ? "bg-red-500" : job.status === "CANCELLED" ? "bg-slate-400" : job.status === "SUCCEEDED" ? "bg-emerald-500" : "bg-primary",
             percent === null && active && "w-1/2 animate-pulse"
           )}
           style={percent === null ? undefined : { width: `${percent}%` }}

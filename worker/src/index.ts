@@ -39,6 +39,7 @@ import { syncRoutes } from "./routes/sync";
 import { withRouteTiming } from "./middleware/performance";
 import { userRoutes } from "./routes/users";
 import type { AppBindings } from "./types";
+import { handleBackgroundJobQueue, runScheduledBackgroundJobs } from "./utils/background-jobs";
 import { fail } from "./utils/http";
 
 const app = new Hono<AppBindings>();
@@ -187,4 +188,14 @@ app.onError((error, c) => {
   return fail(c, 500, "INTERNAL_ERROR", "Something went wrong.");
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async queue(batch, env, ctx) {
+    await handleBackgroundJobQueue(batch, env, ctx);
+  },
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runScheduledBackgroundJobs(env, {
+      requestId: `scheduled:${event.scheduledTime}`
+    }));
+  }
+} satisfies ExportedHandler<AppBindings["Bindings"]>;

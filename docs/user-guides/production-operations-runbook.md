@@ -56,3 +56,18 @@ Live D1 backup requires explicit environment confirmation and must write outside
 The Backup & Retention admin page is available at `/settings/admin/backup-retention`. It shows backup readiness, policy status, dry-run cleanup results, recent cleanup jobs, and runbook links. Cleanup defaults to dry-run. Real cleanup requires the protected confirmation value `RUN_RETENTION_CLEANUP`.
 
 Never auto-delete employee records, payroll records, audit/security logs, or active employee documents. Only temporary/performance/report artifact data should be eligible under Phase 16 policies.
+
+## Phase 17 Background Processing and Queues
+
+Cloudflare Queues are optional. D1 remains the source of truth for background jobs and the app falls back to the D1 runner if the Queue binding or feature flags are not configured. Review `docs/performance/cloudflare-queues-phase17.md` before enabling `BACKGROUND_JOB_QUEUE`.
+
+Use:
+
+```bash
+npm run verify:cloudflare-queues-phase17
+npm run verify:queue-readiness-phase17
+npm run smoke:background-processing-phase17
+npm run jobs:run-local-phase17
+```
+
+The Backup & Retention admin page shows Phase 17 queue/runner health. Queue messages contain safe job identifiers only; never send raw payloads, secrets, document numbers, payroll values, or private R2 object data.

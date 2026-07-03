@@ -1,4 +1,4 @@
-export type BackgroundJobStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "RETRYING";
+export type BackgroundJobStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "RETRYING" | "DEAD_LETTERED";
 
 export interface BackgroundJob {
   id: string;

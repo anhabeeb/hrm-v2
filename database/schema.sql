@@ -550,7 +550,7 @@ CREATE INDEX IF NOT EXISTS idx_app_events_expires_at ON app_events(expires_at);
 CREATE TABLE IF NOT EXISTS background_jobs (
   id TEXT PRIMARY KEY,
   job_type TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'QUEUED' CHECK (status IN ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'RETRYING')),
+  status TEXT NOT NULL DEFAULT 'QUEUED' CHECK (status IN ('QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'RETRYING', 'DEAD_LETTERED')),
   priority INTEGER NOT NULL DEFAULT 0,
   dedupe_key TEXT,
   entity_type TEXT,

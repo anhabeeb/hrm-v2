@@ -48,6 +48,8 @@ Detailed API, frontend, and job metrics default to 30 days. These records are op
 
 Background job events default to 90 days. Terminal background jobs default to 180 days. Active queued/running jobs are never cleaned by the retention job.
 
+Phase 17 may hand safe job identifiers to Cloudflare Queues, but D1 remains the source of truth. Retention cleanup jobs must still use the Phase 16 guarded cleanup utility, dry-run defaults, protected confirmation, and the D1 fallback runner if the Queue binding is unavailable.
+
 ## App Event Retention
 
 Realtime/cache invalidation app events default to 30 days or their explicit expiry. These records are not business records.
