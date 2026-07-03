@@ -77,6 +77,8 @@
     "smoke:production-deployment-phase12": "node scripts/smoke-production-deployment-phase12.mjs",
     "loadtest:production-readiness-phase12": "node scripts/load-test-production-readiness-phase12.mjs",
     "verify:production-readiness-phase12": "node scripts/verify-production-readiness-phase12.mjs",
+    "e2e:hrm-workflows-phase13": "node scripts/e2e-hrm-workflows-phase13.mjs",
+    "verify:e2e-workflows-phase13": "node scripts/verify-e2e-workflows-phase13.mjs",
     "verify:cors-request-id-hotfix": "node scripts/verify-cors-request-id-hotfix.mjs",
     "verify:branding-standardization": "node scripts/verify-branding-standardization.mjs",
     "verify:login-brand-layout": "node scripts/verify-login-brand-layout.mjs",
