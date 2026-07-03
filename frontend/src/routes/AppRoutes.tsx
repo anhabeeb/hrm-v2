@@ -80,6 +80,7 @@ const PayrollPaymentRegisterPage = lazyPage(() => import("../pages/PayrollPrompt
 const PayrollPayslipsPage = lazyPage(() => import("../pages/PayrollPrompt11Pages"), "PayrollPayslipsPage");
 const PayrollRunDetailPage = lazyPage(() => import("../pages/PayrollRunDetailPage"), "PayrollRunDetailPage");
 const PayrollRunsPage = lazyPage(() => import("../pages/PayrollRunsPage"), "PayrollRunsPage");
+const PerformanceDashboardPage = lazyPage(() => import("../pages/PerformanceDashboardPage"), "PerformanceDashboardPage");
 const PlaceholderModulePage = lazyPage(() => import("../pages/PlaceholderModulePage"), "PlaceholderModulePage");
 const ReportsPage = lazyPage(() => import("../pages/ReportsPage"), "ReportsPage");
 const RosterReportsPage = lazyPage(() => import("../pages/RosterReportsPage"), "RosterReportsPage");
@@ -112,6 +113,7 @@ registerRoutePreloader("documents-compliance", () => DocumentCompliancePage.prel
 registerRoutePreloader("assets", () => AssetsDashboardPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("settings", () => SettingsPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("admin-settings", () => AdminSettingsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("performance-dashboard", () => PerformanceDashboardPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("admin-help", () => AdminHelpGuidePage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("users-access", () => UsersAccessPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("self-service", () => SelfServicePage.preload?.() ?? Promise.resolve());
@@ -335,6 +337,7 @@ export function AppRoutes() {
             <Route path="self-service/kyc-requests" element={operationalAll(["self_service", "documents"], "KYC requests", <SelfServicePage mode="kyc" />)} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/admin" element={<AdminSettingsPage />} />
+            <Route path="settings/performance" element={<PerformanceDashboardPage />} />
             <Route path="admin/help" element={<AdminHelpGuidePage />} />
             <Route path="settings/admin/imports" element={<DataTransferPage mode="imports" />} />
             <Route path="settings/admin/import-templates" element={<DataTransferPage mode="templates" />} />

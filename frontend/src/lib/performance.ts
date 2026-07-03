@@ -25,6 +25,17 @@ const MAX_WORKSPACE_METRICS = 100;
 const apiTimings: ApiTimingEntry[] = [];
 const workspaceMetrics: WorkspaceQueryMetric[] = [];
 
+function enqueueMetricSafely(input: {
+  route_key: string;
+  metric_type: "ROUTE_LOAD" | "ROUTE_TRANSITION" | "API_CLIENT" | "CACHE_HIT" | "CACHE_MISS" | "INTERACTION" | "CHUNK_LOAD";
+  duration_ms?: number | null;
+  metadata_json?: Record<string, unknown> | null;
+}) {
+  void import("./performanceMetrics")
+    .then(({ enqueueFrontendMetric }) => enqueueFrontendMetric(input))
+    .catch(() => undefined);
+}
+
 function safePath(path: string) {
   try {
     const url = new URL(path, "https://local.hrm");
@@ -51,26 +62,57 @@ export function recordApiRequestTiming(entry: Omit<ApiTimingEntry, "createdAt">)
   if (isPerformanceDebugEnabled()) {
     console.debug("[performance:api]", safeEntry);
   }
+  if (!safeEntry.path.startsWith("/api/v1/performance")) {
+    enqueueMetricSafely({
+      route_key: safeEntry.path,
+      metric_type: "API_CLIENT",
+      duration_ms: safeEntry.durationMs,
+      metadata_json: {
+        method: safeEntry.method,
+        status: safeEntry.status ?? "cancelled",
+        cache: safeEntry.cache,
+        server_timing_present: Boolean(safeEntry.serverTiming)
+      }
+    });
+  }
 }
 
 export function recordRouteLoadDuration(routeId: string, durationMs: number, apiRequestCount?: number) {
-  if (!isPerformanceDebugEnabled()) return;
-  console.debug("[performance:route]", {
-    route_id: routeId,
-    duration_ms: Math.round(durationMs),
-    api_request_count: apiRequestCount ?? null,
-    created_at: new Date().toISOString()
+  enqueueMetricSafely({
+    route_key: routeId,
+    metric_type: "ROUTE_LOAD",
+    duration_ms: durationMs,
+    metadata_json: { api_request_count: apiRequestCount ?? null }
   });
+  if (isPerformanceDebugEnabled()) {
+    console.debug("[performance:route]", {
+      route_id: routeId,
+      duration_ms: Math.round(durationMs),
+      api_request_count: apiRequestCount ?? null,
+      created_at: new Date().toISOString()
+    });
+  }
 }
 
 export function recordCacheEvent(input: { key: readonly unknown[] | string; disposition: ApiCacheDisposition; source: string }) {
-  if (!isPerformanceDebugEnabled()) return;
-  console.debug("[performance:cache]", {
-    key: Array.isArray(input.key) ? input.key.join(":") : input.key,
-    disposition: input.disposition,
-    source: input.source,
-    created_at: new Date().toISOString()
+  const safeKey = safeQueryKey(input.key);
+  enqueueMetricSafely({
+    route_key: `cache:${input.source}`,
+    metric_type: input.disposition === "cache-hit" || input.disposition === "deduped" ? "CACHE_HIT" : "CACHE_MISS",
+    metadata_json: {
+      query_key: safeKey,
+      disposition: input.disposition,
+      source: input.source
+    }
   });
+  if (isPerformanceDebugEnabled()) {
+    console.debug("[performance:cache]", {
+      key: safeKey,
+      disposition: input.disposition,
+      source: input.source,
+      created_at: new Date().toISOString()
+    });
+  }
 }
 
 function safeQueryKey(key: readonly unknown[] | string) {
@@ -94,6 +136,15 @@ export function recordWorkspaceQueryMetric(input: {
   if (isPerformanceDebugEnabled()) {
     console.debug("[performance:workspace]", metric);
   }
+  enqueueMetricSafely({
+    route_key: `workspace:${metric.workspace}`,
+    metric_type: metric.event === "cache-hit" ? "CACHE_HIT" : "CACHE_MISS",
+    metadata_json: {
+      workspace: metric.workspace,
+      query_key: metric.queryKey,
+      event: metric.event
+    }
+  });
 }
 
 export function getApiPerformanceSnapshot() {

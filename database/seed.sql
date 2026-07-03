@@ -23,6 +23,8 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_background_jobs_view', 'background_jobs.view', 'system', 'View background job status and safe job events', 1),
   ('perm_background_jobs_manage', 'background_jobs.manage', 'system', 'Retry, cancel, and manage background jobs', 1),
   ('perm_background_jobs_run', 'background_jobs.run', 'system', 'Run queued background jobs from protected runner endpoints', 1),
+  ('perm_performance_metrics_view', 'performance.metrics.view', 'system', 'View sanitized performance observability metrics and speed dashboard', 1),
+  ('perm_performance_metrics_manage', 'performance.metrics.manage', 'system', 'Manage performance metrics retention and observability cleanup', 1),
   ('perm_admin_help_view', 'admin.help.view', 'admin', 'View Super Admin OmniCore - HR configuration guide', 1),
   ('perm_admin_help_manage', 'admin.help.manage', 'admin', 'Manage Super Admin OmniCore - HR guide content', 1),
   ('perm_organization_view', 'organization.view', 'organization', 'View organization master data', 0),

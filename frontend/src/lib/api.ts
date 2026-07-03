@@ -256,6 +256,27 @@ export const api = {
   getCommandCenterDashboard(token: string, signal?: AbortSignal) {
     return request<Record<string, unknown>>("/api/v1/dashboard/command-center-summary", { signal }, token);
   },
+  getPerformanceOverview(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<Record<string, unknown>>(`/api/v1/performance/overview${query(filters)}`, { signal }, token);
+  },
+  listPerformanceApiMetrics(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ metrics: Record<string, unknown>[]; pagination?: Record<string, unknown> }>(`/api/v1/performance/api-metrics${query(filters)}`, { signal }, token);
+  },
+  listPerformanceFrontendMetrics(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ metrics: Record<string, unknown>[]; pagination?: Record<string, unknown> }>(`/api/v1/performance/frontend-metrics${query(filters)}`, { signal }, token);
+  },
+  listPerformanceJobMetrics(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ metrics: Record<string, unknown>[]; pagination?: Record<string, unknown> }>(`/api/v1/performance/job-metrics${query(filters)}`, { signal }, token);
+  },
+  listPerformanceBuildMetrics(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ metrics: Record<string, unknown>[]; pagination?: Record<string, unknown> }>(`/api/v1/performance/build-metrics${query(filters)}`, { signal }, token);
+  },
+  listPerformanceWarnings(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ warnings: Record<string, unknown>[] }>(`/api/v1/performance/warnings${query(filters)}`, { signal }, token);
+  },
+  cleanupPerformanceMetrics(token: string, input: { detail_retention_days?: number; build_retention_days?: number }) {
+    return request<{ cleanup: Record<string, unknown> }>("/api/v1/performance/cleanup", { method: "POST", body: JSON.stringify(input) }, token);
+  },
   globalSearch(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
     return request<GlobalSearchResponse>(`/api/v1/search/global${query(filters)}`, { signal }, token);
   },

@@ -1,5 +1,6 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppBindings } from "../types";
+import { recordApiPerformanceMetric } from "./performance-metrics";
 
 export const API_WARNING_THRESHOLD_MS = 750;
 export const API_CRITICAL_THRESHOLD_MS = 2000;
@@ -8,6 +9,10 @@ export const PAYLOAD_WARNING_THRESHOLD_BYTES = 500 * 1024;
 
 function safeRoutePattern(c: Context<AppBindings>) {
   return (c.req as { routePath?: string }).routePath ?? c.req.path;
+}
+
+function executionCtx(c: Context<AppBindings>) {
+  return (c as unknown as { executionCtx?: ExecutionContext }).executionCtx;
 }
 
 function safeUserId(c: Context<AppBindings>) {
@@ -132,5 +137,18 @@ export function withRequestTiming(): MiddlewareHandler<AppBindings> {
       userId: safeUserId(c),
       requestId
     });
+    const metricWrite = recordApiPerformanceMetric(c, {
+      requestId,
+      routeKey: safeRoutePattern(c),
+      method: c.req.method,
+      statusCode: c.res.status,
+      durationMs,
+      d1QueryCount: timing.queryCount,
+      d1DurationMs: timing.d1DurationMs,
+      payloadBytes: payloadBytes(c),
+      cacheHint: c.res.headers.get("Cache-Control"),
+      userId: safeUserId(c)
+    });
+    executionCtx(c)?.waitUntil(metricWrite);
   };
 }

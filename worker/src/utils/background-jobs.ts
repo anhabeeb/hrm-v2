@@ -1,8 +1,32 @@
 import type { Env } from "../types";
 import { safeEmitAppEvent } from "./app-events";
 import { nowIso } from "./http";
+import { recordJobPerformanceMetric } from "./performance-metrics";
 
 type BindValue = string | number | null;
+
+function elapsedMs(from: string | null | undefined, to: string | null | undefined) {
+  if (!from || !to) return null;
+  const start = Date.parse(from);
+  const end = Date.parse(to);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return Math.max(0, Math.round(end - start));
+}
+
+async function recordBackgroundJobMetric(db: Env["DB"], jobId: string, status: BackgroundJobStatus) {
+  const job = await getJob(db, jobId);
+  if (!job) return;
+  await recordJobPerformanceMetric(db, {
+    jobId: job.id,
+    jobType: job.job_type,
+    status,
+    queueWaitMs: elapsedMs(job.scheduled_at, job.started_at),
+    runDurationMs: elapsedMs(job.started_at, job.completed_at),
+    attemptCount: job.attempt_count,
+    processedCount: job.progress_current,
+    failedCount: status === "FAILED" ? 1 : 0
+  });
+}
 
 export type BackgroundJobStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "RETRYING";
 
@@ -393,6 +417,7 @@ export async function markJobSucceeded(db: Env["DB"], jobId: string, message = "
   ).bind(now, truncate(message, 300), now, jobId).run();
   await appendJobEvent(db, jobId, "succeeded", message, metadata);
   await emitJobAppEvent(db, jobId, "background_job.completed");
+  await recordBackgroundJobMetric(db, jobId, "SUCCEEDED");
 }
 
 export async function markJobFailed(db: Env["DB"], jobId: string, code: string, message: string, metadata?: Record<string, unknown> | null) {
@@ -404,6 +429,7 @@ export async function markJobFailed(db: Env["DB"], jobId: string, code: string, 
   ).bind(now, truncate(code, 80), truncate(message, 500), truncate(message, 300), now, jobId).run();
   await appendJobEvent(db, jobId, "failed", message, metadata);
   await emitJobAppEvent(db, jobId, "background_job.failed");
+  await recordBackgroundJobMetric(db, jobId, "FAILED");
 }
 
 export async function retryJob(db: Env["DB"], jobId: string, requestedByUserId?: string | null) {
@@ -434,6 +460,7 @@ export async function cancelJob(db: Env["DB"], jobId: string, requestedByUserId?
   ).bind(now, now, jobId).run();
   await appendJobEvent(db, jobId, "cancelled", "Queued background job cancelled.", { requested_by_user_id: requestedByUserId ?? null });
   await emitJobAppEvent(db, jobId, "background_job.updated");
+  await recordBackgroundJobMetric(db, jobId, "CANCELLED");
   return getJob(db, jobId);
 }
 

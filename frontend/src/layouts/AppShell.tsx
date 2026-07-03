@@ -32,6 +32,7 @@ import { PageLoader } from "../components/loading";
 import { Button } from "../components/ui/button";
 import { APP_BRANDING } from "../config/branding";
 import { useAuth } from "../hooks/useAuth";
+import { useRoutePerformanceMetrics } from "../hooks/useRoutePerformanceMetrics";
 import { preloadLikelyRoute } from "../lib/routePreload";
 import { cn } from "../lib/utils";
 
@@ -104,6 +105,7 @@ const navGroups: NavGroup[] = [
       { label: "Settings", to: "/settings", icon: Settings, permission: "settings.view", preloadKey: "settings" },
       { label: "Organization", to: "/settings/organization", icon: Building2, permission: "organization.view" },
       { label: "Admin Controls", to: "/settings/admin", icon: ShieldCheck, permissionAny: ["admin.settings_hub.view", "admin.modules.view", "admin.system_health.view"], preloadKey: "admin-settings" },
+      { label: "Performance", to: "/settings/performance", icon: BarChart3, permissionAny: ["performance.metrics.view", "performance.metrics.manage", "admin.system_health.view", "admin.system_health.manage"], preloadKey: "performance-dashboard" },
       { label: "OmniCore Guide", to: "/admin/help", icon: BookOpenCheck, permissionAny: ["admin.help.view", "admin.help.manage"], preloadKey: "admin-help" },
       { label: "Users & Access", to: "/users-access", icon: ShieldCheck, permission: "users.view", preloadKey: "users-access" }
     ]
@@ -159,8 +161,9 @@ export function SelfServiceShell({ children }: { children: ReactNode }) {
 }
 
 export function AppShell() {
-  const { user, logout } = useAuth();
+  const { token, user, logout } = useAuth();
   const location = useLocation();
+  useRoutePerformanceMetrics(token, user);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(() => readSidebarOpenGroupState());

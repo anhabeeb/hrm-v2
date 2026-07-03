@@ -575,6 +575,66 @@ CREATE INDEX IF NOT EXISTS idx_background_jobs_entity ON background_jobs(entity_
 CREATE INDEX IF NOT EXISTS idx_background_jobs_dedupe_key ON background_jobs(dedupe_key);
 CREATE INDEX IF NOT EXISTS idx_background_job_events_job_created ON background_job_events(job_id, created_at);
 
+CREATE TABLE IF NOT EXISTS performance_api_metrics (
+  id TEXT PRIMARY KEY,
+  request_id TEXT,
+  route_key TEXT NOT NULL,
+  method TEXT NOT NULL,
+  status_code INTEGER,
+  duration_ms INTEGER NOT NULL DEFAULT 0 CHECK (duration_ms >= 0),
+  d1_query_count INTEGER NOT NULL DEFAULT 0 CHECK (d1_query_count >= 0),
+  d1_duration_ms INTEGER NOT NULL DEFAULT 0 CHECK (d1_duration_ms >= 0),
+  payload_bytes INTEGER NOT NULL DEFAULT 0 CHECK (payload_bytes >= 0),
+  cache_hint TEXT,
+  company_scope_id TEXT,
+  user_scope_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS performance_frontend_metrics (
+  id TEXT PRIMARY KEY,
+  session_metric_id TEXT,
+  route_key TEXT NOT NULL,
+  metric_type TEXT NOT NULL CHECK (metric_type IN ('ROUTE_LOAD', 'ROUTE_TRANSITION', 'API_CLIENT', 'CACHE_HIT', 'CACHE_MISS', 'INTERACTION', 'CHUNK_LOAD')),
+  duration_ms INTEGER CHECK (duration_ms IS NULL OR duration_ms >= 0),
+  metadata_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS performance_job_metrics (
+  id TEXT PRIMARY KEY,
+  job_id TEXT,
+  job_type TEXT NOT NULL,
+  status TEXT NOT NULL,
+  queue_wait_ms INTEGER CHECK (queue_wait_ms IS NULL OR queue_wait_ms >= 0),
+  run_duration_ms INTEGER CHECK (run_duration_ms IS NULL OR run_duration_ms >= 0),
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  processed_count INTEGER NOT NULL DEFAULT 0 CHECK (processed_count >= 0),
+  failed_count INTEGER NOT NULL DEFAULT 0 CHECK (failed_count >= 0),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (job_id) REFERENCES background_jobs(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS performance_build_metrics (
+  id TEXT PRIMARY KEY,
+  build_label TEXT NOT NULL,
+  main_entry_kb REAL NOT NULL DEFAULT 0 CHECK (main_entry_kb >= 0),
+  initial_js_kb REAL NOT NULL DEFAULT 0 CHECK (initial_js_kb >= 0),
+  initial_css_kb REAL NOT NULL DEFAULT 0 CHECK (initial_css_kb >= 0),
+  largest_chunk_kb REAL NOT NULL DEFAULT 0 CHECK (largest_chunk_kb >= 0),
+  chunk_count INTEGER NOT NULL DEFAULT 0 CHECK (chunk_count >= 0),
+  budget_status TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK (budget_status IN ('PASS', 'WARNING', 'FAIL', 'UNKNOWN')),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_api_route_created ON performance_api_metrics(route_key, created_at);
+CREATE INDEX IF NOT EXISTS idx_performance_api_route_duration ON performance_api_metrics(route_key, duration_ms, created_at);
+CREATE INDEX IF NOT EXISTS idx_performance_api_created ON performance_api_metrics(created_at);
+CREATE INDEX IF NOT EXISTS idx_performance_frontend_route_type_created ON performance_frontend_metrics(route_key, metric_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_performance_frontend_type_created ON performance_frontend_metrics(metric_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_performance_job_type_status_created ON performance_job_metrics(job_type, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_performance_build_label_created ON performance_build_metrics(build_label, created_at);
+
 CREATE TABLE IF NOT EXISTS attendance_summary_snapshots (
   id TEXT PRIMARY KEY,
   employee_id TEXT NOT NULL,

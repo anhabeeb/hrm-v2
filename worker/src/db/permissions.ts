@@ -25,6 +25,8 @@ export const PERMISSIONS = [
   { id: "perm_background_jobs_view", key: "background_jobs.view", module: "system", description: "View background job status and safe job events", critical: true },
   { id: "perm_background_jobs_manage", key: "background_jobs.manage", module: "system", description: "Retry, cancel, and manage background jobs", critical: true },
   { id: "perm_background_jobs_run", key: "background_jobs.run", module: "system", description: "Run queued background jobs from protected runner endpoints", critical: true },
+  { id: "perm_performance_metrics_view", key: "performance.metrics.view", module: "system", description: "View sanitized performance observability metrics and speed dashboard", critical: true },
+  { id: "perm_performance_metrics_manage", key: "performance.metrics.manage", module: "system", description: "Manage performance metrics retention and observability cleanup", critical: true },
   { id: "perm_organization_view", key: "organization.view", module: "organization", description: "View organization master data", critical: false },
   { id: "perm_organization_manage", key: "organization.manage", module: "organization", description: "Manage organization master data", critical: false },
   { id: "perm_employees_view", key: "employees.view", module: "employees", description: "View employee records", critical: false },
