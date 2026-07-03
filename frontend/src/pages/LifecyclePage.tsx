@@ -1671,8 +1671,8 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
         alerts.showSuccess(result.completed_count === 1 ? "1 document uploaded. Updating readiness..." : `${result.completed_count} documents uploaded. Updating readiness...`);
       }} /> : null}
       {activeTab === "Contract" ? <ContractWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceContract(token!, caseId, input), "Contract draft created.", ["contract", "readiness"])} /> : null}
-      {activeTab === "Payroll" ? <PayrollWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspacePayrollProfile(token!, caseId, input), "Payroll profile saved.", ["payroll", "readiness"])} /> : null}
-      {activeTab === "Payment & Pension" ? <PaymentPensionWorkspaceForm workspace={workspace} onPaymentSave={(input) => save(() => api.createOnboardingWorkspacePaymentMethod(token!, caseId, input), "Payment method saved.", ["payment-methods", "payroll", "readiness"])} onPensionSave={(input) => save(() => api.updateOnboardingWorkspacePensionProfile(token!, caseId, input), "Pension profile saved.", ["pension", "payroll", "readiness"])} /> : null}
+      {activeTab === "Payroll" ? <PayrollWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspacePayrollProfile(token!, caseId, input), "Payroll profile saved.", ["payroll", "payment-methods", "pension", "readiness"])} /> : null}
+      {activeTab === "Payment & Pension" ? <PaymentPensionWorkspaceForm workspace={workspace} onPaymentSave={(input) => save(() => api.createOnboardingWorkspacePaymentMethod(token!, caseId, input), "Payment method saved.", ["payment-methods", "payroll", "pension", "readiness"])} onPensionSave={(input) => save(() => api.updateOnboardingWorkspacePensionProfile(token!, caseId, input), "Pension profile saved.", ["pension", "payroll", "payment-methods", "readiness"])} /> : null}
       {activeTab === "Attendance & Roster" ? <AttendanceRosterWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceBiometricMapping(token!, caseId, input), "Attendance/biometric setup saved.", ["attendance", "readiness"])} /> : null}
       {activeTab === "Assets & Uniforms" ? <AssetsWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceAssetsUniforms(token!, caseId, input), "Asset/uniform setup saved.", ["assets", "readiness"])} /> : null}
       {activeTab === "User Access" ? <UserAccessWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.saveOnboardingWorkspaceUserAccount(token!, caseId, input), "User access setup saved.", ["user-access", "readiness"])} /> : null}
@@ -2346,8 +2346,12 @@ function PayrollWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (
 function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }: { workspace: Row; onPaymentSave: (input: Row) => void; onPensionSave: (input: Row) => void }) {
   const refs = asRow(workspace.refs);
   const sections = asRow(workspace.sections);
+  const payrollReadiness = asRow(asRow(workspace.readiness).payroll);
+  const payrollChildren = asRow(payrollReadiness.children);
+  const paymentReasons = asRows(payrollReadiness.blockers).map(objectMessage).filter(Boolean);
   const existingPayment = asRows(sections.payment_methods).find((method) => boolValue(method.is_primary)) ?? asRows(sections.payment_methods)[0] ?? {};
   const activeBanks = activeBankInstitutions(asRows(refs.payment_institutions));
+  const paymentInstitutionsDisabled = isDisabledModule(workspace, "payment_institutions") || getOptionalSectionState(workspace, "payment_institutions")?.status === "DISABLED";
   const [payment, setPayment] = useState({
     payment_method_type: text(existingPayment.payment_method_type) === "-" ? "CASH" : text(existingPayment.payment_method_type) || "CASH",
     payment_institution_id: text(existingPayment.payment_institution_id) === "-" ? "" : text(existingPayment.payment_institution_id),
@@ -2375,9 +2379,10 @@ function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }
   function savePaymentMethod() {
     const nextErrors: Record<string, string> = {};
     if (!payment.payment_method_type) nextErrors.payment_method_type = "Payment method is required.";
-    if (isBankTransfer && !payment.payment_institution_id) nextErrors.payment_institution_id = "Bank transfer requires an active bank.";
-    if (isBankTransfer && !payment.bank_account_name.trim()) nextErrors.bank_account_name = "Bank transfer requires account name.";
-    if (isBankTransfer && !payment.bank_account_number.trim()) nextErrors.bank_account_number = "Bank transfer requires account number.";
+    if (isBankTransfer && paymentInstitutionsDisabled) nextErrors.payment_institution_id = "Payment Institutions module is disabled. Bank Transfer cannot be completed until it is enabled or payment method is changed to Cash.";
+    else if (isBankTransfer && !payment.payment_institution_id) nextErrors.payment_institution_id = "Bank is required for Bank Transfer.";
+    if (isBankTransfer && !payment.bank_account_name.trim()) nextErrors.bank_account_name = "Account name is required for Bank Transfer.";
+    if (isBankTransfer && !payment.bank_account_number.trim()) nextErrors.bank_account_number = "Account number is required for Bank Transfer.";
     setPaymentErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     onPaymentSave(isBankTransfer ? payment : { ...payment, payment_institution_id: "", bank_account_name: "", bank_account_number: "" });
@@ -2386,14 +2391,16 @@ function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }
     <div className="grid gap-3 lg:grid-cols-2">
       <Panel className="p-4">
         <h3 className="text-sm font-semibold">Payment method</h3>
+        {paymentReasons.length ? <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{paymentReasons[0]}</div> : null}
+        {String(asRow(payrollChildren.payment_institution).status ?? "") === "NOT_REQUIRED" ? <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">{String(asRow(payrollChildren.payment_institution).message ?? "Payment institution is not required for Cash payment.")}</div> : null}
         {optionalSectionUnavailable(workspace, "payment_methods") ? <EmptyState title={optionalSectionTitle(getOptionalSectionState(workspace, "payment_methods"))} description={String(getOptionalSectionState(workspace, "payment_methods")?.message ?? "Payment methods are not available.")} /> : isDisabledModule(workspace, "payment_methods") ? <EmptyState title="Payment method not required" description="Payment methods are disabled." /> : (
           <>
             <OptionalSectionNotice workspace={workspace} sectionKey="payment_institutions" fallbackTitle="Payroll payment institutions" />
             <div className="mt-3 grid gap-3">
               <SelectField label="Method" value={payment.payment_method_type} onValueChange={changePaymentMethod}>{["CASH", "BANK_TRANSFER", "CHEQUE_PLACEHOLDER", "MOBILE_WALLET_PLACEHOLDER", "OTHER"].map((value) => <option key={value} value={value}>{paymentMethodLabel(value)}</option>)}</SelectField>
               {paymentErrors.payment_method_type ? <p className="text-xs text-red-600">{paymentErrors.payment_method_type}</p> : null}
-              {payment.payment_method_type === "CASH" ? <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Cash payment does not require bank details.</p> : null}
-              {isBankTransfer ? <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">Bank transfer requires bank, account name, and account number.</p> : null}
+              {payment.payment_method_type === "CASH" ? <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">Payment institution is not required for Cash payment. Cash payment does not require bank details.</p> : null}
+              {isBankTransfer ? <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">{paymentInstitutionsDisabled ? "Payment Institutions module is disabled. Bank Transfer cannot be completed until it is enabled or payment method is changed to Cash." : "Bank transfer requires bank, account name, and account number. Bank is required for Bank Transfer. Account name is required for Bank Transfer. Account number is required for Bank Transfer."}</p> : null}
               {isBankTransfer ? <Field label="Bank *"><SelectField value={payment.payment_institution_id} onValueChange={(payment_institution_id) => { setPayment({ ...payment, payment_institution_id }); setPaymentErrors({ ...paymentErrors, payment_institution_id: "" }); }}><option value="">Select active bank</option>{activeBanks.map((institution) => <option key={String(institution.id)} value={String(institution.id)}>{bankInstitutionLabel(institution)}</option>)}</SelectField>{paymentErrors.payment_institution_id ? <p className="text-xs text-red-600">{paymentErrors.payment_institution_id}</p> : null}</Field> : null}
               {isBankTransfer ? <Field label="Account name *"><Input value={payment.bank_account_name} onChange={(event) => { setPayment({ ...payment, bank_account_name: event.target.value }); setPaymentErrors({ ...paymentErrors, bank_account_name: "" }); }} />{paymentErrors.bank_account_name ? <p className="text-xs text-red-600">{paymentErrors.bank_account_name}</p> : null}</Field> : null}
               {isBankTransfer ? <Field label="Account number *"><Input value={payment.bank_account_number} onChange={(event) => { setPayment({ ...payment, bank_account_number: event.target.value }); setPaymentErrors({ ...paymentErrors, bank_account_number: "" }); }} />{paymentErrors.bank_account_number ? <p className="text-xs text-red-600">{paymentErrors.bank_account_number}</p> : null}</Field> : null}
@@ -2405,6 +2412,7 @@ function PaymentPensionWorkspaceForm({ workspace, onPaymentSave, onPensionSave }
       </Panel>
       <Panel className="p-4">
         <h3 className="text-sm font-semibold">Pension profile</h3>
+        {String(asRow(payrollChildren.pension).status ?? "") === "NOT_REQUIRED" ? <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">{String(asRow(payrollChildren.pension).message ?? "Pension setup is not required because Pension is disabled.")}</div> : null}
         {optionalSectionUnavailable(workspace, "pension_profile") ? <EmptyState title={optionalSectionTitle(getOptionalSectionState(workspace, "pension_profile"))} description={String(getOptionalSectionState(workspace, "pension_profile")?.message ?? "Pension profile is not available.")} /> : isDisabledModule(workspace, "pension") ? <EmptyState title="Pension not required" description="Pension module is disabled." /> : (
           <>
             <OptionalSectionNotice workspace={workspace} sectionKey="pension_schemes" fallbackTitle="Pension schemes" />

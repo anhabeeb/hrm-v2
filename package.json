@@ -129,7 +129,8 @@
     "audit:remote-schema": "node scripts/audit-remote-d1-schema.mjs",
     "generate:remote-schema-repair": "node scripts/generate-remote-d1-repair.mjs",
     "apply:remote-schema-repair": "node scripts/apply-remote-d1-repair.mjs",
-    "verify:remote-schema-ready": "node scripts/verify-remote-d1-schema-ready.mjs"
+    "verify:remote-schema-ready": "node scripts/verify-remote-d1-schema-ready.mjs",
+    "verify:onboarding-payroll-readiness-hotfix": "node scripts/verify-onboarding-payroll-readiness-hotfix.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

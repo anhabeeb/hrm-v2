@@ -11,7 +11,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, DbUser, UserStatus } from "../types";
 import { safeEmitAppEvent } from "../utils/app-events";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
-import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
+import { isOperationalModuleEnabled, requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { runOptionalSectionWithTimeout } from "../utils/optional-section-timeout";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { timeD1 } from "../utils/performance";
@@ -301,8 +301,7 @@ const onboardingTaskModuleKeys: Record<string, string | null> = {
 
 async function isModuleEnabled(db: D1Database, moduleKey: string | null | undefined) {
   if (!moduleKey) return true;
-  const row = await db.prepare("SELECT is_enabled FROM module_control_settings WHERE module_key = ?").bind(moduleKey).first<{ is_enabled: number }>();
-  return !row || row.is_enabled === 1;
+  return isOperationalModuleEnabled(db, moduleKey);
 }
 
 async function validateLifecycleRoleAssignments(c: Context<AppBindings>, targetUser: DbUser | null, roleIds: string[]) {
@@ -1337,26 +1336,43 @@ async function seedOnboardingChecklistForEmployee(c: Context<AppBindings>, caseI
     const taskKey = template[0];
     const moduleEnabled = await isModuleEnabled(c.env.DB, onboardingTaskModuleKeys[taskKey]);
     const required = moduleEnabled && isOnboardingTemplateRequired(template, settings);
+    const notRequiredReason = moduleEnabled
+      ? "Optional setup: not required for onboarding activation."
+      : "Disabled module: not required for onboarding.";
     await createOnboardingTaskIfMissing(c, caseId, employeeId, template, required);
     await c.env.DB
       .prepare(
         `UPDATE employee_onboarding_tasks
          SET is_required = ?, required = ?,
              task_status = CASE
+               WHEN ? = 0 AND task_status IN ('COMPLETED', 'WAIVED') THEN task_status
                WHEN ? = 0 THEN 'NOT_REQUIRED'
                WHEN task_status = 'NOT_REQUIRED' THEN 'NOT_STARTED'
                ELSE task_status
              END,
              status = CASE
+               WHEN ? = 0 AND status = 'COMPLETED' THEN status
                WHEN ? = 0 THEN 'SKIPPED'
                WHEN status = 'SKIPPED' AND task_status = 'NOT_REQUIRED' THEN 'PENDING'
                ELSE status
              END,
-             notes = CASE WHEN ? = 0 THEN 'Disabled module: not required for onboarding.' ELSE notes END,
+             notes = CASE WHEN ? = 0 THEN ? ELSE notes END,
              updated_at = ?
          WHERE onboarding_case_id = ? AND task_key = ?`
       )
-      .bind(required ? 1 : 0, required ? 1 : 0, moduleEnabled ? 1 : 0, moduleEnabled ? 1 : 0, moduleEnabled ? 1 : 0, nowIso(), caseId, taskKey)
+      .bind(
+        required ? 1 : 0,
+        required ? 1 : 0,
+        required ? 1 : 0,
+        required ? 1 : 0,
+        required ? 1 : 0,
+        required ? 1 : 0,
+        required ? 1 : 0,
+        notRequiredReason,
+        nowIso(),
+        caseId,
+        taskKey
+      )
       .run();
   }
 }
@@ -1394,6 +1410,7 @@ export async function getOnboardingBlockers(c: Context<AppBindings>, caseId: str
   const moduleBlockers = [
     ...(await getOnboardingDocumentBlockers(c, caseId)),
     ...(await getOnboardingContractBlockers(c, caseId)),
+    ...(await getOnboardingPayrollBlockers(c, caseId)),
     ...(await getOnboardingAssetUniformBlockers(c, caseId))
   ];
   return [...checklist.blockers.map((task) => ({ type: "TASK", task_key: task.task_key, message: `${String(task.task_name ?? task.title)} is not complete.` })), ...moduleBlockers];
@@ -1683,14 +1700,104 @@ export async function getOnboardingContractBlockers(c: Context<AppBindings>, cas
   return status.ready ? [] : status.blockers;
 }
 
+function onboardingReadinessChild(status: "COMPLETE" | "MISSING" | "NOT_REQUIRED" | "DISABLED", label: string, message: string) {
+  const ready = status === "COMPLETE" || status === "NOT_REQUIRED" || status === "DISABLED";
+  return {
+    key: label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""),
+    label,
+    status,
+    status_label: status === "COMPLETE" ? "Complete" : status === "NOT_REQUIRED" ? "Not Required" : status === "DISABLED" ? "Disabled" : "Missing",
+    ready,
+    required: status === "MISSING",
+    message
+  };
+}
+
 export async function getOnboardingPayrollReadiness(c: Context<AppBindings>, caseId: string) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
-  const count = gate ? await c.env.DB.prepare("SELECT COUNT(*) AS total FROM employee_payroll_profiles WHERE employee_id = ?").bind(String(gate.row.employee_id)).first<{ total: number }>() : { total: 0 };
-  return { ready: Number(count?.total ?? 0) > 0, payroll_profiles: Number(count?.total ?? 0) };
+  const settings = await ensureOnboardingSettings(c.env.DB);
+  const moduleStatuses = await getOnboardingWorkspaceModuleStatuses(c);
+  if (!gate || moduleStatuses.payroll === false) {
+    return {
+      ready: true,
+      required: false,
+      status: "NOT_REQUIRED",
+      status_label: "Payroll not required",
+      message: "Payroll setup is not required because Payroll is disabled.",
+      payroll_profiles: 0,
+      children: {
+        payroll_profile: onboardingReadinessChild("NOT_REQUIRED", "Payroll profile", "Payroll setup is not required because Payroll is disabled."),
+        payment_method: onboardingReadinessChild("NOT_REQUIRED", "Payment method", "Payment method setup is not required because Payroll is disabled."),
+        payment_institution: onboardingReadinessChild("NOT_REQUIRED", "Payment institution", "Payment institution is not required because Payroll is disabled."),
+        pension: onboardingReadinessChild("NOT_REQUIRED", "Pension", "Pension setup is not required because Payroll is disabled.")
+      },
+      blockers: [],
+      missing_reasons: []
+    };
+  }
+  const profileRequired = Number(settings?.require_payroll_profile_before_activation ?? 1) === 1;
+  const profileCount = await c.env.DB.prepare("SELECT COUNT(*) AS total FROM employee_payroll_profiles WHERE employee_id = ?").bind(String(gate.row.employee_id)).first<{ total: number }>();
+  const profileReady = Number(profileCount?.total ?? 0) > 0;
+  const payment = await getOnboardingPaymentMethodStatus(c, caseId);
+  const pension = await getOnboardingPensionStatus(c, caseId);
+  const payrollProfile = profileReady
+    ? onboardingReadinessChild("COMPLETE", "Payroll profile", "Payroll profile is complete.")
+    : profileRequired
+      ? onboardingReadinessChild("MISSING", "Payroll profile", "Payroll profile is required.")
+      : onboardingReadinessChild("NOT_REQUIRED", "Payroll profile", "Payroll profile is optional for onboarding activation.");
+  const requiredChildren = [
+    payrollProfile.required ? payrollProfile : null,
+    payment.required ? payment : null,
+    pension.required ? pension : null
+  ].filter(Boolean) as Array<ReturnType<typeof onboardingReadinessChild>>;
+  const blockers = requiredChildren.filter((child) => !child.ready).map((child) => ({ type: "PAYROLL", field: child.key, message: child.message }));
+  const missingReasons = blockers.map((blocker) => blocker.message);
+  const ready = blockers.length === 0;
+  return {
+    ready,
+    required: profileRequired || Number(settings?.require_payment_method_before_activation ?? 0) === 1 || Number(settings?.require_pension_profile_if_eligible_before_activation ?? 0) === 1,
+    status: ready ? "READY" : "MISSING",
+    status_label: ready ? "Payroll/payment setup complete" : "Payroll/payment setup incomplete",
+    message: ready ? "All required payroll, payment, and pension setup items are complete or not required." : missingReasons[0] ?? "Payroll/payment setup is incomplete.",
+    payroll_profiles: Number(profileCount?.total ?? 0),
+    active_payment_methods: payment.active_payment_methods ?? 0,
+    pension_profiles: pension.pension_profiles ?? 0,
+    children: {
+      payroll_profile: payrollProfile,
+      payment_method: payment.children?.payment_method ?? payment,
+      payment_institution: payment.children?.payment_institution ?? onboardingReadinessChild("NOT_REQUIRED", "Payment institution", "Payment institution is not required for Cash payment."),
+      pension
+    },
+    blockers,
+    missing_reasons: missingReasons
+  };
+}
+
+export async function getOnboardingPayrollBlockers(c: Context<AppBindings>, caseId: string) {
+  const readiness = await getOnboardingPayrollReadiness(c, caseId);
+  return Array.isArray(readiness.blockers) ? readiness.blockers : [];
 }
 
 export async function getOnboardingPaymentMethodStatus(c: Context<AppBindings>, caseId: string) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
+  const settings = await ensureOnboardingSettings(c.env.DB);
+  const moduleStatuses = await getOnboardingWorkspaceModuleStatuses(c);
+  const paymentRequired = Number(settings?.require_payment_method_before_activation ?? 0) === 1;
+  if (!gate || moduleStatuses.payroll === false || moduleStatuses.payment_methods === false) {
+    const message = moduleStatuses.payroll === false
+      ? "Payment method setup is not required because Payroll is disabled."
+      : "Payment method setup is not required because Payment Methods is disabled.";
+    return {
+      ...onboardingReadinessChild("NOT_REQUIRED", "Payment method", message),
+      required: false,
+      active_payment_methods: 0,
+      children: {
+        payment_method: onboardingReadinessChild("NOT_REQUIRED", "Payment method", message),
+        payment_institution: onboardingReadinessChild("NOT_REQUIRED", "Payment institution", message)
+      },
+      missing_reasons: []
+    };
+  }
   const rows = gate ? await c.env.DB.prepare(
     `SELECT epm.*, pi.id AS active_bank_id
        FROM employee_payment_methods epm
@@ -1699,19 +1806,84 @@ export async function getOnboardingPaymentMethodStatus(c: Context<AppBindings>, 
       ORDER BY epm.is_primary DESC, epm.created_at DESC`
   ).bind(String(gate.row.employee_id)).all<Record<string, unknown>>() : { results: [] };
   const active = rows.results;
-  const complete = active.some((method) => {
-    const methodType = String(method.payment_method_type ?? "");
-    if (methodType === "CASH") return true;
-    if (methodType === "BANK_TRANSFER") return Boolean(method.active_bank_id && optionalText(method.bank_account_name) && optionalText(method.bank_account_number_encrypted_or_plain_placeholder));
-    return true;
-  });
-  return { ready: complete, active_payment_methods: active.length };
+  const method = active.find((item) => Number(item.is_primary ?? 0) === 1) ?? active[0] ?? null;
+  if (!method) {
+    const child = paymentRequired
+      ? onboardingReadinessChild("MISSING", "Payment method", "Payment method is required.")
+      : onboardingReadinessChild("NOT_REQUIRED", "Payment method", "Payment method setup is optional for onboarding activation.");
+    return {
+      ...child,
+      active_payment_methods: 0,
+      children: {
+        payment_method: child,
+        payment_institution: onboardingReadinessChild("NOT_REQUIRED", "Payment institution", "Payment institution is not required until Bank Transfer is selected.")
+      },
+      missing_reasons: child.ready ? [] : [child.message]
+    };
+  }
+  const methodType = String(method.payment_method_type ?? "").toUpperCase();
+  if (methodType === "CASH") {
+    return {
+      ...onboardingReadinessChild("COMPLETE", "Payment method", "Cash payment method is complete."),
+      active_payment_methods: active.length,
+      payment_method_type: methodType,
+      children: {
+        payment_method: onboardingReadinessChild("COMPLETE", "Payment method", "Cash payment method is complete."),
+        payment_institution: onboardingReadinessChild("NOT_REQUIRED", "Payment institution", "Payment institution is not required for Cash payment.")
+      },
+      missing_reasons: []
+    };
+  }
+  if (methodType === "BANK_TRANSFER") {
+    const reasons = [
+      moduleStatuses.payment_institutions === false ? "Payment Institutions module is disabled. Bank Transfer cannot be completed until it is enabled or payment method is changed to Cash." : null,
+      moduleStatuses.payment_institutions !== false && !method.active_bank_id ? "Bank is required for Bank Transfer." : null,
+      !optionalText(method.bank_account_name) ? "Account name is required for Bank Transfer." : null,
+      !optionalText(method.bank_account_number_encrypted_or_plain_placeholder) ? "Account number is required for Bank Transfer." : null
+    ].filter(Boolean) as string[];
+    const complete = reasons.length === 0;
+    return {
+      ...onboardingReadinessChild(complete ? "COMPLETE" : "MISSING", "Payment method", complete ? "Bank Transfer payment method is complete." : reasons[0]),
+      active_payment_methods: active.length,
+      payment_method_type: methodType,
+      children: {
+        payment_method: onboardingReadinessChild(complete ? "COMPLETE" : "MISSING", "Payment method", complete ? "Bank Transfer payment method is complete." : "Bank Transfer payment method is incomplete."),
+        payment_institution: onboardingReadinessChild(complete ? "COMPLETE" : "MISSING", "Payment institution", complete ? "Active bank/payment institution is selected." : reasons[0])
+      },
+      missing_reasons: reasons
+    };
+  }
+  return {
+    ...onboardingReadinessChild("COMPLETE", "Payment method", `${methodType.replace(/_/g, " ")} payment method is complete.`),
+    active_payment_methods: active.length,
+    payment_method_type: methodType,
+    children: {
+      payment_method: onboardingReadinessChild("COMPLETE", "Payment method", `${methodType.replace(/_/g, " ")} payment method is complete.`),
+      payment_institution: onboardingReadinessChild("NOT_REQUIRED", "Payment institution", "Payment institution is not required for this payment method.")
+    },
+    missing_reasons: []
+  };
 }
 
 export async function getOnboardingPensionStatus(c: Context<AppBindings>, caseId: string) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
+  const settings = await ensureOnboardingSettings(c.env.DB);
+  const moduleStatuses = await getOnboardingWorkspaceModuleStatuses(c);
+  const required = Number(settings?.require_pension_profile_if_eligible_before_activation ?? 0) === 1 && moduleStatuses.payroll !== false && moduleStatuses.pension !== false;
+  if (!gate || moduleStatuses.payroll === false || moduleStatuses.pension === false) {
+    return {
+      ...onboardingReadinessChild("NOT_REQUIRED", "Pension", moduleStatuses.payroll === false ? "Pension setup is not required because Payroll is disabled." : "Pension setup is not required because Pension is disabled."),
+      required: false,
+      pension_profiles: 0
+    };
+  }
   const count = gate ? await c.env.DB.prepare("SELECT COUNT(*) AS total FROM employee_pension_profiles WHERE employee_id = ?").bind(String(gate.row.employee_id)).first<{ total: number }>() : { total: 0 };
-  return { ready: Number(count?.total ?? 0) > 0, pension_profiles: Number(count?.total ?? 0) };
+  const hasProfile = Number(count?.total ?? 0) > 0;
+  return {
+    ...onboardingReadinessChild(hasProfile ? "COMPLETE" : required ? "MISSING" : "NOT_REQUIRED", "Pension", hasProfile ? "Pension profile is complete." : required ? "Pension profile is required." : "Pension setup is optional for onboarding activation."),
+    required,
+    pension_profiles: Number(count?.total ?? 0)
+  };
 }
 
 export async function getOnboardingRosterReadiness(c: Context<AppBindings>, caseId: string) {
@@ -3033,6 +3205,10 @@ onboardingRoutes.post("/cases/:caseId/payment-methods", requireAnyPermission(["o
   const methodType = normalizeDetailedPaymentMethodType(body.payment_method_type);
   if (!["BANK_TRANSFER", "CASH", "CHEQUE_PLACEHOLDER", "MOBILE_WALLET_PLACEHOLDER", "OTHER"].includes(methodType)) return fail(c, 400, "PAYMENT_METHOD_INVALID", "A valid payment method type is required.");
   const bankTransfer = methodType === "BANK_TRANSFER";
+  const moduleStatuses = bankTransfer ? await getOnboardingWorkspaceModuleStatuses(c) : null;
+  if (bankTransfer && moduleStatuses?.payment_institutions === false) {
+    return fail(c, 400, "PAYMENT_INSTITUTIONS_DISABLED_FOR_BANK_TRANSFER", "Bank Transfer requires Payment Institutions to be enabled.");
+  }
   const institutionId = bankTransfer ? optionalText(body.payment_institution_id) : null;
   const institution = bankTransfer ? await getActiveBankPaymentInstitution(c.env.DB, institutionId) : null;
   if (bankTransfer && !institution) return fail(c, 400, "PAYMENT_INSTITUTION_INVALID", "Bank transfer requires an active bank institution.");

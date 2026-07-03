@@ -110,7 +110,11 @@ includes(lifecyclePage, "workspaceMutation", "onboarding section saves use works
 includes(lifecyclePage, "applyWorkspacePayload(scope, caseId, result)", "onboarding mutations reconcile returned workspace payload");
 includes(lifecyclePage, "invalidateOnboardingWorkspaceSlices({ scope, caseId, slices", "onboarding mutations invalidate targeted workspace slices");
 includes(lifecyclePage, '["documents", "document-checklist", "readiness"]', "batch document upload refreshes documents/checklist/readiness only");
-includes(lifecyclePage, '["payment-methods", "payroll", "readiness"]', "payment save refreshes payment/payroll readiness slices");
+check(
+  "frontend/src/pages/LifecyclePage.tsx: payment save refreshes payment/payroll readiness slices",
+  lifecyclePageText.includes('["payment-methods", "payroll", "readiness"]') ||
+    lifecyclePageText.includes('["payment-methods", "payroll", "pension", "readiness"]'),
+);
 includes(lifecyclePage, '["job-assignment", "documents", "document-checklist", "readiness"]', "job assignment save refreshes dependent document checklist/readiness");
 includes(lifecyclePage, "Add multiple document rows and upload them together. Each row accepts one file.", "accepted batch document upload layout remains");
 includes(lifecyclePage, "documentTypeAllowedMimeTypes", "local document upload validation remains");
