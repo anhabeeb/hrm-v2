@@ -9,7 +9,7 @@ import { StatusBadge } from "../ui/status-badge";
 import { useAuth } from "../../hooks/useAuth";
 import { useWorkspaceMutation } from "../../hooks/useWorkspaceMutation";
 import { useWorkspaceQuery } from "../../hooks/useWorkspaceQuery";
-import { api, type HrmNotification } from "../../lib/api";
+import { notificationsApi, type HrmNotification } from "../../lib/notificationsApi";
 import { queryClient } from "../../lib/queryClient";
 import { queryKeys } from "../../lib/queryKeys";
 import { invalidateNotificationQueries, workspaceScope } from "../../lib/workspaceInvalidation";
@@ -47,13 +47,13 @@ export function NotificationBell() {
     queryKey: (scope) => queryKeys.notifications.unreadCount(scope),
     enabled: Boolean(token),
     staleTime: NOTIFICATION_UNREAD_POLL_INTERVAL_MS,
-    queryFn: ({ token, signal }) => api.getUnreadNotificationCount(token, signal)
+    queryFn: ({ token, signal }) => notificationsApi.getUnreadNotificationCount(token, signal)
   });
   const listQuery = useWorkspaceQuery<{ notifications: HrmNotification[]; unread_count: number }>({
     queryKey: (scope) => queryKeys.notifications.list(scope, 8),
     enabled: Boolean(token && open && !failureBackoffActive()),
     staleTime: 30000,
-    queryFn: ({ token, signal }) => api.listNotifications(token, { limit: 8 }, signal)
+    queryFn: ({ token, signal }) => notificationsApi.listNotifications(token, { limit: 8 }, signal)
   });
   const notifications = listQuery.data?.notifications ?? [];
   const unreadCount = listQuery.data?.unread_count ?? unreadQuery.data?.unread_count ?? 0;
@@ -106,7 +106,7 @@ export function NotificationBell() {
   }, [listQuery.error]);
 
   const markReadMutation = useWorkspaceMutation<{ read: boolean }, { notification: HrmNotification }>({
-    mutationFn: ({ notification }) => api.markNotificationRead(token!, notification.id),
+    mutationFn: ({ notification }) => notificationsApi.markNotificationRead(token!, notification.id),
     applyResult: (_result, { notification }) => {
       queryClient.setQueryData<{ unread_count: number }>(queryKeys.notifications.unreadCount(scope), (current) => ({ unread_count: Math.max(0, (current?.unread_count ?? unreadCount) - 1) }));
       queryClient.setQueryData<{ notifications: HrmNotification[]; unread_count: number }>(queryKeys.notifications.list(scope, 8), (current) => ({
@@ -117,7 +117,7 @@ export function NotificationBell() {
   });
 
   const markAllReadMutation = useWorkspaceMutation<{ read: boolean; count: number }, void>({
-    mutationFn: () => api.markAllNotificationsRead(token!),
+    mutationFn: () => notificationsApi.markAllNotificationsRead(token!),
     applyResult: () => {
       queryClient.setQueryData<{ unread_count: number }>(queryKeys.notifications.unreadCount(scope), { unread_count: 0 });
       queryClient.setQueryData<{ notifications: HrmNotification[]; unread_count: number }>(queryKeys.notifications.list(scope, 8), (current) => ({

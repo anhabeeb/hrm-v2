@@ -8,7 +8,7 @@ import { CommandPalette, LoadingSkeleton } from "../ui/page-shell";
 import { StatusBadge } from "../ui/status-badge";
 import { APP_BRANDING } from "../../config/branding";
 import { useAuth } from "../../hooks/useAuth";
-import { api, type GlobalSearchGroup, type GlobalSearchItem, type GlobalSearchWarning } from "../../lib/api";
+import { globalSearchApi, type GlobalSearchGroup, type GlobalSearchItem, type GlobalSearchWarning } from "../../lib/globalSearchApi";
 import { cn } from "../../lib/utils";
 
 const SEARCH_UNAVAILABLE_MESSAGE = "Search is temporarily unavailable. Please try again.";
@@ -85,7 +85,7 @@ export function GlobalSearch() {
       setError(null);
       setWarnings([]);
       try {
-        const result = await api.globalSearch(token, { q: query, limit: 8 }, controller.signal);
+        const result = await globalSearchApi.globalSearch(token, { q: query, limit: 8 }, controller.signal);
         if (!cancelled) {
           setGroups(result.groups ?? []);
           setWarnings(result.warnings ?? []);

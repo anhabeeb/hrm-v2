@@ -75,6 +75,7 @@ for (const file of [
   "frontend/src/lib/form-validation.ts",
   "frontend/src/lib/validation.ts",
   "frontend/src/lib/api.ts",
+  "frontend/src/lib/apiClient.ts",
   "frontend/src/types/auth.ts",
   "frontend/src/components/forms/FieldError.tsx",
   "frontend/src/components/forms/FormErrorSummary.tsx",
@@ -102,7 +103,7 @@ hasAll("frontend/src/lib/validation.ts", [
   "useFormValidation"
 ], "shared frontend validation helpers must be present");
 
-hasAll("frontend/src/lib/api.ts", [
+hasAll("frontend/src/lib/apiClient.ts", [
   "class ApiError",
   "validationErrors",
   "fieldErrors",

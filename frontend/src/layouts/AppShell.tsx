@@ -32,6 +32,7 @@ import { PageLoader } from "../components/loading";
 import { Button } from "../components/ui/button";
 import { APP_BRANDING } from "../config/branding";
 import { useAuth } from "../hooks/useAuth";
+import { preloadLikelyRoute } from "../lib/routePreload";
 import { cn } from "../lib/utils";
 
 type NavItem = {
@@ -41,6 +42,7 @@ type NavItem = {
   permission?: string;
   permissionAny?: string[];
   moduleKey?: string | string[];
+  preloadKey?: string;
 };
 
 type NavGroup = {
@@ -52,58 +54,58 @@ const SIDEBAR_GROUP_STATE_KEY = "hrm-v2-sidebar-open-group";
 const SIDEBAR_OPEN_GROUP_STATE_KEY = SIDEBAR_GROUP_STATE_KEY;
 
 const topLevelNavItems: NavItem[] = [
-  { label: "Command Center", to: "/", icon: LayoutDashboard, permission: "dashboard.view" }
+  { label: "Command Center", to: "/", icon: LayoutDashboard, permission: "dashboard.view", preloadKey: "dashboard" }
 ];
 
 const navGroups: NavGroup[] = [
   {
     label: "Employees",
     items: [
-      { label: "Employees", to: "/employees", icon: Users, permission: "employees.view" },
+      { label: "Employees", to: "/employees", icon: Users, permission: "employees.view", preloadKey: "employees" },
       { label: "KYC Requests", to: "/employees/kyc-requests", icon: UserRound, permissionAny: ["employees.update", "employees.sensitive.update"] },
-      { label: "Contracts", to: "/contracts", icon: FileSignature, permissionAny: ["contracts.view", "employees.contracts.view"], moduleKey: "contracts" }
+      { label: "Contracts", to: "/contracts", icon: FileSignature, permissionAny: ["contracts.view", "employees.contracts.view"], moduleKey: "contracts", preloadKey: "contracts" }
     ]
   },
   {
     label: "Lifecycle",
     items: [
-      { label: "Onboarding", to: "/onboarding", icon: CheckCircle2, permissionAny: ["onboarding.dashboard.view", "onboarding.cases.view", "employees.lifecycle.view"], moduleKey: "onboarding" },
-      { label: "Offboarding", to: "/offboarding", icon: Archive, permissionAny: ["offboarding.dashboard.view", "offboarding.cases.view", "employees.lifecycle.view"], moduleKey: "offboarding" },
-      { label: "Approvals", to: "/approvals", icon: GitBranch, permissionAny: ["approvals.view", "approvals.inbox.view", "approvals.instances.view"], moduleKey: "approvals" }
+      { label: "Onboarding", to: "/onboarding", icon: CheckCircle2, permissionAny: ["onboarding.dashboard.view", "onboarding.cases.view", "employees.lifecycle.view"], moduleKey: "onboarding", preloadKey: "onboarding-case" },
+      { label: "Offboarding", to: "/offboarding", icon: Archive, permissionAny: ["offboarding.dashboard.view", "offboarding.cases.view", "employees.lifecycle.view"], moduleKey: "offboarding", preloadKey: "onboarding-case" },
+      { label: "Approvals", to: "/approvals", icon: GitBranch, permissionAny: ["approvals.view", "approvals.inbox.view", "approvals.instances.view"], moduleKey: "approvals", preloadKey: "approvals" }
     ]
   },
   {
     label: "Time & Attendance",
     items: [
-      { label: "Attendance", to: "/attendance", icon: CalendarCheck, permission: "attendance.view", moduleKey: "attendance" },
-      { label: "Roster", to: "/roster", icon: CalendarDays, permission: "roster.view", moduleKey: "roster" },
-      { label: "Leave", to: "/leave", icon: ClipboardList, permission: "leave.view", moduleKey: "leave" }
+      { label: "Attendance", to: "/attendance", icon: CalendarCheck, permission: "attendance.view", moduleKey: "attendance", preloadKey: "attendance" },
+      { label: "Roster", to: "/roster", icon: CalendarDays, permission: "roster.view", moduleKey: "roster", preloadKey: "roster" },
+      { label: "Leave", to: "/leave", icon: ClipboardList, permission: "leave.view", moduleKey: "leave", preloadKey: "leave" }
     ]
   },
   {
     label: "Payroll",
-    items: [{ label: "Payroll", to: "/payroll", icon: BriefcaseBusiness, permission: "payroll.view", moduleKey: "payroll" }]
+    items: [{ label: "Payroll", to: "/payroll", icon: BriefcaseBusiness, permission: "payroll.view", moduleKey: "payroll", preloadKey: "payroll" }]
   },
   {
     label: "Documents",
-    items: [{ label: "Documents", to: "/documents", icon: FileText, permission: "documents.view", moduleKey: "documents" }]
+    items: [{ label: "Documents", to: "/documents", icon: FileText, permission: "documents.view", moduleKey: "documents", preloadKey: "documents" }]
   },
   {
     label: "Assets",
-    items: [{ label: "Assets & Uniforms", to: "/assets", icon: Shirt, permission: "assets.view", moduleKey: "assets_uniforms" }]
+    items: [{ label: "Assets & Uniforms", to: "/assets", icon: Shirt, permission: "assets.view", moduleKey: "assets_uniforms", preloadKey: "assets" }]
   },
   {
     label: "Reports",
-    items: [{ label: "Reports", to: "/reports", icon: BarChart3, permission: "reports.view", moduleKey: ["reports", "reports_exports"] }]
+    items: [{ label: "Reports", to: "/reports", icon: BarChart3, permission: "reports.view", moduleKey: ["reports", "reports_exports"], preloadKey: "reports" }]
   },
   {
     label: "Settings",
     items: [
-      { label: "Settings", to: "/settings", icon: Settings, permission: "settings.view" },
+      { label: "Settings", to: "/settings", icon: Settings, permission: "settings.view", preloadKey: "settings" },
       { label: "Organization", to: "/settings/organization", icon: Building2, permission: "organization.view" },
-      { label: "Admin Controls", to: "/settings/admin", icon: ShieldCheck, permissionAny: ["admin.settings_hub.view", "admin.modules.view", "admin.system_health.view"] },
-      { label: "OmniCore Guide", to: "/admin/help", icon: BookOpenCheck, permissionAny: ["admin.help.view", "admin.help.manage"] },
-      { label: "Users & Access", to: "/users-access", icon: ShieldCheck, permission: "users.view" }
+      { label: "Admin Controls", to: "/settings/admin", icon: ShieldCheck, permissionAny: ["admin.settings_hub.view", "admin.modules.view", "admin.system_health.view"], preloadKey: "admin-settings" },
+      { label: "OmniCore Guide", to: "/admin/help", icon: BookOpenCheck, permissionAny: ["admin.help.view", "admin.help.manage"], preloadKey: "admin-help" },
+      { label: "Users & Access", to: "/users-access", icon: ShieldCheck, permission: "users.view", preloadKey: "users-access" }
     ]
   }
 ];
@@ -175,7 +177,7 @@ export function AppShell() {
   const selfServiceVisible = Boolean(user?.employee_id);
   const sidebarGroups = useMemo<NavGroup[]>(() => {
     if (!selfServiceVisible) return visibleGroups;
-    const selfServiceItems = [{ label: "Self-Service", to: "/self-service", icon: UserRound, moduleKey: "self_service" }]
+    const selfServiceItems = [{ label: "Self-Service", to: "/self-service", icon: UserRound, moduleKey: "self_service", preloadKey: "self-service" }]
       .filter((item) => canShow(item, permissions, moduleVisibility));
     if (!selfServiceItems.length) return visibleGroups;
     return [
@@ -189,6 +191,9 @@ export function AppShell() {
   const activeGroupLabel = useMemo(() => resolveActiveSidebarGroup(location.pathname, sidebarGroups), [location.pathname, sidebarGroups]);
   const activeGroupLabels = useMemo(() => new Set(activeGroupLabel ? [activeGroupLabel] : []), [activeGroupLabel]);
   const title = routeTitle(location.pathname);
+  const prefetchNavItem = (item: NavItem) => {
+    if (item.preloadKey) preloadLikelyRoute(item.preloadKey, moduleVisibility, item.moduleKey);
+  };
 
   useEffect(() => {
     try {
@@ -202,6 +207,23 @@ export function AppShell() {
   useEffect(() => {
     setOpenGroup(activeGroupLabel);
   }, [activeGroupLabel]);
+
+  useEffect(() => {
+    const likelyItems = [
+      ...visibleTopLevelItems,
+      ...sidebarGroups.flatMap((group) => group.items)
+    ].filter((item) => item.preloadKey && !routeMatchesItem(location.pathname, item));
+    const uniqueLikelyItems = Array.from(new Map(likelyItems.map((item) => [item.preloadKey, item])).values()).slice(0, 3);
+    if (!uniqueLikelyItems.length) return;
+    const run = () => uniqueLikelyItems.forEach(prefetchNavItem);
+    const browserWindow = typeof window === "undefined" ? null : window;
+    if (browserWindow && "requestIdleCallback" in browserWindow) {
+      const handle = browserWindow.requestIdleCallback(run, { timeout: 2500 });
+      return () => browserWindow.cancelIdleCallback?.(handle);
+    }
+    const handle = globalThis.setTimeout(run, 1800);
+    return () => globalThis.clearTimeout(handle);
+  }, [location.pathname, moduleVisibility, sidebarGroups, visibleTopLevelItems]);
 
   const toggleGroup = (label: string) => {
     setOpenGroup((current) => (current === label && activeGroupLabel !== label ? null : label));
@@ -242,6 +264,8 @@ export function AppShell() {
                           to={item.to}
                           end={item.to === "/"}
                           onClick={() => setMobileOpen(false)}
+                          onFocus={() => prefetchNavItem(item)}
+                          onMouseEnter={() => prefetchNavItem(item)}
                           title={collapsed ? item.label : undefined}
                           className={({ isActive }) =>
                             cn(
@@ -293,6 +317,8 @@ export function AppShell() {
                                   to={item.to}
                                   end={item.to === "/"}
                                   onClick={() => setMobileOpen(false)}
+                                  onFocus={() => prefetchNavItem(item)}
+                                  onMouseEnter={() => prefetchNavItem(item)}
                                   title={collapsed ? `${group.label}: ${item.label}` : undefined}
                                   className={({ isActive }) =>
                                     cn(

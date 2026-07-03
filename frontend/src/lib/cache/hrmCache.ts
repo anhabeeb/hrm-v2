@@ -1,4 +1,3 @@
-import { api } from "../api";
 import { APP_BRANDING } from "../../config/branding";
 import { APP_CACHE_VERSION, CACHE_SCHEMA_VERSION, moduleCacheKey, userScopedCacheKey, type HrmCacheModule } from "./cacheKeys";
 import {
@@ -59,6 +58,7 @@ function expiresAt(sensitive: boolean) {
 }
 
 export async function getBootstrapPayload(token: string) {
+  const { api } = await import("../api");
   const payload = await api.getSyncBootstrap(token);
   await setCacheMetadata("last_bootstrap_time", new Date().toISOString());
   await setCacheMetadata("sync_cursor", payload.current_version);
@@ -66,6 +66,7 @@ export async function getBootstrapPayload(token: string) {
 }
 
 export async function getModuleScopedData(token: string, moduleKey: HrmCacheModule) {
+  const { api } = await import("../api");
   return api.getSyncModule(token, moduleKey);
 }
 
@@ -111,6 +112,7 @@ export async function refreshEntityCache(token: string, input: {
   permissionHash?: string;
   sensitive?: boolean;
 }) {
+  const { api } = await import("../api");
   const data = await api.getSyncEntity(token, input.entityType, input.entityId);
   const cacheKey = userScopedCacheKey({ userId: input.userId, moduleKey: input.moduleKey, entityType: input.entityType, entityId: input.entityId });
   await setCacheEntry({

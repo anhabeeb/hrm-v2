@@ -1,4 +1,4 @@
-import type { ApiError } from "./api";
+import type { ApiError } from "./apiClient";
 import type { ValidationIssue } from "./validation";
 import type { PopupAlertInput, PopupAlertType } from "../components/alerts/useAlert";
 

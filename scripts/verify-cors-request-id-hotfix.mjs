@@ -47,7 +47,7 @@ function readTree(relativeDir) {
 const packageJson = JSON.parse(read("package.json"));
 const index = read("worker/src/index.ts");
 const performance = read("worker/src/utils/performance.ts");
-const apiClient = read("frontend/src/lib/api.ts");
+const apiClient = read("frontend/src/lib/apiClient.ts");
 const frontendSource = readTree("frontend/src");
 
 check("package.json: verify:cors-request-id-hotfix script is registered", packageJson.scripts?.["verify:cors-request-id-hotfix"] === "node scripts/verify-cors-request-id-hotfix.mjs");
@@ -95,8 +95,8 @@ const authRouteIndex = index.indexOf("app.route(\"/api/v1/auth\"");
 check("worker/src/index.ts: OPTIONS preflight is handled before route timing middleware", optionsIndex >= 0 && timingIndex >= 0 && optionsIndex < timingIndex);
 check("worker/src/index.ts: OPTIONS preflight is handled before auth routes", optionsIndex >= 0 && authRouteIndex >= 0 && optionsIndex < authRouteIndex);
 
-includes("frontend/src/lib/api.ts", "X-Request-ID", "global API client request id header is preserved");
-includes("frontend/src/lib/api.ts", "createApiRequestId", "global API client still creates request ids");
+includes("frontend/src/lib/apiClient.ts", "X-Request-ID", "global API client request id header is preserved");
+includes("frontend/src/lib/apiClient.ts", "createApiRequestId", "global API client still creates request ids");
 includes("worker/src/utils/performance.ts", "X-Request-Id", "performance middleware still emits request id");
 includes("worker/src/utils/performance.ts", "Server-Timing", "performance timing headers are preserved");
 includes("worker/src/utils/performance.ts", "private, no-store", "authenticated HR API responses remain private/no-store");

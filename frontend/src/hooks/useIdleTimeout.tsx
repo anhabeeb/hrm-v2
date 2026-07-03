@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ConfirmDialog } from "../components/ui/dialogs";
-import { ApiError, api } from "../lib/api";
+import { ApiError } from "../lib/apiClient";
 import { clearSensitiveIndexedDbCaches } from "../lib/cache/hrmCache";
+import { sessionApi } from "../lib/sessionApi";
 import { useAuth } from "./useAuth";
 
 interface IdleTimeoutSettings {
@@ -118,7 +119,7 @@ export function IdleTimeoutProvider({ children }: { children: ReactNode }) {
     try {
       await clearSensitiveIndexedDbCaches();
       if (currentToken && settings.audit_timeout_logout) {
-        await api.recordSessionTimeout(currentToken);
+        await sessionApi.recordSessionTimeout(currentToken);
       }
     } catch (err) {
       if (err instanceof ApiError && err.status !== 401) {
@@ -139,7 +140,7 @@ export function IdleTimeoutProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        const result = await api.getAuthSessionSettings(token);
+        const result = await sessionApi.getAuthSessionSettings(token);
         if (mounted) setSettings(normalizeSettings(result.settings));
       } catch {
         if (mounted) setSettings(DEFAULT_IDLE_TIMEOUT_SETTINGS);

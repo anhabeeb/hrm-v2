@@ -122,7 +122,7 @@ hasAll("frontend/src/lib/api.ts", [
 ], "frontend API helpers missing");
 
 hasAll("frontend/src/components/global/GlobalSearch.tsx", [
-  "api.globalSearch",
+  "globalSearchApi.globalSearch",
   "SEARCH_UNAVAILABLE_MESSAGE",
   "SEARCH_RETRY_DELAY_MS",
   "lastFailedQueryRef",
@@ -139,11 +139,11 @@ hasAll("frontend/src/components/global/GlobalSearch.tsx", [
 ], "global search component is not meaningfully interactive");
 
 hasAll("frontend/src/components/global/NotificationBell.tsx", [
-  "api.listNotifications",
+  "notificationsApi.listNotifications",
   "NOTIFICATIONS_UNAVAILABLE_MESSAGE",
   "Notifications unavailable. Try again shortly.",
-  "api.markNotificationRead",
-  "api.markAllNotificationsRead",
+  "notificationsApi.markNotificationRead",
+  "notificationsApi.markAllNotificationsRead",
   "unreadCount",
   "View all notifications",
   "navigate(\"/notifications\")",

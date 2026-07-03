@@ -1,4 +1,4 @@
-import { API_BASE_URL, ApiError } from "./api";
+import { API_BASE_URL, ApiError } from "./apiClient";
 import { createApiRequestId, recordApiRequestTiming } from "./performance";
 
 type ApiEnvelope<T> = {

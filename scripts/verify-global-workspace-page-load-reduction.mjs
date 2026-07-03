@@ -63,9 +63,12 @@ const lifecyclePage = "frontend/src/pages/LifecyclePage.tsx";
 const employeeProfile = "frontend/src/pages/EmployeeProfilePage.tsx";
 const dashboard = "frontend/src/pages/DashboardPage.tsx";
 const globalSearch = "frontend/src/components/global/GlobalSearch.tsx";
+const globalSearchApi = "frontend/src/lib/globalSearchApi.ts";
 const searchResults = "frontend/src/pages/SearchResultsPage.tsx";
 const notificationBell = "frontend/src/components/global/NotificationBell.tsx";
+const notificationsApi = "frontend/src/lib/notificationsApi.ts";
 const api = "frontend/src/lib/api.ts";
+const apiClient = "frontend/src/lib/apiClient.ts";
 const lifecycleRoute = "worker/src/routes/lifecycle.ts";
 const dashboardRoute = "worker/src/routes/dashboard.ts";
 const apiPerformance = "worker/src/utils/performance.ts";
@@ -145,11 +148,11 @@ includes(preload, "api.getSyncBootstrap", "module visibility/settings preload re
 includes(globalSearch, "new AbortController()", "header global search creates AbortController");
 includes(globalSearch, "controller.abort()", "header global search cancels stale requests");
 includes(globalSearch, "window.clearTimeout(handle)", "header global search debounce cleanup remains");
-includes(globalSearch, "api.globalSearch(token, { q: query, limit: 8 }, controller.signal)", "header global search passes AbortSignal");
+includes(globalSearch, "globalSearchApi.globalSearch(token, { q: query, limit: 8 }, controller.signal)", "header global search passes AbortSignal");
 includes(searchResults, "new AbortController()", "search results page creates AbortController");
 includes(searchResults, "controller.abort()", "search results page cancels stale requests");
 includes(searchResults, "signal?.aborted", "search results page ignores stale abort errors");
-includes(api, "globalSearch(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal)", "global search API helper accepts AbortSignal");
+includes(globalSearchApi, "globalSearch(token: string, params: { q?: string; limit?: number }, signal?: AbortSignal)", "global search API helper accepts AbortSignal");
 
 includes(notificationBell, "useWorkspaceQuery<{ unread_count: number }>", "notification unread count uses query cache");
 includes(notificationBell, "queryKeys.notifications.unreadCount(scope)", "notification unread count uses scoped key");
@@ -157,8 +160,8 @@ includes(notificationBell, "queryKeys.notifications.list(scope, 8)", "notificati
 includes(notificationBell, "queryClient.setQueryData<{ unread_count: number }>", "mark-read mutation updates unread count immediately");
 includes(notificationBell, "invalidateNotificationQueries(scope)", "notification mutations invalidate targeted notification queries");
 excludes(notificationBell, /if \(open\) void loadNotifications\(true\)/, "opening notification bell must not duplicate the query-owned fetch");
-includes(api, "getUnreadNotificationCount(token: string, signal?: AbortSignal)", "unread count API helper accepts AbortSignal");
-includes(api, "listNotifications(token: string, filters?: Record", "notification list API helper accepts filters");
+includes(notificationsApi, "getUnreadNotificationCount(token: string, signal?: AbortSignal)", "unread count API helper accepts AbortSignal");
+includes(notificationsApi, "listNotifications(token: string, params?: Record", "notification list API helper accepts filters");
 
 includes(performance, "WorkspaceQueryMetric", "workspace request-count/cache metric type exists");
 includes(performance, "recordWorkspaceQueryMetric", "workspace request-count/cache metric helper exists");
@@ -169,9 +172,9 @@ excludes(performance, /password_hash|document_contents|raw_token|salary_amount|n
 includes(lifecycleRoute, "timeD1(c, options.run, `onboarding.workspace.${options.key}`)", "onboarding workspace optional read groups are D1-timed");
 includes(dashboardRoute, "timeD1(c, () => buildCommandCenterSummary(c), \"dashboard.command-center-summary\")", "Command Center summary endpoint is D1-timed");
 includes(apiPerformance, "private, no-store", "authenticated API responses are not public cached");
-includes(api, "cache: method === \"GET\" ? \"no-store\"", "authenticated frontend GETs avoid browser/public cache");
-includes(api, "inflightGetRequests", "identical GET dedupe foundation remains");
-includes(api, "recordApiRequestTiming", "API timing foundation remains");
+includes(apiClient, "cache: method === \"GET\" ? \"no-store\"", "authenticated frontend GETs avoid browser/public cache");
+includes(apiClient, "inflightGetRequests", "identical GET dedupe foundation remains");
+includes(apiClient, "recordApiRequestTiming", "API timing foundation remains");
 
 includes("frontend/src/layouts/AppShell.tsx", "setOpenGroup(activeGroupLabel)", "sidebar active group auto-open remains");
 includes("frontend/src/layouts/AppShell.tsx", "<GlobalSearch />", "header search layout remains");

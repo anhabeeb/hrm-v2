@@ -1,4 +1,4 @@
-import { apiClient } from "./api";
+import { apiClient } from "./apiClient";
 
 export type AppEventDeliveryMode = "stream" | "long-poll" | "polling_fallback";
 

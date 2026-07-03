@@ -56,7 +56,7 @@ has(globalSearch, "pl-9 pr-16", "Search icon and keyboard hint spacing must rema
 has(globalSearch, "Ctrl K", "Keyboard search hint must remain present.");
 has(globalSearch, "lg:hidden", "Mobile search must collapse to an icon button.");
 has(globalSearch, "w-[min(92vw,38rem)]", "Search results popup must remain viewport constrained.");
-has(globalSearch, "api.globalSearch", "Global search API behavior must remain intact.");
+has(globalSearch, "globalSearchApi.globalSearch", "Global search API behavior must remain intact.");
 has(globalSearch, "flattenGroups", "Search component must keep client-side result flattening behavior.");
 has(globalSearch, "openResult", "Search result navigation behavior must remain intact.");
 has(searchRoute, "getSearchableModuleRegistry", "Disabled-module search filtering must remain in backend search route.");
@@ -75,7 +75,7 @@ has(appShell, "flex min-w-0 items-center gap-2", "Header control row must preser
 has(appShell, "overflow-hidden", "App shell must preserve horizontal overflow control.");
 has(notificationBell, 'size="icon"', "Notification bell button must remain icon-sized and aligned with search input height.");
 has(notificationBell, "unreadCount", "Notification unread badge behavior must remain present.");
-has(notificationBell, "api.listNotifications", "Notification dropdown behavior must remain present.");
+has(notificationBell, "notificationsApi.listNotifications", "Notification dropdown behavior must remain present.");
 has(notificationBell, "navigate(\"/notifications\")", "Notification center navigation must remain present.");
 
 has(sidebarWelcomeVerifier, "openGroup", "Sidebar single-open verifier must remain present.");

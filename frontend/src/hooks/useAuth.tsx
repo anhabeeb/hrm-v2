@@ -1,8 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api } from "../lib/api";
+import { authApi } from "../lib/authApi";
 import { clearCacheOnPermissionChange, clearSensitiveIndexedDbCaches, permissionScopeHash } from "../lib/cache/hrmCache";
 import { broadcastSessionEvent, subscribeCrossTabSessionEvents } from "../lib/crossTabSync";
-import { preloadGlobalReferenceData } from "../lib/preloadReferenceData";
 import { clearQueryCacheForSessionChange, queryClient } from "../lib/queryClient";
 import { createQueryScope, queryKeys, queryScopeSignature } from "../lib/queryKeys";
 import { invalidateReferenceDataCache } from "../lib/referenceDataCache";
@@ -56,7 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(nextUser);
     const scope = createQueryScope(nextToken, nextUser);
     queryClient.setQueryData(queryKeys.auth.currentUser(scope), { user: nextUser });
-    void preloadGlobalReferenceData({ token: nextToken, user: nextUser });
+    void import("../lib/preloadReferenceData").then(({ preloadGlobalReferenceData }) => {
+      preloadGlobalReferenceData({ token: nextToken, user: nextUser });
+    });
   }, []);
 
   const clearSession = useCallback((options: { broadcast?: boolean } = {}) => {
@@ -83,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }), [clearSession]);
 
   const refreshBootstrap = useCallback(async () => {
-    bootstrapInflightRef.current ??= api.getBootstrapStatus().finally(() => {
+    bootstrapInflightRef.current ??= authApi.getBootstrapStatus().finally(() => {
       bootstrapInflightRef.current = null;
     });
     const status = await bootstrapInflightRef.current;
@@ -95,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (meInflightRef.current?.token !== savedToken) {
       meInflightRef.current = {
         token: savedToken,
-        promise: api.me(savedToken).finally(() => {
+        promise: authApi.me(savedToken).finally(() => {
           if (meInflightRef.current?.token === savedToken) meInflightRef.current = null;
         })
       };
@@ -141,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (input: { email: string; password: string }) => {
-      const result = await api.login(input);
+      const result = await authApi.login(input);
       persistSession(result.token, result.user);
       return result.user;
     },
@@ -150,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setupOwner = useCallback(
     async (input: { name: string; email: string; password: string }) => {
-      const result = await api.createOwner(input);
+      const result = await authApi.createOwner(input);
       persistSession(result.token, result.user);
       await refreshBootstrap();
     },
@@ -178,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession();
     if (currentToken) {
       try {
-        await api.logout(currentToken);
+        await authApi.logout(currentToken);
       } catch {
         // Local cleanup is enough for the stateless token flow.
       }

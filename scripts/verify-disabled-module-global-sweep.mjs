@@ -365,7 +365,7 @@ hasNo("frontend/src/layouts/AppShell.tsx", /moduleKey:\s*"settings"/, "settings 
 hasAll("frontend/src/hooks/useAuth.tsx", [
   "refreshCurrentUser: () => Promise<AuthUser | null>",
   "const refreshCurrentUser = useCallback",
-  "api.me",
+  "authApi.me",
   "persistSession(currentToken, result.user)",
   "clearSession()"
 ], "auth hook exposes current-user refresh so module_visibility updates immediately after settings changes");

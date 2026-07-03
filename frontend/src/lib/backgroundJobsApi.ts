@@ -1,5 +1,5 @@
 import type { BackgroundJobDetailResponse, BackgroundJobsResponse } from "../types/background-jobs";
-import { apiClient } from "./api";
+import { apiClient } from "./apiClient";
 
 export type BackgroundJobListParams = {
   status?: string;

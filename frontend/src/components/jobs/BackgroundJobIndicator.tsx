@@ -1,8 +1,7 @@
 import { Activity, CheckCircle2, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "../ui/button";
-import { BackgroundJobDrawer } from "./BackgroundJobDrawer";
 import { useAlert } from "../alerts/useAlert";
 import { useAuth } from "../../hooks/useAuth";
 import { hasActiveBackgroundJobs, useBackgroundJobs } from "../../hooks/useBackgroundJobs";
@@ -12,6 +11,7 @@ import type { BackgroundJob } from "../../types/background-jobs";
 import { cn } from "../../lib/utils";
 
 const TERMINAL_STATUSES = new Set(["SUCCEEDED", "FAILED", "CANCELLED"]);
+const BackgroundJobDrawer = lazy(() => import("./BackgroundJobDrawer").then((module) => ({ default: module.BackgroundJobDrawer })));
 
 function jobLabel(job: BackgroundJob) {
   return job.job_type.replace(/_/g, " ").toLowerCase();
@@ -71,7 +71,11 @@ export function BackgroundJobIndicator() {
           </span>
         ) : null}
       </Button>
-      <BackgroundJobDrawer open={open} onOpenChange={setOpen} jobs={jobs} token={token} scope={scope} />
+      {open ? (
+        <Suspense fallback={null}>
+          <BackgroundJobDrawer open={open} onOpenChange={setOpen} jobs={jobs} token={token} scope={scope} />
+        </Suspense>
+      ) : null}
     </>
   );
 }

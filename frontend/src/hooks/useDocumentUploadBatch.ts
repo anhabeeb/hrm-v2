@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { ApiError } from "../lib/api";
+import { ApiError } from "../lib/apiClient";
 import { completeOnboardingDocumentUploads, prepareOnboardingDocumentUploads, type CompleteDocumentUploadsResult, type PreparedDocumentUpload, type PreparedDocumentUploadRow } from "../lib/documentUploadApi";
 import { uploadWithProgress } from "../lib/uploadProgress";
 

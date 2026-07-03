@@ -94,10 +94,27 @@ const SetupPage = lazyPage(() => import("../pages/SetupPage"), "SetupPage");
 const UsersAccessPage = lazyPage(() => import("../pages/UsersAccessPage"), "UsersAccessPage");
 
 registerRoutePreloader("employee-profile", () => EmployeeProfilePage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("employees", () => EmployeesPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("dashboard", () => DashboardPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("onboarding-case", () => LifecyclePage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("contracts", () => ContractsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("approvals", () => ApprovalsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("attendance", () => AttendanceRecordsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("roster", () => RosterWeeklyPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("leave", () => LeaveRequestsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("payroll", () => PayrollDashboardPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("payroll-run-detail", () => PayrollRunDetailPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("payroll-runs", () => PayrollRunsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("reports", () => ReportsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("data-transfer", () => DataTransferPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("documents", () => DocumentRegistryPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("documents-compliance", () => DocumentCompliancePage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("assets", () => AssetsDashboardPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("settings", () => SettingsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("admin-settings", () => AdminSettingsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("admin-help", () => AdminHelpGuidePage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("users-access", () => UsersAccessPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("self-service", () => SelfServicePage.preload?.() ?? Promise.resolve());
 
 function RequireAuth() {
   const { loading, bootstrap, user } = useAuth();
