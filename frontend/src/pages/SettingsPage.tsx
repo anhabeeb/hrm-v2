@@ -11,6 +11,7 @@ import { Switch } from "../components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Tooltip } from "../components/ui/tooltip";
 import { useAlert } from "../components/alerts/useAlert";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -260,7 +261,7 @@ export function SettingsPage() {
 
   return (
     <PageShell>
-      <PageHeader title="Settings" description="System configuration foundation." />
+      <PageHeader title="Settings" description="System configuration foundation." actions={<AdminHelpLink target="moduleSettings" label="Module settings guide" />} />
       {message ? <Panel className="border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">{message}</Panel> : null}
 
       <SettingsRow

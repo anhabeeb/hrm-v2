@@ -55,7 +55,8 @@ const SIDEBAR_GROUP_STATE_KEY = "hrm-v2-sidebar-open-group";
 const SIDEBAR_OPEN_GROUP_STATE_KEY = SIDEBAR_GROUP_STATE_KEY;
 
 const topLevelNavItems: NavItem[] = [
-  { label: "Command Center", to: "/", icon: LayoutDashboard, permission: "dashboard.view", preloadKey: "dashboard" }
+  { label: "Command Center", to: "/", icon: LayoutDashboard, permission: "dashboard.view", preloadKey: "dashboard" },
+  { label: "Help Center", to: "/help", icon: BookOpenCheck, preloadKey: "admin-help" }
 ];
 
 const navGroups: NavGroup[] = [

@@ -13,6 +13,7 @@ export type GuideSection = {
   id: string;
   title: string;
   navTitle?: string;
+  audiences?: Array<"admin" | "employee">;
   keywords: string[];
   aliases?: string[];
   relatedRoutes?: Array<{ label: string; to: string }>;
@@ -263,11 +264,56 @@ export const guideSections: GuideSection[] = [
   {
     id: "self-service",
     title: "Self-Service",
+    audiences: ["admin", "employee"],
     keywords: ["self-service", "employee portal", "own data", "profile", "leave", "attendance"],
     relatedRoutes: [{ label: "Self-Service", to: "/self-service" }, { label: "Self-Service Settings", to: "/settings/self-service" }],
     blocks: [
       { type: "paragraph", text: "Employees can access their dashboard, profile, leave, attendance, roster, payroll/payslips, payment methods, bank loans, pension, documents, contracts, assets/uniforms, approvals, onboarding/offboarding, and notifications where enabled." },
       { type: "callout", tone: "warning", title: "Self-service security rule", text: "Employees must only see their own data. Never accept a client-supplied employee_id for self-service access to another employee." }
+    ]
+  },
+  {
+    id: "employee-getting-started",
+    title: "Employee Help: Getting Started",
+    navTitle: "Employee Getting Started",
+    audiences: ["employee"],
+    keywords: ["employee", "login", "self-service", "linked account", "active employee"],
+    relatedRoutes: [{ label: "Self-Service", to: "/self-service" }],
+    blocks: [
+      { type: "paragraph", text: `Use the Self-Service area to view your own ${APP_BRANDING.appName} profile, requests, documents, payslips, notifications, and lifecycle tasks when your company has enabled those modules.` },
+      { type: "list", items: ["Sign in with the account linked to your employee profile.", "If your account is not linked, inactive, or missing self-service permission, contact HR.", "Disabled modules do not appear in your self-service menu.", "You should only see your own employee records and requests."] }
+    ]
+  },
+  {
+    id: "employee-self-service-actions",
+    title: "Employee Help: Requests and Records",
+    navTitle: "Employee Requests",
+    audiences: ["employee"],
+    keywords: ["leave request", "attendance correction", "documents", "payslips", "assets", "notifications"],
+    relatedRoutes: [{ label: "My Leave", to: "/self-service/leave" }, { label: "My Documents", to: "/self-service/documents" }],
+    blocks: [
+      { type: "list", items: ["Submit leave requests only for dates and leave types available to you.", "Review approval timeline/status from the request detail where enabled.", "Submit document self-service uploads only when HR has enabled employee submissions.", "Request attendance corrections when attendance self-service is enabled.", "View payslips, payment information, assets, uniforms, contracts, and onboarding tasks only when the related modules are enabled."] },
+      { type: "callout", tone: "info", title: "Need help?", text: "If a section is missing, the module may be disabled, your employee record may be inactive, or your account may not be linked to an active employee profile." }
+    ]
+  },
+  {
+    id: "module-settings",
+    title: "Module Settings and Disabled-Module Behavior",
+    keywords: ["module settings", "submodules", "disabled modules", "parent child", "settings"],
+    relatedRoutes: [{ label: "Settings", to: "/settings" }],
+    blocks: [
+      { type: "paragraph", text: "Main module toggles control operational visibility. Submodule toggles control narrower features such as payroll payment institutions, bank loans, pension, attendance imports, document renewals, and self-service sections." },
+      { type: "list", items: ["When a parent module is disabled, child submodules are inactive and greyed out.", "Disabled modules disappear from operational UI and direct operational routes are blocked.", "Settings pages remain available to authorized users so modules can be re-enabled safely.", "Onboarding and offboarding show disabled optional modules as Not Required.", "Payroll can operate without Attendance; when Attendance is disabled, Payroll must not use attendance data."] }
+    ]
+  },
+  {
+    id: "background-jobs-performance",
+    title: "Background Jobs and Performance",
+    keywords: ["background jobs", "performance dashboard", "metrics", "slow endpoints", "retry", "cancel"],
+    relatedRoutes: [{ label: "Performance Dashboard", to: "/settings/performance" }],
+    blocks: [
+      { type: "paragraph", text: "Background jobs keep large work from blocking the app. The job drawer shows progress, completion, failures, retry/cancel actions where allowed, and live updates from app events." },
+      { type: "list", items: ["Common jobs include document compliance refresh, onboarding readiness refresh, attendance refresh, reports, imports, snapshots, and cleanup.", "If the app feels slow, admins should check the Performance Dashboard for slow endpoints, D1 timing, payload size warnings, bundle budgets, and recent job failures.", "Do not store sensitive employee, payroll, attendance, or document data in browser localStorage."] }
     ]
   },
   {

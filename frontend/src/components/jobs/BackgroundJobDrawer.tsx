@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty-state";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../ui/sheet";
+import { AdminHelpLink } from "../../features/admin-help/AdminHelpLink";
 import { BackgroundJobProgress } from "./BackgroundJobProgress";
 import { backgroundJobsApi } from "../../lib/backgroundJobsApi";
 import { queryKeys, type QueryScope } from "../../lib/queryKeys";
@@ -48,7 +49,10 @@ export function BackgroundJobDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="max-w-lg">
         <SheetHeader>
-          <SheetTitle>Background Jobs</SheetTitle>
+          <div className="flex items-start justify-between gap-3">
+            <SheetTitle>Background Jobs</SheetTitle>
+            <AdminHelpLink target="backgroundJobs" label="Jobs guide" />
+          </div>
           <SheetDescription>Track long-running document, onboarding, attendance, report, and import work without blocking the app.</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">

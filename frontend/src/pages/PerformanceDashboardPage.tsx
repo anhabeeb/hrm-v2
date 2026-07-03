@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { InputField, MetricGrid, PageHeader, PageShell, PermissionDeniedState, SectionCard, SelectField, StandardTabs, StatCard, WarningPanel } from "../components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { TableSkeleton } from "../components/loading";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useApiQuery } from "../hooks/useApiQuery";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
@@ -137,6 +138,7 @@ export function PerformanceDashboardPage() {
         description="Admin-only speed telemetry for API, D1, frontend route, background job, upload/import/report, and build-budget signals. Metrics are sampled and sanitized."
         actions={
           <>
+            <AdminHelpLink target="performance" label="Performance guide" />
             <Button variant="outline" size="sm" onClick={() => void Promise.all([overviewQuery.refetch(), listQuery.refetch(), warningsQuery.refetch()])}>
               <RefreshCw className="h-4 w-4" />
               Refresh

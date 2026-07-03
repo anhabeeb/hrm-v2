@@ -221,6 +221,7 @@ export function AppRoutes() {
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="command-center" element={<Navigate to="/dashboard" replace />} />
             <Route path="search" element={<SearchResultsPage />} />
+            <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
             <Route path="employees" element={<EmployeesPage />} />
             <Route path="employees/kyc-requests" element={<KycRequestsPage />} />

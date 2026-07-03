@@ -10,6 +10,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceSettings } from "../types/attendance";
@@ -82,7 +83,7 @@ export function AttendanceSettingsPage() {
 
   return (
     <PageShell>
-      <PageHeader title="Attendance Settings" description="Global attendance rules prepared for roster, leave, and payroll integration." />
+      <PageHeader title="Attendance Settings" description="Global attendance rules prepared for roster, leave, and payroll integration." actions={<AdminHelpLink target="attendance" label="Attendance guide" />} />
       <AttendanceNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {message ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</div> : null}

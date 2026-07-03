@@ -11,6 +11,7 @@ import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateRequiredField, type ValidationIssue } from "../lib/form-validation";
@@ -156,6 +157,7 @@ export function DocumentSettingsPage() {
         description="Document categories, types, required rules, and compliance foundations."
         actions={
           <>
+          <AdminHelpLink target="documentRules" label="Document rules guide" />
           <Link to="/settings/documents/compliance"><Button variant="outline" size="sm">Compliance settings</Button></Link>
           <Link to="/settings/documents/compliance/types"><Button variant="outline" size="sm">Type compliance rules</Button></Link>
           <Link to="/documents/compliance"><Button variant="outline" size="sm">Compliance dashboard</Button></Link>

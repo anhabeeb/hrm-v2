@@ -20,6 +20,7 @@ import { AlertBanner, ExportActionBar, PageHeader, PageShell, SelectField, Stand
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
 import { api } from "../lib/api";
@@ -271,7 +272,7 @@ export function ReportsPage() {
         eyebrow="Report Center"
         description="Scoped payroll, pension, bank loan, custom deduction, settlement, variance, payment register reporting, HR, and compliance reporting."
         actions={
-          <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Run</Button>
+          <><AdminHelpLink target="reportsImportExport" label="Reports guide" /><Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Run</Button></>
         }
       />
       <StandardTabs

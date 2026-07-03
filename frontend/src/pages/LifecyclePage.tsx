@@ -23,6 +23,7 @@ import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Timeline } from "../components/ui/timeline";
+import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { useDocumentUploadBatch } from "../hooks/useDocumentUploadBatch";
 import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
@@ -261,7 +262,7 @@ export function LifecyclePage({ mode = "onboarding-dashboard" }: { mode?: Mode }
       <PageHeader
         title="Employee Lifecycle"
         description="Onboarding, offboarding, lifecycle tasks, activation readiness, and exit readiness."
-        actions={<ActionTextButton intent="refresh" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</ActionTextButton>}
+        actions={<><AdminHelpLink target="onboardingDocuments" label="Onboarding guide" /><ActionTextButton intent="refresh" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4" /> Refresh</ActionTextButton></>}
       />
 
       <SubNavigationBar label="Employee lifecycle section tabs">

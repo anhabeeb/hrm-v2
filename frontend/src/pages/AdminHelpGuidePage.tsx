@@ -132,12 +132,18 @@ export function AdminHelpGuidePage() {
   const { user } = useAuth();
   const [query, setQuery] = useState("");
 
-  const canView = canAccessAdminHelp(user);
+  const canViewAdminHelp = canAccessAdminHelp(user);
+  const canViewEmployeeHelp = Boolean(user?.employee_id);
+  const canView = canViewAdminHelp || canViewEmployeeHelp;
   const normalizedQuery = query.trim();
+  const allowedSections = useMemo(
+    () => canViewAdminHelp ? guideSections : guideSections.filter((section) => section.audiences?.includes("employee")),
+    [canViewAdminHelp]
+  );
 
   const visibleSections = useMemo(
-    () => guideSections.filter((section) => sectionMatches(section, normalizedQuery)),
-    [normalizedQuery]
+    () => allowedSections.filter((section) => sectionMatches(section, normalizedQuery)),
+    [allowedSections, normalizedQuery]
   );
   const activeFilterChips = useMemo(() => normalizedQuery ? [{ key: "query", label: "Search", value: normalizedQuery, onRemove: () => setQuery("") }] : [], [normalizedQuery]);
 
@@ -152,15 +158,17 @@ export function AdminHelpGuidePage() {
   return (
     <PageShell constrained={false}>
       <PageHeader
-        title={`${APP_BRANDING.appName} Advanced Configuration & Operations Guide`}
-        description={`Super Admin guide for configuring and operating ${APP_BRANDING.appName} across people, documents, leave, attendance, roster, payroll, approvals, reports, and production controls.`}
-        eyebrow="Super Admin Guide"
+        title={`${APP_BRANDING.appName} Help Center`}
+        description={canViewAdminHelp ? `Admin and operations guide for configuring and operating ${APP_BRANDING.appName} across people, documents, leave, attendance, roster, payroll, approvals, reports, and production controls.` : "Employee self-service guide for profile, requests, documents, notifications, and enabled self-service modules."}
+        eyebrow={canViewAdminHelp ? "Admin Guide" : "Employee Guide"}
         actions={
           <>
-            <Badge tone="info">
-              <ShieldCheck className="mr-1 h-3.5 w-3.5" />
-              admin.help.view
-            </Badge>
+            {canViewAdminHelp ? (
+              <Badge tone="info">
+                <ShieldCheck className="mr-1 h-3.5 w-3.5" />
+                admin.help.view
+              </Badge>
+            ) : <Badge tone="neutral">Employee self-service</Badge>}
             <Badge tone="neutral">Static guide</Badge>
           </>
         }
@@ -172,7 +180,7 @@ export function AdminHelpGuidePage() {
 
       <div className="grid min-w-0 gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
-          <SectionCard title="Guide Navigation" description={`${visibleSections.length} of ${guideSections.length} sections`} bodyClassName="space-y-3 p-3">
+              <SectionCard title="Guide Navigation" description={`${visibleSections.length} of ${allowedSections.length} sections`} bodyClassName="space-y-3 p-3">
             <StandardFilterBar
               search={<StandardSearchInput value={query} onDebouncedChange={setQuery} placeholder="Search guide..." ariaLabel="Search guide" />}
               reset={<FilterResetButton onReset={() => setQuery("")} />}
