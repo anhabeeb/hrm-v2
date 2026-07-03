@@ -30,6 +30,7 @@ const AttendanceRecordsPage = lazyPage(() => import("../pages/AttendanceRecordsP
 const AttendanceReportsPage = lazyPage(() => import("../pages/AttendanceReportsPage"), "AttendanceReportsPage");
 const AttendanceSettingsPage = lazyPage(() => import("../pages/AttendanceSettingsPage"), "AttendanceSettingsPage");
 const AdminHelpGuidePage = lazyPage(() => import("../pages/AdminHelpGuidePage"), "AdminHelpGuidePage");
+const AdminBackupRetentionPage = lazyPage(() => import("../pages/AdminBackupRetentionPage"), "AdminBackupRetentionPage");
 const AdminSettingsPage = lazyPage(() => import("../pages/AdminSettingsPage"), "AdminSettingsPage");
 const ApprovalsPage = lazyPage(() => import("../pages/ApprovalsPage"), "ApprovalsPage");
 const AssetAssignmentsPage = lazyPage(() => import("../pages/AssetAssignmentsPage"), "AssetAssignmentsPage");
@@ -113,6 +114,7 @@ registerRoutePreloader("documents-compliance", () => DocumentCompliancePage.prel
 registerRoutePreloader("assets", () => AssetsDashboardPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("settings", () => SettingsPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("admin-settings", () => AdminSettingsPage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("admin-backup-retention", () => AdminBackupRetentionPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("performance-dashboard", () => PerformanceDashboardPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("admin-help", () => AdminHelpGuidePage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("users-access", () => UsersAccessPage.preload?.() ?? Promise.resolve());
@@ -338,6 +340,7 @@ export function AppRoutes() {
             <Route path="self-service/kyc-requests" element={operationalAll(["self_service", "documents"], "KYC requests", <SelfServicePage mode="kyc" />)} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/admin" element={<AdminSettingsPage />} />
+            <Route path="settings/admin/backup-retention" element={<AdminBackupRetentionPage />} />
             <Route path="settings/performance" element={<PerformanceDashboardPage />} />
             <Route path="admin/help" element={<AdminHelpGuidePage />} />
             <Route path="settings/admin/imports" element={<DataTransferPage mode="imports" />} />

@@ -1663,6 +1663,9 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_admin_data_retention_view', 'admin.data_retention.view', 'admin', 'View data retention settings', 1),
   ('perm_admin_data_retention_update', 'admin.data_retention.update', 'admin', 'Update data retention settings placeholders', 1),
   ('perm_admin_data_retention_manage', 'admin.data_retention.manage', 'admin', 'Manage data retention settings', 1),
+  ('perm_admin_backup_retention_view', 'admin.backup_retention.view', 'admin', 'View backup, restore, disaster recovery, and retention status', 1),
+  ('perm_admin_backup_retention_manage', 'admin.backup_retention.manage', 'admin', 'Manage backup and retention operational controls', 1),
+  ('perm_admin_data_retention_cleanup', 'admin.data_retention.cleanup', 'admin', 'Run guarded data retention cleanup jobs', 1),
   ('perm_admin_export_security_view', 'admin.export_security.view', 'admin', 'View export security settings', 1),
   ('perm_admin_export_security_update', 'admin.export_security.update', 'admin', 'Update export security settings', 1),
   ('perm_admin_export_security_manage', 'admin.export_security.manage', 'admin', 'Manage export security controls', 1),
@@ -1732,6 +1735,21 @@ INSERT OR IGNORE INTO data_retention_settings (
   180, 180, 180,
   180, 0, 1, '{"seeded_prompt":"21","note":"No destructive automatic cleanup is active."}'
 );
+
+INSERT OR IGNORE INTO data_retention_policies (
+  id, policy_key, description, retention_days, applies_to, is_enabled, is_system, metadata_json
+) VALUES
+  ('retention_policy_performance_metrics_detailed', 'performance_metrics_detailed', 'Detailed API, frontend, and job performance metrics are operational telemetry and can be cleaned after 30 days.', 30, 'performance_api_metrics,performance_frontend_metrics,performance_job_metrics', 1, 1, '{"seeded_prompt":"16","classification":"non_business_operational"}'),
+  ('retention_policy_app_events', 'app_events', 'Realtime/cache invalidation app events can be cleaned after 30 days when expired or older than the policy.', 30, 'app_events', 1, 1, '{"seeded_prompt":"16","classification":"non_business_operational"}'),
+  ('retention_policy_background_job_events', 'background_job_events', 'Background job event details can be cleaned after 90 days while keeping safe job summaries.', 90, 'background_job_events', 1, 1, '{"seeded_prompt":"16","classification":"non_business_operational"}'),
+  ('retention_policy_background_jobs_terminal', 'background_jobs_terminal_states', 'Terminal background jobs can be cleaned after 180 days when no longer needed for operational review.', 180, 'background_jobs', 1, 1, '{"seeded_prompt":"16","classification":"non_business_operational","terminal_only":true}'),
+  ('retention_policy_report_export_artifacts', 'report_export_artifacts', 'Generated report/export artifacts expire after 30 days unless operational policy keeps them longer.', 30, 'report_export_artifacts', 1, 1, '{"seeded_prompt":"16","classification":"generated_artifact"}'),
+  ('retention_policy_document_upload_sessions', 'document_upload_sessions_pending_failed', 'Pending, failed, or expired document upload sessions can be cleaned after 7 days without deleting active documents.', 7, 'document_upload_sessions', 1, 1, '{"seeded_prompt":"16","classification":"temporary_upload_state"}'),
+  ('retention_policy_dashboard_snapshots', 'dashboard_summary_snapshots', 'Stale dashboard summary snapshots can be cleaned after 30 days.', 30, 'dashboard_summary_snapshots', 1, 1, '{"seeded_prompt":"16","classification":"snapshot_cache"}'),
+  ('retention_policy_attendance_payroll_snapshots', 'attendance_payroll_summary_snapshots_stale', 'Attendance and payroll summary snapshots are business-adjacent summaries; keep longer and do not auto-delete unless explicitly enabled.', 365, 'attendance_summary_snapshots,payroll_summary_snapshots', 0, 1, '{"seeded_prompt":"16","classification":"business_adjacent_summary","safe_default":"disabled"}'),
+  ('retention_policy_audit_security_logs', 'audit_security_logs_do_not_auto_delete', 'Audit and security logs must not be automatically deleted by default.', NULL, 'audit_logs,security_event_logs', 0, 1, '{"seeded_prompt":"16","classification":"security_record","safe_default":"disabled"}'),
+  ('retention_policy_employee_payroll_records', 'employee_payroll_business_records_do_not_auto_delete', 'Employee, payroll, leave, attendance, roster, contract, and core business records must not be automatically deleted.', NULL, 'employees,payroll,leave,attendance,roster,contracts', 0, 1, '{"seeded_prompt":"16","classification":"business_critical","safe_default":"disabled"}'),
+  ('retention_policy_active_employee_documents', 'active_employee_documents_do_not_auto_delete', 'Active employee documents and document versions must not be automatically deleted.', NULL, 'employee_documents,employee_document_versions', 0, 1, '{"seeded_prompt":"16","classification":"business_critical_document","safe_default":"disabled"}');
 
 INSERT OR IGNORE INTO export_security_settings (
   id, csv_export_enabled, json_export_enabled, excel_export_placeholder_enabled, pdf_export_placeholder_enabled,

@@ -6,7 +6,9 @@ import { recordAudit } from "../db/audit";
 import { createSyncChangeLogEntry, syncWriteMetadata } from "../db/sync";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
+import { enqueueJob, jobToApi, markJobFailed, markJobRunning, markJobSucceeded, runJobWithWaitUntil, updateJobProgress } from "../utils/background-jobs";
 import { safeEmitAppEvent } from "../utils/app-events";
+import { getBackupRetentionStatus, listDataRetentionPolicies, runDataRetentionCleanup, updateDataRetentionPolicy } from "../utils/data-retention-cleanup";
 import { fail, getClientIp, ok } from "../utils/http";
 import { readJsonBody, readString } from "../utils/validation";
 
@@ -123,7 +125,8 @@ const SETTINGS_SECTIONS = [
   { key: "security", title: "Security settings", module_key: "audit_security", permission: "admin.security_settings.view", href: "/settings/admin?section=security-settings" },
   { key: "audit", title: "Audit/log settings", module_key: "audit_security", permission: "admin.audit_logs.view", href: "/settings/admin?section=audit" },
   { key: "health", title: "System health", module_key: "audit_security", permission: "admin.system_health.view", href: "/settings/admin?section=health" },
-  { key: "readiness", title: "Production readiness", module_key: "audit_security", permission: "admin.production_readiness.view", href: "/settings/admin?section=readiness" }
+  { key: "readiness", title: "Production readiness", module_key: "audit_security", permission: "admin.production_readiness.view", href: "/settings/admin?section=readiness" },
+  { key: "backup_retention", title: "Backup & retention", module_key: "audit_security", permission: "admin.backup_retention.view", href: "/settings/admin/backup-retention" }
 ];
 
 const VALID_MODULE_KEYS = new Set(MODULE_DEFAULTS.map((module) => module.key));
@@ -196,6 +199,30 @@ async function audit(c: Context<AppBindings>, action: string, entityType: string
     ipAddress: getClientIp(c.req.raw),
     userAgent: c.req.header("User-Agent") ?? null
   });
+}
+
+function executionCtx(c: Context<AppBindings>) {
+  return (c as unknown as { executionCtx?: ExecutionContext }).executionCtx;
+}
+
+async function runRetentionCleanupJob(db: Env["DB"], jobId: string, input: { dryRun: boolean; limit: number }) {
+  try {
+    await markJobRunning(db, jobId, input.dryRun ? "Running data retention dry-run." : "Running guarded data retention cleanup.");
+    await updateJobProgress(db, jobId, { current: 1, total: 3, message: "Loading retention policies." });
+    const cleanup = await runDataRetentionCleanup(db, { dryRun: input.dryRun, limit: input.limit });
+    await updateJobProgress(db, jobId, { current: 2, total: 3, message: "Cleanup targets evaluated." });
+    await updateJobProgress(db, jobId, { current: 3, total: 3, message: input.dryRun ? "Dry-run complete." : "Guarded cleanup complete." });
+    await markJobSucceeded(db, jobId, input.dryRun ? "Data retention dry-run completed." : "Data retention cleanup completed.", {
+      dry_run: cleanup.dry_run,
+      targets: cleanup.totals.targets,
+      eligible_count: cleanup.totals.eligible_count,
+      affected_count: cleanup.totals.affected_count,
+      skipped: cleanup.totals.skipped,
+      errors: cleanup.totals.errors
+    });
+  } catch (error) {
+    await markJobFailed(db, jobId, "DATA_RETENTION_CLEANUP_FAILED", error instanceof Error ? error.message : "Data retention cleanup failed.");
+  }
 }
 
 async function safeCount(db: Env["DB"], table: string, where = "1 = 1", params: BindValue[] = []) {
@@ -1178,6 +1205,73 @@ adminRoutes.patch("/data-retention-settings", requireAnyPermission(["admin.data_
     "notification_retention_days", "document_alert_retention_days", "zkteco_import_error_retention_days", "auto_delete_enabled", "require_manual_review_before_delete"
   ], "admin.data_retention.updated")
 );
+
+adminRoutes.get("/backup-retention/status", requireAnyPermission(["admin.backup_retention.view", "admin.backup_retention.manage", "admin.data_retention.view"]), async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  const recentJobs = await c.env.DB.prepare(
+    `SELECT * FROM background_jobs
+     WHERE job_type = 'DATA_RETENTION_CLEANUP'
+     ORDER BY created_at DESC
+     LIMIT 10`
+  ).all<Record<string, unknown>>();
+  return ok(c, {
+    status: await getBackupRetentionStatus(c.env.DB),
+    recent_cleanup_jobs: recentJobs.results
+  });
+});
+
+adminRoutes.get("/data-retention/policies", requireAnyPermission(["admin.data_retention.view", "admin.backup_retention.view"]), async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  return ok(c, { policies: await listDataRetentionPolicies(c.env.DB) });
+});
+
+adminRoutes.patch("/data-retention/policies/:policyId", requireAnyPermission(["admin.data_retention.update", "admin.data_retention.manage", "admin.backup_retention.manage"]), async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  const body = await readJsonBody(c.req.raw);
+  const retentionDays = body.retention_days === null || body.retention_days === "" || body.retention_days === undefined ? body.retention_days === undefined ? undefined : null : Number(body.retention_days);
+  if (retentionDays !== undefined && retentionDays !== null && (!Number.isFinite(retentionDays) || retentionDays < 0)) {
+    return fail(c, 400, "RETENTION_POLICY_INVALID", "Retention days must be empty or a non-negative number.");
+  }
+  const existing = await c.env.DB.prepare("SELECT * FROM data_retention_policies WHERE id = ?").bind(c.req.param("policyId")).first<Record<string, unknown>>();
+  if (!existing) return fail(c, 404, "RETENTION_POLICY_NOT_FOUND", "Retention policy was not found.");
+  const updated = await updateDataRetentionPolicy(c.env.DB, c.req.param("policyId"), {
+    retentionDays: retentionDays === undefined ? undefined : retentionDays === null ? null : Math.trunc(retentionDays),
+    isEnabled: body.is_enabled === undefined ? undefined : bool(body.is_enabled),
+    description: readString(body.description) || null
+  });
+  await audit(c, "admin.data_retention.policy.updated", "data_retention_policy", c.req.param("policyId"), existing, updated, readString(body.reason) || null);
+  return ok(c, { policy: updated });
+});
+
+adminRoutes.post("/data-retention/cleanup", requireAnyPermission(["admin.data_retention.cleanup", "admin.data_retention.manage", "admin.backup_retention.manage"]), async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  const body = await readJsonBody(c.req.raw);
+  const dryRun = body.dry_run !== false;
+  if (!dryRun && readString(body.confirm) !== "RUN_RETENTION_CLEANUP") {
+    return fail(c, 409, "RETENTION_CLEANUP_CONFIRMATION_REQUIRED", "Real cleanup requires confirm: \"RUN_RETENTION_CLEANUP\".");
+  }
+  const limitRaw = Number(body.limit ?? 250);
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(1000, Math.trunc(limitRaw))) : 250;
+  const { job, deduped } = await enqueueJob(c.env.DB, {
+    jobType: "DATA_RETENTION_CLEANUP",
+    moduleKey: "admin",
+    entityType: "data_retention_policy",
+    entityId: dryRun ? "dry_run" : "cleanup",
+    dedupeKey: `data-retention-cleanup:${dryRun ? "dry-run" : "write"}`,
+    requestedByUserId: c.get("currentUser").id,
+    payload: {
+      dry_run: dryRun,
+      limit,
+      confirmation: dryRun ? "not_required" : "RUN_RETENTION_CLEANUP",
+      safe_note: "Business-critical HR records and active employee documents are blocked from automatic cleanup."
+    },
+    progressTotal: 3,
+    progressMessage: dryRun ? "Dry-run queued" : "Guarded cleanup queued"
+  });
+  runJobWithWaitUntil(executionCtx(c), runRetentionCleanupJob(c.env.DB, job.id, { dryRun, limit }), { jobId: job.id, jobType: job.job_type });
+  await audit(c, dryRun ? "admin.data_retention.cleanup.dry_run_queued" : "admin.data_retention.cleanup.queued", "background_job", job.id, undefined, { dry_run: dryRun, limit, deduped }, readString(body.reason) || null);
+  return ok(c, { job_id: job.id, job: jobToApi(job), deduped, dry_run: dryRun }, 202);
+});
 
 adminRoutes.get("/export-security-settings", requireAnyPermission(["admin.export_security.view"]), async (c) => {
   const settings = await c.env.DB.prepare("SELECT * FROM export_security_settings LIMIT 1").first<Record<string, unknown>>();

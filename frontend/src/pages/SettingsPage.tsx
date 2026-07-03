@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Banknote, Building2, CalendarCheck, CalendarDays, ClipboardList, FileClock, FileSearch, FileText, ShieldCheck, Shirt, SlidersHorizontal, Users } from "lucide-react";
+import { Banknote, Building2, CalendarCheck, CalendarDays, ClipboardList, DatabaseBackup, FileClock, FileSearch, FileText, ShieldCheck, Shirt, SlidersHorizontal, Users } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -405,6 +405,13 @@ export function SettingsPage() {
         title="Data import / export and deployment readiness"
         description="CSV templates, import batches, validation preview, exports, backup guidance, QA, smoke, and deployment readiness."
         to="/settings/admin/imports"
+      />
+
+      <SettingsRow
+        icon={<DatabaseBackup className="h-4 w-4 text-muted-foreground" />}
+        title="Backup, restore, and retention"
+        description="D1 backup readiness, restore dry-run, R2 inventory, retention policies, and guarded cleanup jobs."
+        to="/settings/admin/backup-retention"
       />
 
       {attendanceDisableRequest ? (

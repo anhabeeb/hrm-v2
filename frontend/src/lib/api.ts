@@ -2472,6 +2472,18 @@ export const api = {
   updateDataRetentionSettings(token: string, input: Record<string, unknown>) {
     return request<{ settings: Record<string, unknown> | null }>("/api/v1/admin/data-retention-settings", { method: "PATCH", body: JSON.stringify(input) }, token);
   },
+  getBackupRetentionStatus(token: string) {
+    return request<{ status: Record<string, unknown>; recent_cleanup_jobs: Record<string, unknown>[] }>("/api/v1/admin/backup-retention/status", {}, token);
+  },
+  listDataRetentionPolicies(token: string) {
+    return request<{ policies: Record<string, unknown>[] }>("/api/v1/admin/data-retention/policies", {}, token);
+  },
+  updateDataRetentionPolicy(token: string, policyId: string, input: Record<string, unknown>) {
+    return request<{ policy: Record<string, unknown> | null }>(`/api/v1/admin/data-retention/policies/${policyId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  runDataRetentionCleanup(token: string, input: { dry_run?: boolean; confirm?: string; limit?: number; reason?: string | null }) {
+    return request<{ job_id: string; job: Record<string, unknown>; deduped?: boolean; dry_run: boolean }>("/api/v1/admin/data-retention/cleanup", { method: "POST", body: JSON.stringify(input) }, token);
+  },
   getExportSecuritySettings(token: string) {
     return request<{ settings: Record<string, unknown> | null }>("/api/v1/admin/export-security-settings", {}, token);
   },

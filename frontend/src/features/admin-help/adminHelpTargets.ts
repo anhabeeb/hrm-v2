@@ -18,5 +18,6 @@ export const contextualHelpTargets = {
   reportsImportExport: "reports-exports",
   dataImport: "data-import",
   deployment: "deployment-maintenance",
+  backupRetention: "backup-retention-disaster-recovery",
   cacheTimeout: "hybrid-cache-timeout"
 } as const;

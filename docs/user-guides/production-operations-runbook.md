@@ -39,3 +39,20 @@ Review metrics retention cleanup, background job cleanup, app event cleanup, rep
 
 For login/CORS, schema, or static asset emergencies, prefer targeted config or additive repair. Do not run git reset, destructive SQL, broad deletes, or secret-revealing commands in production.
 
+## Phase 16 Backup, Restore, And Retention Operations
+
+Use these commands in dry-run/source-validation mode before production operations:
+
+```bash
+npm run backup:create-manifest-phase16
+npm run backup:d1-phase16
+npm run restore:d1-dry-run-phase16
+npm run backup:r2-inventory-phase16
+npm run verify:r2-restore-readiness-phase16
+```
+
+Live D1 backup requires explicit environment confirmation and must write outside the source tree. Live restore is not a one-command browser action; restore into staging first, apply schema and seed, run smoke/E2E checks, then obtain operator approval.
+
+The Backup & Retention admin page is available at `/settings/admin/backup-retention`. It shows backup readiness, policy status, dry-run cleanup results, recent cleanup jobs, and runbook links. Cleanup defaults to dry-run. Real cleanup requires the protected confirmation value `RUN_RETENTION_CLEANUP`.
+
+Never auto-delete employee records, payroll records, audit/security logs, or active employee documents. Only temporary/performance/report artifact data should be eligible under Phase 16 policies.

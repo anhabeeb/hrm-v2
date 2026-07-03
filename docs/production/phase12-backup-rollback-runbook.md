@@ -67,3 +67,18 @@ This runbook documents safe production recovery steps. It does not include secre
 - Apply from trusted CLI only.
 - Re-run remote schema readiness verification.
 - Re-run production smoke checks.
+
+## Phase 16 Backup/Restore Expansion
+
+- Generate a sanitized manifest with `npm run backup:create-manifest-phase16` before high-risk maintenance.
+- Run `npm run backup:d1-phase16` in dry-run mode first, then use the documented confirmation variables only from a trusted admin machine.
+- Run `npm run restore:d1-dry-run-phase16` before any live restore discussion. Do not restore live D1 from the browser or from the app UI.
+- Run `npm run backup:r2-inventory-phase16` and `npm run verify:r2-restore-readiness-phase16` to validate R2 document backup readiness without downloading private files into the repository.
+- The `/settings/admin/backup-retention` page is for readiness, dry-run cleanup, and retention policy visibility. It is not a live restore tool.
+
+## Phase 16 Retention Guardrails
+
+- Never auto-delete active employee documents, employee document versions, payroll periods, payroll runs, payroll results, leave requests, attendance records, roster assignments, employee master records, audit logs, or security logs.
+- Safe cleanup targets are limited to operational data such as performance metrics, app events, stale background job events, expired report export artifacts, pending/failed upload sessions, and dashboard snapshots.
+- Real cleanup requires the explicit `RUN_RETENTION_CLEANUP` confirmation and must be preceded by dry-run review.
+- If a cleanup job fails, inspect the background job log and rerun dry-run before retrying real cleanup.

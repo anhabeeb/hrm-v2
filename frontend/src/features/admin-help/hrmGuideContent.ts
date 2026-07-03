@@ -403,6 +403,18 @@ export const guideSections: GuideSection[] = [
     ]
   },
   {
+    id: "backup-retention-disaster-recovery",
+    title: "Backup, Restore, and Data Retention",
+    keywords: ["backup", "restore", "disaster recovery", "retention", "cleanup", "r2 inventory", "d1 export"],
+    relatedRoutes: [{ label: "Backup & Retention", to: "/settings/admin/backup-retention" }],
+    blocks: [
+      { type: "paragraph", text: "Backup and restore operations are CLI-first and dry-run by default. The browser page shows readiness, policies, dry-run cleanup, and recent cleanup jobs; it does not perform live D1 restore or expose secrets." },
+      { type: "callout", tone: "warning", title: "Restore safety", text: "Do not run live D1 restores from the browser. Restore into staging first, verify schema and seed, then use trusted operator tooling for any production restore." },
+      { type: "steps", items: ["Run backup:create-manifest-phase16.", "Run backup:d1-phase16 in dry-run/source mode.", "Run restore:d1-dry-run-phase16 before any restore.", "Run backup:r2-inventory-phase16 to verify object inventory without file contents.", "Run verify:r2-restore-readiness-phase16.", "Review docs/production/phase16-backup-restore-disaster-recovery.md before production operations."] },
+      { type: "checklist", title: "Never auto-delete", items: ["Employee records.", "Payroll records.", "Audit/security logs unless an explicit admin policy exists.", "Active employee documents.", "R2 document files linked to active records."] }
+    ]
+  },
+  {
     id: "known-limitations",
     title: "Known Limitations",
     keywords: ["limitations", "MFA", "bank transfer", "sms", "zkteco bridge", "esignature"],

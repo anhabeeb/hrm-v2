@@ -1,0 +1,52 @@
+{
+  "backup_id": "backup_example_2026-07-03T14-19-21-507Z",
+  "created_at": "2026-07-03T14:19:21.507Z",
+  "environment": "source-validation",
+  "database": {
+    "label": "hrm-v2",
+    "binding": "DB",
+    "schema_hash_sha256": "73698fba19f5d075b87b60cd9432afa21747582eb05db3d7838e0ce5fb1c728c",
+    "schema_table_count": 192,
+    "table_count": 192,
+    "row_counts_by_table": {
+      "users": "not_collected_in_source_validation",
+      "employee_user_account_links": "not_collected_in_source_validation",
+      "roles": "not_collected_in_source_validation",
+      "permissions": "not_collected_in_source_validation",
+      "role_permissions": "not_collected_in_source_validation",
+      "user_roles": "not_collected_in_source_validation",
+      "role_mapping_rules": "not_collected_in_source_validation",
+      "access_scope_rules": "not_collected_in_source_validation",
+      "system_settings": "not_collected_in_source_validation",
+      "self_service_settings": "not_collected_in_source_validation",
+      "module_control_settings": "not_collected_in_source_validation",
+      "system_consistency_checks": "not_collected_in_source_validation"
+    }
+  },
+  "r2": {
+    "bucket_label": "hrm-v2-documents",
+    "binding": "DOCUMENTS_BUCKET",
+    "object_count": "not_collected_in_source_validation",
+    "total_object_bytes": "not_collected_in_source_validation"
+  },
+  "artifacts": {
+    "d1_export_file": "example-d1-export.sql",
+    "r2_inventory_file": "phase16-r2-inventory-report.md",
+    "restore_dry_run_report": "phase16-d1-restore-dry-run-report.md"
+  },
+  "checksums": {
+    "schema_sql_sha256": "73698fba19f5d075b87b60cd9432afa21747582eb05db3d7838e0ce5fb1c728c",
+    "d1_export_sha256": "fill_after_live_export",
+    "r2_inventory_sha256": "fill_after_live_inventory"
+  },
+  "script_version": "phase16-v1",
+  "created_by": "Greenwing",
+  "verification_status": "SOURCE_VALIDATION_ONLY",
+  "restore_test_status": "NOT_RUN",
+  "safety": {
+    "secrets_included": false,
+    "raw_employee_data_included": false,
+    "raw_payroll_data_included": false,
+    "raw_document_contents_included": false
+  }
+}

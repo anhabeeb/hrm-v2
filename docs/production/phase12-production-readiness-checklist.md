@@ -48,3 +48,14 @@ Use this checklist before each production release of OmniCore - HR.
 - [ ] Worker rollback steps reviewed.
 - [ ] Pages rollback steps reviewed.
 - [ ] Emergency CORS/login checklist reviewed.
+
+## Phase 16 Backup, Restore, and Retention
+
+- [ ] Phase 16 backup manifest generated and reviewed.
+- [ ] D1 backup script dry-run completed successfully.
+- [ ] D1 restore dry-run report completed and reviewed before any restore procedure.
+- [ ] R2 restore readiness and inventory dry-run completed without exposing private object keys.
+- [ ] Retention cleanup dry-run reviewed from `/settings/admin/backup-retention`.
+- [ ] Any real retention cleanup uses `RUN_RETENTION_CLEANUP` confirmation and is approved by an authorized admin.
+- [ ] No backup dump, R2 downloaded object, env file, secret, log, or nested ZIP is included in the release ZIP.
+- [ ] Active employee documents, payroll results, audit logs, and employee master records are confirmed excluded from automated cleanup targets.
