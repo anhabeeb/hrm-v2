@@ -1,6 +1,6 @@
 # Phase 21 Production Smoke Live Report
 
-Generated: 2026-07-03T17:14:35.307Z
+Generated: 2026-07-03T18:29:39.170Z
 
 Accepted baseline: HRM-v2-d1-deferred-audit-remediation-phase20-clean.zip
 

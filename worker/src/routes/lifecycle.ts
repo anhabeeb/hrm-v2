@@ -12,9 +12,11 @@ import type { AppBindings, AuthUser, DbUser, UserStatus } from "../types";
 import { safeEmitAppEvent } from "../utils/app-events";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
+import { runOptionalSectionWithTimeout } from "../utils/optional-section-timeout";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { timeD1 } from "../utils/performance";
 import { isEmail, normalizeEmail, readString } from "../utils/validation";
+import { workspaceDeferredMessage, workspaceRetryKey } from "../utils/workspace-response";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
 import { cleanupEmployeeDocumentUploads, completeDocumentUploadSessions, prepareDocumentUploadSessions, prepareEmployeeDocumentUpload, savePreparedEmployeeDocumentUpload, uploadEmployeeDocument, type DocumentUploadPrepareRow, type EmployeeDocumentUploadResult, type PreparedEmployeeDocumentUpload } from "./documents";
 
@@ -270,13 +272,16 @@ function oldTaskStatus(status: TaskStatus) {
 const onboardingWorkspaceViewPermissions = ["onboarding.workspace.view", "onboarding.cases.view", "onboarding.cases.manage", "employees.lifecycle.view", "employees.view"];
 const onboardingWorkspaceUpdatePermissions = ["onboarding.workspace.update", "onboarding.cases.update", "onboarding.cases.manage", "employees.lifecycle.manage"];
 
-type WorkspaceOptionalSectionStatus = "COMPLETE" | "MISSING" | "NOT_REQUIRED" | "DISABLED" | "NO_PERMISSION" | "WARNING";
+type WorkspaceOptionalSectionStatus = "COMPLETE" | "MISSING" | "NOT_REQUIRED" | "DISABLED" | "NO_PERMISSION" | "WARNING" | "TIMEOUT" | "DEFERRED";
 type WorkspaceOptionalSectionState = {
   status: WorkspaceOptionalSectionStatus;
   label: string;
   message: string;
   module_key?: string | null;
   permission_keys?: string[];
+  retry_key?: string;
+  refreshing?: boolean;
+  duration_ms?: number;
 };
 
 const onboardingTaskModuleKeys: Record<string, string | null> = {
@@ -450,6 +455,9 @@ async function optionalSettingEnabled(db: D1Database, sql: string, fallback = tr
   }
 }
 
+const ONBOARDING_WORKSPACE_OPTIONAL_SECTION_TIMEOUT_MS = 1400;
+const ONBOARDING_WORKSPACE_REQUIRED_SECTION_TIMEOUT_MS = 1800;
+
 async function getOnboardingWorkspaceModuleStatuses(c: Context<AppBindings>) {
   const moduleKeys = [
     "contracts",
@@ -469,29 +477,50 @@ async function getOnboardingWorkspaceModuleStatuses(c: Context<AppBindings>) {
     "self_service",
     "approvals"
   ];
-  const moduleStatuses: Record<string, boolean> = {};
-  for (const key of moduleKeys) moduleStatuses[key] = await isModuleEnabled(c.env.DB, key);
+  const moduleStatusPairs = await Promise.all(moduleKeys.map(async (key) => [key, await isModuleEnabled(c.env.DB, key)] as const));
+  const moduleStatuses = Object.fromEntries(moduleStatusPairs) as Record<string, boolean>;
 
-  const payrollEnabled = moduleStatuses.payroll && await optionalSettingEnabled(c.env.DB, "SELECT module_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
+  const [
+    payrollSettingEnabled,
+    paymentMethodsSettingEnabled,
+    paymentInstitutionsSettingEnabled,
+    bankLoansSettingEnabled,
+    customDeductionsSettingEnabled,
+    pensionSettingEnabled,
+    contractsSettingEnabled,
+    finalSettlementSettingEnabled
+  ] = await Promise.all([
+    moduleStatuses.payroll ? optionalSettingEnabled(c.env.DB, "SELECT module_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'") : Promise.resolve(false),
+    moduleStatuses.payment_methods ? optionalSettingEnabled(c.env.DB, "SELECT payment_methods_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'") : Promise.resolve(false),
+    moduleStatuses.payment_institutions ? optionalSettingEnabled(c.env.DB, "SELECT payment_institutions_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'") : Promise.resolve(false),
+    moduleStatuses.bank_loans ? optionalSettingEnabled(c.env.DB, "SELECT bank_loan_deductions_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'") : Promise.resolve(false),
+    moduleStatuses.custom_deductions ? optionalSettingEnabled(c.env.DB, "SELECT custom_deductions_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'") : Promise.resolve(false),
+    moduleStatuses.pension ? optionalSettingEnabled(c.env.DB, "SELECT pension_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'") : Promise.resolve(false),
+    moduleStatuses.contracts ? optionalSettingEnabled(c.env.DB, "SELECT contracts_enabled AS enabled FROM contract_settings ORDER BY created_at LIMIT 1") : Promise.resolve(false),
+    moduleStatuses.final_settlement ? optionalSettingEnabled(c.env.DB, "SELECT COALESCE(final_settlement_enabled, module_enabled, 1) AS enabled FROM final_settlement_settings WHERE id = 'final_settlement_settings_default'") : Promise.resolve(false)
+  ]);
+
+  const payrollEnabled = moduleStatuses.payroll && payrollSettingEnabled;
   moduleStatuses.payroll = payrollEnabled;
-  moduleStatuses.payment_methods = moduleStatuses.payment_methods && payrollEnabled && await optionalSettingEnabled(c.env.DB, "SELECT payment_methods_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
-  moduleStatuses.payment_institutions = moduleStatuses.payment_institutions && payrollEnabled && await optionalSettingEnabled(c.env.DB, "SELECT payment_institutions_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
-  moduleStatuses.bank_loans = moduleStatuses.bank_loans && payrollEnabled && await optionalSettingEnabled(c.env.DB, "SELECT bank_loan_deductions_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
-  moduleStatuses.custom_deductions = moduleStatuses.custom_deductions && payrollEnabled && await optionalSettingEnabled(c.env.DB, "SELECT custom_deductions_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
-  moduleStatuses.pension = moduleStatuses.pension && payrollEnabled && await optionalSettingEnabled(c.env.DB, "SELECT pension_enabled AS enabled FROM payroll_settings WHERE id = 'payroll_settings_default'");
-  moduleStatuses.contracts = moduleStatuses.contracts && await optionalSettingEnabled(c.env.DB, "SELECT contracts_enabled AS enabled FROM contract_settings ORDER BY created_at LIMIT 1");
-  moduleStatuses.final_settlement = moduleStatuses.final_settlement && await optionalSettingEnabled(c.env.DB, "SELECT COALESCE(final_settlement_enabled, module_enabled, 1) AS enabled FROM final_settlement_settings WHERE id = 'final_settlement_settings_default'");
+  moduleStatuses.payment_methods = moduleStatuses.payment_methods && payrollEnabled && paymentMethodsSettingEnabled;
+  moduleStatuses.payment_institutions = moduleStatuses.payment_institutions && payrollEnabled && paymentInstitutionsSettingEnabled;
+  moduleStatuses.bank_loans = moduleStatuses.bank_loans && payrollEnabled && bankLoansSettingEnabled;
+  moduleStatuses.custom_deductions = moduleStatuses.custom_deductions && payrollEnabled && customDeductionsSettingEnabled;
+  moduleStatuses.pension = moduleStatuses.pension && payrollEnabled && pensionSettingEnabled;
+  moduleStatuses.contracts = moduleStatuses.contracts && contractsSettingEnabled;
+  moduleStatuses.final_settlement = moduleStatuses.final_settlement && finalSettlementSettingEnabled;
 
   return moduleStatuses;
 }
 
-function workspaceSectionState(status: WorkspaceOptionalSectionStatus, label: string, message: string, moduleKey?: string | null, permissionKeys?: string[]): WorkspaceOptionalSectionState {
+function workspaceSectionState(status: WorkspaceOptionalSectionStatus, label: string, message: string, moduleKey?: string | null, permissionKeys?: string[], extras: Partial<WorkspaceOptionalSectionState> = {}): WorkspaceOptionalSectionState {
   return {
     status,
     label,
     message,
     module_key: moduleKey ?? null,
-    permission_keys: permissionKeys
+    permission_keys: permissionKeys,
+    ...extras
   };
 }
 
@@ -511,6 +540,82 @@ function emptyOnboardingDocumentChecklist(status: string, message: string) {
   } as Awaited<ReturnType<typeof getOnboardingDocumentChecklist>>;
 }
 
+function deferredOnboardingChecklist(label: string) {
+  return {
+    tasks: [],
+    total: 0,
+    completed: 0,
+    blockers: [],
+    deferred: true,
+    message: workspaceDeferredMessage(label)
+  } as Awaited<ReturnType<typeof getOnboardingChecklistStatus>> & { deferred: boolean; message: string };
+}
+
+function deferredOnboardingReadiness(label: string) {
+  return {
+    can_activate: false,
+    refreshing: true,
+    deferred: true,
+    blockers: [],
+    blocking_items: [{ type: "READINESS_REFRESHING", message: workspaceDeferredMessage(label) }],
+    warning_items: [{ type: "READINESS_REFRESHING", message: "Readiness is refreshing in the background. Activation remains disabled until the server validates the latest readiness state." }],
+    checklist: deferredOnboardingChecklist(label),
+    documents: emptyOnboardingDocumentChecklist("DEFERRED", workspaceDeferredMessage("Documents")),
+    contract: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Contract readiness") },
+    payroll: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Payroll readiness") },
+    payment_method: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Payment method readiness") },
+    pension: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Pension readiness") },
+    roster: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Roster readiness") },
+    attendance: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Attendance readiness") },
+    biometric: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Biometric readiness") },
+    user_access: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("User access readiness") },
+    assets_uniforms: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Asset readiness") }
+  } as unknown as Awaited<ReturnType<typeof getEmployeeOnboardingReadiness>> & { deferred: boolean; refreshing: boolean };
+}
+
+async function loadRequiredOnboardingWorkspaceSection<T>(
+  c: Context<AppBindings>,
+  options: {
+    key: string;
+    label: string;
+    fallback: T;
+    run: () => Promise<T>;
+    timeoutMs?: number;
+  }
+) {
+  try {
+    const result = await runOptionalSectionWithTimeout({
+      label: `onboarding.workspace.${options.key}`,
+      timeoutMs: options.timeoutMs ?? ONBOARDING_WORKSPACE_REQUIRED_SECTION_TIMEOUT_MS,
+      run: () => timeD1(c, options.run, `onboarding.workspace.${options.key}`),
+      onLateFailure: (error) => console.warn("Required onboarding workspace section late failure", { section: options.key, error: error instanceof Error ? error.message : String(error) })
+    });
+    if (result.status === "timeout") {
+      return {
+        value: options.fallback,
+        state: workspaceSectionState("DEFERRED", options.label, workspaceDeferredMessage(options.label), null, [], {
+          retry_key: workspaceRetryKey("onboarding.workspace", options.key),
+          refreshing: true,
+          duration_ms: result.durationMs
+        })
+      };
+    }
+    return {
+      value: result.value,
+      state: workspaceSectionState("COMPLETE", options.label, `${options.label} is available.`, null, [], { duration_ms: result.durationMs })
+    };
+  } catch (error) {
+    console.warn("Required onboarding workspace section unavailable", { section: options.key, error: error instanceof Error ? error.message : String(error) });
+    return {
+      value: options.fallback,
+      state: workspaceSectionState("WARNING", options.label, `${options.label} is temporarily unavailable. The workspace shell remains available.`, null, [], {
+        retry_key: workspaceRetryKey("onboarding.workspace", options.key),
+        refreshing: false
+      })
+    };
+  }
+}
+
 async function loadOptionalOnboardingWorkspaceSection<T>(
   c: Context<AppBindings>,
   options: {
@@ -521,6 +626,7 @@ async function loadOptionalOnboardingWorkspaceSection<T>(
     permissions?: string[];
     fallback: T;
     run: () => Promise<T>;
+    timeoutMs?: number;
   }
 ) {
   const permissions = options.permissions ?? [];
@@ -537,9 +643,25 @@ async function loadOptionalOnboardingWorkspaceSection<T>(
     };
   }
   try {
+    const result = await runOptionalSectionWithTimeout({
+      label: `onboarding.workspace.${options.key}`,
+      timeoutMs: options.timeoutMs ?? ONBOARDING_WORKSPACE_OPTIONAL_SECTION_TIMEOUT_MS,
+      run: () => timeD1(c, options.run, `onboarding.workspace.${options.key}`),
+      onLateFailure: (error) => console.warn("Optional onboarding workspace section late failure", { section: options.key, error: error instanceof Error ? error.message : String(error) })
+    });
+    if (result.status === "timeout") {
+      return {
+        value: options.fallback,
+        state: workspaceSectionState("TIMEOUT", options.label, workspaceDeferredMessage(options.label), options.moduleKey, permissions, {
+          retry_key: workspaceRetryKey("onboarding.workspace", options.key),
+          refreshing: true,
+          duration_ms: result.durationMs
+        })
+      };
+    }
     return {
-      value: await timeD1(c, options.run, `onboarding.workspace.${options.key}`),
-      state: workspaceSectionState("COMPLETE", options.label, `${options.label} is available.`, options.moduleKey, permissions)
+      value: result.value,
+      state: workspaceSectionState("COMPLETE", options.label, `${options.label} is available.`, options.moduleKey, permissions, { duration_ms: result.durationMs })
     };
   } catch (error) {
     console.warn("Optional onboarding workspace section unavailable", { section: options.key, error: error instanceof Error ? error.message : String(error) });
@@ -956,13 +1078,17 @@ async function getOnboardingWorkspaceUserAccount(c: Context<AppBindings>, employ
 }
 
 async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) {
+  const requestId = c.req.header("X-Request-ID") ?? c.res.headers.get("X-Request-Id") ?? crypto.randomUUID();
+  const startedAt = Date.now();
+  c.header("X-Onboarding-Workspace-Request-Id", requestId);
+  console.info(JSON.stringify({ level: "info", event: "onboarding.workspace.open.start", request_id: requestId, timestamp: new Date().toISOString() }));
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return null;
   const employeeId = String(gate.row.employee_id);
   const moduleStatuses = await getOnboardingWorkspaceModuleStatuses(c);
   const [
-    checklist,
-    readiness,
+    checklistSection,
+    readinessSection,
     contacts,
     addresses,
     documents,
@@ -986,8 +1112,8 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     jobLevels,
     reportingManagers
   ] = await Promise.all([
-    getOnboardingChecklistStatus(c, caseId),
-    getEmployeeOnboardingReadiness(c, caseId),
+    loadRequiredOnboardingWorkspaceSection(c, { key: "checklist", label: "Setup checklist", fallback: deferredOnboardingChecklist("Setup checklist"), run: () => getOnboardingChecklistStatus(c, caseId) }),
+    loadRequiredOnboardingWorkspaceSection(c, { key: "readiness", label: "Activation readiness", fallback: deferredOnboardingReadiness("Activation readiness"), run: () => getEmployeeOnboardingReadiness(c, caseId), timeoutMs: 2200 }),
     c.env.DB.prepare(`SELECT ${LIFECYCLE_CONTACT_COLUMNS} FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY is_primary DESC, contact_type LIMIT 25`).bind(employeeId).all<Record<string, unknown>>(),
     c.env.DB.prepare(`SELECT ${LIFECYCLE_ADDRESS_COLUMNS} FROM employee_addresses WHERE employee_id = ? ORDER BY is_primary DESC, address_type LIMIT 10`).bind(employeeId).all<Record<string, unknown>>(),
     loadOptionalOnboardingWorkspaceSection(c, { key: "documents", label: "Documents", moduleKey: "documents", moduleStatuses, permissions: ["documents.view", "documents.checklist.view", "documents.upload", "onboarding.workspace.documents.upload", "onboarding.cases.manage"], fallback: emptyOnboardingDocumentChecklist("NO_PERMISSION", "No permission to load documents."), run: () => getOnboardingDocumentChecklist(c, caseId) }),
@@ -1073,6 +1199,8 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     c.env.DB.prepare("SELECT id, employee_no, full_name, primary_department_id, primary_location_id, primary_position_id FROM employees WHERE archived_at IS NULL AND id != ? ORDER BY full_name LIMIT 250").bind(employeeId).all<Record<string, unknown>>()
   ]);
   const optionalSectionStates = {
+    checklist: checklistSection.state,
+    readiness: readinessSection.state,
     documents: documents.state,
     document_types: documentTypes.state,
     contracts: contracts.state,
@@ -1093,9 +1221,16 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
   return {
     case: gate.row,
     employee: gate.employee,
-    checklist,
-    readiness,
+    checklist: checklistSection.value,
+    readiness: readinessSection.value,
     module_statuses: moduleStatuses,
+    workspace_meta: {
+      request_id: requestId,
+      generated_at: nowIso(),
+      duration_ms: Date.now() - startedAt,
+      partial: Object.values(optionalSectionStates).some((state) => ["TIMEOUT", "DEFERRED", "WARNING"].includes(state.status)),
+      refreshing: Object.values(optionalSectionStates).some((state) => state.refreshing === true)
+    },
     refs: {
       departments: departments.results,
       locations: locations.results,

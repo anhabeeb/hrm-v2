@@ -891,8 +891,8 @@ export const api = {
   getOnboardingCase(token: string, caseId: string) {
     return request<{ case: OnboardingCase; employee: Employee; checklist: { tasks: LifecycleTask[] }; approval: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}`, {}, token);
   },
-  getOnboardingWorkspace(token: string, caseId: string, signal?: AbortSignal) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/workspace`, { signal }, token);
+  getOnboardingWorkspace(token: string, caseId: string, signal?: AbortSignal, timeoutMs = 12000) {
+    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/workspace`, { signal, timeoutMs, requestLabel: "onboarding.workspace" }, token);
   },
   updateOnboardingWorkspaceEmployeeInfo(token: string, caseId: string, input: Record<string, unknown>) {
     return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/employee-info`, { method: "PATCH", body: JSON.stringify(input) }, token);

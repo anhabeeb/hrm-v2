@@ -19,6 +19,51 @@
   ],
   "recent_system_checks": [
     {
+      "table": "employee_onboarding_cases",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "employee_onboarding_tasks",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "employee_lifecycle_events",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "employee_documents",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "employee_document_versions",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "document_required_rules",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "document_upload_sessions",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "payment_institutions",
+      "exists": true,
+      "local": true
+    },
+    {
+      "table": "employee_payment_methods",
+      "exists": true,
+      "local": true
+    },
+    {
       "table": "notifications",
       "exists": true,
       "local": true
@@ -80,11 +125,6 @@
     },
     {
       "table": "system_health_snapshots",
-      "exists": true,
-      "local": true
-    },
-    {
-      "table": "document_upload_sessions",
       "exists": true,
       "local": true
     },

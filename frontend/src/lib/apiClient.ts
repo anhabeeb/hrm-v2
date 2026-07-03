@@ -184,7 +184,7 @@ export const apiClient = {
   }
 };
 
-export async function request<T>(path: string, options: RequestInit = {}, token?: string | null) {
+export async function request<T>(path: string, options: RequestInit & { timeoutMs?: number; dedupe?: boolean; requestLabel?: string } = {}, token?: string | null) {
   const { signal, ...rest } = options;
   return apiClient.request<T>(path, { ...rest, signal: signal ?? undefined, token });
 }

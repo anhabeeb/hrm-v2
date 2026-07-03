@@ -28,11 +28,12 @@ import { useAuth } from "../hooks/useAuth";
 import { useDocumentUploadBatch } from "../hooks/useDocumentUploadBatch";
 import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
+import { useResilientWorkspaceQuery } from "../hooks/useResilientWorkspaceQuery";
 import { useWorkspaceMutation } from "../hooks/useWorkspaceMutation";
-import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
 import { ApiError, api } from "../lib/api";
 import type { CompleteDocumentUploadsResult } from "../lib/documentUploadApi";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateField, validateRequiredField } from "../lib/form-validation";
+import { sectionNeedsRetry, sectionStatusLabel, type ModuleSectionState } from "../lib/moduleSectionLoading";
 import { queryKeys } from "../lib/queryKeys";
 import { applyWorkspacePayload, invalidateOnboardingWorkspaceSlices, workspaceScope, type WorkspaceSlice } from "../lib/workspaceInvalidation";
 import type { Employee } from "../types/employees";
@@ -943,12 +944,13 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
   const { token } = useAuth();
   const [detail, setDetail] = useState<{ case: OnboardingCase | OffboardingCase; checklist: { tasks: LifecycleTask[] }; readiness?: Row } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const onboardingWorkspaceQuery = useWorkspaceQuery<Row>({
+  const onboardingWorkspaceQuery = useResilientWorkspaceQuery<Row>({
     workspaceName: "onboarding-workspace",
     queryKey: (scope) => queryKeys.onboarding.workspace(scope, caseId),
     enabled: kind === "onboarding",
     placeholderData: (previousData) => String(asRow(previousData?.case).id ?? "") === caseId ? previousData : undefined,
-    queryFn: async ({ token, signal }) => (await api.getOnboardingWorkspace(token, caseId, signal)).workspace as Row
+    timeoutMs: 12000,
+    queryFn: async ({ token, signal, timeoutMs }) => (await api.getOnboardingWorkspace(token, caseId, signal, timeoutMs)).workspace as Row
   });
   const workspace = kind === "onboarding" ? (onboardingWorkspaceQuery.data ?? null) : null;
   const onboardingDetail = workspace ? {
@@ -980,7 +982,7 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
     await load();
     onChanged();
   }
-  const combinedError = error ?? (onboardingWorkspaceQuery.error ? onboardingWorkspaceQuery.error.message : null);
+  const combinedError = error ?? (onboardingWorkspaceQuery.blockingError ? onboardingWorkspaceQuery.blockingError.message : null);
   const tasks = activeDetail?.checklist?.tasks ?? [];
   const blockers = Array.isArray(activeDetail?.readiness?.blocking_items) ? (activeDetail?.readiness?.blocking_items as unknown[]) : [];
   const warnings = Array.isArray(activeDetail?.readiness?.warning_items) ? (activeDetail?.readiness?.warning_items as unknown[]) : [];
@@ -988,8 +990,16 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
   const caseEmployeeId = activeDetail ? String((activeDetail.case as unknown as Row).employee_id ?? "") : "";
   return (
     <Modal title={`${title(kind)} case`} onClose={onClose} wide={kind === "onboarding"} hideHeader={kind === "onboarding"} bodyClassName={kind === "onboarding" ? "min-h-0 flex-1 overflow-hidden p-0" : undefined}>
-      {combinedError ? <p className="text-sm text-red-600">{combinedError}</p> : null}
-      {!activeDetail ? <FormSkeleton fields={6} label="Loading lifecycle case detail" /> : (
+      {combinedError ? (
+        <Panel className="m-4 p-4">
+          <EmptyState
+            title={onboardingWorkspaceQuery.timedOut ? "Onboarding workspace timed out" : "Lifecycle case unavailable"}
+            description={combinedError}
+            action={<ActionTextButton intent="refresh" size="sm" onClick={() => void load()}>Retry loading case</ActionTextButton>}
+          />
+        </Panel>
+      ) : null}
+      {!activeDetail ? (combinedError ? null : <FormSkeleton fields={6} label="Loading lifecycle case detail" />) : (
         kind === "onboarding" && workspace ? (
           <OnboardingWorkspace
             workspace={workspace}
@@ -1001,6 +1011,13 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
             }}
             run={run}
             askReason={askReason}
+            queryState={{
+              refreshing: onboardingWorkspaceQuery.refreshing,
+              backgroundError: onboardingWorkspaceQuery.backgroundError,
+              retry: async () => {
+                await load();
+              }
+            }}
           />
         ) : (
         <div className="space-y-4">
@@ -1143,6 +1160,20 @@ const onboardingWorkspaceSectionTasks: Record<OnboardingWorkspaceTab, string[]> 
 
 const completedOnboardingTaskStatuses = new Set(["COMPLETED", "WAIVED", "NOT_REQUIRED"]);
 
+const onboardingWorkspaceSectionStateKeys: Record<OnboardingWorkspaceTab, string[]> = {
+  Overview: ["checklist", "readiness"],
+  "Employee Info": ["checklist", "readiness"],
+  Contacts: ["checklist", "readiness"],
+  "Job Assignment": ["checklist", "readiness"],
+  Documents: ["documents", "document_types", "checklist", "readiness"],
+  Contract: ["contracts", "contract_types", "contract_settings", "readiness"],
+  Payroll: ["payroll_profile", "readiness"],
+  "Payment & Pension": ["payment_methods", "payment_institutions", "pension_profile", "pension_schemes", "readiness"],
+  "Attendance & Roster": ["biometric_mappings", "readiness"],
+  "Assets & Uniforms": ["asset_assignments", "available_assets", "readiness"],
+  "User Access": ["readiness"]
+};
+
 function asRow(value: unknown): Row {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Row : {};
 }
@@ -1153,6 +1184,15 @@ function asRows(value: unknown): Row[] {
 
 function boolValue(value: unknown) {
   return value === true || value === 1 || value === "1" || value === "true";
+}
+
+function workspaceSectionStatesForTab(states: Row, tab: OnboardingWorkspaceTab): ModuleSectionState[] {
+  return (onboardingWorkspaceSectionStateKeys[tab] ?? [])
+    .map((key) => {
+      const state = asRow(states[key]) as ModuleSectionState;
+      return state.status ? state : null;
+    })
+    .filter((state): state is ModuleSectionState => Boolean(state));
 }
 
 function employeeTypeLabel(value: unknown) {
@@ -1443,7 +1483,7 @@ function onboardingModuleStateSummary(rows: Array<{ status: string }>) {
 
 type OnboardingWorkspaceMutationResult = { workspace?: Row } & Record<string, unknown>;
 
-function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReason }: { workspace: Row; caseId: string; onClose: () => void; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void }) {
+function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReason, queryState }: { workspace: Row; caseId: string; onClose: () => void; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void; queryState?: { refreshing: boolean; backgroundError: Error | null; retry: () => Promise<void> } }) {
   const { token, user } = useAuth();
   const alerts = useAlert();
   const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
@@ -1495,6 +1535,8 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const employee = asRow(workspace.employee);
   const checklist = asRow(workspace.checklist);
   const readiness = asRow(workspace.readiness);
+  const workspaceMeta = asRow(workspace.workspace_meta);
+  const optionalSectionStates = asRow(asRow(workspace.sections).optional_section_states);
   const tasks = asRows(checklist.tasks);
   const canActivate = readiness.can_activate === true;
   const taskByKey = new Map(tasks.map((task) => [String(task.task_key), task]));
@@ -1513,6 +1555,8 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const phone = workspaceContactValue(workspace, ["PERSONAL_PHONE", "PHONE", "MOBILE", "WORK_PHONE"], ["phone", "mobile", "personal_phone"]);
   const email = workspaceContactValue(workspace, ["PERSONAL_EMAIL", "EMAIL", "WORK_EMAIL"], ["email", "personal_email", "work_email"]);
   const activeSectionComplete = sectionStatus(activeTab);
+  const activeSectionStates = workspaceSectionStatesForTab(optionalSectionStates, activeTab);
+  const activeSectionIssue = activeSectionStates.find((state) => sectionNeedsRetry(state) || ["NO_PERMISSION", "DISABLED"].includes(String(state?.status ?? "").toUpperCase())) ?? null;
   const activationStatus = String(rowCase.activation_status ?? "");
   const onboardingStatus = String(rowCase.onboarding_status ?? "");
   const activationBadgeLabel = activationStatus ? title(activationStatus) : "Pending";
@@ -1530,6 +1574,13 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
     }
     return { label: "Activate Employee", intent: "confirm" as const, disabled: !canActivate || readinessUpdating, title: readinessUpdating ? "Readiness is updating after the latest save. Refresh readiness before activation." : canActivate ? "Activate employee." : "Complete required onboarding items before activation.", run: () => runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.") };
   })();
+  useEffect(() => {
+    if (isEnabled(workspaceMeta.refreshing) || isEnabled(readiness.refreshing)) {
+      setReadinessUpdating(true);
+    } else if (readiness.can_activate === true || readiness.can_activate === false) {
+      setReadinessUpdating(false);
+    }
+  }, [readiness.can_activate, readiness.refreshing, workspaceMeta.refreshing]);
   return (
     <div className="OnboardingEmployeePopupLayout flex h-full min-h-0 flex-col overflow-hidden bg-slate-50" data-onboarding-employee-popup-layout>
       <header className="onboarding-popup-header shrink-0 border-b bg-white px-4 py-3 sm:px-5">
@@ -1540,6 +1591,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <Badge tone="info">{employeeType}</Badge>
               <StatusBadge value={rowCase.onboarding_status} />
               <Badge tone={activationBadgeTone}>{activationBadgeLabel}</Badge>
+              {queryState?.refreshing || isEnabled(workspaceMeta.refreshing) ? <span className="text-xs font-medium text-sky-700">Refreshing</span> : null}
             </div>
             <div className="mt-1 grid min-w-0 max-w-full gap-x-3 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
               <span className="min-w-0 truncate" title={employeeCode}>{employeeCode}</span>
@@ -1587,6 +1639,28 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <Badge tone={activeSectionComplete ? "success" : "warning"}>{activeSectionComplete ? "Complete" : "Needs review"}</Badge>
             </div>
           </Panel>
+          {queryState?.backgroundError ? (
+            <Panel className="border-amber-200 bg-amber-50 p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-amber-900">Workspace refresh did not finish</p>
+                  <p className="mt-1 text-sm text-amber-800">Cached data remains visible. Retry only this onboarding workspace refresh when ready.</p>
+                </div>
+                <ActionTextButton intent="refresh" size="sm" onClick={() => void queryState.retry()}>Retry</ActionTextButton>
+              </div>
+            </Panel>
+          ) : null}
+          {activeSectionIssue ? (
+            <Panel className="border-slate-200 bg-white p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">{activeSectionIssue.label ?? activeTab}: {sectionStatusLabel(activeSectionIssue)}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{activeSectionIssue.message ?? "This optional section is loading separately. Other onboarding setup remains available."}</p>
+                </div>
+                {sectionNeedsRetry(activeSectionIssue) ? <ActionTextButton intent="refresh" size="sm" onClick={() => void reload()}>Retry section</ActionTextButton> : null}
+              </div>
+            </Panel>
+          ) : null}
       {activeTab === "Overview" ? <OnboardingWorkspaceOverview readiness={readiness} tasks={tasks} workspace={workspace} /> : null}
       {activeTab === "Employee Info" ? <EmployeeInfoWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceEmployeeInfo(token!, caseId, input), "Employee information saved.", ["employee-info", "readiness"])} /> : null}
       {activeTab === "Contacts" ? <ContactWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceContactInfo(token!, caseId, input), "Contact information saved.", ["contacts", "readiness"])} /> : null}

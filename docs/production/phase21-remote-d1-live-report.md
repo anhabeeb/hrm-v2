@@ -1,6 +1,6 @@
 # Phase 21 Remote D1 Live Verification
 
-Generated: 2026-07-03T17:18:09.630Z
+Generated: 2026-07-03T18:59:46.069Z
 
 Accepted baseline: HRM-v2-d1-deferred-audit-remediation-phase20-clean.zip
 
@@ -20,6 +20,15 @@ Remote D1 was queried through Wrangler in read-only mode.
 
 | Status | Table | Local | Remote |
 | --- | --- | --- | --- |
+| PASS | employee_onboarding_cases | local schema present | remote present |
+| PASS | employee_onboarding_tasks | local schema present | remote present |
+| PASS | employee_lifecycle_events | local schema present | remote present |
+| PASS | employee_documents | local schema present | remote present |
+| PASS | employee_document_versions | local schema present | remote present |
+| PASS | document_required_rules | local schema present | remote present |
+| PASS | document_upload_sessions | local schema present | remote present |
+| PASS | payment_institutions | local schema present | remote present |
+| PASS | employee_payment_methods | local schema present | remote present |
 | PASS | notifications | local schema present | remote present |
 | PASS | notification_preferences | local schema present | remote present |
 | PASS | approval_notification_templates | local schema present | remote present |
@@ -33,7 +42,6 @@ Remote D1 was queried through Wrangler in read-only mode.
 | PASS | payroll_summary_snapshots | local schema present | remote present |
 | PASS | dashboard_summary_snapshots | local schema present | remote present |
 | PASS | system_health_snapshots | local schema present | remote present |
-| PASS | document_upload_sessions | local schema present | remote present |
 | PASS | performance_api_metrics | local schema present | remote present |
 | PASS | performance_frontend_metrics | local schema present | remote present |
 | PASS | performance_job_metrics | local schema present | remote present |
