@@ -22,6 +22,22 @@ export type AppEventInput = {
   isSensitive?: boolean;
 };
 
+export type AppEventDeliveryMode = "sse" | "fetch_stream" | "polling_fallback";
+
+export type LiveEventStreamConfig = {
+  enabled: boolean;
+  requestedMode: string;
+  activeMode: AppEventDeliveryMode;
+  heartbeatSeconds: number;
+  heartbeatMs: number;
+  maxDurationSeconds: number;
+  maxDurationMs: number;
+  pollIntervalMs: number;
+  reconnectBaseMs: number;
+  reconnectMaxMs: number;
+  batchLimit: number;
+};
+
 export type AppEventRow = {
   id: string;
   event_type: string;
@@ -48,6 +64,11 @@ const DEDUPE_WINDOW_MS = 10 * 1000;
 const MAX_EVENTS_PER_FETCH = 100;
 const MAX_STRING_LENGTH = 160;
 const SENSITIVE_EVENT_KEY = /(password|token|secret|credential|document_number|file|raw|account|iban|swift|salary|amount|payload|contents|private|hash|r2_key|storage_key|bank|net_salary|gross_salary|deduction|allowance)/i;
+const DEFAULT_LIVE_EVENT_POLL_INTERVAL_MS = 10000;
+const DEFAULT_LIVE_EVENT_HEARTBEAT_SECONDS = 20;
+const DEFAULT_LIVE_EVENT_MAX_DURATION_SECONDS = 300;
+const DEFAULT_RECONNECT_BASE_MS = 2000;
+const DEFAULT_RECONNECT_MAX_MS = 30000;
 
 const MODULE_PERMISSIONS: Record<string, string[]> = {
   notifications: ["notifications.view", "self_service.notifications.view", "notifications.manage"],
@@ -78,6 +99,45 @@ function normalizeModuleKey(value: string | null | undefined) {
   if (key === "report") return "reports";
   if (key === "assets") return "assets_uniforms";
   return key;
+}
+
+function boolEnv(value: string | undefined, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  return ["1", "true", "yes", "on", "enabled"].includes(String(value).trim().toLowerCase());
+}
+
+function boundedNumber(value: string | undefined, fallback: number, min: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
+
+export function getLiveEventStreamConfig(env: Env): LiveEventStreamConfig {
+  const requestedMode = String(env.HRM_LIVE_EVENTS_MODE ?? "auto").trim().toLowerCase();
+  const enabled = boolEnv(env.HRM_LIVE_EVENTS_ENABLED, true);
+  const heartbeatSeconds = boundedNumber(env.HRM_LIVE_EVENTS_HEARTBEAT_SECONDS, DEFAULT_LIVE_EVENT_HEARTBEAT_SECONDS, 10, 60);
+  const maxDurationSeconds = boundedNumber(env.HRM_LIVE_EVENTS_MAX_DURATION_SECONDS, DEFAULT_LIVE_EVENT_MAX_DURATION_SECONDS, 60, 900);
+  const pollIntervalMs = boundedNumber(env.HRM_LIVE_EVENTS_POLL_INTERVAL_MS, DEFAULT_LIVE_EVENT_POLL_INTERVAL_MS, 5000, 60000);
+  const reconnectBaseMs = boundedNumber(env.HRM_LIVE_EVENTS_RECONNECT_BASE_MS, DEFAULT_RECONNECT_BASE_MS, 500, 30000);
+  const reconnectMaxMs = boundedNumber(env.HRM_LIVE_EVENTS_RECONNECT_MAX_MS, DEFAULT_RECONNECT_MAX_MS, reconnectBaseMs, 120000);
+  let activeMode: AppEventDeliveryMode = "polling_fallback";
+  if (enabled) {
+    if (requestedMode === "sse") activeMode = "sse";
+    else if (requestedMode === "fetch_stream" || requestedMode === "stream" || requestedMode === "auto") activeMode = "fetch_stream";
+  }
+  return {
+    enabled,
+    requestedMode,
+    activeMode,
+    heartbeatSeconds,
+    heartbeatMs: heartbeatSeconds * 1000,
+    maxDurationSeconds,
+    maxDurationMs: maxDurationSeconds * 1000,
+    pollIntervalMs,
+    reconnectBaseMs,
+    reconnectMaxMs,
+    batchLimit: 50
+  };
 }
 
 function truncate(value: string, max = MAX_STRING_LENGTH) {
@@ -358,4 +418,55 @@ export async function cleanupExpiredEvents(db: Env["DB"]) {
       message: error instanceof Error ? error.message.slice(0, 180) : "Unknown cleanup error"
     }));
   }
+}
+
+export async function getAppEventStreamHealth(db: Env["DB"], env: Env) {
+  const config = getLiveEventStreamConfig(env);
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const now = nowIso();
+  const [recent, backlog, modules] = await Promise.all([
+    db.prepare(
+      `SELECT COUNT(*) AS count, MAX(created_at) AS last_event_at
+       FROM app_events
+       WHERE created_at >= ?
+         AND (expires_at IS NULL OR expires_at > ?)`
+    ).bind(since, now).first<{ count: number | null; last_event_at: string | null }>(),
+    db.prepare(
+      `SELECT COUNT(*) AS count
+       FROM app_events
+       WHERE (expires_at IS NULL OR expires_at > ?)`
+    ).bind(now).first<{ count: number | null }>(),
+    db.prepare(
+      `SELECT module_key, COUNT(*) AS count, MAX(created_at) AS last_event_at
+       FROM app_events
+       WHERE created_at >= ?
+         AND (expires_at IS NULL OR expires_at > ?)
+       GROUP BY module_key
+       ORDER BY count DESC
+       LIMIT 12`
+    ).bind(since, now).all<{ module_key: string | null; count: number; last_event_at: string | null }>()
+  ]);
+
+  return {
+    enabled: config.enabled,
+    requested_mode: config.requestedMode,
+    active_mode: config.activeMode,
+    stream_endpoint_enabled: config.activeMode !== "polling_fallback",
+    heartbeat_seconds: config.heartbeatSeconds,
+    max_duration_seconds: config.maxDurationSeconds,
+    poll_interval_ms: config.pollIntervalMs,
+    reconnect_base_ms: config.reconnectBaseMs,
+    reconnect_max_ms: config.reconnectMaxMs,
+    recent_event_count: Number(recent?.count ?? 0),
+    last_event_at: recent?.last_event_at ?? null,
+    d1_event_backlog_count: Number(backlog?.count ?? 0),
+    recent_event_modules: modules.results.map((row) => ({
+      module_key: row.module_key ?? "general",
+      count: row.count,
+      last_event_at: row.last_event_at
+    })),
+    recent_event_errors: [] as Array<Record<string, unknown>>,
+    expired_app_event_cleanup_status: "scheduled_by_poll_and_stream",
+    payload_privacy: "sanitized_payloads_only"
+  };
 }

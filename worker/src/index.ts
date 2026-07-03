@@ -48,7 +48,10 @@ const PRODUCTION_FRONTEND_ORIGIN = "https://hr.cafeasiana.com.mv";
 const LOCAL_FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
 const CORS_ALLOWED_HEADERS = [
   "Content-Type",
+  "Accept",
   "Authorization",
+  "Last-Event-ID",
+  "last-event-id",
   "X-Requested-With",
   "X-Request-Id",
   "X-Request-ID",

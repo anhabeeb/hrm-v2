@@ -69,3 +69,14 @@ Use this checklist before each production release of OmniCore - HR.
 - [ ] `npm run smoke:background-processing-phase17` passed.
 - [ ] Queue messages are confirmed to contain safe identifiers only.
 - [ ] Backup & Retention admin page shows background processing status.
+
+## Phase 19 Live App Events
+
+- [ ] `npm run verify:sse-live-events-phase19` passed.
+- [ ] `/api/v1/app-events/stream` requires auth and sends `text/event-stream`.
+- [ ] Auth tokens are never placed in event stream URLs.
+- [ ] `/api/v1/app-events/since` polling fallback remains available.
+- [ ] CORS allows `Authorization`, `Accept`, `X-Request-ID`, and `Last-Event-ID`.
+- [ ] Performance Observability shows live event stream health.
+- [ ] Cross-tab leader coordination reduces duplicate streams where supported.
+- [ ] Event payloads, report storage keys, payroll amounts, and document numbers remain sanitized.

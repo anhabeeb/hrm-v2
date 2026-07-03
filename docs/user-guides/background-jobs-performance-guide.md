@@ -24,9 +24,11 @@ The Backup & Retention page shows processing mode, Queue producer/consumer statu
 
 Real-time app events update caches across open tabs where supported. If events are delayed, refresh the page or relevant workspace.
 
+Phase 19 upgrades delivery to an authenticated live event stream when enabled. The browser uses a fetch-based stream with the Authorization header, never a token in the URL. If the stream is unavailable, the app automatically returns to the scoped polling fallback. Only one leader tab streams where cross-tab coordination is available; other tabs receive safe invalidation signals.
+
 ## Performance Dashboard
 
-Admins can review slow API endpoints, D1 timing, payload warnings, route metrics, build budgets, job failures, and cleanup status.
+Admins can review slow API endpoints, D1 timing, payload warnings, route metrics, build budgets, job failures, live event stream health, and cleanup status.
 
 ## When the App Feels Slow
 

@@ -277,6 +277,9 @@ export const api = {
   cleanupPerformanceMetrics(token: string, input: { detail_retention_days?: number; build_retention_days?: number }) {
     return request<{ cleanup: Record<string, unknown> }>("/api/v1/performance/cleanup", { method: "POST", body: JSON.stringify(input) }, token);
   },
+  getAppEventHealth(token: string, signal?: AbortSignal) {
+    return request<{ app_events_health: Record<string, unknown> }>("/api/v1/admin/app-events/health", { signal }, token);
+  },
   globalSearch(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
     return request<GlobalSearchResponse>(`/api/v1/search/global${query(filters)}`, { signal }, token);
   },

@@ -1,6 +1,8 @@
-import { apiClient } from "./apiClient";
+import { API_BASE_URL, apiClient } from "./apiClient";
+import { createApiRequestId } from "./performance";
 
-export type AppEventDeliveryMode = "stream" | "long-poll" | "polling_fallback";
+export type AppEventDeliveryMode = "sse" | "fetch_stream" | "polling_fallback";
+export type AppEventClientStatus = "disconnected" | "connecting" | "connected" | "reconnecting" | "fallback_polling" | "error";
 
 export interface AppEvent {
   id: string;
@@ -25,6 +27,18 @@ export interface AppEventsSinceResponse {
   server_time: string;
 }
 
+export interface AppEventsStreamStatusResponse {
+  stream_available: boolean;
+  delivery_mode: AppEventDeliveryMode;
+  requested_mode?: string;
+  heartbeat_seconds?: number;
+  max_duration_seconds?: number;
+  poll_interval_ms?: number;
+  reconnect_base_ms?: number;
+  reconnect_max_ms?: number;
+  message: string;
+}
+
 export const appEventsApi = {
   since(token: string, input: { cursor?: string | null; limit?: number; signal?: AbortSignal }) {
     const search = new URLSearchParams();
@@ -39,10 +53,23 @@ export const appEventsApi = {
     });
   },
   streamStatus(token: string, signal?: AbortSignal) {
-    return apiClient.get<{ stream_available: boolean; delivery_mode: AppEventDeliveryMode; message: string }>("/api/v1/app-events/stream", {
+    return apiClient.get<AppEventsStreamStatusResponse>("/api/v1/app-events/stream?status=1", {
       token,
       signal,
       dedupe: false
+    });
+  },
+  connectStream(token: string, input: { cursor?: string | null; signal?: AbortSignal }) {
+    const headers = new Headers();
+    headers.set("Authorization", `Bearer ${token}`);
+    headers.set("Accept", "text/event-stream");
+    headers.set("X-Request-ID", createApiRequestId());
+    if (input.cursor) headers.set("Last-Event-ID", input.cursor);
+    return fetch(`${API_BASE_URL}/api/v1/app-events/stream`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+      signal: input.signal
     });
   }
 };

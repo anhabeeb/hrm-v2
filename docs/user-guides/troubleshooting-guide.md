@@ -60,6 +60,10 @@ Direct upload URLs are short-lived. Use the row Retry action so the app prepares
 
 Check Notification module, rules, routing scope, receive permissions, and alert severity permissions.
 
+## Live Events or Background Refresh Delayed
+
+Check Performance Observability > Live event stream health. If the stream is blocked by auth, CORS, proxy buffering, or browser support, the app should show fallback polling and continue refreshing. Do not put auth tokens in event stream URLs. Confirm CORS allows `Authorization`, `Accept`, `X-Request-ID`, and `Last-Event-ID`.
+
 ## Self-Service Account Not Linked
 
 Link the user to an active employee profile and confirm self-service permissions.

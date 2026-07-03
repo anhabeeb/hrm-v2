@@ -7,7 +7,7 @@ import { createSyncChangeLogEntry, syncWriteMetadata } from "../db/sync";
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { enqueueJob, getBackgroundProcessingStatus, jobToApi, markJobFailed, markJobRunning, markJobSucceeded, runJobWithWaitUntil, updateJobProgress } from "../utils/background-jobs";
-import { safeEmitAppEvent } from "../utils/app-events";
+import { getAppEventStreamHealth, safeEmitAppEvent } from "../utils/app-events";
 import { getBackupRetentionStatus, listDataRetentionPolicies, runDataRetentionCleanup, updateDataRetentionPolicy } from "../utils/data-retention-cleanup";
 import { fail, getClientIp, ok } from "../utils/http";
 import { getDocumentUploadModeStatus } from "../utils/r2-direct-upload";
@@ -1226,6 +1226,13 @@ adminRoutes.get("/background-processing/status", requireAnyPermission(["backgrou
   c.header("Cache-Control", "private, no-store");
   return ok(c, {
     background_processing: await getBackgroundProcessingStatus(c.env.DB, c.env)
+  });
+});
+
+adminRoutes.get("/app-events/health", requireAnyPermission(["admin.system_health.view", "performance.metrics.view", "performance.metrics.manage", "background_jobs.view"]), async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  return ok(c, {
+    app_events_health: await getAppEventStreamHealth(c.env.DB, c.env)
   });
 });
 

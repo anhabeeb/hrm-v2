@@ -89,7 +89,7 @@ function invalidateFamily(client: QueryClient, scope: QueryScope, family: string
   return 0;
 }
 
-export function routeAppEventInvalidation(input: { event: AppEvent; scope: QueryScope; client: QueryClient; source: "poll" | "cross-tab" }) {
+export function routeAppEventInvalidation(input: { event: AppEvent; scope: QueryScope; client: QueryClient; source: "stream" | "poll" | "cross-tab" }) {
   const families = new Set<string>(Array.isArray(input.event.query_keys) ? input.event.query_keys : []);
   if (!families.size) {
     families.add(input.event.module_key);

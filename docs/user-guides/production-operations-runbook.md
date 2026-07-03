@@ -34,6 +34,18 @@ npm run verify:r2-cors-direct-upload-phase18
 
 The Backup & Retention admin page shows the requested upload mode, active mode, whether direct upload is configured, fallback state, CORS check status, and TTL/max-size settings without showing secrets or presigned URLs. If CORS is not ready, leave `HRM_DOCUMENT_UPLOAD_MODE` as `auto` or `worker_proxy`.
 
+## Phase 19 Live Event Stream Checks
+
+Live app-event delivery is optional and controlled by `HRM_LIVE_EVENTS_ENABLED` and `HRM_LIVE_EVENTS_MODE`. The browser uses a fetch stream with Authorization headers, not tokenized URLs. Keep `/api/v1/app-events/since` polling fallback available.
+
+Run:
+
+```bash
+npm run verify:sse-live-events-phase19
+```
+
+The Performance Observability page shows stream mode, stream endpoint availability, heartbeat and reconnect configuration, recent event count, D1 event backlog count, and cleanup status. If a proxy or browser blocks streaming, verify fallback polling is active before investigating deeper network issues.
+
 ## Backup and Rollback Reference
 
 Keep deployment and data backup procedures outside source control. Roll back application deployment first; repair data only through reviewed additive scripts.

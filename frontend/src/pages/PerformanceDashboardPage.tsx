@@ -105,6 +105,12 @@ export function PerformanceDashboardPage() {
     queryFn: ({ signal }) => api.listPerformanceWarnings(token!, undefined, signal)
   });
 
+  const appEventHealthQuery = useApiQuery<{ app_events_health: Record<string, unknown> }>({
+    queryKey: ["performance", "app-events-health", token],
+    enabled: Boolean(token && canView),
+    queryFn: ({ signal }) => api.getAppEventHealth(token!, signal)
+  });
+
   if (!canView) return <PermissionDeniedState />;
 
   const overview = overviewQuery.data ?? {};
@@ -112,6 +118,7 @@ export function PerformanceDashboardPage() {
   const frontendOverview = overview.frontend as Record<string, unknown> | undefined;
   const jobOverview = overview.jobs as Record<string, unknown> | undefined;
   const buildOverview = overview.builds as Record<string, unknown> | undefined;
+  const appEventHealth = appEventHealthQuery.data?.app_events_health ?? {};
   const rows = getRowsPayload(listQuery.data).metrics;
   const warnings = warningsQuery.data?.warnings ?? [];
 
@@ -139,7 +146,7 @@ export function PerformanceDashboardPage() {
         actions={
           <>
             <AdminHelpLink target="performance" label="Performance guide" />
-            <Button variant="outline" size="sm" onClick={() => void Promise.all([overviewQuery.refetch(), listQuery.refetch(), warningsQuery.refetch()])}>
+            <Button variant="outline" size="sm" onClick={() => void Promise.all([overviewQuery.refetch(), listQuery.refetch(), warningsQuery.refetch(), appEventHealthQuery.refetch()])}>
               <RefreshCw className="h-4 w-4" />
               Refresh
             </Button>
@@ -158,6 +165,17 @@ export function PerformanceDashboardPage() {
         <OverviewCard title="Background jobs" value={String(numberValue(jobOverview?.total_count))} detail={`${formatMs(jobOverview?.avg_duration_ms)} avg, ${numberValue(jobOverview?.failed_count)} failed`} icon={<TimerReset className="h-4 w-4" />} tone={numberValue(jobOverview?.failed_count) ? "danger" : "info"} />
         <OverviewCard title="Build budget" value={formatKb(buildOverview?.largest_chunk_kb)} detail={`${numberValue(buildOverview?.budget_warning_count)} warnings, ${numberValue(buildOverview?.total_count)} builds`} icon={<Database className="h-4 w-4" />} tone={numberValue(buildOverview?.budget_warning_count) ? "warning" : "neutral"} />
       </MetricGrid>
+
+      <SectionCard title="Live event stream health" description="Authenticated app-event delivery mode, reconnect configuration, recent event count, and D1 backlog. Event payloads and storage keys are never displayed.">
+        {appEventHealthQuery.isLoading ? <TableSkeleton rows={2} columns={4} /> : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <OverviewCard title="Delivery mode" value={safeText(appEventHealth.active_mode, "polling_fallback")} detail={`Requested ${safeText(appEventHealth.requested_mode, "auto")}`} icon={<Activity className="h-4 w-4" />} tone={appEventHealth.stream_endpoint_enabled ? "success" : "warning"} />
+            <OverviewCard title="Recent events" value={String(numberValue(appEventHealth.recent_event_count))} detail={`Last ${safeText(appEventHealth.last_event_at, "none")}`} icon={<Gauge className="h-4 w-4" />} tone="info" />
+            <OverviewCard title="D1 event backlog" value={String(numberValue(appEventHealth.d1_event_backlog_count))} detail={`${safeText(appEventHealth.expired_app_event_cleanup_status, "cleanup scheduled")}`} icon={<Database className="h-4 w-4" />} tone={numberValue(appEventHealth.d1_event_backlog_count) > 5000 ? "warning" : "neutral"} />
+            <OverviewCard title="Reconnect policy" value={`${safeText(appEventHealth.reconnect_base_ms, "2000")} ms`} detail={`Max ${safeText(appEventHealth.reconnect_max_ms, "30000")} ms`} icon={<RefreshCw className="h-4 w-4" />} tone="neutral" />
+          </div>
+        )}
+      </SectionCard>
 
       {cleanupMessage ? <WarningPanel tone={cleanupMessage.includes("failed") ? "danger" : "success"}>{cleanupMessage}</WarningPanel> : null}
 

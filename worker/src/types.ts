@@ -19,6 +19,13 @@ export interface Env {
   HRM_R2_PRESIGN_REGION?: string;
   HRM_R2_PRESIGN_URL_TTL_SECONDS?: string;
   HRM_R2_DIRECT_UPLOAD_MAX_BYTES?: string;
+  HRM_LIVE_EVENTS_MODE?: "polling" | "sse" | "fetch_stream" | "auto" | string;
+  HRM_LIVE_EVENTS_ENABLED?: string;
+  HRM_LIVE_EVENTS_HEARTBEAT_SECONDS?: string;
+  HRM_LIVE_EVENTS_MAX_DURATION_SECONDS?: string;
+  HRM_LIVE_EVENTS_POLL_INTERVAL_MS?: string;
+  HRM_LIVE_EVENTS_RECONNECT_BASE_MS?: string;
+  HRM_LIVE_EVENTS_RECONNECT_MAX_MS?: string;
 }
 
 export interface BackgroundJobQueueMessage {
