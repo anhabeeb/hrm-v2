@@ -23,6 +23,17 @@ Use: audit remote schema, generate repair, review generated SQL, apply generated
 
 Confirm DOCUMENTS_BUCKET exists, private storage is used, and raw R2 keys/private URLs are not exposed.
 
+## Phase 18 Direct R2 Upload Checks
+
+Direct browser uploads are optional. If enabled, confirm the environment has the Phase 18 presign settings configured in Cloudflare secrets/config, not in source. Run:
+
+```bash
+npm run verify:direct-r2-uploads-phase18
+npm run verify:r2-cors-direct-upload-phase18
+```
+
+The Backup & Retention admin page shows the requested upload mode, active mode, whether direct upload is configured, fallback state, CORS check status, and TTL/max-size settings without showing secrets or presigned URLs. If CORS is not ready, leave `HRM_DOCUMENT_UPLOAD_MODE` as `auto` or `worker_proxy`.
+
 ## Backup and Rollback Reference
 
 Keep deployment and data backup procedures outside source control. Roll back application deployment first; repair data only through reviewed additive scripts.

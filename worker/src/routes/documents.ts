@@ -13,6 +13,7 @@ import { safeEmitAppEvent } from "../utils/app-events";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
+import { createDirectR2PresignedPutUrl, createSecureDocumentObjectKey, getConfiguredDocumentUploadMode, getDirectUploadMaxBytes, getDirectUploadTtlSeconds, isDirectR2UploadConfigured, resolveDocumentUploadMode } from "../utils/r2-direct-upload";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -301,6 +302,10 @@ function safeDocumentUploadLog(event: string, input: Record<string, unknown>) {
     upload_id: input.upload_id ?? null,
     batch_id: input.batch_id ?? null,
     request_id: cSafeRequestId(input),
+    upload_mode: typeof input.upload_mode === "string" ? input.upload_mode : null,
+    failure_category: typeof input.failure_category === "string" ? input.failure_category : null,
+    duration_ms: typeof input.duration_ms === "number" ? input.duration_ms : null,
+    row_count: typeof input.row_count === "number" ? input.row_count : null,
     message: input.message ?? null,
     timestamp: new Date().toISOString()
   }));
@@ -981,6 +986,9 @@ documentRoutes.post("/uploads/:uploadId/file", requirePermission("documents.uplo
   if (!["PREPARED", "UPLOADING"].includes(session.status)) {
     return fail(c, 409, "DOCUMENT_UPLOAD_INVALID_STATUS", "This upload cannot receive a file in its current status.");
   }
+  if (session.upload_mode !== "worker_proxy") {
+    return fail(c, 409, "DOCUMENT_UPLOAD_MODE_MISMATCH", "This prepared upload must use the direct R2 upload target returned by prepare.");
+  }
   const body = await parseMultipart(c);
   if (!body) return fail(c, 400, "INVALID_FORM", "Multipart form data is required.");
   const file = fileFromBody(body);
@@ -1161,18 +1169,37 @@ export async function prepareDocumentUploadSessions(c: Context<AppBindings>, con
   }
 
   const batchId = `document_upload_batch_${crypto.randomUUID()}`;
-  const expiresAt = uploadSessionExpiry();
-  const uploads = [];
+  const requestedUploadMode = getConfiguredDocumentUploadMode(c.env);
+  const directR2Configured = isDirectR2UploadConfigured(c.env);
+  const directUploadMaxBytes = getDirectUploadMaxBytes(c.env);
+  const directUploadTtlSeconds = getDirectUploadTtlSeconds(c.env);
+  const uploads: Array<Record<string, unknown>> = [];
+  const modeCounts = { worker_proxy: 0, direct_r2: 0 };
   for (const item of preparedRows) {
     const uploadId = `document_upload_${crypto.randomUUID()}`;
     const documentId = crypto.randomUUID();
-    const key = `employees/${context.employeeId}/documents/${documentId}/v1-${sanitizeFileName(item.fileName)}`;
+    let uploadMode = resolveDocumentUploadMode(c.env, { fileSizeBytes: item.fileSize });
+    const key = createSecureDocumentObjectKey({
+      employeeId: context.employeeId,
+      documentTypeId: item.type.id,
+      documentId,
+      uploadId,
+      versionNo: 1,
+      originalFilename: item.fileName
+    });
+    let expiresAt = uploadMode === "direct_r2"
+      ? new Date(Date.now() + directUploadTtlSeconds * 1000).toISOString()
+      : uploadSessionExpiry();
     const snapshot = {
       document_type_id: item.type.id,
       document_type_code: item.type.code,
       allowed_mime_types: documentTypeUploadRules(item.type),
       max_file_size_mb: item.type.max_file_size_mb,
-      allow_multiple_files: item.type.allow_multiple_files === 1
+      allow_multiple_files: item.type.allow_multiple_files === 1,
+      requested_upload_mode: requestedUploadMode,
+      resolved_upload_mode: uploadMode,
+      direct_r2_configured: directR2Configured,
+      direct_upload_max_bytes: directUploadMaxBytes
     };
     await c.env.DB.prepare(
       `INSERT INTO document_upload_sessions
@@ -1180,11 +1207,12 @@ export async function prepareDocumentUploadSessions(c: Context<AppBindings>, con
         employee_id, document_type_id, document_id, version_no, r2_key, original_filename,
         file_mime_type, file_size_bytes, file_hash, document_number, issue_date, expiry_date,
         notes, reason_for_replacement, validation_snapshot_json, created_by_user_id, expires_at)
-       VALUES (?, ?, ?, 'worker_proxy', 'PREPARED', ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, 'PREPARED', ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       uploadId,
       batchId,
       optionalString(item.row.client_row_id) ?? `row_${item.rowIndex}`,
+      uploadMode,
       context.contextType ?? "employee_document",
       context.onboardingCaseId ?? null,
       context.employeeId,
@@ -1204,22 +1232,85 @@ export async function prepareDocumentUploadSessions(c: Context<AppBindings>, con
       c.get("currentUser").id,
       expiresAt
     ).run();
+    let uploadInstruction: Record<string, unknown> | null = null;
+    if (uploadMode === "direct_r2") {
+      try {
+        const signed = await createDirectR2PresignedPutUrl(c.env, {
+          key,
+          contentType: item.mimeType,
+          contentLength: item.fileSize,
+          checksumSha256: optionalString(item.row.checksum)
+        });
+        if (signed) {
+          uploadInstruction = {
+            client_row_id: optionalString(item.row.client_row_id) ?? `row_${item.rowIndex}`,
+            upload_id: uploadId,
+            upload_mode: "direct_r2",
+            mode: "direct_r2",
+            upload_url: signed.upload_url,
+            method: signed.method,
+            required_headers: signed.headers,
+            object_key_ref: uploadId,
+            pending_object_reference: uploadId,
+            expires_at: signed.expires_at,
+            max_file_size: Math.min(item.type.max_file_size_mb * 1024 * 1024, directUploadMaxBytes),
+            allowed_mime_types: documentTypeUploadRules(item.type),
+            checksum_algorithm: signed.checksum_algorithm ?? null
+          };
+        }
+      } catch (error) {
+        safeDocumentUploadLog("document.upload.direct_presign_failed", {
+          request_id: requestIdFromContext(c),
+          upload_id: uploadId,
+          batch_id: batchId,
+          message: error instanceof Error ? error.message : "direct presign failed"
+        });
+      }
+      if (!uploadInstruction) {
+        uploadMode = "worker_proxy";
+        expiresAt = uploadSessionExpiry();
+        await c.env.DB.prepare("UPDATE document_upload_sessions SET upload_mode = 'worker_proxy', expires_at = ?, updated_at = ? WHERE id = ?")
+          .bind(expiresAt, nowIso(), uploadId)
+          .run();
+      }
+    }
+    if (!uploadInstruction) {
+      uploadInstruction = {
+        client_row_id: optionalString(item.row.client_row_id) ?? `row_${item.rowIndex}`,
+        upload_id: uploadId,
+        upload_mode: "worker_proxy",
+        mode: "worker_proxy",
+        upload_url: uploadEndpoint(c, uploadId),
+        required_headers: { Authorization: "Bearer token", "X-Request-ID": "generated by client" },
+        object_key_ref: uploadId,
+        pending_object_reference: uploadId,
+        expires_at: expiresAt,
+        max_file_size: item.type.max_file_size_mb * 1024 * 1024,
+        allowed_mime_types: documentTypeUploadRules(item.type)
+      };
+    }
+    modeCounts[uploadMode] += 1;
     uploads.push({
-      client_row_id: optionalString(item.row.client_row_id) ?? `row_${item.rowIndex}`,
-      upload_id: uploadId,
-      upload_mode: "worker_proxy",
-      upload_url: uploadEndpoint(c, uploadId),
-      required_headers: { Authorization: "Bearer token", "X-Request-ID": "generated by client" },
-      object_key: key,
-      pending_object_reference: key,
-      expires_at: expiresAt,
-      max_file_size: item.type.max_file_size_mb * 1024 * 1024,
-      allowed_mime_types: documentTypeUploadRules(item.type)
+      ...uploadInstruction
     });
   }
 
   runDocumentBackgroundTask(c, cleanupStalePendingDocumentUploads(c), "document.upload.cleanup_stale", { batch_id: batchId });
-  return ok(c, { batch_id: batchId, mode: "worker_proxy", direct_r2_available: false, uploads });
+  const responseMode = modeCounts.direct_r2 > 0 && modeCounts.worker_proxy > 0 ? "auto" : modeCounts.direct_r2 > 0 ? "direct_r2" : "worker_proxy";
+  safeDocumentUploadLog("document.upload.prepare_modes", {
+    request_id: requestIdFromContext(c),
+    batch_id: batchId,
+    upload_mode: responseMode,
+    row_count: preparedRows.length
+  });
+  return ok(c, {
+    batch_id: batchId,
+    mode: responseMode,
+    requested_mode: requestedUploadMode,
+    direct_r2_available: directR2Configured,
+    fallback_active: modeCounts.worker_proxy > 0,
+    uploads
+  });
 }
 
 async function getUploadSessionForActor(c: Context<AppBindings>, uploadId: string) {
@@ -1325,11 +1416,21 @@ async function commitUploadedDocumentSession(c: Context<AppBindings>, session: P
     await markUploadSessionFailed(c, session, "DOCUMENT_UPLOAD_EXPIRED", "Prepared upload expired.", true);
     throw new Error("DOCUMENT_UPLOAD_EXPIRED");
   }
-  if (session.status !== "UPLOADED") throw new Error("DOCUMENT_UPLOAD_NOT_UPLOADED");
+  if (session.upload_mode === "worker_proxy" && session.status !== "UPLOADED") throw new Error("DOCUMENT_UPLOAD_NOT_UPLOADED");
+  if (session.upload_mode === "direct_r2" && !["PREPARED", "UPLOADING", "UPLOADED"].includes(session.status)) throw new Error("DOCUMENT_UPLOAD_NOT_UPLOADED");
   const object = await c.env.DOCUMENTS_BUCKET.head(session.r2_key);
   if (!object) {
     await markUploadSessionFailed(c, session, "DOCUMENT_UPLOAD_OBJECT_MISSING", "Uploaded object was not found.");
     throw new Error("DOCUMENT_UPLOAD_OBJECT_MISSING");
+  }
+  if (object.size !== session.file_size_bytes) {
+    await markUploadSessionFailed(c, session, "DOCUMENT_UPLOAD_SIZE_MISMATCH", "Uploaded object size does not match the prepared upload.", true);
+    throw new Error("DOCUMENT_UPLOAD_SIZE_MISMATCH");
+  }
+  const uploadedContentType = object.httpMetadata?.contentType ?? null;
+  if (uploadedContentType && session.file_mime_type && uploadedContentType !== session.file_mime_type) {
+    await markUploadSessionFailed(c, session, "DOCUMENT_UPLOAD_MIME_MISMATCH", "Uploaded object content type does not match the prepared upload.", true);
+    throw new Error("DOCUMENT_UPLOAD_MIME_MISMATCH");
   }
   const employee = await ensureEmployee(c.env.DB, session.employee_id);
   const type = await getType(c.env.DB, session.document_type_id);
@@ -1361,6 +1462,14 @@ async function commitUploadedDocumentSession(c: Context<AppBindings>, session: P
     }
   }
 
+  if (session.upload_mode === "direct_r2" && session.status !== "UPLOADED") {
+    const uploadedAt = nowIso();
+    await c.env.DB.prepare("UPDATE document_upload_sessions SET status = 'UPLOADED', uploaded_at = ?, updated_at = ? WHERE id = ?")
+      .bind(uploadedAt, uploadedAt, session.id)
+      .run();
+    session.status = "UPLOADED";
+    session.uploaded_at = uploadedAt;
+  }
   await c.env.DB.prepare("UPDATE document_upload_sessions SET status = 'COMPLETING', updated_at = ? WHERE id = ?").bind(nowIso(), session.id).run();
   let insertedDocument = false;
   try {
@@ -1483,7 +1592,7 @@ export async function cleanupStalePendingDocumentUploads(c: Context<AppBindings>
   ).bind(new Date().toISOString(), limit).all<PreparedDocumentUploadSessionRow>();
   let cleaned = 0;
   for (const row of rows.results) {
-    if (["UPLOADED", "FAILED"].includes(row.status)) {
+    if (row.upload_mode === "direct_r2" || ["UPLOADED", "FAILED"].includes(row.status)) {
       await c.env.DOCUMENTS_BUCKET.delete(row.r2_key).catch((error) => {
         safeDocumentUploadLog("document.upload.orphan_cleanup_failed", { upload_id: row.id, batch_id: row.batch_id, message: error instanceof Error ? error.message : String(error) });
       });

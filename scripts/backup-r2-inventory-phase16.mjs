@@ -48,8 +48,10 @@ function buildInventory() {
       objects_by_prefix: {},
       orphan_candidate_count: "not_collected_in_dry_run",
       missing_metadata_candidate_count: "not_collected_in_dry_run",
+      direct_upload_session_table: "document_upload_sessions",
+      direct_upload_object_pattern: "employees/{employee_id}/documents/{document_type_id}/{document_id}/v{version}/{upload_id}-{random}.{ext}",
       sample_objects: [],
-      notes: ["No Cloudflare command was executed.", "Set HRM_R2_BACKUP_LIVE=true and HRM_R2_BACKUP_CONFIRM=BACKUP_R2_INVENTORY for live inventory."]
+      notes: ["No Cloudflare command was executed.", "Direct browser uploads use server-generated object keys and document_upload_sessions metadata.", "Set HRM_R2_BACKUP_LIVE=true and HRM_R2_BACKUP_CONFIRM=BACKUP_R2_INVENTORY for live inventory."]
     };
   }
 
@@ -73,6 +75,8 @@ function buildInventory() {
     objects_by_prefix: byPrefix,
     orphan_candidate_count: "requires D1 metadata comparison",
     missing_metadata_candidate_count: "requires D1 metadata comparison",
+    direct_upload_session_table: "document_upload_sessions",
+    direct_upload_object_pattern: "employees/{employee_id}/documents/{document_type_id}/{document_id}/v{version}/{upload_id}-{random}.{ext}",
     sample_objects: objects.slice(0, 20),
     notes: ["Object keys are hashed/redacted. File contents were not downloaded."]
   };
@@ -92,6 +96,8 @@ function writeReport(inventory) {
     `- Total bytes: ${inventory.total_bytes}`,
     `- Orphan candidates: ${inventory.orphan_candidate_count}`,
     `- Missing metadata candidates: ${inventory.missing_metadata_candidate_count}`,
+    `- Direct upload session table: ${inventory.direct_upload_session_table}`,
+    `- Direct upload object pattern: ${inventory.direct_upload_object_pattern}`,
     "",
     "## Objects By Prefix",
     "",

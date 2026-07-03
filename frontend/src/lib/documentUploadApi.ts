@@ -29,19 +29,24 @@ export type PreparedDocumentUpload = {
   client_row_id: string;
   upload_id: string;
   upload_mode: "worker_proxy" | "direct_r2";
+  mode?: "worker_proxy" | "direct_r2";
+  method?: "POST" | "PUT";
   upload_url: string;
   required_headers?: Record<string, string>;
-  object_key?: string;
+  object_key_ref?: string;
   pending_object_reference?: string;
   expires_at: string;
   max_file_size: number;
   allowed_mime_types: string[];
+  checksum_algorithm?: "SHA-256" | null;
 };
 
 export type PrepareDocumentUploadsResult = {
   batch_id: string;
-  mode: "worker_proxy" | "direct_r2";
+  mode: "worker_proxy" | "direct_r2" | "auto";
+  requested_mode?: "worker_proxy" | "direct_r2" | "auto";
   direct_r2_available: boolean;
+  fallback_active?: boolean;
   uploads: PreparedDocumentUpload[];
 };
 

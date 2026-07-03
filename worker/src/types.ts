@@ -10,6 +10,15 @@ export interface Env {
   HRM_QUEUE_CONSUMER_ENABLED?: string;
   HRM_QUEUE_RETRY_LIMIT?: string;
   HRM_SCHEDULED_JOB_RUNNER_ENABLED?: string;
+  HRM_DOCUMENT_UPLOAD_MODE?: "worker_proxy" | "direct_r2" | "auto" | string;
+  HRM_R2_DIRECT_UPLOAD_ENABLED?: string;
+  HRM_R2_PRESIGN_ENDPOINT?: string;
+  HRM_R2_PRESIGN_ACCESS_KEY_ID?: string;
+  HRM_R2_PRESIGN_SECRET_ACCESS_KEY?: string;
+  HRM_R2_PRESIGN_BUCKET?: string;
+  HRM_R2_PRESIGN_REGION?: string;
+  HRM_R2_PRESIGN_URL_TTL_SECONDS?: string;
+  HRM_R2_DIRECT_UPLOAD_MAX_BYTES?: string;
 }
 
 export interface BackgroundJobQueueMessage {

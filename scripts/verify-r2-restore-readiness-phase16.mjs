@@ -32,6 +32,8 @@ function buildChecks() {
     { check: "employee_document_versions table exists", status: hasTable(schema, "employee_document_versions") ? "PASS" : "FAIL", detail: "Version metadata maps documents to R2 keys." },
     { check: "employee_document_versions.r2_key exists", status: hasColumn(schema, "employee_document_versions", "r2_key") ? "PASS" : "FAIL", detail: "Required for restore reference verification." },
     { check: "document_upload_sessions table exists", status: hasTable(schema, "document_upload_sessions") ? "PASS" : "FAIL", detail: "Pending upload cleanup can be checked safely." },
+    { check: "document_upload_sessions.upload_mode exists", status: hasColumn(schema, "document_upload_sessions", "upload_mode") ? "PASS" : "FAIL", detail: "Direct R2 and Worker proxy uploads can be classified during restore readiness." },
+    { check: "document_upload_sessions.r2_key exists", status: hasColumn(schema, "document_upload_sessions", "r2_key") ? "PASS" : "FAIL", detail: "Pending direct upload orphan candidates can be compared with redacted R2 inventory." },
     { check: "report_export_artifacts table exists", status: hasTable(schema, "report_export_artifacts") ? "PASS" : "FAIL", detail: "Expired report artifact object candidates can be detected." },
     { check: "R2 inventory report exists", status: inventoryExists() ? "PASS" : "WARNING", detail: inventoryExists() ? "Inventory report available." : "Run npm run backup:r2-inventory-phase16 first for live inventory detail." },
     { check: "no object deletion", status: "PASS", detail: "This script does not delete R2 objects or D1 metadata." }
@@ -54,6 +56,7 @@ function writeReport(checks) {
     "## Follow-Up",
     "",
     "- Compare redacted R2 object inventory with employee_document_versions.r2_key records in a trusted admin environment.",
+    "- Compare direct upload pending sessions in document_upload_sessions with inventory before cleaning orphan candidates.",
     "- Investigate orphan candidates before deletion.",
     "- Never delete active employee document objects automatically.",
     ""

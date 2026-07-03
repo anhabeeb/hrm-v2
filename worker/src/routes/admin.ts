@@ -10,6 +10,7 @@ import { enqueueJob, getBackgroundProcessingStatus, jobToApi, markJobFailed, mar
 import { safeEmitAppEvent } from "../utils/app-events";
 import { getBackupRetentionStatus, listDataRetentionPolicies, runDataRetentionCleanup, updateDataRetentionPolicy } from "../utils/data-retention-cleanup";
 import { fail, getClientIp, ok } from "../utils/http";
+import { getDocumentUploadModeStatus } from "../utils/r2-direct-upload";
 import { readJsonBody, readString } from "../utils/validation";
 
 type BindValue = string | number | null;
@@ -1216,6 +1217,7 @@ adminRoutes.get("/backup-retention/status", requireAnyPermission(["admin.backup_
   ).all<Record<string, unknown>>();
   return ok(c, {
     status: await getBackupRetentionStatus(c.env.DB),
+    document_upload_mode: getDocumentUploadModeStatus(c.env),
     recent_cleanup_jobs: recentJobs.results
   });
 });

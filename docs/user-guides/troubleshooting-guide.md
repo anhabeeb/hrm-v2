@@ -48,6 +48,14 @@ Generate additive repair SQL after audit confirms the missing object. Review bef
 
 Check R2 bucket binding, upload status, object existence, and cleanup logs. Do not expose raw R2 keys or private object URLs.
 
+## Direct R2 Upload CORS Issue
+
+If direct document upload rows fail immediately with a browser CORS or network error, confirm the app can fall back to Worker proxy mode, then run `npm run verify:r2-cors-direct-upload-phase18`. The R2 bucket CORS policy must allow the production origin `https://hr.cafeasiana.com.mv`, method `PUT`, header `content-type`, any signed checksum headers in use, and should expose `ETag`. Do not paste presigned URLs, signed headers, or R2 keys into support tickets.
+
+## Expired Direct Upload URL
+
+Direct upload URLs are short-lived. Use the row Retry action so the app prepares a new upload session and URL. Do not retry an old URL manually.
+
 ## No Notifications
 
 Check Notification module, rules, routing scope, receive permissions, and alert severity permissions.
@@ -63,4 +71,3 @@ Review role permissions, role mapping, access scopes, protected Super Admin rule
 ## Popup or Layout Overflow
 
 Use supported browsers, refresh stale assets, and report the page/modal where overflow occurs.
-

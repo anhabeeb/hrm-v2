@@ -1,4 +1,4 @@
-import { Archive, DatabaseBackup, FileCheck2, RefreshCw, ShieldAlert } from "lucide-react";
+import { Archive, DatabaseBackup, FileCheck2, RefreshCw, ShieldAlert, UploadCloud } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAlert } from "../components/alerts/useAlert";
 import { CardSkeleton } from "../components/loading";
@@ -85,6 +85,7 @@ export function AdminBackupRetentionPage() {
   const alerts = useAlert();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<Row>({});
+  const [documentUploadMode, setDocumentUploadMode] = useState<Row>({});
   const [backgroundProcessing, setBackgroundProcessing] = useState<Row>({});
   const [recentJobs, setRecentJobs] = useState<Row[]>([]);
   const [limit, setLimit] = useState("250");
@@ -101,6 +102,7 @@ export function AdminBackupRetentionPage() {
       const data = await api.getBackupRetentionStatus(token);
       const background = await api.getBackgroundProcessingStatus(token);
       setStatus(data.status ?? {});
+      setDocumentUploadMode(data.document_upload_mode ?? {});
       setBackgroundProcessing(background.background_processing ?? {});
       setRecentJobs(data.recent_cleanup_jobs ?? []);
     } catch (error) {
@@ -194,6 +196,23 @@ export function AdminBackupRetentionPage() {
             <h3 className="mb-2 text-sm font-semibold">Recent failures / dead letters</h3>
             <SimpleTable rows={recentFailures} columns={["job_type", "status", "last_error_code", "updated_at"]} empty="No recent failed jobs." />
           </div>
+        </div>
+      </Panel>
+
+      <Panel className="space-y-4 p-4">
+        <div>
+          <h2 className="text-sm font-semibold">Document upload mode</h2>
+          <p className="text-xs text-muted-foreground">Direct R2 browser uploads are optional. The app falls back to the Worker proxy whenever direct upload signing or CORS is not configured.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard label="Requested mode" value={documentUploadMode.requested_mode ?? "auto"} icon={UploadCloud} />
+          <SummaryCard label="Active mode" value={documentUploadMode.active_mode ?? "worker_proxy"} icon={FileCheck2} />
+          <SummaryCard label="Direct configured" value={bool(documentUploadMode.direct_upload_configured) ? "Yes" : "No"} icon={ShieldAlert} />
+          <SummaryCard label="Fallback active" value={bool(documentUploadMode.fallback_active) ? "Yes" : "No"} icon={Archive} />
+          <SummaryCard label="Direct max bytes" value={documentUploadMode.direct_upload_max_bytes ?? "-"} icon={DatabaseBackup} />
+          <SummaryCard label="Presign TTL seconds" value={documentUploadMode.presign_ttl_seconds ?? "-"} icon={RefreshCw} />
+          <SummaryCard label="R2 CORS check" value={documentUploadMode.r2_cors_check_status ?? "source verification"} icon={UploadCloud} />
+          <SummaryCard label="Last direct failure" value={documentUploadMode.last_direct_upload_failure_category ?? "not tracked"} icon={ShieldAlert} />
         </div>
       </Panel>
 

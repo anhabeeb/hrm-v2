@@ -2473,7 +2473,7 @@ export const api = {
     return request<{ settings: Record<string, unknown> | null }>("/api/v1/admin/data-retention-settings", { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   getBackupRetentionStatus(token: string) {
-    return request<{ status: Record<string, unknown>; recent_cleanup_jobs: Record<string, unknown>[] }>("/api/v1/admin/backup-retention/status", {}, token);
+    return request<{ status: Record<string, unknown>; document_upload_mode?: Record<string, unknown>; recent_cleanup_jobs: Record<string, unknown>[] }>("/api/v1/admin/backup-retention/status", {}, token);
   },
   getBackgroundProcessingStatus(token: string) {
     return request<{ background_processing: Record<string, unknown> }>("/api/v1/admin/background-processing/status", {}, token);

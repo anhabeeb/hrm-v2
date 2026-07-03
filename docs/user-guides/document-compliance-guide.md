@@ -31,3 +31,6 @@ The onboarding checklist combines default rules, employee-specific overrides, up
 
 Document uploads can trigger non-blocking compliance/readiness recalculation. Orphan upload cleanup handles expired pending uploads and failed completion safely.
 
+## Direct R2 Upload Mode
+
+Document uploads may use direct browser-to-R2 upload when the production environment is explicitly configured for Phase 18. The Worker still prepares and completes every upload, validates document rules before upload, verifies the R2 object before creating document records, and falls back to Worker proxy mode when direct signing or CORS is unavailable. Failed rows can be retried without reusing expired upload URLs.

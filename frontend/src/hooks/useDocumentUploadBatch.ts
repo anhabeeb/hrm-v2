@@ -56,6 +56,11 @@ function uploadForRow(uploads: PreparedDocumentUpload[], rowId: string) {
   return uploads.find((upload) => upload.client_row_id === rowId);
 }
 
+function isExpiredUploadTarget(upload: PreparedDocumentUpload) {
+  const expiresAt = Date.parse(upload.expires_at);
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
 function errorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
@@ -100,15 +105,28 @@ export function useDocumentUploadBatch(options: UseDocumentUploadBatchOptions) {
         setRowStatus(row.id, { status: "Uploading", progress: 1, uploadId: upload.upload_id });
         try {
           if (upload.upload_mode === "direct_r2") {
-            throw new Error("Direct R2 browser upload is not configured for this environment. Using Worker fallback is required.");
+            if (isExpiredUploadTarget(upload)) {
+              throw new Error("This direct upload URL expired before upload started. Retry this row to prepare a fresh URL.");
+            }
+            await uploadWithProgress({
+              url: upload.upload_url,
+              file: row.file,
+              headers: upload.required_headers,
+              method: upload.method ?? "PUT",
+              bodyMode: "raw",
+              includeRequestId: false,
+              metricPath: "/r2/direct-document-upload",
+              onProgress: ({ percent }) => setRowStatus(row.id, { status: "Uploading", progress: percent, uploadId: upload.upload_id })
+            });
+          } else {
+            await uploadWithProgress({
+              url: upload.upload_url,
+              file: row.file,
+              token: options.token,
+              headers: upload.required_headers,
+              onProgress: ({ percent }) => setRowStatus(row.id, { status: "Uploading", progress: percent, uploadId: upload.upload_id })
+            });
           }
-          await uploadWithProgress({
-            url: upload.upload_url,
-            file: row.file,
-            token: options.token,
-            headers: upload.required_headers,
-            onProgress: ({ percent }) => setRowStatus(row.id, { status: "Uploading", progress: percent, uploadId: upload.upload_id })
-          });
           uploadedIds.push(upload.upload_id);
           setRowStatus(row.id, { status: "Processing", progress: 100, uploadId: upload.upload_id });
         } catch (error) {

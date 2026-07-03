@@ -58,6 +58,8 @@ Realtime/cache invalidation app events default to 30 days or their explicit expi
 
 Pending, failed, expired, or abandoned upload sessions default to 7 days. Cleanup updates stale session state and must never delete active employee document records or active document versions.
 
+Phase 18 direct R2 browser uploads also use `document_upload_sessions`. Direct-uploaded objects without completed D1 document/version records are orphan candidates only after the upload session expires or fails. Compare `document_upload_sessions.upload_mode`, `document_upload_sessions.r2_key`, and `employee_document_versions.r2_key` during restore readiness; never delete active employee document objects automatically.
+
 ## Snapshot/Cache Cleanup
 
 Dashboard summary snapshots default to 30 days when stale or expired. Attendance/payroll summary snapshots are disabled by default because they are business-adjacent summaries.
@@ -137,6 +139,15 @@ Rollback means returning Worker/frontend deployment code to a previous version. 
 - `HRM_R2_BUCKET_NAME`
 - `HRM_R2_BACKUP_LIVE`
 - `HRM_R2_BACKUP_CONFIRM`
+- `HRM_DOCUMENT_UPLOAD_MODE`
+- `HRM_R2_DIRECT_UPLOAD_ENABLED`
+- `HRM_R2_PRESIGN_ENDPOINT`
+- `HRM_R2_PRESIGN_ACCESS_KEY_ID`
+- `HRM_R2_PRESIGN_SECRET_ACCESS_KEY`
+- `HRM_R2_PRESIGN_BUCKET`
+- `HRM_R2_PRESIGN_REGION`
+- `HRM_R2_PRESIGN_URL_TTL_SECONDS`
+- `HRM_R2_DIRECT_UPLOAD_MAX_BYTES`
 
 ## Dry-Run Mode
 
