@@ -80,3 +80,19 @@ Use this checklist before each production release of OmniCore - HR.
 - [ ] Performance Observability shows live event stream health.
 - [ ] Cross-tab leader coordination reduces duplicate streams where supported.
 - [ ] Event payloads, report storage keys, payroll amounts, and document numbers remain sanitized.
+
+## Phase 21 Production Deployment and Live Verification
+
+- [ ] `npm run verify:phase21-remote-d1-live` completed or reported a clear BLOCKED status.
+- [ ] `npm run repair:phase21-generate-remote-d1` generated additive-only SQL or reported no repair needed.
+- [ ] Additive repair SQL was reviewed and applied only after D1 backup, if needed.
+- [ ] `npm run smoke:phase21-production-live` completed with live URLs configured or reported SOURCE READY / LIVE NOT VERIFIED.
+- [ ] `npm run verify:phase21-frontend-deployment` completed.
+- [ ] `npm run verify:phase21-r2-upload-live` completed without uploading real employee documents.
+- [ ] `npm run verify:phase21-background-processing-live` confirmed Queue/D1 fallback behavior.
+- [ ] `npm run verify:phase21-live-events-live` confirmed SSE or polling fallback.
+- [ ] `npm run verify:phase21-security-live` completed.
+- [ ] `npm run loadtest:phase21-production-readonly` completed in safe read-only mode.
+- [ ] `npm run report:phase21-go-no-go` generated final decision.
+- [ ] No company creation or production data seeding was performed.
+- [ ] No native mobile app work was added; only responsive web/mobile-browser behavior was verified.

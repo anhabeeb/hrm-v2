@@ -82,3 +82,14 @@ This runbook documents safe production recovery steps. It does not include secre
 - Safe cleanup targets are limited to operational data such as performance metrics, app events, stale background job events, expired report export artifacts, pending/failed upload sessions, and dashboard snapshots.
 - Real cleanup requires the explicit `RUN_RETENTION_CLEANUP` confirmation and must be preceded by dry-run review.
 - If a cleanup job fails, inspect the background job log and rerun dry-run before retrying real cleanup.
+
+## Phase 21 Rollback Decision Points
+
+- If CORS/login/bootstrap fails, roll back Worker or correct CORS allow headers before continuing.
+- If remote D1 schema is blocked, do not deploy code that depends on missing schema.
+- If additive repair is available, back up D1 and review the generated additive SQL before applying.
+- If R2 upload fails, leave worker-proxy fallback enabled and disable direct R2 mode until configuration is corrected.
+- If Queue mode is unavailable, keep D1 fallback mode active.
+- If SSE streaming fails, keep polling fallback active.
+- If frontend static assets return HTML or wrong MIME, roll back Pages deployment and purge stale index/cache.
+- Do not seed production data as part of rollback or Phase 21 deployment verification.

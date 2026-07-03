@@ -75,3 +75,45 @@ Review role permissions, role mapping, access scopes, protected Super Admin rule
 ## Popup or Layout Overflow
 
 Use supported browsers, refresh stale assets, and report the page/modal where overflow occurs.
+
+## Phase 21 Live Verification Troubleshooting
+
+### CORS fails on login/bootstrap
+
+- Confirm `Access-Control-Allow-Headers` includes `x-request-id`, `X-Request-Id`, `authorization`, and `content-type`.
+- Confirm `https://hr.cafeasiana.com.mv` is allowed.
+- Confirm `Vary: Origin` is set.
+- Do not use wildcard origin with credentials.
+- Run `npm run smoke:phase21-production-live`.
+
+### Remote D1 schema verification is blocked
+
+- Confirm Wrangler is authenticated.
+- Confirm the D1 binding/name still points to `hrm-v2`.
+- Run `npm run verify:phase21-remote-d1-live`.
+- If additive repair is available, review `docs/production/phase21-remote-d1-additive-repair.sql` and back up D1 before applying.
+
+### R2 upload verification fails
+
+- Confirm the `DOCUMENTS_BUCKET` binding is present.
+- Confirm direct R2 mode config only if direct uploads are enabled.
+- Keep worker-proxy fallback available.
+- Do not upload real employee documents for Phase 21 testing.
+
+### Queue mode is unavailable
+
+- Confirm background processing mode.
+- Verify D1 fallback remains active.
+- Run `npm run verify:phase21-background-processing-live`.
+
+### SSE stream fails
+
+- Confirm `/api/v1/app-events/since` polling fallback works.
+- Confirm tokens are sent in Authorization headers, not query strings.
+- Run `npm run verify:phase21-live-events-live`.
+
+### Frontend assets return HTML
+
+- Confirm Pages headers keep index HTML no-cache.
+- Confirm hashed assets use immutable cache.
+- Roll back or redeploy frontend and purge stale cache if needed.

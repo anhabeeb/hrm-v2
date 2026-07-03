@@ -68,3 +68,21 @@ npm run smoke:production-readiness
 - Roll back Worker and Pages deployments through Cloudflare deployment history.
 - Do not remove expanded D1 schema after code has written to it.
 - Keep D1/R2 backups outside the repository.
+
+## Phase 21 Deployment Verification Artifacts
+
+- `docs/production/phase21-production-deployment-live-verification.md`
+- `docs/production/phase21-production-env-checklist.md`
+- `docs/production/phase21-remote-d1-live-report.md`
+- `docs/production/phase21-remote-d1-additive-repair.sql`
+- `docs/production/phase21-remote-d1-repair-notes.md`
+- `docs/production/phase21-production-smoke-live-report.md`
+- `docs/production/phase21-readonly-loadtest-report.md`
+- `docs/production/phase21-r2-upload-live-report.md`
+- `docs/production/phase21-background-processing-live-report.md`
+- `docs/production/phase21-live-events-live-report.md`
+- `docs/production/phase21-security-live-report.md`
+- `docs/production/phase21-frontend-deployment-report.md`
+- `docs/production/phase21-go-no-go-report.md`
+
+These artifacts must not include secrets, credentials, response bodies, backup dumps, downloaded R2 files, company setup data, or production seed output.

@@ -112,3 +112,36 @@ npm run jobs:run-local-phase17
 ```
 
 The Backup & Retention admin page shows Phase 17 queue/runner health. Queue messages contain safe job identifiers only; never send raw payloads, secrets, document numbers, payroll values, or private R2 object data.
+
+## Phase 21 Live Deployment Verification
+
+Use this order for final production verification:
+
+```bash
+npm run verify:phase21-remote-d1-live
+npm run repair:phase21-generate-remote-d1
+npm run smoke:phase21-production-live
+npm run verify:phase21-frontend-deployment
+npm run verify:phase21-r2-upload-live
+npm run verify:phase21-background-processing-live
+npm run verify:phase21-live-events-live
+npm run verify:phase21-security-live
+npm run loadtest:phase21-production-readonly
+npm run report:phase21-go-no-go
+```
+
+Safe environment names are listed in `docs/production/phase21-production-env-checklist.md`. Values must be configured in Cloudflare or secure CI secret storage, not committed.
+
+If live env vars are missing, Phase 21 scripts report `SOURCE READY / LIVE NOT VERIFIED`. Treat that as a warning, not a production GO.
+
+If CORS fails, check `x-request-id`, `authorization`, `content-type`, `Vary: Origin`, and the production origin `https://hr.cafeasiana.com.mv`.
+
+If remote D1 is blocked, verify Wrangler auth and Cloudflare D1 access, then rerun the remote schema verifier. Apply only reviewed additive repair SQL after a D1 backup.
+
+If R2 upload fails, use worker-proxy fallback while direct R2 CORS/config is corrected.
+
+If Queue mode is unavailable, verify D1 fallback mode.
+
+If SSE stream fails, keep polling fallback active.
+
+Do not create company records, seed production data, or run write tests unless an explicit safe Phase 21 test flag is set for a non-real test record.
