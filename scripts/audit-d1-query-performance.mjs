@@ -4,6 +4,7 @@ import { parseSchema, rootDir } from "./remote-d1-schema-utils.mjs";
 
 const ROUTE_DIR = path.join(rootDir, "worker", "src", "routes");
 const SCHEMA_PATH = path.join(rootDir, "database", "schema.sql");
+const PHASE20_REPORT_PATH = path.join(rootDir, "docs", "performance", "d1-deferred-audit-remediation-phase20.md");
 const PRIORITY_ROUTE_GROUPS = [
   { group: "Employees / Employee 360", files: ["worker/src/routes/employees.ts"] },
   { group: "Onboarding workspace", files: ["worker/src/routes/lifecycle.ts"] },
@@ -173,6 +174,7 @@ function main() {
     generated_at: new Date().toISOString(),
     scanned_route_files: routeFiles.length,
     severity_model: "HIGH = priority route + broad/unbounded list; MEDIUM = bounded priority/admin review; LOW = setup or internal review",
+    phase20_deferred_audit_report: fs.existsSync(PHASE20_REPORT_PATH) ? relative(PHASE20_REPORT_PATH) : null,
     priority_route_groups: PRIORITY_ROUTE_GROUPS.map((entry) => entry.group),
     select_star: [],
     unbounded_lists: [],

@@ -54,6 +54,24 @@ Keep deployment and data backup procedures outside source control. Roll back app
 
 Use performance smoke checks, load test scripts, and E2E workflow scripts in safe source-validation or configured production mode.
 
+## D1 Query Audit Operations
+
+Run the D1 query audit before production deployment and after large backend changes:
+
+```bash
+npm run audit:d1-query-performance
+npm run verify:d1-query-payload-optimization
+npm run verify:d1-deferred-audit-remediation-phase20
+```
+
+Interpretation:
+
+- HIGH means a priority route still needs source review for broad reads or unbounded lists.
+- MEDIUM means a bounded, single-row, admin, or index-review finding still deserves follow-up.
+- LOW is setup/internal review work.
+
+Use `docs/performance/d1-query-audit-phase4.md` for the original audit model and `docs/performance/d1-deferred-audit-remediation-phase20.md` for the latest deferred cleanup status. Do not weaken the audit to make counts disappear. Document remaining HIGH findings with a source reason and future action.
+
 ## Cleanup Operations
 
 Review metrics retention cleanup, background job cleanup, app event cleanup, report artifact expiry cleanup, and stale pending upload cleanup.

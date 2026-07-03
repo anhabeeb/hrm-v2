@@ -3474,6 +3474,7 @@ CREATE TABLE IF NOT EXISTS employee_bank_loan_payments (
 
 CREATE INDEX IF NOT EXISTS idx_employee_bank_loan_payments_loan ON employee_bank_loan_payments(employee_bank_loan_id, payment_status);
 CREATE INDEX IF NOT EXISTS idx_employee_bank_loan_payments_period ON employee_bank_loan_payments(payroll_period_id, payment_institution_id, payment_status);
+CREATE INDEX IF NOT EXISTS idx_phase20_bank_loan_payments_result ON employee_bank_loan_payments(payroll_employee_result_id, payment_status);
 
 CREATE TABLE IF NOT EXISTS custom_deduction_templates (
   id TEXT PRIMARY KEY,
@@ -3746,6 +3747,7 @@ CREATE TABLE IF NOT EXISTS payroll_pension_contributions (
 
 CREATE INDEX IF NOT EXISTS idx_payroll_pension_contributions_period ON payroll_pension_contributions(payroll_period_id, pension_scheme_id, contribution_status);
 CREATE INDEX IF NOT EXISTS idx_payroll_pension_contributions_employee ON payroll_pension_contributions(employee_id, payroll_period_id);
+CREATE INDEX IF NOT EXISTS idx_phase20_pension_contributions_result ON payroll_pension_contributions(payroll_employee_result_id, contribution_status);
 
 CREATE TABLE IF NOT EXISTS pension_remittance_batches (
   id TEXT PRIMARY KEY,

@@ -1227,9 +1227,9 @@ async function getPayrollRunSummaryReport(c: Context<AppBindings>) {
       pr.run_no, pre.employee_no_snapshot AS employee_no, pre.employee_name_snapshot AS employee_name,
       d.name AS department, l.name AS location, pre.basic_salary, pre.total_earnings AS gross_earnings,
       pre.total_deductions,
-      COALESCE((SELECT SUM(employee_contribution_amount) FROM payroll_pension_contributions ppc WHERE ppc.payroll_employee_result_id = pre.id), 0) AS employee_pension,
-      COALESCE((SELECT SUM(deducted_amount) FROM employee_bank_loan_payments eblp WHERE eblp.payroll_employee_result_id = pre.id), 0) AS bank_loan_deductions,
-      COALESCE((SELECT SUM(deducted_amount) FROM employee_custom_deduction_applications ecda WHERE ecda.payroll_employee_result_id = pre.id), 0) AS custom_deductions,
+      COALESCE(ppc_sum.employee_pension, 0) AS employee_pension,
+      COALESCE(loan_sum.bank_loan_deductions, 0) AS bank_loan_deductions,
+      COALESCE(custom_sum.custom_deductions, 0) AS custom_deductions,
       pre.advance_deductions AS advances, pre.net_salary,
       COALESCE(ppr.payment_method_snapshot, 'Not prepared') AS payment_method,
       COALESCE(ppr.payment_status, 'NOT_PREPARED') AS payment_status,
@@ -1240,6 +1240,24 @@ async function getPayrollRunSummaryReport(c: Context<AppBindings>) {
     JOIN payroll_runs pr ON pr.id = pre.payroll_run_id
     JOIN payroll_periods pp ON pp.id = pr.payroll_period_id
     LEFT JOIN payroll_payment_register ppr ON ppr.payroll_employee_result_id = pre.id
+    LEFT JOIN (
+      SELECT payroll_employee_result_id, SUM(employee_contribution_amount) AS employee_pension
+      FROM payroll_pension_contributions
+      WHERE payroll_employee_result_id IS NOT NULL
+      GROUP BY payroll_employee_result_id
+    ) ppc_sum ON ppc_sum.payroll_employee_result_id = pre.id
+    LEFT JOIN (
+      SELECT payroll_employee_result_id, SUM(deducted_amount) AS bank_loan_deductions
+      FROM employee_bank_loan_payments
+      WHERE payroll_employee_result_id IS NOT NULL
+      GROUP BY payroll_employee_result_id
+    ) loan_sum ON loan_sum.payroll_employee_result_id = pre.id
+    LEFT JOIN (
+      SELECT payroll_employee_result_id, SUM(deducted_amount) AS custom_deductions
+      FROM employee_custom_deduction_applications
+      WHERE payroll_employee_result_id IS NOT NULL
+      GROUP BY payroll_employee_result_id
+    ) custom_sum ON custom_sum.payroll_employee_result_id = pre.id
     LEFT JOIN departments d ON d.id = pre.department_id
     LEFT JOIN locations l ON l.id = pre.location_id
     ${whereClause(conditions)}
@@ -1258,9 +1276,9 @@ async function getPayrollPeriodSummaryReport(c: Context<AppBindings>) {
       COUNT(DISTINCT pre.employee_id) AS employee_count,
       SUM(pre.total_earnings) AS gross_earnings,
       SUM(pre.total_deductions) AS total_deductions,
-      COALESCE(SUM((SELECT employee_contribution_amount FROM payroll_pension_contributions ppc WHERE ppc.payroll_employee_result_id = pre.id)), 0) AS employee_pension,
-      COALESCE(SUM((SELECT SUM(deducted_amount) FROM employee_bank_loan_payments eblp WHERE eblp.payroll_employee_result_id = pre.id)), 0) AS bank_loan_deductions,
-      COALESCE(SUM((SELECT SUM(deducted_amount) FROM employee_custom_deduction_applications ecda WHERE ecda.payroll_employee_result_id = pre.id)), 0) AS custom_deductions,
+      COALESCE(SUM(ppc_sum.employee_pension), 0) AS employee_pension,
+      COALESCE(SUM(loan_sum.bank_loan_deductions), 0) AS bank_loan_deductions,
+      COALESCE(SUM(custom_sum.custom_deductions), 0) AS custom_deductions,
       SUM(pre.advance_deductions) AS advances,
       SUM(pre.net_salary) AS net_salary,
       pr.status AS payroll_status,
@@ -1269,6 +1287,24 @@ async function getPayrollPeriodSummaryReport(c: Context<AppBindings>) {
     JOIN employees e ON e.id = pre.employee_id
     JOIN payroll_runs pr ON pr.id = pre.payroll_run_id
     JOIN payroll_periods pp ON pp.id = pr.payroll_period_id
+    LEFT JOIN (
+      SELECT payroll_employee_result_id, SUM(employee_contribution_amount) AS employee_pension
+      FROM payroll_pension_contributions
+      WHERE payroll_employee_result_id IS NOT NULL
+      GROUP BY payroll_employee_result_id
+    ) ppc_sum ON ppc_sum.payroll_employee_result_id = pre.id
+    LEFT JOIN (
+      SELECT payroll_employee_result_id, SUM(deducted_amount) AS bank_loan_deductions
+      FROM employee_bank_loan_payments
+      WHERE payroll_employee_result_id IS NOT NULL
+      GROUP BY payroll_employee_result_id
+    ) loan_sum ON loan_sum.payroll_employee_result_id = pre.id
+    LEFT JOIN (
+      SELECT payroll_employee_result_id, SUM(deducted_amount) AS custom_deductions
+      FROM employee_custom_deduction_applications
+      WHERE payroll_employee_result_id IS NOT NULL
+      GROUP BY payroll_employee_result_id
+    ) custom_sum ON custom_sum.payroll_employee_result_id = pre.id
     ${whereClause(conditions)}
     GROUP BY pp.id, pr.status
     ORDER BY pp.period_year DESC, pp.period_month DESC`;

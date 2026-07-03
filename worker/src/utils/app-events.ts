@@ -69,6 +69,11 @@ const DEFAULT_LIVE_EVENT_HEARTBEAT_SECONDS = 20;
 const DEFAULT_LIVE_EVENT_MAX_DURATION_SECONDS = 300;
 const DEFAULT_RECONNECT_BASE_MS = 2000;
 const DEFAULT_RECONNECT_MAX_MS = 30000;
+const APP_EVENT_SELECT_COLUMNS = `
+  id, event_type, module_key, entity_type, entity_id, company_scope_id,
+  user_scope_id, role_scope_key, visibility, payload_json, query_keys_json,
+  dedupe_key, created_by_user_id, created_at, expires_at, delivered_at, is_sensitive
+`;
 
 const MODULE_PERMISSIONS: Record<string, string[]> = {
   notifications: ["notifications.view", "self_service.notifications.view", "notifications.manage"],
@@ -378,7 +383,8 @@ export async function listAppEventsSince(db: Env["DB"], user: AuthUser, input: {
     ? input.cursor
     : new Date(Date.now() - 30 * 1000).toISOString();
   const rows = await db.prepare(
-    `SELECT * FROM app_events
+    `SELECT ${APP_EVENT_SELECT_COLUMNS}
+     FROM app_events
      WHERE company_scope_id = ?
        AND created_at > ?
        AND (expires_at IS NULL OR expires_at > ?)

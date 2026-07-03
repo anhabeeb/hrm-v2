@@ -1,6 +1,6 @@
 # Phase 16 R2 Restore Readiness Report
 
-Generated: 2026-07-03T15:47:31.052Z
+Generated: 2026-07-03T16:15:10.391Z
 
 This report validates restore-readiness markers only. It does not download, expose, or delete R2 object contents.
 

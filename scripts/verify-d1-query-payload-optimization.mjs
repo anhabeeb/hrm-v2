@@ -79,6 +79,8 @@ const wrangler = "worker/wrangler.toml";
 
 check("package.json: audit:d1-query-performance script is registered", packageJson.scripts?.["audit:d1-query-performance"] === "node scripts/audit-d1-query-performance.mjs");
 check("package.json: verify:d1-query-payload-optimization script is registered", packageJson.scripts?.["verify:d1-query-payload-optimization"] === "node scripts/verify-d1-query-payload-optimization.mjs");
+check("package.json: verify:d1-deferred-audit-remediation-phase20 script is registered", packageJson.scripts?.["verify:d1-deferred-audit-remediation-phase20"] === "node scripts/verify-d1-deferred-audit-remediation-phase20.mjs");
+includes("scripts/verify-d1-deferred-audit-remediation-phase20.mjs", "Phase 20 D1 deferred audit remediation", "Phase 20 deferred D1 audit verifier exists");
 includes("scripts/audit-d1-query-performance.mjs", "SELECT * occurrences", "D1 query audit reports SELECT * risk");
 includes("scripts/audit-d1-query-performance.mjs", "Potential unbounded ordered lists", "D1 query audit reports unbounded list risk");
 includes("scripts/audit-d1-query-performance.mjs", "Potential unindexed filters", "D1 query audit reports missing-index risk");

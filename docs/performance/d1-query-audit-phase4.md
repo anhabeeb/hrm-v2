@@ -97,3 +97,16 @@ One existing candidate remains in the audit output. It is not part of the Phase 
 - No static or public cache behavior was added to HR API data.
 - D1/R2 bindings and PBKDF2 configuration were not changed.
 - No frontend localStorage persistence for sensitive employee/payroll data was introduced.
+
+## Phase 20 Follow-Up
+
+Phase 20 completed the first deferred cleanup pass for the main Phase 4 hotspots. See `docs/performance/d1-deferred-audit-remediation-phase20.md`.
+
+Highlights:
+
+- Document compliance snapshot refresh now uses paged employee IDs, chunked bulk document/waiver loading, and idempotent snapshot upserts.
+- Missing/required document list and dashboard paths are bounded or aggregate-based.
+- Payroll run/period report summaries use aggregate joins for pension, bank loan, and custom deduction totals.
+- Background job event details and app event polling use safer selected payloads.
+
+The audit is still intentionally noisy and should not be weakened. Remaining HIGH findings must stay documented with a reason and future action until the source pattern is fixed.

@@ -97,7 +97,8 @@ backgroundJobRoutes.get("/:jobId", async (c) => {
   const job = await getScopedJob(c, c.req.param("jobId"));
   if (!job) return fail(c, 404, "NOT_FOUND", "Background job was not found.");
   const events = await c.env.DB.prepare(
-    `SELECT * FROM background_job_events
+    `SELECT id, job_id, event_type, message, NULL AS metadata_json, created_at
+     FROM background_job_events
      WHERE job_id = ?
      ORDER BY created_at DESC
      LIMIT 50`

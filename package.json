@@ -62,6 +62,7 @@
     "verify:global-workspace-page-load-reduction": "node scripts/verify-global-workspace-page-load-reduction.mjs",
     "audit:d1-query-performance": "node scripts/audit-d1-query-performance.mjs",
     "verify:d1-query-payload-optimization": "node scripts/verify-d1-query-payload-optimization.mjs",
+    "verify:d1-deferred-audit-remediation-phase20": "node scripts/verify-d1-deferred-audit-remediation-phase20.mjs",
     "verify:document-upload-acceleration-background": "node scripts/verify-document-upload-acceleration-background.mjs",
     "verify:large-list-table-performance": "node scripts/verify-large-list-table-performance.mjs",
     "verify:background-jobs-phase7": "node scripts/verify-background-jobs-phase7.mjs",

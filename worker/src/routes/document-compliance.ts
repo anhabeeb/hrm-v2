@@ -282,13 +282,72 @@ const DOCUMENT_TYPE_COMPLIANCE_COLUMNS = `
   dt.creates_final_settlement_warning, dt.compliance_weight, dt.sensitivity_level,
   dt.renewal_instructions, dt.retention_rule_json, dt.sort_order, dt.created_at, dt.updated_at
 `;
+const DOCUMENT_COMPLIANCE_SETTINGS_COLUMNS = `
+  id, company_id, document_compliance_enabled, expiry_alerts_enabled,
+  missing_required_document_alerts_enabled, renewal_workflow_enabled,
+  auto_create_renewal_case_for_expiring_document, auto_create_missing_document_case,
+  default_expiring_soon_days, default_urgent_expiring_days, default_overdue_grace_days,
+  require_reason_for_renewal_case_cancel, require_reason_for_document_waiver,
+  allow_document_requirement_waiver, allow_employee_view_document_compliance,
+  allow_employee_download_documents, employee_document_upload_request_placeholder_enabled,
+  sensitive_document_view_audit_enabled, compliance_dashboard_enabled,
+  created_at, updated_at, metadata_json
+`;
+const EMPLOYEE_COMPLIANCE_COLUMNS = `
+  e.id, e.employee_no, e.full_name, e.employee_type, e.employment_type,
+  e.primary_department_id, e.primary_position_id, e.primary_location_id,
+  d.name AS department_name, p.title AS position_title, l.name AS location_name
+`;
+const REQUIRED_DOCUMENT_RULE_COLUMNS = `
+  rr.id AS matched_rule_id, dt.id AS document_type_id, dt.name AS document_type_name,
+  dt.code AS document_type_code, dc.name AS category_name, rr.is_required, rr.rule_priority,
+  rr.employee_type AS matched_employee_type_rule, rr.employment_type AS matched_employment_type_rule,
+  rr.department_id AS matched_department_id, rd.name AS matched_department_name,
+  rr.position_id AS matched_position_id, rp.title AS matched_position_title,
+  rr.location_id AS matched_location_id, rl.name AS matched_location_name,
+  dt.is_sensitive, dt.expiry_required, dt.issue_date_required, dt.document_number_required,
+  dt.blocks_employee_activation, dt.creates_payroll_warning, dt.creates_final_settlement_warning,
+  dt.expiring_soon_days, dt.urgent_expiring_days
+`;
+const EMPLOYEE_DOCUMENT_COMPLIANCE_COLUMNS = `
+  ed.id, ed.employee_id, ed.document_type_id, ed.category_id, ed.document_number,
+  ed.issue_date, ed.expiry_date, ed.status, ed.current_version_id, ed.is_sensitive,
+  ed.notes, ed.created_at, ed.updated_at,
+  dt.name AS document_type_name, dt.code AS document_type_code,
+  dc.name AS category_name, dt.expiring_soon_days, dt.urgent_expiring_days,
+  v.original_filename, v.version_no, v.uploaded_at
+`;
+const WAIVER_COMPLIANCE_COLUMNS = `
+  w.id, w.employee_id, w.document_type_id, w.required_rule_id, w.waiver_reason,
+  w.waiver_start_date, w.waiver_end_date, w.status, w.approved_by_user_id,
+  w.approved_at, w.cancelled_by_user_id, w.cancelled_at, w.cancellation_reason,
+  w.created_by_user_id, w.created_at, w.updated_at,
+  dt.name AS document_type_name, dt.code AS document_type_code
+`;
 const DOCUMENT_RENEWAL_EVENT_COLUMNS = `
   id, renewal_case_id, employee_id, action, previous_status, new_status,
   actor_user_id, actor_name_snapshot, note, reason, created_at, metadata_json
 `;
+const DOCUMENT_COMPLIANCE_BULK_BATCH_SIZE = 75;
+const DOCUMENT_COMPLIANCE_EMPLOYEE_SCAN_LIMIT = 1000;
+const DOCUMENT_COMPLIANCE_RULE_SCAN_LIMIT = 2000;
+const DOCUMENT_COMPLIANCE_DOCUMENT_SCAN_LIMIT = 500;
+const DOCUMENT_COMPLIANCE_WAIVER_SCAN_LIMIT = 500;
 
 function bool(value: number | null | undefined) {
   return value === 1;
+}
+
+function chunked<T>(items: T[], size = DOCUMENT_COMPLIANCE_BULK_BATCH_SIZE) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function inPlaceholders(items: unknown[]) {
+  return items.map(() => "?").join(", ");
 }
 
 function asBool(value: unknown, fallback = false) {
@@ -471,16 +530,16 @@ async function addRenewalEvent(db: Env["DB"], input: { caseId: string; employeeI
 }
 
 async function getDocumentComplianceSettings(db: Env["DB"]) {
-  const existing = await db.prepare("SELECT * FROM document_compliance_settings ORDER BY created_at LIMIT 1").first<ComplianceSettingsRow>();
+  const existing = await db.prepare(`SELECT ${DOCUMENT_COMPLIANCE_SETTINGS_COLUMNS} FROM document_compliance_settings ORDER BY created_at LIMIT 1`).first<ComplianceSettingsRow>();
   if (existing) return existing;
   const id = "document_compliance_settings_default";
   await db.prepare("INSERT OR IGNORE INTO document_compliance_settings (id) VALUES (?)").bind(id).run();
-  return (await db.prepare("SELECT * FROM document_compliance_settings WHERE id = ?").bind(id).first<ComplianceSettingsRow>())!;
+  return (await db.prepare(`SELECT ${DOCUMENT_COMPLIANCE_SETTINGS_COLUMNS} FROM document_compliance_settings WHERE id = ?`).bind(id).first<ComplianceSettingsRow>())!;
 }
 
 async function getEmployee(db: Env["DB"], employeeId: string) {
   return db.prepare(
-    `SELECT e.*, d.name AS department_name, p.title AS position_title, l.name AS location_name
+    `SELECT ${EMPLOYEE_COMPLIANCE_COLUMNS}
      FROM employees e
      LEFT JOIN departments d ON d.id = e.primary_department_id
      LEFT JOIN positions p ON p.id = e.primary_position_id
@@ -515,32 +574,74 @@ async function employeeListForScope(c: Context<AppBindings>, moduleKey = "docume
     }
   }
   const rows = await c.env.DB.prepare(
-    `SELECT e.id, e.employee_no, e.full_name, e.employee_type, e.employment_type,
-      e.primary_department_id, e.primary_position_id, e.primary_location_id,
-      d.name AS department_name, p.title AS position_title, l.name AS location_name
+    `SELECT ${EMPLOYEE_COMPLIANCE_COLUMNS}
      FROM employees e
      LEFT JOIN departments d ON d.id = e.primary_department_id
      LEFT JOIN positions p ON p.id = e.primary_position_id
      LEFT JOIN locations l ON l.id = e.primary_location_id
      WHERE ${conditions.join(" AND ")}
-     ORDER BY e.employee_no`
-  ).bind(...binds).all<EmployeeRow>();
+     ORDER BY e.employee_no
+     LIMIT ?`
+  ).bind(...binds, DOCUMENT_COMPLIANCE_EMPLOYEE_SCAN_LIMIT).all<EmployeeRow>();
   return rows.results;
+}
+
+function requiredDocumentsForEmployeeFromRows(employee: EmployeeRow, rules: RequiredDocumentRow[]) {
+  const byType = new Map<string, RequiredDocumentRow>();
+  for (const row of rules) {
+    if (row.matched_employee_type_rule && row.matched_employee_type_rule !== employee.employee_type) continue;
+    if (row.matched_employment_type_rule && row.matched_employment_type_rule !== employee.employment_type) continue;
+    if (row.matched_department_id && row.matched_department_id !== employee.primary_department_id) continue;
+    if (row.matched_position_id && row.matched_position_id !== employee.primary_position_id) continue;
+    if (row.matched_location_id && row.matched_location_id !== employee.primary_location_id) continue;
+    const existing = byType.get(row.document_type_id);
+    if (!existing || row.rule_priority < existing.rule_priority || row.is_required > existing.is_required) {
+      byType.set(row.document_type_id, row);
+    }
+  }
+  return Array.from(byType.values()).filter((row) => row.is_required === 1);
+}
+
+async function getActiveRequiredDocumentRules(db: Env["DB"]) {
+  const rows = await db.prepare(
+    `SELECT ${REQUIRED_DOCUMENT_RULE_COLUMNS}
+     FROM document_required_rules rr
+     JOIN document_types dt ON dt.id = rr.document_type_id AND dt.is_active = 1
+     LEFT JOIN document_categories dc ON dc.id = dt.category_id
+     LEFT JOIN departments rd ON rd.id = rr.department_id
+     LEFT JOIN positions rp ON rp.id = rr.position_id
+     LEFT JOIN locations rl ON rl.id = rr.location_id
+     WHERE rr.is_active = 1
+     ORDER BY rr.rule_priority, dt.sort_order, dt.name
+     LIMIT ?`
+  ).bind(DOCUMENT_COMPLIANCE_RULE_SCAN_LIMIT).all<RequiredDocumentRow>();
+  return rows.results;
+}
+
+async function getEmployeeIdsForComplianceRefresh(db: Env["DB"], employeeIds?: string[]) {
+  if (employeeIds?.length) return employeeIds;
+  const ids: string[] = [];
+  let offset = 0;
+  while (true) {
+    const rows = await db.prepare(
+      `SELECT id
+       FROM employees
+       WHERE archived_at IS NULL
+       ORDER BY employee_no
+       LIMIT ? OFFSET ?`
+    ).bind(DOCUMENT_COMPLIANCE_EMPLOYEE_SCAN_LIMIT, offset).all<{ id: string }>();
+    ids.push(...rows.results.map((row) => row.id));
+    if (rows.results.length < DOCUMENT_COMPLIANCE_EMPLOYEE_SCAN_LIMIT) break;
+    offset += DOCUMENT_COMPLIANCE_EMPLOYEE_SCAN_LIMIT;
+  }
+  return ids;
 }
 
 export async function getRequiredDocumentsForEmployee(db: Env["DB"], employeeId: string) {
   const employee = await getEmployee(db, employeeId);
   if (!employee) return [];
   const rows = await db.prepare(
-    `SELECT rr.id AS matched_rule_id, dt.id AS document_type_id, dt.name AS document_type_name,
-      dt.code AS document_type_code, dc.name AS category_name, rr.is_required, rr.rule_priority,
-      rr.employee_type AS matched_employee_type_rule, rr.employment_type AS matched_employment_type_rule,
-      rr.department_id AS matched_department_id, rd.name AS matched_department_name,
-      rr.position_id AS matched_position_id, rp.title AS matched_position_title,
-      rr.location_id AS matched_location_id, rl.name AS matched_location_name,
-      dt.is_sensitive, dt.expiry_required, dt.issue_date_required, dt.document_number_required,
-      dt.blocks_employee_activation, dt.creates_payroll_warning, dt.creates_final_settlement_warning,
-      dt.expiring_soon_days, dt.urgent_expiring_days
+    `SELECT ${REQUIRED_DOCUMENT_RULE_COLUMNS}
      FROM document_required_rules rr
      JOIN document_types dt ON dt.id = rr.document_type_id AND dt.is_active = 1
      LEFT JOIN document_categories dc ON dc.id = dt.category_id
@@ -553,23 +654,15 @@ export async function getRequiredDocumentsForEmployee(db: Env["DB"], employeeId:
        AND (rr.department_id IS NULL OR rr.department_id = ?)
        AND (rr.position_id IS NULL OR rr.position_id = ?)
        AND (rr.location_id IS NULL OR rr.location_id = ?)
-     ORDER BY rr.rule_priority, dt.sort_order, dt.name`
-  ).bind(employee.employee_type, employee.employment_type, employee.primary_department_id, employee.primary_position_id, employee.primary_location_id).all<RequiredDocumentRow>();
-  const byType = new Map<string, RequiredDocumentRow>();
-  for (const row of rows.results) {
-    const existing = byType.get(row.document_type_id);
-    if (!existing || row.rule_priority < existing.rule_priority || row.is_required > existing.is_required) {
-      byType.set(row.document_type_id, row);
-    }
-  }
-  return Array.from(byType.values()).filter((row) => row.is_required === 1);
+     ORDER BY rr.rule_priority, dt.sort_order, dt.name
+     LIMIT ?`
+  ).bind(employee.employee_type, employee.employment_type, employee.primary_department_id, employee.primary_position_id, employee.primary_location_id, DOCUMENT_COMPLIANCE_RULE_SCAN_LIMIT).all<RequiredDocumentRow>();
+  return requiredDocumentsForEmployeeFromRows(employee, rows.results);
 }
 
 export async function getEmployeeActiveDocumentByType(db: Env["DB"], employeeId: string, documentTypeId: string) {
   return db.prepare(
-    `SELECT ed.*, dt.name AS document_type_name, dt.code AS document_type_code,
-      dc.name AS category_name, dt.expiring_soon_days, dt.urgent_expiring_days,
-      v.original_filename, v.version_no, v.uploaded_at
+    `SELECT ${EMPLOYEE_DOCUMENT_COMPLIANCE_COLUMNS}
      FROM employee_documents ed
      JOIN document_types dt ON dt.id = ed.document_type_id
      LEFT JOIN document_categories dc ON dc.id = ed.category_id
@@ -582,31 +675,76 @@ export async function getEmployeeActiveDocumentByType(db: Env["DB"], employeeId:
 
 async function getEmployeeActiveDocuments(db: Env["DB"], employeeId: string) {
   const rows = await db.prepare(
-    `SELECT ed.*, dt.name AS document_type_name, dt.code AS document_type_code,
-      dc.name AS category_name, dt.expiring_soon_days, dt.urgent_expiring_days,
-      v.original_filename, v.version_no, v.uploaded_at
+    `SELECT ${EMPLOYEE_DOCUMENT_COMPLIANCE_COLUMNS}
      FROM employee_documents ed
      JOIN document_types dt ON dt.id = ed.document_type_id
      LEFT JOIN document_categories dc ON dc.id = ed.category_id
      LEFT JOIN employee_document_versions v ON v.id = ed.current_version_id
      WHERE ed.employee_id = ? AND ed.status = 'ACTIVE'
-     ORDER BY dt.sort_order, dt.name`
-  ).bind(employeeId).all<EmployeeDocumentComplianceRow>();
+     ORDER BY dt.sort_order, dt.name
+     LIMIT ?`
+  ).bind(employeeId, DOCUMENT_COMPLIANCE_DOCUMENT_SCAN_LIMIT).all<EmployeeDocumentComplianceRow>();
   return rows.results;
 }
 
 async function getActiveWaivers(db: Env["DB"], employeeId: string) {
   const date = today();
   const rows = await db.prepare(
-    `SELECT w.*, dt.name AS document_type_name, dt.code AS document_type_code
+    `SELECT ${WAIVER_COMPLIANCE_COLUMNS}
      FROM document_requirement_waivers w
      JOIN document_types dt ON dt.id = w.document_type_id
      WHERE w.employee_id = ? AND w.status = 'ACTIVE'
        AND date(w.waiver_start_date) <= date(?)
        AND (w.waiver_end_date IS NULL OR date(w.waiver_end_date) >= date(?))
-     ORDER BY dt.name`
-  ).bind(employeeId, date, date).all<WaiverRow>();
+     ORDER BY dt.name
+     LIMIT ?`
+  ).bind(employeeId, date, date, DOCUMENT_COMPLIANCE_WAIVER_SCAN_LIMIT).all<WaiverRow>();
   return rows.results;
+}
+
+async function getEmployeeActiveDocumentsForEmployees(db: Env["DB"], employeeIds: string[]) {
+  const byEmployee = new Map<string, EmployeeDocumentComplianceRow[]>();
+  for (const id of employeeIds) byEmployee.set(id, []);
+  for (const chunk of chunked(employeeIds)) {
+    if (!chunk.length) continue;
+    const rows = await db.prepare(
+      `SELECT ${EMPLOYEE_DOCUMENT_COMPLIANCE_COLUMNS}
+       FROM employee_documents ed
+       JOIN document_types dt ON dt.id = ed.document_type_id
+       LEFT JOIN document_categories dc ON dc.id = ed.category_id
+       LEFT JOIN employee_document_versions v ON v.id = ed.current_version_id
+       WHERE ed.employee_id IN (${inPlaceholders(chunk)}) AND ed.status = 'ACTIVE'
+       ORDER BY ed.employee_id, dt.sort_order, dt.name
+       LIMIT ?`
+    ).bind(...chunk, Math.min(5000, chunk.length * DOCUMENT_COMPLIANCE_DOCUMENT_SCAN_LIMIT)).all<EmployeeDocumentComplianceRow>();
+    for (const row of rows.results) {
+      byEmployee.get(row.employee_id)?.push(row);
+    }
+  }
+  return byEmployee;
+}
+
+async function getActiveWaiversForEmployees(db: Env["DB"], employeeIds: string[]) {
+  const byEmployee = new Map<string, WaiverRow[]>();
+  for (const id of employeeIds) byEmployee.set(id, []);
+  const date = today();
+  for (const chunk of chunked(employeeIds)) {
+    if (!chunk.length) continue;
+    const rows = await db.prepare(
+      `SELECT ${WAIVER_COMPLIANCE_COLUMNS}
+       FROM document_requirement_waivers w
+       JOIN document_types dt ON dt.id = w.document_type_id
+       WHERE w.employee_id IN (${inPlaceholders(chunk)}) AND w.status = 'ACTIVE'
+         AND date(w.waiver_start_date) <= date(?)
+         AND (w.waiver_end_date IS NULL OR date(w.waiver_end_date) >= date(?))
+       ORDER BY w.employee_id, dt.name
+       LIMIT ?`
+    ).bind(...chunk, date, date, Math.min(3000, chunk.length * DOCUMENT_COMPLIANCE_WAIVER_SCAN_LIMIT)).all<WaiverRow>();
+    for (const row of rows.results) {
+      byEmployee.get(row.employee_id)?.push(row);
+    }
+  }
+  return byEmployee;
 }
 
 function documentDisplayStatus(document: EmployeeDocumentComplianceRow, settings: ComplianceSettingsRow) {
@@ -637,23 +775,24 @@ export async function getEmployeeExpiredDocuments(db: Env["DB"], employeeId: str
 
 export async function getEmployeeMissingRequiredDocuments(db: Env["DB"], employeeId: string) {
   const required = await getRequiredDocumentsForEmployee(db, employeeId);
+  const documents = await getEmployeeActiveDocuments(db, employeeId);
   const waivers = await getActiveWaivers(db, employeeId);
+  const documentsByType = new Set(documents.map((row) => row.document_type_id));
+  const waiversByType = new Set(waivers.map((row) => row.document_type_id));
   const missing: RequiredDocumentRow[] = [];
   for (const item of required) {
-    const active = await getEmployeeActiveDocumentByType(db, employeeId, item.document_type_id);
-    const waiver = waivers.find((row) => row.document_type_id === item.document_type_id);
-    if (!active && !waiver) missing.push(item);
+    if (!documentsByType.has(item.document_type_id) && !waiversByType.has(item.document_type_id)) missing.push(item);
   }
   return missing;
 }
 
-export async function calculateEmployeeDocumentCompliance(db: Env["DB"], employeeId: string) {
-  const settings = await getDocumentComplianceSettings(db);
-  const employee = await getEmployee(db, employeeId);
-  if (!employee) return null;
-  const required = await getRequiredDocumentsForEmployee(db, employeeId);
-  const documents = await getEmployeeActiveDocuments(db, employeeId);
-  const waivers = await getActiveWaivers(db, employeeId);
+function calculateLoadedEmployeeDocumentCompliance(
+  settings: ComplianceSettingsRow,
+  employee: EmployeeRow,
+  required: RequiredDocumentRow[],
+  documents: EmployeeDocumentComplianceRow[],
+  waivers: WaiverRow[]
+) {
   const requiredDetails = [];
   const missing = [];
   const waived = [];
@@ -725,11 +864,28 @@ export async function calculateEmployeeDocumentCompliance(db: Env["DB"], employe
   };
 }
 
+export async function calculateEmployeeDocumentCompliance(db: Env["DB"], employeeId: string) {
+  const settings = await getDocumentComplianceSettings(db);
+  const employee = await getEmployee(db, employeeId);
+  if (!employee) return null;
+  const required = await getRequiredDocumentsForEmployee(db, employeeId);
+  const documents = await getEmployeeActiveDocuments(db, employeeId);
+  const waivers = await getActiveWaivers(db, employeeId);
+  return calculateLoadedEmployeeDocumentCompliance(settings, employee, required, documents, waivers);
+}
+
 export async function refreshEmployeeDocumentComplianceSnapshot(db: Env["DB"], employeeId: string) {
   const compliance = await calculateEmployeeDocumentCompliance(db, employeeId);
   if (!compliance) return null;
-  const snapshotDate = today();
-  const existing = await db.prepare("SELECT id FROM employee_document_compliance_snapshots WHERE employee_id = ? AND snapshot_date = ?").bind(employeeId, snapshotDate).first<{ id: string }>();
+  return persistEmployeeDocumentComplianceSnapshot(db, compliance, today(), false);
+}
+
+async function persistEmployeeDocumentComplianceSnapshot(
+  db: Env["DB"],
+  compliance: NonNullable<Awaited<ReturnType<typeof calculateEmployeeDocumentCompliance>>>,
+  snapshotDate: string,
+  bulk: boolean
+) {
   const values = [
     compliance.total_required_documents,
     compliance.submitted_required_documents,
@@ -743,36 +899,65 @@ export async function refreshEmployeeDocumentComplianceSnapshot(db: Env["DB"], e
     JSON.stringify(compliance.warning_summary),
     JSON.stringify(compliance.required_documents),
     JSON.stringify(compliance.expiring_documents_list),
-    JSON.stringify({ refreshed_at: nowIso() })
+    JSON.stringify({ refreshed_at: nowIso(), bulk })
   ] as const;
-  if (existing) {
-    await db.prepare(
-      `UPDATE employee_document_compliance_snapshots SET
-        total_required_documents = ?, submitted_required_documents = ?, missing_required_documents = ?,
-        expiring_documents = ?, urgent_expiring_documents = ?, expired_documents = ?, waived_required_documents = ?,
-        compliance_status = ?, compliance_percent = ?, warning_summary_json = ?, required_documents_json = ?,
-        expiring_documents_json = ?, metadata_json = ?
-       WHERE id = ?`
-    ).bind(...values, existing.id).run();
-    return { ...compliance, snapshot_id: existing.id, snapshot_date: snapshotDate };
-  }
   const id = crypto.randomUUID();
   await db.prepare(
     `INSERT INTO employee_document_compliance_snapshots
       (id, employee_id, snapshot_date, total_required_documents, submitted_required_documents, missing_required_documents,
        expiring_documents, urgent_expiring_documents, expired_documents, waived_required_documents,
        compliance_status, compliance_percent, warning_summary_json, required_documents_json, expiring_documents_json, metadata_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(id, employeeId, snapshotDate, ...values).run();
-  return { ...compliance, snapshot_id: id, snapshot_date: snapshotDate };
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(employee_id, snapshot_date) DO UPDATE SET
+       total_required_documents = excluded.total_required_documents,
+       submitted_required_documents = excluded.submitted_required_documents,
+       missing_required_documents = excluded.missing_required_documents,
+       expiring_documents = excluded.expiring_documents,
+       urgent_expiring_documents = excluded.urgent_expiring_documents,
+       expired_documents = excluded.expired_documents,
+       waived_required_documents = excluded.waived_required_documents,
+       compliance_status = excluded.compliance_status,
+       compliance_percent = excluded.compliance_percent,
+       warning_summary_json = excluded.warning_summary_json,
+       required_documents_json = excluded.required_documents_json,
+       expiring_documents_json = excluded.expiring_documents_json,
+       metadata_json = excluded.metadata_json`
+  ).bind(id, compliance.employee.id, snapshotDate, ...values).run();
+  const saved = await db.prepare("SELECT id FROM employee_document_compliance_snapshots WHERE employee_id = ? AND snapshot_date = ?").bind(compliance.employee.id, snapshotDate).first<{ id: string }>();
+  return { ...compliance, snapshot_id: saved?.id ?? id, snapshot_date: snapshotDate };
 }
 
 export async function refreshAllDocumentComplianceSnapshots(db: Env["DB"], employeeIds?: string[]) {
-  const ids = employeeIds?.length ? employeeIds : (await db.prepare("SELECT id FROM employees WHERE archived_at IS NULL").all<{ id: string }>()).results.map((row) => row.id);
+  const ids = await getEmployeeIdsForComplianceRefresh(db, employeeIds);
+  const settings = await getDocumentComplianceSettings(db);
+  const rules = await getActiveRequiredDocumentRules(db);
+  const snapshotDate = today();
   const refreshed = [];
-  for (const employeeId of ids) {
-    const snapshot = await refreshEmployeeDocumentComplianceSnapshot(db, employeeId);
-    if (snapshot) refreshed.push(snapshot.employee.id);
+  for (const chunk of chunked(ids)) {
+    const employees = (await db.prepare(
+      `SELECT ${EMPLOYEE_COMPLIANCE_COLUMNS}
+       FROM employees e
+       LEFT JOIN departments d ON d.id = e.primary_department_id
+       LEFT JOIN positions p ON p.id = e.primary_position_id
+       LEFT JOIN locations l ON l.id = e.primary_location_id
+       WHERE e.id IN (${inPlaceholders(chunk)}) AND e.archived_at IS NULL
+       ORDER BY e.employee_no
+       LIMIT ?`
+    ).bind(...chunk, chunk.length).all<EmployeeRow>()).results;
+    const employeeIdChunk = employees.map((employee) => employee.id);
+    const documentsByEmployee = await getEmployeeActiveDocumentsForEmployees(db, employeeIdChunk);
+    const waiversByEmployee = await getActiveWaiversForEmployees(db, employeeIdChunk);
+    for (const employee of employees) {
+      const compliance = calculateLoadedEmployeeDocumentCompliance(
+        settings,
+        employee,
+        requiredDocumentsForEmployeeFromRows(employee, rules),
+        documentsByEmployee.get(employee.id) ?? [],
+        waiversByEmployee.get(employee.id) ?? []
+      );
+      const snapshot = await persistEmployeeDocumentComplianceSnapshot(db, compliance, snapshotDate, true);
+      if (snapshot) refreshed.push(snapshot.employee.id);
+    }
   }
   return { refreshed_count: refreshed.length, employee_ids: refreshed };
 }
@@ -907,7 +1092,7 @@ export async function getDocumentComplianceAlerts(db: Env["DB"], options: { user
   return rows.results;
 }
 
-async function listRenewalCases(db: Env["DB"], conditions: string[], binds: BindValue[]) {
+async function listRenewalCases(db: Env["DB"], conditions: string[], binds: BindValue[], pagination?: ReturnType<typeof parsePaginationParams>) {
   const rows = await db.prepare(
     `SELECT rc.*, e.employee_no, e.full_name AS employee_name, d.name AS department_name, l.name AS location_name,
       dt.name AS document_type_name, dt.code AS document_type_code, u.name AS assigned_to_name
@@ -918,8 +1103,8 @@ async function listRenewalCases(db: Env["DB"], conditions: string[], binds: Bind
      LEFT JOIN locations l ON l.id = e.primary_location_id
      LEFT JOIN users u ON u.id = rc.assigned_to_user_id
      WHERE ${conditions.join(" AND ")}
-     ORDER BY CASE rc.priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, COALESCE(rc.due_date, rc.created_at) ASC`
-  ).bind(...binds).all<RenewalCaseRow>();
+     ORDER BY CASE rc.priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, COALESCE(rc.due_date, rc.created_at) ASC${pagination ? " LIMIT ? OFFSET ?" : ""}`
+  ).bind(...(pagination ? [...binds, pagination.limit, pagination.offset] : binds)).all<RenewalCaseRow>();
   return rows.results;
 }
 
@@ -1263,21 +1448,42 @@ documentComplianceRoutes.post("/compliance/refresh", async (c) => {
 documentComplianceRoutes.get("/compliance/dashboard", async (c) => {
   const denied = requireAny(c, COMPLIANCE_VIEW);
   if (denied) return denied;
-  const employees = await employeeListForScope(c, "documents", "view");
-  const rows = [];
-  for (const employee of employees) {
-    const snapshot = await refreshEmployeeDocumentComplianceSnapshot(c.env.DB, employee.id);
-    if (snapshot) rows.push(snapshot);
-  }
-  const alerts = await getDocumentComplianceAlerts(c.env.DB, { status: "OPEN", limit: 10, scopeSql: (await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e")).sql, scopeParams: (await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e")).params });
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e");
+  const rows = (await c.env.DB.prepare(
+    `SELECT e.id AS employee_id, e.employee_no, e.full_name AS employee_name,
+      d.name AS department_name, l.name AS location_name,
+      COALESCE(s.compliance_status, 'NOT_APPLICABLE') AS compliance_status,
+      COALESCE(s.compliance_percent, 100) AS compliance_percent,
+      COALESCE(s.total_required_documents, 0) AS total_required_documents,
+      COALESCE(s.submitted_required_documents, 0) AS submitted_required_documents,
+      COALESCE(s.missing_required_documents, 0) AS missing_required_documents,
+      COALESCE(s.expiring_documents, 0) AS expiring_documents,
+      COALESCE(s.urgent_expiring_documents, 0) AS urgent_expiring_documents,
+      COALESCE(s.expired_documents, 0) AS expired_documents,
+      COALESCE(s.waived_required_documents, 0) AS waived_required_documents,
+      s.snapshot_date, s.created_at AS snapshot_created_at
+     FROM employees e
+     LEFT JOIN departments d ON d.id = e.primary_department_id
+     LEFT JOIN locations l ON l.id = e.primary_location_id
+     LEFT JOIN employee_document_compliance_snapshots s ON s.employee_id = e.id
+      AND s.snapshot_date = (
+        SELECT MAX(sx.snapshot_date)
+        FROM employee_document_compliance_snapshots sx
+        WHERE sx.employee_id = e.id
+      )
+     WHERE e.archived_at IS NULL AND ${scope.sql}
+     ORDER BY e.employee_no
+     LIMIT 200`
+  ).bind(...scope.params).all<Record<string, unknown>>()).results;
+  const alerts = await getDocumentComplianceAlerts(c.env.DB, { status: "OPEN", limit: 10, scopeSql: scope.sql, scopeParams: scope.params });
   const summary = {
     employee_count: rows.length,
     compliant: rows.filter((row) => row.compliance_status === "COMPLIANT").length,
-    missing_required: rows.reduce((sum, row) => sum + row.missing_required_documents, 0),
-    expiring_soon: rows.reduce((sum, row) => sum + row.expiring_documents, 0),
-    urgent_expiring: rows.reduce((sum, row) => sum + row.urgent_expiring_documents, 0),
-    expired: rows.reduce((sum, row) => sum + row.expired_documents, 0),
-    waivers: rows.reduce((sum, row) => sum + row.waived_required_documents, 0),
+    missing_required: rows.reduce((sum, row) => sum + Number(row.missing_required_documents ?? 0), 0),
+    expiring_soon: rows.reduce((sum, row) => sum + Number(row.expiring_documents ?? 0), 0),
+    urgent_expiring: rows.reduce((sum, row) => sum + Number(row.urgent_expiring_documents ?? 0), 0),
+    expired: rows.reduce((sum, row) => sum + Number(row.expired_documents ?? 0), 0),
+    waivers: rows.reduce((sum, row) => sum + Number(row.waived_required_documents ?? 0), 0),
     open_alerts: alerts.length
   };
   return ok(c, { summary, employees: rows.slice(0, 50), alerts: alerts.map((row) => maskSensitive(row as unknown as Record<string, unknown>, hasAny(c.get("currentUser"), SENSITIVE_VIEW))) });
@@ -1355,6 +1561,7 @@ documentComplianceRoutes.post("/alerts/:alertId/dismiss", (c) => alertAction(c, 
 documentComplianceRoutes.get("/renewal-cases", async (c) => {
   const denied = requireAny(c, RENEWAL_VIEW);
   if (denied) return denied;
+  const pagination = parsePaginationParams(c, { defaultLimit: 50, maxLimit: 200 });
   const conditions = ["1 = 1"];
   const binds: BindValue[] = [];
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e");
@@ -1365,8 +1572,8 @@ documentComplianceRoutes.get("/renewal-cases", async (c) => {
     conditions.push("rc.status = ?");
     binds.push(status);
   }
-  const cases = await listRenewalCases(c.env.DB, conditions, binds);
-  return ok(c, { renewal_cases: cases });
+  const cases = await listRenewalCases(c.env.DB, conditions, binds, pagination);
+  return ok(c, { renewal_cases: cases, pagination: paginationMeta(pagination, cases.length) });
 });
 
 documentComplianceRoutes.get("/renewal-cases/:caseId", async (c) => {
@@ -1468,6 +1675,7 @@ documentComplianceRoutes.get("/renewal-cases/:caseId/events", async (c) => {
 documentComplianceRoutes.get("/waivers", async (c) => {
   const denied = requireAny(c, WAIVER_VIEW);
   if (denied) return denied;
+  const pagination = parsePaginationParams(c, { defaultLimit: 50, maxLimit: 200 });
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e");
   const rows = await c.env.DB.prepare(
     `SELECT w.*, e.employee_no, e.full_name AS employee_name, d.name AS department_name, l.name AS location_name,
@@ -1478,9 +1686,9 @@ documentComplianceRoutes.get("/waivers", async (c) => {
      LEFT JOIN departments d ON d.id = e.primary_department_id
      LEFT JOIN locations l ON l.id = e.primary_location_id
      WHERE w.employee_id IN (SELECT e.id FROM employees e WHERE ${scope.sql})
-     ORDER BY w.created_at DESC`
-  ).bind(...scope.params).all<WaiverRow>();
-  return ok(c, { waivers: rows.results });
+     ORDER BY w.created_at DESC LIMIT ? OFFSET ?`
+  ).bind(...scope.params, pagination.limit, pagination.offset).all<WaiverRow>();
+  return ok(c, { waivers: rows.results, pagination: paginationMeta(pagination, rows.results.length) });
 });
 
 documentComplianceRoutes.post("/waivers/:waiverId/cancel", async (c) => {

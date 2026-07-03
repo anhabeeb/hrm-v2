@@ -28,6 +28,19 @@ const DOCUMENT_TYPE_LIST_COLUMNS = `
   dt.requires_issue_date, dt.requires_document_number, dt.retention_rule_json,
   dt.sort_order, dt.created_at, dt.updated_at
 `;
+const DOCUMENT_REQUIRED_RULE_LIST_COLUMNS = `
+  rr.id, rr.document_type_id, rr.employee_type, rr.employment_type, rr.department_id,
+  rr.position_id, rr.location_id, rr.custom_condition_json, rr.is_required,
+  rr.rule_priority, rr.is_active, rr.created_at, rr.updated_at,
+  dt.name AS document_type_name, dc.name AS category_name,
+  d.name AS department_name, p.title AS position_title, l.name AS location_name
+`;
+const DOCUMENT_VERSION_LIST_COLUMNS = `
+  v.id, v.employee_document_id, v.version_no, '' AS r2_key, v.original_filename,
+  v.file_mime_type, v.file_size_bytes, NULL AS file_hash, v.uploaded_by_user_id,
+  u.name AS uploaded_by_name, v.uploaded_at, v.reason_for_replacement,
+  v.is_current, v.created_at
+`;
 
 interface DocumentCategoryRow {
   id: string;
@@ -539,7 +552,7 @@ function addDateRange(c: Context<AppBindings>, conditions: string[], params: Bin
   }
 }
 
-async function listRegistry(c: Context<AppBindings>) {
+async function listRegistry(c: Context<AppBindings>, pagination?: ReturnType<typeof parsePaginationParams>) {
   const conditions: string[] = [];
   const params: BindValue[] = [];
   const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e");
@@ -593,15 +606,40 @@ async function listRegistry(c: Context<AppBindings>) {
        LEFT JOIN employee_document_versions v ON v.id = ed.current_version_id
        LEFT JOIN users u ON u.id = v.uploaded_by_user_id
        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
-       ORDER BY ed.updated_at DESC`
+       ORDER BY ed.updated_at DESC${pagination ? " LIMIT ? OFFSET ?" : ""}`
     )
-    .bind(...params)
+    .bind(...(pagination ? [...params, pagination.limit, pagination.offset] : params))
     .all<EmployeeDocumentRow>();
   const canSensitive = hasPermission(c, "documents.sensitive.view");
   let registry = rows.results.map((row) => maskDocument(row, canSensitive));
   const display = readString(c.req.query("display_status"));
   if (display) registry = registry.filter((row) => row.display_status === display);
   return registry;
+}
+
+async function registrySummary(c: Context<AppBindings>) {
+  const conditions: string[] = [];
+  const params: BindValue[] = [];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
+  const row = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS total_documents,
+      SUM(CASE WHEN ed.status = 'ACTIVE' AND ed.expiry_date IS NOT NULL AND date(ed.expiry_date) < date('now') THEN 1 ELSE 0 END) AS expired,
+      SUM(CASE WHEN ed.status = 'ACTIVE' AND ed.expiry_date IS NOT NULL
+        AND date(ed.expiry_date) >= date('now')
+        AND date(ed.expiry_date) <= date('now', '+' || COALESCE(dt.expiring_soon_days, 30) || ' days')
+        THEN 1 ELSE 0 END) AS expiring_soon
+     FROM employee_documents ed
+     INNER JOIN employees e ON e.id = ed.employee_id
+     INNER JOIN document_types dt ON dt.id = ed.document_type_id
+     WHERE ${conditions.join(" AND ")}`
+  ).bind(...params).first<{ total_documents: number; expired: number | null; expiring_soon: number | null }>();
+  return {
+    total_documents: Number(row?.total_documents ?? 0),
+    expired: Number(row?.expired ?? 0),
+    expiring_soon: Number(row?.expiring_soon ?? 0)
+  };
 }
 
 documentRoutes.get("/categories", requirePermission("documents.view"), async (c) => {
@@ -729,15 +767,15 @@ documentRoutes.post("/types/:id/disable", requirePermission("documents.settings.
 
 documentRoutes.get("/required-rules", requirePermission("documents.view"), async (c) => {
   const rows = await c.env.DB.prepare(
-    `SELECT rr.*, dt.name AS document_type_name, dc.name AS category_name,
-      d.name AS department_name, p.title AS position_title, l.name AS location_name
+    `SELECT ${DOCUMENT_REQUIRED_RULE_LIST_COLUMNS}
      FROM document_required_rules rr
      INNER JOIN document_types dt ON dt.id = rr.document_type_id
      LEFT JOIN document_categories dc ON dc.id = dt.category_id
      LEFT JOIN departments d ON d.id = rr.department_id
      LEFT JOIN positions p ON p.id = rr.position_id
      LEFT JOIN locations l ON l.id = rr.location_id
-     ORDER BY rr.is_active DESC, rr.rule_priority, dt.name`
+     ORDER BY rr.is_active DESC, rr.rule_priority, dt.name
+     LIMIT 500`
   ).all();
   return ok(c, { rules: rows.results, required_rules: rows.results });
 });
@@ -826,7 +864,9 @@ documentRoutes.post("/required-rules/:id/disable", requirePermission("documents.
 
 documentRoutes.get("/registry", async (c) => {
   if (!requireAnyPermission(c, ["documents.registry.view", "documents.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view document registry.");
-  return ok(c, { documents: await listRegistry(c) });
+  const pagination = parsePaginationParams(c, { defaultLimit: 50, maxLimit: 200 });
+  const documents = await listRegistry(c, pagination);
+  return ok(c, { documents, pagination: paginationMeta(pagination, documents.length) });
 });
 
 async function missingRows(c: Context<AppBindings>, pagination?: ReturnType<typeof parsePaginationParams>) {
@@ -886,6 +926,31 @@ async function missingRows(c: Context<AppBindings>, pagination?: ReturnType<type
   return rows.results;
 }
 
+async function missingRequiredCount(c: Context<AppBindings>) {
+  const conditions: string[] = ["rr.is_active = 1", "rr.is_required = 1"];
+  const params: BindValue[] = [];
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "documents", "view", "e");
+  conditions.push(scope.sql);
+  params.push(...scope.params);
+  const row = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS missing_count
+     FROM document_required_rules rr
+     INNER JOIN document_types dt ON dt.id = rr.document_type_id AND dt.is_active = 1
+     INNER JOIN employees e ON e.archived_at IS NULL
+      AND (rr.employee_type IS NULL OR rr.employee_type = e.employee_type)
+      AND (rr.employment_type IS NULL OR rr.employment_type = e.employment_type)
+      AND (rr.department_id IS NULL OR rr.department_id = e.primary_department_id)
+      AND (rr.position_id IS NULL OR rr.position_id = e.primary_position_id)
+      AND (rr.location_id IS NULL OR rr.location_id = e.primary_location_id)
+     WHERE ${conditions.join(" AND ")}
+       AND NOT EXISTS (
+         SELECT 1 FROM employee_documents ed
+         WHERE ed.employee_id = e.id AND ed.document_type_id = rr.document_type_id AND ed.status = 'ACTIVE'
+       )`
+  ).bind(...params).first<{ missing_count: number }>();
+  return Number(row?.missing_count ?? 0);
+}
+
 documentRoutes.get("/missing", requirePermission("documents.view"), async (c) => {
   const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
   const rows = await missingRows(c, pagination);
@@ -893,19 +958,20 @@ documentRoutes.get("/missing", requirePermission("documents.view"), async (c) =>
 });
 
 documentRoutes.get("/expiring", requirePermission("documents.view"), async (c) => {
-  const docs = (await listRegistry(c)).filter((doc) => doc.display_status === "EXPIRING_SOON" || doc.display_status === "EXPIRED");
-  return ok(c, { documents: docs });
+  const pagination = parsePaginationParams(c, { defaultLimit: 50, maxLimit: 200 });
+  const docs = (await listRegistry(c, pagination)).filter((doc) => doc.display_status === "EXPIRING_SOON" || doc.display_status === "EXPIRED");
+  return ok(c, { documents: docs, pagination: paginationMeta(pagination, docs.length) });
 });
 
 documentRoutes.get("/reports", requirePermission("documents.reports.view"), async (c) => {
-  const registry = await listRegistry(c);
-  const missing = await missingRows(c);
+  const summary = await registrySummary(c);
+  const missing = await missingRequiredCount(c);
   return ok(c, {
     reports: {
-      total_documents: registry.length,
-      missing_documents: missing.length,
-      expiring_soon: registry.filter((doc) => doc.display_status === "EXPIRING_SOON").length,
-      expired: registry.filter((doc) => doc.display_status === "EXPIRED").length
+      total_documents: summary.total_documents,
+      missing_documents: missing,
+      expiring_soon: summary.expiring_soon,
+      expired: summary.expired
     }
   });
 });
@@ -930,13 +996,14 @@ documentRoutes.get("/reports/export.csv", requirePermission("documents.reports.e
 });
 
 documentRoutes.get("/dashboard", requirePermission("documents.view"), async (c) => {
-  const registry = await listRegistry(c);
-  const missing = await missingRows(c);
+  const summary = await registrySummary(c);
+  const missing = await missingRequiredCount(c);
+  const registry = await listRegistry(c, { page: 1, pageSize: 10, limit: 10, offset: 0 });
   return ok(c, {
-    total_documents: registry.length,
-    missing_required_documents: missing.length,
-    expiring_soon: registry.filter((doc) => doc.display_status === "EXPIRING_SOON").length,
-    expired: registry.filter((doc) => doc.display_status === "EXPIRED").length,
+    total_documents: summary.total_documents,
+    missing_required_documents: missing,
+    expiring_soon: summary.expiring_soon,
+    expired: summary.expired,
     top_urgent_renewals: registry.filter((doc) => doc.display_status === "EXPIRING_SOON" || doc.display_status === "EXPIRED").slice(0, 5),
     recently_uploaded: registry.slice(0, 5),
     sensitive_access_alerts_count: 0
@@ -1844,11 +1911,12 @@ employeeDocumentRoutes.get("/:employeeId/documents/:documentId/versions", requir
   if (!doc) return fail(c, 404, "NOT_FOUND", "Document was not found.");
   if (doc.is_sensitive === 1 && !hasPermission(c, "documents.sensitive.view")) return fail(c, 403, "FORBIDDEN", "Sensitive document permission is required.");
   const rows = await c.env.DB.prepare(
-    `SELECT v.*, u.name AS uploaded_by_name
+    `SELECT ${DOCUMENT_VERSION_LIST_COLUMNS}
      FROM employee_document_versions v
      LEFT JOIN users u ON u.id = v.uploaded_by_user_id
      WHERE v.employee_document_id = ?
-     ORDER BY v.version_no DESC`
+     ORDER BY v.version_no DESC
+     LIMIT 100`
   ).bind(doc.id).all<VersionRow>();
   return ok(c, { versions: rows.results.map((version) => ({ ...version, is_current: version.is_current === 1, r2_key: undefined })) });
 });
