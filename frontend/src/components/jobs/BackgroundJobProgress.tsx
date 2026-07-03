@@ -2,6 +2,7 @@ import { Loader2 } from "lucide-react";
 import type { BackgroundJob } from "../../types/background-jobs";
 import { StatusBadge } from "../ui/status-badge";
 import { cn } from "../../lib/utils";
+import { humanizeTechnicalLabel } from "../../lib/displayLabels";
 
 function progressPercent(job: BackgroundJob) {
   if (!job.progress_total || job.progress_total <= 0) return null;
@@ -17,7 +18,7 @@ export function BackgroundJobProgress({ job, compact = false }: { job: Backgroun
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0">
           <p className={cn("truncate font-medium text-slate-950", compact ? "text-xs" : "text-sm")}>{job.progress_message || job.job_type}</p>
-          <p className="truncate text-xs text-muted-foreground">{job.job_type.replace(/_/g, " ").toLowerCase()}</p>
+          <p className="truncate text-xs text-muted-foreground">{humanizeTechnicalLabel(job.job_type, "Background job")}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {active ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : null}

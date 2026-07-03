@@ -159,7 +159,7 @@ export function PageBreadcrumbs({ items }: { items: Array<{ label: string; href?
 }
 
 export function PageActions({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex shrink-0 flex-wrap items-center gap-2", className)}>{children}</div>;
+  return <div className={cn("flex min-w-0 shrink-0 flex-wrap items-center justify-start gap-2 lg:justify-end", className)}>{children}</div>;
 }
 
 export function SectionCard({ title, description, actions, children, className, bodyClassName }: { title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; bodyClassName?: string }) {

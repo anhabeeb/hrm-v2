@@ -189,7 +189,7 @@ for (const file of pageFiles) {
     if (sharedTabsPattern.test(content)) sharedTabUsers.push(file);
   }
 
-  if (/<Table\b/.test(content) && !/(overflow-x-auto|ResponsiveTableWrapper|DataTableFrame|DataTableShell|TableWrap)/.test(content)) {
+  if (/<Table\b/.test(content) && !/(overflow-x-auto|ResponsiveTableWrapper|DataTableFrame|DataTableShell|PerformanceDataTable|TableWrap)/.test(content)) {
     failures.push(`${file}: table content must be wrapped in a responsive overflow/table shell`);
   }
 

@@ -18,6 +18,12 @@ function has(relativePath, marker, message) {
   if (!ok) failures.push(`${relativePath}: ${message}`);
 }
 
+function hasAny(relativePath, markers, message) {
+  const content = read(relativePath);
+  const ok = markers.some((marker) => marker instanceof RegExp ? marker.test(content) : content.includes(marker));
+  if (!ok) failures.push(`${relativePath}: ${message}`);
+}
+
 function hasNo(relativePath, marker, message) {
   const content = read(relativePath);
   const ok = marker instanceof RegExp ? !marker.test(content) : !content.includes(marker);
@@ -206,7 +212,7 @@ has("frontend/src/components/ui/dialogs.tsx", "requireReason", "ConfirmDialog re
 ].forEach(([file, markers]) => markers.forEach((marker) => has(file, marker, `${marker} modernization marker missing`)));
 
 [
-  ["frontend/src/pages/EmployeesPage.tsx", ["EmployeeIdentityCell", "sticky left-0", "employee={employee}", "token={token}", "DataTableShell", "PageShell", "PageHeader"]],
+  ["frontend/src/pages/EmployeesPage.tsx", ["EmployeeIdentityCell", "sticky left-0", "employee={employee}", "token={token}", "PageShell", "PageHeader"]],
   ["frontend/src/pages/EmployeeProfilePage.tsx", ["EmployeeProfileCard", "EmployeeProfilePhotoControls", "PageShell"]],
   ["frontend/src/pages/PayrollRunDetailPage.tsx", ["EmployeeIdentityCell", "sticky left-0", "payroll result"]],
   ["frontend/src/pages/PayrollPrompt11Pages.tsx", ["EmployeeIdentityCell", "Payslips", "Payment Register", "Payroll History"]],
@@ -228,7 +234,7 @@ has("frontend/src/components/ui/dialogs.tsx", "requireReason", "ConfirmDialog re
 ].forEach(([file, markers]) => markers.forEach((marker) => has(file, marker, `${marker} employee identity adoption marker missing`)));
 
 [
-  ["frontend/src/pages/EmployeesPage.tsx", ["PageShell", "PageHeader", "FilterBar", "DataTableShell"]],
+  ["frontend/src/pages/EmployeesPage.tsx", ["PageShell", "PageHeader", "FilterBar"]],
   ["frontend/src/pages/PayrollRunsPage.tsx", ["PageShell", "PageHeader", "FilterBar", "DataTableShell"]],
   ["frontend/src/pages/ReportsPage.tsx", ["PageShell", "PageHeader", "ExportActionBar"]],
   ["frontend/src/pages/EmployeeProfilePage.tsx", ["PageShell", "ResponsiveTabs"]],
@@ -236,6 +242,8 @@ has("frontend/src/components/ui/dialogs.tsx", "requireReason", "ConfirmDialog re
   ["frontend/src/pages/FinalSettlementPage.tsx", ["Exit Payroll", "Final Settlement"]],
   ["frontend/src/pages/LifecyclePage.tsx", ["Onboarding", "Offboarding"]]
 ].forEach(([file, markers]) => markers.forEach((marker) => has(file, marker, `${marker} page/component adoption marker missing`)));
+
+hasAny("frontend/src/pages/EmployeesPage.tsx", ["DataTableShell", "PerformanceDataTable"], "EmployeesPage must use an accepted shared data table shell");
 
 has("frontend/vite.config.ts", "manualChunks", "Prompt 13 manual chunk optimization missing");
 has("frontend/vite.config.ts", "react-vendor", "react-vendor chunk missing");

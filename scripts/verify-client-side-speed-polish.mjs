@@ -48,8 +48,8 @@ hasAll("frontend/src/hooks/useAuth.tsx", [
   "bootstrapInflightRef",
   "meInflightRef",
   "loadCurrentUser",
-  "api.getBootstrapStatus().finally",
-  "api.me(savedToken).finally",
+  "authApi.getBootstrapStatus().finally",
+  "authApi.me(savedToken).finally",
   "invalidateReferenceDataCache",
   "clearSession"
 ], "auth/session coalescing and cache invalidation");

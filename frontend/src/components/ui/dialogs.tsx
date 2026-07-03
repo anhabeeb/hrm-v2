@@ -14,20 +14,20 @@ interface DetailDrawerProps {
 export function DetailDrawer({ open, title, description, children, onClose, actions }: DetailDrawerProps) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/25">
-      <button className="absolute inset-0" aria-label="Close detail drawer" onClick={onClose} />
-      <aside className="relative flex h-full w-full max-w-xl flex-col overflow-hidden border-l bg-white shadow-xl">
-        <header className="border-b px-5 py-4">
+    <div className="fixed inset-0 z-50 flex max-h-dvh justify-end overflow-hidden bg-slate-950/25">
+      <button type="button" className="absolute inset-0" aria-label="Close detail drawer" onClick={onClose} />
+      <aside className="relative flex h-full max-h-dvh w-full max-w-xl min-w-0 flex-col overflow-hidden border-l bg-white shadow-xl">
+        <header className="shrink-0 border-b px-5 py-4">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-slate-950">{title}</h2>
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-semibold text-slate-950">{title}</h2>
               {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
             </div>
             <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
-        {actions ? <footer className="border-t bg-slate-50 px-5 py-3">{actions}</footer> : null}
+        {actions ? <footer className="shrink-0 border-t bg-slate-50 px-5 py-3">{actions}</footer> : null}
       </aside>
     </div>
   );
@@ -65,14 +65,14 @@ export function ConfirmDialog({
   if (!open) return null;
   const disabled = Boolean(requireReason && !reasonValue.trim());
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/30 px-4">
-      <div className="w-full max-w-md rounded-lg border bg-white shadow-xl">
-        <div className="border-b px-5 py-4">
+    <div className="fixed inset-0 z-50 grid max-h-dvh place-items-center overflow-y-auto bg-slate-950/30 px-4 py-6">
+      <div className="flex max-h-[calc(100dvh-3rem)] w-full max-w-md min-w-0 flex-col overflow-hidden rounded-lg border bg-white shadow-xl">
+        <div className="shrink-0 border-b px-5 py-4">
           <h2 className="text-base font-semibold text-slate-950">{title}</h2>
           {description ? <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p> : null}
         </div>
         {requireReason || onReasonChange ? (
-          <div className="px-5 py-4">
+          <div className="min-h-0 overflow-y-auto px-5 py-4">
             <label className="grid gap-1 text-sm font-medium">
               {reasonLabel}{requireReason ? " *" : ""}
               <Input value={reasonValue} onChange={(event) => onReasonChange?.(event.target.value)} placeholder="Add a note for audit history" />
@@ -80,7 +80,7 @@ export function ConfirmDialog({
             {disabled ? <p className="mt-1 text-xs text-red-600">Reason is required.</p> : null}
           </div>
         ) : null}
-        <div className="flex justify-end gap-2 border-t bg-slate-50 px-5 py-3">
+        <div className="flex shrink-0 justify-end gap-2 border-t bg-slate-50 px-5 py-3">
           <Button variant="outline" size="sm" onClick={onCancel}>{cancelLabel}</Button>
           <Button variant={tone === "danger" ? "danger" : "primary"} size="sm" onClick={onConfirm} disabled={disabled}>{confirmLabel}</Button>
         </div>

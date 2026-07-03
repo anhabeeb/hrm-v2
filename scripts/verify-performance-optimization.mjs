@@ -103,14 +103,15 @@ hasAll("frontend/src/components/global/GlobalSearch.tsx", [
   "cancelled"
 ], "global search debounce/stale request protection missing");
 hasAll("frontend/src/components/global/NotificationBell.tsx", [
-  "api.getUnreadNotificationCount",
+  "notificationsApi.getUnreadNotificationCount",
   "NOTIFICATION_UNREAD_POLL_INTERVAL_MS",
   "90000",
   "visibilitychange",
   "document.visibilityState",
   "lastNotificationFailureAtRef",
   "NOTIFICATION_FAILURE_BACKOFF_MS",
-  "if (open) void loadNotifications(true)"
+  "enabled: Boolean(token && open",
+  "listQuery.refetch"
 ], "notification polling/list-on-open optimization missing");
 hasNo("frontend/src/components/global/NotificationBell.tsx", /setInterval\([^,]+,\s*60000\)/, "notification polling should not be an aggressive fixed 60s list poll");
 
@@ -123,11 +124,12 @@ hasAll("worker/src/routes/search.ts", [
   "MAX_LIMIT = 25"
 ], "global search performance/hardening markers missing");
 hasAll("worker/src/routes/notifications.ts", [
-  "boundedLimit",
+  "parsePaginationParams",
+  "paginationMeta",
   "NOTIFICATION_LIMIT_MAX",
   "measureD1Query",
-  "isModuleEnabled",
-  "module_control_settings"
+  "notificationModuleVisible",
+  "NOTIFICATION_ALWAYS_VISIBLE_MODULES"
 ], "notification pagination/module-skip markers missing");
 
 hasAll("frontend/src/pages/EmployeeProfilePage.tsx", [

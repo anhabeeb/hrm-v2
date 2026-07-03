@@ -1,30 +1,9 @@
 import { Badge } from "./badge";
 import type { HTMLAttributes } from "react";
-
-const statusLabels: Record<string, string> = {
-  APPROVED_PLACEHOLDER: "Approved",
-  BANK_NOTIFICATION_PENDING: "Bank notice pending",
-  BANK_NOTIFIED: "Bank notified",
-  BANK_TO_COLLECT_DIRECTLY_FROM_EMPLOYEE: "Bank direct collection",
-  CALCULATING: "Calculating",
-  FINALIZED_PLACEHOLDER: "Finalized",
-  MANUALLY_CONFIRMED_PAID: "Manual paid",
-  MANUALLY_CONFIRMED_PAID_TO_BANK: "Bank paid",
-  PENDING_RELEASE: "Pending release",
-  READY_FOR_REVIEW: "Ready for review",
-  SKIPPED_MINIMUM_NET_PROTECTION: "Skipped: min net",
-  SUBMITTED_FOR_APPROVAL: "Submitted"
-};
+import { formatStatusLabel } from "../../lib/displayLabels";
 
 export function humanizeStatus(value: unknown) {
-  const raw = String(value ?? "UNKNOWN");
-  const upper = raw.toUpperCase();
-  return statusLabels[upper] ?? raw
-    .toLowerCase()
-    .split("_")
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
+  return formatStatusLabel(value);
 }
 
 export function statusTone(value: unknown): "neutral" | "success" | "warning" | "danger" | "info" {

@@ -38,5 +38,5 @@ export function DataTableShell({
 }
 
 export function ResponsiveTableWrapper({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("box-border w-full max-w-none min-w-0 overflow-x-auto", className)}>{children}</div>;
+  return <div className={cn("relative box-border w-full max-w-none min-w-0 overflow-x-auto overscroll-x-contain", className)}>{children}</div>;
 }

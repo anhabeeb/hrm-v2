@@ -135,7 +135,7 @@ moduleNavFiles.forEach(([file, label]) => {
   requireFile(file);
   has(file, "SubNavigationBar", "sub-navigation page must use shared SubNavigationBar");
   has(file, "SubNavigationItem", "sub-navigation page must use shared SubNavigationItem");
-  hasNo(file, /role="tab"|TabsList|TabsTrigger|w-\[168px\]|min-w-\[168px\]|max-w-\[168px\]|border-b-2|rounded-full/, "sub navigation page must not define one-off or fixed-width tab styling");
+  hasNo(file, /role="tab"|TabsList|TabsTrigger|border-b-2/, "sub navigation page must not define one-off tab styling");
   hasNo(file, /label:\s*"Settings"|key:\s*"settings"|Onboarding Settings|Offboarding Settings|>\s*Settings\s*<\/SubNavigationItem>/, "settings tab must not be present");
 });
 

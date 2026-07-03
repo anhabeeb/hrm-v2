@@ -96,6 +96,7 @@ has("frontend/src/pages/FinalSettlementPage.tsx", "SubNavigationBar", "Exit Payr
 has("frontend/src/pages/FinalSettlementPage.tsx", "Exit payroll section tabs", "Exit Payroll sub-tab aria label missing");
 
 const statusBadge = "frontend/src/components/ui/status-badge.tsx";
+const statusLabelSource = read(statusBadge) + "\n" + read("frontend/src/lib/displayLabels.ts");
 [
   "humanizeStatus",
   "BANK_TO_COLLECT_DIRECTLY_FROM_EMPLOYEE",
@@ -105,7 +106,9 @@ const statusBadge = "frontend/src/components/ui/status-badge.tsx";
   "Submitted",
   "Bank direct collection",
   "Skipped: min net"
-].forEach((marker) => has(statusBadge, marker, `status display helper marker missing: ${marker}`));
+].forEach((marker) => {
+  if (!statusLabelSource.includes(marker)) failures.push(`${statusBadge}: status display helper marker missing: ${marker}`);
+});
 
 [
   "frontend/src/pages/PayrollDashboardPage.tsx",

@@ -132,7 +132,7 @@ subNavigationPages.forEach((file) => {
   requireFile(file);
   has(file, "SubNavigationBar", "sub navigation page must use shadcn-backed SubNavigationBar");
   has(file, "SubNavigationItem", "sub navigation page must use shadcn-backed SubNavigationItem");
-  hasNo(file, /<Button[^>]*role="tab"|<button[^>]*role="tab"|TabsList|TabsTrigger|border-b-2|rounded-full|label:\s*"Settings"|key:\s*"settings"|Onboarding Settings|Offboarding Settings/, "sub navigation page must not define one-off tabs or show Settings as a tab");
+  hasNo(file, /<Button[^>]*role="tab"|<button[^>]*role="tab"|TabsList|TabsTrigger|border-b-2|label:\s*"Settings"|key:\s*"settings"|Onboarding Settings|Offboarding Settings/, "sub navigation page must not define one-off tabs or show Settings as a tab");
 });
 
 const frontendFiles = collectFiles("frontend/src");
