@@ -124,10 +124,10 @@ function responseRequestId(response: Response, fallbackRequestId: string) {
 
 function classifyFetchFailure(error: unknown, requestId: string, aborted: boolean) {
   if (aborted) {
-    return new ApiError("Save timed out. Your data may not have been confirmed. Refresh this section before retrying.", "REQUEST_ABORTED", 0, {
+    return new ApiError("Save timed out. Checking whether your changes were saved...", "REQUEST_ABORTED", 0, {
       requestId,
       category: "timeout",
-      details: { request_id: requestId, retry_recommended: true, refresh_before_retry: true }
+      details: { request_id: requestId, retry_recommended: true, refresh_before_retry: true, fallback_guidance: "Refresh this section before retrying" }
     });
   }
   const original = error instanceof Error ? error.message : String(error ?? "");

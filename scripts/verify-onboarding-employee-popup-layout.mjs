@@ -58,7 +58,7 @@ const packageJson = JSON.parse(read("package.json"));
 const lifecycleText = read(lifecyclePage);
 const modalBlock = blockAfter(lifecyclePage, "function Modal", 2200);
 const tabDefinitionBlock = blockAfter(lifecyclePage, "const onboardingWorkspaceTabs =", 700);
-const workspaceBlock = blockAfter(lifecyclePage, "function OnboardingWorkspace", 26000);
+const workspaceBlock = blockAfter(lifecyclePage, "function OnboardingWorkspace", 30000);
 const headerBlock = blockAfter(lifecyclePage, "<header className=\"onboarding-popup-header", 2200);
 const overviewBlock = blockAfter(lifecyclePage, "function OnboardingWorkspaceOverview", 9000);
 const setupNavBlock = blockBetween(workspaceBlock, "onboarding-setup-navigation-panel", "onboarding-main-workspace", `${lifecyclePage}: setup navigation block`);

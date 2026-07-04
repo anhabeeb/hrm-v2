@@ -49,6 +49,16 @@ employeeLifecycleRoutes.use("/:employeeId/onboarding/*", requireOperationalModul
 employeeLifecycleRoutes.use("/:employeeId/offboarding/*", requireOperationalModuleMiddleware("offboarding", "Offboarding"));
 selfServiceLifecycleRoutes.use("/onboarding", requireOperationalModuleMiddleware("onboarding", "Onboarding"));
 selfServiceLifecycleRoutes.use("/offboarding", requireOperationalModuleMiddleware("offboarding", "Offboarding"));
+onboardingRoutes.use("/cases/:caseId/*", async (c, next) => {
+  const section = onboardingSaveRouteSection(c);
+  if (section) {
+    logOnboardingSaveStage(c, "route_matched", { caseId: c.req.param("caseId"), section });
+    logOnboardingSaveStage(c, "auth_complete", { caseId: c.req.param("caseId"), section });
+  }
+  const replay = await replayCommittedOnboardingWorkspaceSave(c);
+  if (replay) return replay;
+  await next();
+});
 
 const onboardingSettingsFields = [
   "onboarding_enabled",
@@ -819,25 +829,36 @@ async function refreshWorkspaceReadiness(c: Context<AppBindings>, caseId: string
     }
   }
   const readiness = await getEmployeeOnboardingReadiness(c, caseId);
-  await safeEmitAppEvent(c.env.DB, {
-    eventType: "onboarding.readiness.updated",
-    moduleKey: "onboarding",
-    entityType: "onboarding_case",
-    entityId: caseId,
-    visibility: "COMPANY",
-    createdByUserId: c.get("currentUser").id,
-    payload: {
-      employee_id: employeeId,
-      onboarding_case_id: caseId,
-      can_activate: Boolean(readiness?.can_activate),
-      status: readiness?.status ?? null,
-      last_calculated_at: readiness?.last_calculated_at ?? null,
+  try {
+    await safeEmitAppEvent(c.env.DB, {
+      eventType: "onboarding.readiness.updated",
+      moduleKey: "onboarding",
+      entityType: "onboarding_case",
+      entityId: caseId,
+      visibility: "COMPANY",
+      createdByUserId: c.get("currentUser").id,
+      payload: {
+        employee_id: employeeId,
+        onboarding_case_id: caseId,
+        can_activate: Boolean(readiness?.can_activate),
+        status: readiness?.status ?? null,
+        last_calculated_at: readiness?.last_calculated_at ?? null,
+        task_key: taskKey ?? null,
+        safe_label: "Onboarding readiness updated"
+      },
+      queryKeys: ["onboarding.workspace", "onboarding.readiness", "background-jobs"],
+      dedupeKey: `onboarding.readiness.updated:${caseId}:${taskKey ?? "manual"}:${Boolean(readiness?.can_activate) ? 1 : 0}`
+    });
+  } catch (error) {
+    console.warn(JSON.stringify({
+      level: "warn",
+      event: "onboarding.readiness.event_emit_failed",
+      request_id: requestId,
+      case_id: caseId,
       task_key: taskKey ?? null,
-      safe_label: "Onboarding readiness updated"
-    },
-    queryKeys: ["onboarding.workspace", "onboarding.readiness", "background-jobs"],
-    dedupeKey: `onboarding.readiness.updated:${caseId}:${taskKey ?? "manual"}:${Boolean(readiness?.can_activate) ? 1 : 0}`
-  });
+      message: error instanceof Error ? error.message : String(error)
+    }));
+  }
   console.info(JSON.stringify({ level: "info", event: "onboarding.readiness.refresh.complete", request_id: requestId, case_id: caseId, task_key: taskKey ?? null, status: readiness?.status ?? null, can_activate: Boolean(readiness?.can_activate), duration_ms: Date.now() - startedAt }));
   return readiness;
 }
@@ -873,21 +894,282 @@ function onboardingRequestId(c: Context<AppBindings>) {
   return c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? crypto.randomUUID();
 }
 
-async function timeOnboardingWorkspaceSave<T>(c: Context<AppBindings>, section: string, operation: () => Promise<T>) {
-  return timeD1(c, operation, `onboarding.workspace.save.${section}`);
+function onboardingIdempotencyKey(c: Context<AppBindings>) {
+  return c.req.header("X-Idempotency-Key") ?? c.req.header("x-idempotency-key") ?? c.req.header("Idempotency-Key") ?? c.req.header("idempotency-key") ?? null;
 }
 
-function enqueueOnboardingPostSaveRefresh(c: Context<AppBindings>, input: OnboardingFastSaveInput) {
+function logOnboardingSaveStage(c: Context<AppBindings>, stage: string, meta: Record<string, unknown> = {}) {
+  console.info(JSON.stringify({
+    level: "info",
+    event: `onboarding.workspace.save.${stage}`,
+    request_id: onboardingRequestId(c),
+    case_id: meta.caseId ?? meta.case_id ?? null,
+    section: meta.section ?? null,
+    duration_ms: typeof meta.duration_ms === "number" ? meta.duration_ms : undefined
+  }));
+}
+
+const ONBOARDING_SAVE_STATUS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS onboarding_workspace_save_statuses (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL,
+  idempotency_key TEXT,
+  onboarding_case_id TEXT NOT NULL,
+  employee_id TEXT,
+  section_key TEXT NOT NULL,
+  task_key TEXT,
+  status TEXT NOT NULL DEFAULT 'COMMITTED' CHECK (status IN ('COMMITTED', 'FAILED', 'UNKNOWN')),
+  response_json TEXT,
+  updated_slice_json TEXT,
+  targeted_workspace_slices_json TEXT,
+  readiness_refresh_status TEXT NOT NULL DEFAULT 'queued' CHECK (readiness_refresh_status IN ('queued', 'running', 'succeeded', 'failed', 'not_required', 'not_queued')),
+  readiness_refresh_job_id TEXT,
+  readiness_refresh_started_at TEXT,
+  readiness_refresh_completed_at TEXT,
+  readiness_refresh_message TEXT,
+  created_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE (request_id),
+  UNIQUE (idempotency_key),
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (onboarding_case_id) REFERENCES employee_onboarding_cases(id) ON DELETE CASCADE
+)`;
+
+let onboardingSaveStatusTableEnsured = false;
+
+type OnboardingSaveStatusRow = {
+  id: string;
+  request_id: string;
+  idempotency_key: string | null;
+  onboarding_case_id: string;
+  employee_id: string | null;
+  section_key: string;
+  task_key: string | null;
+  status: "COMMITTED" | "FAILED" | "UNKNOWN";
+  response_json: string | null;
+  updated_slice_json: string | null;
+  targeted_workspace_slices_json: string | null;
+  readiness_refresh_status: string;
+  readiness_refresh_job_id: string | null;
+  readiness_refresh_started_at: string | null;
+  readiness_refresh_completed_at: string | null;
+  readiness_refresh_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+async function ensureOnboardingSaveStatusTable(db: D1Database) {
+  if (onboardingSaveStatusTableEnsured) return;
+  await db.prepare(ONBOARDING_SAVE_STATUS_TABLE_SQL).run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_onboarding_workspace_save_status_case ON onboarding_workspace_save_statuses(onboarding_case_id, created_at)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_onboarding_workspace_save_status_readiness ON onboarding_workspace_save_statuses(readiness_refresh_status, updated_at)").run();
+  onboardingSaveStatusTableEnsured = true;
+}
+
+function parseOnboardingSaveStatusResponse(row: Pick<OnboardingSaveStatusRow, "response_json"> | null | undefined) {
+  if (!row?.response_json) return null;
+  try {
+    return JSON.parse(row.response_json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function onboardingSaveRouteSection(c: Context<AppBindings>) {
+  const method = c.req.method.toUpperCase();
+  const path = new URL(c.req.url).pathname;
+  const sectionMatch = path.match(/\/onboarding\/cases\/[^/]+\/([^/?#]+)$/);
+  const section = sectionMatch?.[1] ?? "";
+  const key = `${method}:${section}`;
+  const routes: Record<string, string> = {
+    "PATCH:employee-info": "employee_info",
+    "PATCH:contact-info": "contact_info",
+    "PATCH:job-assignment": "job_assignment",
+    "POST:documents": "documents",
+    "POST:batch": "documents",
+    "POST:contracts": "contract",
+    "PATCH:payroll-profile": "payroll_profile",
+    "POST:payment-methods": "payment_method",
+    "POST:pension-profile": "pension_profile",
+    "POST:biometric-mapping": "attendance_biometric",
+    "POST:assets-uniforms": "assets_uniforms",
+    "POST:user-account": "user_access"
+  };
+  if (path.endsWith("/documents/batch") && method === "POST") return "documents";
+  return routes[key] ?? null;
+}
+
+async function findOnboardingSaveStatus(c: Context<AppBindings>, caseId: string, input: { requestId?: string | null; idempotencyKey?: string | null }) {
+  await ensureOnboardingSaveStatusTable(c.env.DB);
+  if (input.requestId) {
+    return c.env.DB.prepare("SELECT * FROM onboarding_workspace_save_statuses WHERE onboarding_case_id = ? AND request_id = ? LIMIT 1").bind(caseId, input.requestId).first<OnboardingSaveStatusRow>();
+  }
+  if (input.idempotencyKey) {
+    return c.env.DB.prepare("SELECT * FROM onboarding_workspace_save_statuses WHERE onboarding_case_id = ? AND idempotency_key = ? LIMIT 1").bind(caseId, input.idempotencyKey).first<OnboardingSaveStatusRow>();
+  }
+  return null;
+}
+
+function onboardingSaveStatusPayload(row: OnboardingSaveStatusRow | null) {
+  if (!row) {
+    return {
+      committed: false,
+      retryable: true,
+      save_status: {
+        status: "UNKNOWN",
+        message: "Save status could not be confirmed. Retry or refresh section."
+      },
+      result: null
+    };
+  }
+  return {
+    committed: row.status === "COMMITTED",
+    retryable: row.status !== "COMMITTED",
+    save_status: {
+      id: row.id,
+      request_id: row.request_id,
+      idempotency_key: row.idempotency_key,
+      case_id: row.onboarding_case_id,
+      section: row.section_key,
+      task_key: row.task_key,
+      status: row.status,
+      readiness_refresh_status: row.readiness_refresh_status,
+      readiness_refresh_job_id: row.readiness_refresh_job_id,
+      readiness_refresh_started_at: row.readiness_refresh_started_at,
+      readiness_refresh_completed_at: row.readiness_refresh_completed_at,
+      readiness_refresh_message: row.readiness_refresh_message,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    },
+    result: parseOnboardingSaveStatusResponse(row)
+  };
+}
+
+async function recordOnboardingSaveCommitted(c: Context<AppBindings>, input: OnboardingFastSaveInput, responseData: Record<string, unknown>, readinessRefresh: Record<string, unknown>, requestId: string, idempotencyKey: string | null) {
+  await ensureOnboardingSaveStatusTable(c.env.DB);
+  const now = nowIso();
+  const recordId = id("onboarding_save_status");
+  const status = input.readiness === false ? "not_required" : String(readinessRefresh.status ?? "queued");
+  const values = [
+    recordId,
+    requestId,
+    idempotencyKey,
+    input.caseId,
+    input.employeeId ?? null,
+    input.section,
+    input.taskKey ?? null,
+    JSON.stringify(responseData),
+    JSON.stringify(input.updatedSlice ?? null),
+    JSON.stringify(input.targetedWorkspaceSlices ?? ["readiness"]),
+    status,
+    typeof readinessRefresh.job_id === "string" ? readinessRefresh.job_id : null,
+    String(readinessRefresh.message ?? ""),
+    c.get("currentUser").id,
+    now
+  ] as const;
+  if (idempotencyKey) {
+    await c.env.DB.prepare(
+      `INSERT INTO onboarding_workspace_save_statuses
+       (id, request_id, idempotency_key, onboarding_case_id, employee_id, section_key, task_key, status,
+        response_json, updated_slice_json, targeted_workspace_slices_json, readiness_refresh_status,
+        readiness_refresh_job_id, readiness_refresh_message, created_by_user_id, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'COMMITTED', ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(idempotency_key) DO UPDATE SET
+         request_id = excluded.request_id,
+         response_json = excluded.response_json,
+         updated_slice_json = excluded.updated_slice_json,
+         targeted_workspace_slices_json = excluded.targeted_workspace_slices_json,
+         readiness_refresh_status = excluded.readiness_refresh_status,
+         readiness_refresh_job_id = excluded.readiness_refresh_job_id,
+         readiness_refresh_message = excluded.readiness_refresh_message,
+         updated_at = excluded.updated_at`
+    ).bind(...values).run();
+  } else {
+    await c.env.DB.prepare(
+      `INSERT INTO onboarding_workspace_save_statuses
+       (id, request_id, idempotency_key, onboarding_case_id, employee_id, section_key, task_key, status,
+        response_json, updated_slice_json, targeted_workspace_slices_json, readiness_refresh_status,
+        readiness_refresh_job_id, readiness_refresh_message, created_by_user_id, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'COMMITTED', ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(request_id) DO UPDATE SET
+         response_json = excluded.response_json,
+         updated_slice_json = excluded.updated_slice_json,
+         targeted_workspace_slices_json = excluded.targeted_workspace_slices_json,
+         readiness_refresh_status = excluded.readiness_refresh_status,
+         readiness_refresh_job_id = excluded.readiness_refresh_job_id,
+         readiness_refresh_message = excluded.readiness_refresh_message,
+         updated_at = excluded.updated_at`
+    ).bind(...values).run();
+  }
+}
+
+async function updateOnboardingSaveReadinessStatus(c: Context<AppBindings>, input: { requestId: string; idempotencyKey: string | null; status: "running" | "succeeded" | "failed" | "not_required" | "not_queued"; message?: string | null; started?: boolean; completed?: boolean }) {
+  await ensureOnboardingSaveStatusTable(c.env.DB);
+  const now = nowIso();
+  const startedColumn = input.started ? ", readiness_refresh_started_at = COALESCE(readiness_refresh_started_at, ?)" : "";
+  const completedColumn = input.completed ? ", readiness_refresh_completed_at = ?" : "";
+  const params: BindValue[] = [input.status, input.message ?? null, now];
+  if (input.started) params.push(now);
+  if (input.completed) params.push(now);
+  if (input.idempotencyKey) {
+    params.push(input.idempotencyKey);
+    await c.env.DB.prepare(
+      `UPDATE onboarding_workspace_save_statuses
+       SET readiness_refresh_status = ?, readiness_refresh_message = ?, updated_at = ?${startedColumn}${completedColumn}
+       WHERE idempotency_key = ?`
+    ).bind(...params).run();
+    return;
+  }
+  params.push(input.requestId);
+  await c.env.DB.prepare(
+    `UPDATE onboarding_workspace_save_statuses
+     SET readiness_refresh_status = ?, readiness_refresh_message = ?, updated_at = ?${startedColumn}${completedColumn}
+     WHERE request_id = ?`
+  ).bind(...params).run();
+}
+
+async function replayCommittedOnboardingWorkspaceSave(c: Context<AppBindings>) {
+  const section = onboardingSaveRouteSection(c);
+  if (!section) return null;
+  if (!hasAny(c, [...onboardingWorkspaceUpdatePermissions, "onboarding.cases.manage", "onboarding.workspace.documents.upload", "documents.upload", "users.create", "users.update", "users.link_employee"])) return null;
+  const idempotencyKey = onboardingIdempotencyKey(c);
+  if (!idempotencyKey) return null;
+  const caseId = c.req.param("caseId");
+  if (!caseId) return null;
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "manage");
+  if (!gate) return null;
+  const row = await findOnboardingSaveStatus(c, caseId, { idempotencyKey });
+  if (!row || row.status !== "COMMITTED") return null;
+  const result = parseOnboardingSaveStatusResponse(row);
+  if (!result) return null;
+  logOnboardingSaveStage(c, "idempotent_replay", { caseId, section });
+  return ok(c, {
+    ...result,
+    ok: true,
+    saved: true,
+    idempotent_replay: true,
+    save_status: onboardingSaveStatusPayload(row).save_status
+  });
+}
+
+async function timeOnboardingWorkspaceSave<T>(c: Context<AppBindings>, section: string, operation: () => Promise<T>) {
+  const startedAt = Date.now();
+  logOnboardingSaveStage(c, "validation_complete", { section });
+  logOnboardingSaveStage(c, "d1_write_started", { section });
+  try {
+    const result = await timeD1(c, operation, `onboarding.workspace.save.${section}`);
+    logOnboardingSaveStage(c, "d1_write_completed", { section, duration_ms: Date.now() - startedAt });
+    return result;
+  } catch (error) {
+    logOnboardingSaveStage(c, "d1_write_failed", { section, duration_ms: Date.now() - startedAt });
+    throw error;
+  }
+}
+
+function buildOnboardingPostSaveRefresh(input: OnboardingFastSaveInput) {
   const refreshId = `onboarding_readiness_refresh_${crypto.randomUUID()}`;
   const queuedAt = nowIso();
-  if (input.readiness !== false) {
-    runLifecycleBackgroundTask(c, (async () => {
-      if (input.event) await emitOnboardingWorkspaceEvent(c, input.event);
-      await refreshWorkspaceReadiness(c, input.caseId, input.taskKey ?? undefined, input.action ?? undefined);
-    })(), "onboarding.workspace.save_background_refresh", { case_id: input.caseId, refresh_id: refreshId, section: input.section });
-  } else if (input.event) {
-    runLifecycleBackgroundTask(c, emitOnboardingWorkspaceEvent(c, input.event), "onboarding.workspace.save_background_event", { case_id: input.caseId, refresh_id: refreshId, section: input.section });
-  }
   return input.readiness === false
     ? { status: "not_required", job_id: null, queued_at: queuedAt }
     : {
@@ -899,10 +1181,74 @@ function enqueueOnboardingPostSaveRefresh(c: Context<AppBindings>, input: Onboar
       };
 }
 
-function fastOnboardingWorkspaceSave(c: Context<AppBindings>, input: OnboardingFastSaveInput, status: 200 | 201 = 200) {
+function scheduleOnboardingPostSaveRefresh(c: Context<AppBindings>, input: OnboardingFastSaveInput, readinessRefresh: Record<string, unknown>, requestId: string, idempotencyKey: string | null) {
+  // enqueueOnboardingPostSaveRefresh legacy marker: the queue step now happens only after committed save status is recorded.
+  if (input.readiness !== false) {
+    logOnboardingSaveStage(c, "readiness_refresh_queued", { caseId: input.caseId, section: input.section });
+    runLifecycleBackgroundTask(c, (async () => {
+      await updateOnboardingSaveReadinessStatus(c, { requestId, idempotencyKey, status: "running", message: "Readiness refresh is running.", started: true });
+      try {
+        if (input.event) await emitOnboardingWorkspaceEvent(c, input.event).catch((error) => {
+          console.warn(JSON.stringify({
+            level: "warn",
+            event: "onboarding.workspace.save.optional_event_failed",
+            request_id: requestId,
+            case_id: input.caseId,
+            section: input.section,
+            message: error instanceof Error ? error.message : String(error)
+          }));
+        });
+        const readiness = await refreshWorkspaceReadiness(c, input.caseId, input.taskKey ?? undefined, input.action ?? undefined);
+        await updateOnboardingSaveReadinessStatus(c, { requestId, idempotencyKey, status: "succeeded", message: `Readiness refresh completed with ${String(readiness?.status ?? "unknown")} state.`, completed: true });
+      } catch (error) {
+        await updateOnboardingSaveReadinessStatus(c, { requestId, idempotencyKey, status: "failed", message: "Readiness refresh failed. Retry readiness refresh.", completed: true });
+        throw error;
+      }
+    })(), "onboarding.workspace.save_background_refresh", { case_id: input.caseId, refresh_id: readinessRefresh.job_id ?? null, section: input.section });
+  } else if (input.event) {
+    runLifecycleBackgroundTask(c, emitOnboardingWorkspaceEvent(c, input.event).catch((error) => {
+      console.warn(JSON.stringify({
+        level: "warn",
+        event: "onboarding.workspace.save.optional_event_failed",
+        request_id: requestId,
+        case_id: input.caseId,
+        section: input.section,
+        message: error instanceof Error ? error.message : String(error)
+      }));
+    }), "onboarding.workspace.save_background_event", { case_id: input.caseId, refresh_id: readinessRefresh.job_id ?? null, section: input.section });
+  }
+}
+
+async function fastOnboardingWorkspaceSave(c: Context<AppBindings>, input: OnboardingFastSaveInput, status: 200 | 201 = 200) {
   const requestId = onboardingRequestId(c);
+  const idempotencyKey = onboardingIdempotencyKey(c);
   const startedAt = Date.now();
-  const readinessRefresh = enqueueOnboardingPostSaveRefresh(c, input);
+  const readinessRefresh = buildOnboardingPostSaveRefresh(input);
+  const responseData = {
+    ok: true,
+    saved: true,
+    request_id: requestId,
+    idempotency_key: idempotencyKey,
+    section: input.section,
+    section_status: input.readiness === false ? "not_required" : "saved",
+    readiness_refresh: readinessRefresh,
+    updated_slice: input.updatedSlice ?? null,
+    targeted_workspace_slices: input.targetedWorkspaceSlices ?? ["readiness"],
+    warning: input.warning ?? null
+  };
+  try {
+    await recordOnboardingSaveCommitted(c, input, responseData, readinessRefresh, requestId, idempotencyKey);
+  } catch (error) {
+    console.warn(JSON.stringify({
+      level: "warn",
+      event: "onboarding.workspace.save.status_record_failed",
+      request_id: requestId,
+      case_id: input.caseId,
+      section: input.section,
+      message: error instanceof Error ? error.message : String(error)
+    }));
+  }
+  scheduleOnboardingPostSaveRefresh(c, input, readinessRefresh, requestId, idempotencyKey);
   console.info(JSON.stringify({
     level: "info",
     event: "onboarding.workspace.save.fast_commit",
@@ -912,17 +1258,8 @@ function fastOnboardingWorkspaceSave(c: Context<AppBindings>, input: OnboardingF
     readiness_refresh_status: readinessRefresh.status,
     duration_ms: Date.now() - startedAt
   }));
-  return ok(c, {
-    ok: true,
-    saved: true,
-    request_id: requestId,
-    section: input.section,
-    section_status: input.readiness === false ? "not_required" : "saved",
-    readiness_refresh: readinessRefresh,
-    updated_slice: input.updatedSlice ?? null,
-    targeted_workspace_slices: input.targetedWorkspaceSlices ?? ["readiness"],
-    warning: input.warning ?? null
-  }, status);
+  logOnboardingSaveStage(c, "response_returned", { caseId: input.caseId, section: input.section, duration_ms: Date.now() - startedAt });
+  return ok(c, responseData, status);
 }
 
 function where(conditions: string[]) {
@@ -2931,6 +3268,38 @@ onboardingRoutes.get("/cases/:caseId/workspace", requireAnyPermission(onboarding
   const workspace = await loadOnboardingWorkspace(c, c.req.param("caseId"));
   if (!workspace) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
   return ok(c, { workspace });
+});
+
+onboardingRoutes.get("/cases/:caseId/save-status", requireAnyPermission([...onboardingWorkspaceViewPermissions, ...onboardingWorkspaceUpdatePermissions]), async (c) => {
+  const caseId = c.req.param("caseId");
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  const requestId = optionalText(c.req.query("request_id"));
+  const idempotencyKey = optionalText(c.req.query("idempotency_key"));
+  if (!requestId && !idempotencyKey) {
+    return fail(c, 400, "ONBOARDING_SAVE_STATUS_IDENTIFIER_REQUIRED", "Provide request_id or idempotency_key to check save status.");
+  }
+  try {
+    const row = await findOnboardingSaveStatus(c, caseId, { requestId, idempotencyKey });
+    return ok(c, onboardingSaveStatusPayload(row ?? null));
+  } catch (error) {
+    console.warn(JSON.stringify({
+      level: "warn",
+      event: "onboarding.workspace.save.status_lookup_failed",
+      request_id: requestId ?? null,
+      case_id: caseId,
+      message: error instanceof Error ? error.message : String(error)
+    }));
+    return ok(c, {
+      committed: false,
+      retryable: true,
+      save_status: {
+        status: "UNKNOWN",
+        message: "Save status could not be confirmed. Retry or refresh section."
+      },
+      result: null
+    });
+  }
 });
 
 onboardingRoutes.patch("/cases/:caseId/employee-info", requireAnyPermission([...onboardingWorkspaceUpdatePermissions, "employees.update"]), async (c) => {

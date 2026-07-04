@@ -1523,6 +1523,10 @@ function saveResponseQueuedReadiness(result: OnboardingWorkspaceMutationResult) 
   return String(refresh.status ?? "").toLowerCase() === "queued" || boolValue(result.readiness_updating);
 }
 
+function isOnboardingSaveTimeoutError(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === 0 && (error.category === "timeout" || error.code === "REQUEST_ABORTED");
+}
+
 function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReason, queryState }: { workspace: Row; caseId: string; onClose: () => void; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void; queryState?: { refreshing: boolean; backgroundError: Error | null; retry: () => Promise<void> } }) {
   const { token, user } = useAuth();
   const alerts = useAlert();
@@ -1552,10 +1556,38 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
         setReadinessQueuedAt(Date.now());
       }
       setReadinessUpdating(queuedReadiness || readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta)));
-      alerts.showSuccess(success);
+      alerts.showSuccess(queuedReadiness ? "Saved. Updating readiness..." : success);
       const warning = typeof result.warning === "string" ? result.warning : null;
       if (warning) alerts.showWarning(warning);
     } catch (err) {
+      if (isOnboardingSaveTimeoutError(err) && err.requestId) {
+        alerts.showWarning("Save timed out. Checking whether your changes were saved...");
+        try {
+          const status = await api.getOnboardingWorkspaceSaveStatus(token, caseId, { request_id: err.requestId });
+          if (status.committed && status.result) {
+            const result = status.result as OnboardingWorkspaceMutationResult;
+            applyWorkspacePayload(scope, caseId, result);
+            invalidateOnboardingWorkspaceSlices({ scope, caseId, slices });
+            const resultWorkspace = asRow(result.workspace);
+            const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
+            const queuedReadiness = saveResponseQueuedReadiness(result);
+            if (queuedReadiness) {
+              setReadinessPendingConfirmation(true);
+              setReadinessQueuedAt(Date.now());
+            }
+            setReadinessUpdating(queuedReadiness || readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta)));
+            alerts.showSuccess(queuedReadiness ? "Saved. Updating readiness..." : success);
+            const warning = typeof result.warning === "string" ? result.warning : null;
+            if (warning) alerts.showWarning(warning);
+            return;
+          }
+          alerts.showWarning("Save status could not be confirmed. Retry or refresh section.");
+          return;
+        } catch {
+          alerts.showWarning("Save status could not be confirmed. Retry or refresh section.");
+          return;
+        }
+      }
       alerts.showApiError(err, "Unable to save onboarding workspace section.");
     }
   }

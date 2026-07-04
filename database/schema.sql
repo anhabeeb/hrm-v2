@@ -591,6 +591,35 @@ CREATE INDEX IF NOT EXISTS idx_background_jobs_entity ON background_jobs(entity_
 CREATE INDEX IF NOT EXISTS idx_background_jobs_dedupe_key ON background_jobs(dedupe_key);
 CREATE INDEX IF NOT EXISTS idx_background_job_events_job_created ON background_job_events(job_id, created_at);
 
+CREATE TABLE IF NOT EXISTS onboarding_workspace_save_statuses (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL,
+  idempotency_key TEXT,
+  onboarding_case_id TEXT NOT NULL,
+  employee_id TEXT,
+  section_key TEXT NOT NULL,
+  task_key TEXT,
+  status TEXT NOT NULL DEFAULT 'COMMITTED' CHECK (status IN ('COMMITTED', 'FAILED', 'UNKNOWN')),
+  response_json TEXT,
+  updated_slice_json TEXT,
+  targeted_workspace_slices_json TEXT,
+  readiness_refresh_status TEXT NOT NULL DEFAULT 'queued' CHECK (readiness_refresh_status IN ('queued', 'running', 'succeeded', 'failed', 'not_required', 'not_queued')),
+  readiness_refresh_job_id TEXT,
+  readiness_refresh_started_at TEXT,
+  readiness_refresh_completed_at TEXT,
+  readiness_refresh_message TEXT,
+  created_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE (request_id),
+  UNIQUE (idempotency_key),
+  FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (onboarding_case_id) REFERENCES employee_onboarding_cases(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_onboarding_workspace_save_status_case ON onboarding_workspace_save_statuses(onboarding_case_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_onboarding_workspace_save_status_readiness ON onboarding_workspace_save_statuses(readiness_refresh_status, updated_at);
+
 CREATE TABLE IF NOT EXISTS performance_api_metrics (
   id TEXT PRIMARY KEY,
   request_id TEXT,

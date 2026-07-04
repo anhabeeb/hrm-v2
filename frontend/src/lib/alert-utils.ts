@@ -144,7 +144,7 @@ export function mapApiErrorToAlert(error: unknown, fallbackTitle = "Request fail
     return {
       type: "warning",
       title: "Save timed out",
-      message: withRequestId("Save timed out. Your data may not have been confirmed. Refresh this section before retrying.", requestId),
+      message: withRequestId("Save timed out. Checking whether your changes were saved...", requestId),
       autoDismissMs: 10000,
       dedupeKey: `timeout:${requestId || code}`
     };

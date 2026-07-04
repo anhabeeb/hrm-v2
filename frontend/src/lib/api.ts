@@ -210,10 +210,12 @@ function invalidateReferences<T>(promise: Promise<T>, prefix: string, ...extraPr
 export type OnboardingWorkspaceSaveResponse = {
   ok?: boolean;
   saved?: boolean;
+  request_id?: string;
+  idempotency_key?: string | null;
   section?: string;
   section_status?: string;
   readiness_refresh?: {
-    status?: "queued" | "not_required" | "failed" | "refreshing" | string;
+    status?: "queued" | "running" | "succeeded" | "not_required" | "not_queued" | "failed" | "refreshing" | string;
     job_id?: string | null;
     message?: string | null;
   } | null;
@@ -223,6 +225,13 @@ export type OnboardingWorkspaceSaveResponse = {
   warning?: string | null;
   readiness?: Record<string, unknown>;
   workspace?: Record<string, unknown>;
+};
+
+export type OnboardingWorkspaceSaveStatusResponse = {
+  committed: boolean;
+  retryable: boolean;
+  save_status: Record<string, unknown>;
+  result?: OnboardingWorkspaceSaveResponse | null;
 };
 
 function onboardingSaveRequestOptions(caseId: string, section: string, timeoutMs = 10000) {
@@ -922,6 +931,13 @@ export const api = {
   },
   getOnboardingWorkspace(token: string, caseId: string, signal?: AbortSignal, timeoutMs = 12000) {
     return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/workspace`, { signal, timeoutMs, requestLabel: "onboarding.workspace" }, token);
+  },
+  getOnboardingWorkspaceSaveStatus(token: string, caseId: string, input: { request_id?: string | null; idempotency_key?: string | null }) {
+    return request<OnboardingWorkspaceSaveStatusResponse>(
+      `/api/v1/onboarding/cases/${caseId}/save-status${query(input)}`,
+      { timeoutMs: 6000, requestLabel: "onboarding.workspace.save-status", dedupe: false },
+      token
+    );
   },
   updateOnboardingWorkspaceEmployeeInfo(token: string, caseId: string, input: Record<string, unknown>) {
     return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/employee-info`, { method: "PATCH", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "employee_info") }, token);
