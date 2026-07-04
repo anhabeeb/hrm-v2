@@ -74,6 +74,7 @@
     "verify:phase21-frontend-deployment": "node scripts/phase21-verify-frontend-deployment.mjs",
     "report:phase21-go-no-go": "node scripts/phase21-generate-go-no-go-report.mjs",
     "verify:production-deployment-live-phase21": "node scripts/verify-production-deployment-live-phase21.mjs",
+    "verify:live-authenticated-performance": "node scripts/verify-live-authenticated-performance.mjs",
     "verify:document-upload-acceleration-background": "node scripts/verify-document-upload-acceleration-background.mjs",
     "verify:large-list-table-performance": "node scripts/verify-large-list-table-performance.mjs",
     "verify:background-jobs-phase7": "node scripts/verify-background-jobs-phase7.mjs",
