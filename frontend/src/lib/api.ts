@@ -207,6 +207,35 @@ function invalidateReferences<T>(promise: Promise<T>, prefix: string, ...extraPr
   });
 }
 
+export type OnboardingWorkspaceSaveResponse = {
+  ok?: boolean;
+  saved?: boolean;
+  section?: string;
+  section_status?: string;
+  readiness_refresh?: {
+    status?: "queued" | "not_required" | "failed" | "refreshing" | string;
+    job_id?: string | null;
+    message?: string | null;
+  } | null;
+  updated_slice?: Record<string, unknown> | null;
+  targeted_workspace_slices?: string[];
+  readiness_updating?: boolean;
+  warning?: string | null;
+  readiness?: Record<string, unknown>;
+  workspace?: Record<string, unknown>;
+};
+
+function onboardingSaveRequestOptions(caseId: string, section: string, timeoutMs = 10000) {
+  const randomId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return {
+    timeoutMs,
+    requestLabel: `onboarding.workspace.save.${section}`,
+    headers: {
+      "X-Idempotency-Key": `onboarding:${caseId}:${section}:${randomId}`
+    }
+  };
+}
+
 export const api = {
   getBootstrapStatus() {
     return request<BootstrapStatus>("/api/v1/bootstrap/status");
@@ -895,40 +924,45 @@ export const api = {
     return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/workspace`, { signal, timeoutMs, requestLabel: "onboarding.workspace" }, token);
   },
   updateOnboardingWorkspaceEmployeeInfo(token: string, caseId: string, input: Record<string, unknown>) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/employee-info`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/employee-info`, { method: "PATCH", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "employee_info") }, token);
   },
   updateOnboardingWorkspaceContactInfo(token: string, caseId: string, input: Record<string, unknown>) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/contact-info`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/contact-info`, { method: "PATCH", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "contact_info") }, token);
   },
   updateOnboardingWorkspaceJobAssignment(token: string, caseId: string, input: Record<string, unknown>) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/job-assignment`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/job-assignment`, { method: "PATCH", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "job_assignment") }, token);
   },
   uploadOnboardingWorkspaceDocument(token: string, caseId: string, form: FormData) {
     return multipartRequest<{ document: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/documents`, form, token);
   },
   uploadOnboardingWorkspaceDocumentBatch(token: string, caseId: string, form: FormData) {
-    return multipartRequest<{ uploaded_count: number; failed_count: number; documents: Record<string, unknown>[]; readiness: Record<string, unknown>; workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/documents/batch`, form, token);
+    return multipartRequest<OnboardingWorkspaceSaveResponse & { uploaded_count: number; failed_count: number; documents: Record<string, unknown>[] }>(
+      `/api/v1/onboarding/cases/${caseId}/documents/batch`,
+      form,
+      token,
+      onboardingSaveRequestOptions(caseId, "documents_batch", 45000)
+    );
   },
   createOnboardingWorkspaceContract(token: string, caseId: string, input: Record<string, unknown>) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/contracts`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/contracts`, { method: "POST", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "contract") }, token);
   },
   updateOnboardingWorkspacePayrollProfile(token: string, caseId: string, input: Record<string, unknown>) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/payroll-profile`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/payroll-profile`, { method: "PATCH", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "payroll_profile") }, token);
   },
   createOnboardingWorkspacePaymentMethod(token: string, caseId: string, input: Record<string, unknown>) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/payment-methods`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/payment-methods`, { method: "POST", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "payment_method") }, token);
   },
   updateOnboardingWorkspacePensionProfile(token: string, caseId: string, input: Record<string, unknown>) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/pension-profile`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/pension-profile`, { method: "POST", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "pension_profile") }, token);
   },
   createOnboardingWorkspaceBiometricMapping(token: string, caseId: string, input: Record<string, unknown>) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/biometric-mapping`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/biometric-mapping`, { method: "POST", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "attendance_biometric") }, token);
   },
   saveOnboardingWorkspaceAssetsUniforms(token: string, caseId: string, input: Record<string, unknown>) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/assets-uniforms`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/assets-uniforms`, { method: "POST", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "assets_uniforms") }, token);
   },
   saveOnboardingWorkspaceUserAccount(token: string, caseId: string, input: Record<string, unknown>) {
-    return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/user-account`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<OnboardingWorkspaceSaveResponse>(`/api/v1/onboarding/cases/${caseId}/user-account`, { method: "POST", body: JSON.stringify(input), ...onboardingSaveRequestOptions(caseId, "user_access") }, token);
   },
   refreshOnboardingWorkspaceChecklist(token: string, caseId: string) {
     return request<{ refreshed?: boolean; readiness?: Record<string, unknown>; workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/refresh-checklist`, { method: "POST" }, token);

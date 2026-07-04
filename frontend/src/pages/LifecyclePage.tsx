@@ -1518,12 +1518,19 @@ function readinessRefreshMessage(readiness: Row) {
   return "Blocked by onboarding requirements.";
 }
 
+function saveResponseQueuedReadiness(result: OnboardingWorkspaceMutationResult) {
+  const refresh = asRow(result.readiness_refresh);
+  return String(refresh.status ?? "").toLowerCase() === "queued" || boolValue(result.readiness_updating);
+}
+
 function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReason, queryState }: { workspace: Row; caseId: string; onClose: () => void; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void; queryState?: { refreshing: boolean; backgroundError: Error | null; retry: () => Promise<void> } }) {
   const { token, user } = useAuth();
   const alerts = useAlert();
   const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [readinessUpdating, setReadinessUpdating] = useState(false);
+  const [readinessPendingConfirmation, setReadinessPendingConfirmation] = useState(false);
+  const [readinessQueuedAt, setReadinessQueuedAt] = useState<number | null>(null);
   const [readinessRetrying, setReadinessRetrying] = useState(false);
   const scope = useMemo(() => workspaceScope(token, user), [token, user]);
   const workspaceMutation = useWorkspaceMutation<OnboardingWorkspaceMutationResult, { action: () => Promise<unknown>; slices: WorkspaceSlice[] }>({
@@ -1539,8 +1546,15 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       const result = await workspaceMutation.mutateAsync({ action, slices });
       const resultWorkspace = asRow(result.workspace);
       const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
-      setReadinessUpdating(readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta)));
+      const queuedReadiness = saveResponseQueuedReadiness(result);
+      if (queuedReadiness) {
+        setReadinessPendingConfirmation(true);
+        setReadinessQueuedAt(Date.now());
+      }
+      setReadinessUpdating(queuedReadiness || readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta)));
       alerts.showSuccess(success);
+      const warning = typeof result.warning === "string" ? result.warning : null;
+      if (warning) alerts.showWarning(warning);
     } catch (err) {
       alerts.showApiError(err, "Unable to save onboarding workspace section.");
     }
@@ -1558,6 +1572,10 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
       const stillRefreshing = readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta));
       setReadinessUpdating(stillRefreshing);
+      if (!stillRefreshing) {
+        setReadinessPendingConfirmation(false);
+        setReadinessQueuedAt(null);
+      }
       if (showSuccess && !stillRefreshing) alerts.showSuccess("Readiness refreshed.");
     } catch (err) {
       setReadinessUpdating(false);
@@ -1599,7 +1617,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const tasks = asRows(checklist.tasks);
   const activationReadinessStatus = onboardingActivationReadinessStatus(readiness);
   const readinessActiveRefresh = readinessRefreshIsActive(readiness, workspaceMeta);
-  const readinessNeedsManualRefresh = activationReadinessStatus === "stale" || activationReadinessStatus === "failed";
+  const readinessNeedsManualRefresh = activationReadinessStatus === "stale" || activationReadinessStatus === "failed" || readinessPendingConfirmation;
   const canActivate = readinessAllowsActivation(readiness);
   const taskByKey = new Map(tasks.map((task) => [String(task.task_key), task]));
   const sectionStatus = (tab: OnboardingWorkspaceTab) => {
@@ -1648,6 +1666,14 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
     const timeout = window.setTimeout(() => setReadinessUpdating(false), 20000);
     return () => window.clearTimeout(timeout);
   }, [readinessUpdating]);
+  useEffect(() => {
+    if (!readinessPendingConfirmation || !readinessQueuedAt) return;
+    const calculatedAt = Date.parse(String(readiness.last_calculated_at ?? readiness.calculated_at ?? ""));
+    if (Number.isFinite(calculatedAt) && calculatedAt >= readinessQueuedAt - 1000 && !readinessRefreshIsActive(readiness, workspaceMeta)) {
+      setReadinessPendingConfirmation(false);
+      setReadinessQueuedAt(null);
+    }
+  }, [readiness.last_calculated_at, readiness.calculated_at, readiness.refreshing, readiness.status, readiness.readiness_status, readiness.refresh_status, readinessPendingConfirmation, readinessQueuedAt, workspaceMeta.refreshing]);
   return (
     <div className="OnboardingEmployeePopupLayout flex h-full min-h-0 flex-col overflow-hidden bg-slate-50" data-onboarding-employee-popup-layout>
       <header className="onboarding-popup-header shrink-0 border-b bg-white px-4 py-3 sm:px-5">
@@ -1714,6 +1740,17 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
                   <p className="mt-1 text-sm text-amber-800">Cached data remains visible. Retry only this onboarding workspace refresh when ready.</p>
                 </div>
                 <ActionTextButton intent="refresh" size="sm" onClick={() => void queryState.retry()}>Retry</ActionTextButton>
+              </div>
+            </Panel>
+          ) : null}
+          {readinessUpdating || readinessPendingConfirmation ? (
+            <Panel className="border-sky-200 bg-sky-50 p-3" data-onboarding-readiness-background-refresh>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-sky-950">{readinessUpdating ? "Updating readiness..." : "Readiness refresh pending"}</p>
+                  <p className="mt-1 break-words text-sm text-sky-800">Your section save is complete. Activation stays disabled until readiness is confirmed.</p>
+                </div>
+                <ActionTextButton intent="refresh" size="sm" disabled={readinessRetrying} onClick={() => void refreshReadiness(false)}>Refresh readiness</ActionTextButton>
               </div>
             </Panel>
           ) : null}

@@ -131,7 +131,8 @@
     "apply:remote-schema-repair": "node scripts/apply-remote-d1-repair.mjs",
     "verify:remote-schema-ready": "node scripts/verify-remote-d1-schema-ready.mjs",
     "verify:onboarding-payroll-readiness-hotfix": "node scripts/verify-onboarding-payroll-readiness-hotfix.mjs",
-    "verify:onboarding-readiness-refreshing-hotfix": "node scripts/verify-onboarding-readiness-refreshing-hotfix.mjs"
+    "verify:onboarding-readiness-refreshing-hotfix": "node scripts/verify-onboarding-readiness-refreshing-hotfix.mjs",
+    "verify:onboarding-workspace-save-timeout-hotfix": "node scripts/verify-onboarding-workspace-save-timeout-hotfix.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

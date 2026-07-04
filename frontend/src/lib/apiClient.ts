@@ -189,28 +189,39 @@ export async function request<T>(path: string, options: RequestInit & { timeoutM
   return apiClient.request<T>(path, { ...rest, signal: signal ?? undefined, token });
 }
 
-export async function multipartRequest<T>(path: string, body: FormData, token?: string | null) {
+export async function multipartRequest<T>(path: string, body: FormData, token?: string | null, options: { timeoutMs?: number; headers?: HeadersInit; requestLabel?: string } = {}) {
   const requestId = createApiRequestId();
   const startedAt = performance.now();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    body,
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      "X-Request-ID": requestId
-    }
-  });
+  const timeout = createRequestSignal(undefined, options.timeoutMs ?? API_REQUEST_TIMEOUT_MS);
+  try {
+    const headers = new Headers(options.headers);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    headers.set("X-Request-ID", requestId);
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      body,
+      headers,
+      signal: timeout.signal
+    });
 
-  const envelope = await parseEnvelope<T>(response);
-  recordApiRequestTiming({ method: "POST", path, status: response.status, durationMs: performance.now() - startedAt, requestId, cache: "network", serverTiming: response.headers.get("Server-Timing") });
-  if (!response.ok || !envelope.ok || !envelope.data) {
-    if (response.status === 401 && token && typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code: envelope.error?.code ?? "UNAUTHENTICATED" } }));
+    const envelope = await parseEnvelope<T>(response);
+    recordApiRequestTiming({ method: "POST", path, status: response.status, durationMs: performance.now() - startedAt, requestId, cache: "network", serverTiming: response.headers.get("Server-Timing") });
+    if (!response.ok || !envelope.ok || !envelope.data) {
+      if (response.status === 401 && token && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code: envelope.error?.code ?? "UNAUTHENTICATED" } }));
+      }
+      throw apiErrorFromEnvelope(envelope as ApiEnvelope<unknown>, response.status);
     }
-    throw apiErrorFromEnvelope(envelope as ApiEnvelope<unknown>, response.status);
+
+    return envelope.data;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    recordApiRequestTiming({ method: "POST", path, status: null, durationMs: performance.now() - startedAt, requestId, cache: "network" });
+    if (timeout.signal.aborted) throw new ApiError("Request was cancelled or timed out.", "REQUEST_ABORTED", 0);
+    throw new ApiError(error instanceof Error ? error.message : "Request failed.", "NETWORK_ERROR", 0);
+  } finally {
+    timeout.cleanup();
   }
-
-  return envelope.data;
 }
 
 export async function blobRequest(path: string, token: string, init: RequestInit = {}) {
