@@ -6,7 +6,9 @@ export type ModuleSectionStatus =
   | "NO_PERMISSION"
   | "WARNING"
   | "TIMEOUT"
-  | "DEFERRED";
+  | "DEFERRED"
+  | "STALE"
+  | "FAILED";
 
 export type ModuleSectionState = {
   status?: ModuleSectionStatus | string;
@@ -14,14 +16,17 @@ export type ModuleSectionState = {
   message?: string;
   retry_key?: string;
   refreshing?: boolean;
+  is_stale?: boolean;
+  refresh_status?: string;
+  section_key?: string;
 };
 
 export function isNonBlockingSectionStatus(status: unknown) {
-  return ["DISABLED", "NO_PERMISSION", "WARNING", "TIMEOUT", "DEFERRED", "NOT_REQUIRED"].includes(String(status ?? "").toUpperCase());
+  return ["DISABLED", "NO_PERMISSION", "WARNING", "TIMEOUT", "DEFERRED", "STALE", "FAILED", "NOT_REQUIRED"].includes(String(status ?? "").toUpperCase());
 }
 
 export function sectionNeedsRetry(state: ModuleSectionState | null | undefined) {
-  return ["WARNING", "TIMEOUT", "DEFERRED"].includes(String(state?.status ?? "").toUpperCase());
+  return ["WARNING", "TIMEOUT", "DEFERRED", "STALE", "FAILED"].includes(String(state?.status ?? "").toUpperCase());
 }
 
 export function sectionStatusLabel(state: ModuleSectionState | null | undefined) {
@@ -29,6 +34,8 @@ export function sectionStatusLabel(state: ModuleSectionState | null | undefined)
   if (status === "NO_PERMISSION") return "No permission";
   if (status === "NOT_REQUIRED") return "Not required";
   if (status === "DEFERRED") return "Refreshing";
+  if (status === "STALE") return "Stale";
+  if (status === "FAILED") return "Failed";
   if (status === "TIMEOUT") return "Timed out";
   return status ? status.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase()) : "Unavailable";
 }

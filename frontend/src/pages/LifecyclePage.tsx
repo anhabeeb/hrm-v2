@@ -1187,12 +1187,12 @@ function boolValue(value: unknown) {
 }
 
 function workspaceSectionStatesForTab(states: Row, tab: OnboardingWorkspaceTab): ModuleSectionState[] {
-  return (onboardingWorkspaceSectionStateKeys[tab] ?? [])
-    .map((key) => {
-      const state = asRow(states[key]) as ModuleSectionState;
-      return state.status ? state : null;
-    })
-    .filter((state): state is ModuleSectionState => Boolean(state));
+  const rows: ModuleSectionState[] = [];
+  for (const key of onboardingWorkspaceSectionStateKeys[tab] ?? []) {
+    const state = asRow(states[key]) as ModuleSectionState;
+    if (state.status) rows.push({ ...state, section_key: key });
+  }
+  return rows;
 }
 
 function employeeTypeLabel(value: unknown) {
@@ -1240,6 +1240,10 @@ function optionalSectionTitle(state: Row | undefined) {
   if (status === "NO_PERMISSION") return "No permission";
   if (status === "NOT_REQUIRED") return "Not required";
   if (status === "WARNING") return "Warning";
+  if (status === "STALE") return "Stale";
+  if (status === "FAILED") return "Failed";
+  if (status === "TIMEOUT") return "Timed out";
+  if (status === "DEFERRED") return "Refreshing";
   if (status === "COMPLETE") return "Complete";
   return "Missing";
 }
@@ -1247,7 +1251,8 @@ function optionalSectionTitle(state: Row | undefined) {
 function optionalSectionTone(state: Row | undefined): "neutral" | "success" | "warning" | "danger" | "info" {
   const status = String(state?.status ?? "");
   if (status === "COMPLETE") return "success";
-  if (status === "WARNING") return "warning";
+  if (status === "WARNING" || status === "STALE" || status === "TIMEOUT" || status === "DEFERRED") return "warning";
+  if (status === "FAILED") return "danger";
   if (status === "NO_PERMISSION") return "danger";
   if (status === "DISABLED" || status === "NOT_REQUIRED") return "neutral";
   return "info";
@@ -1296,6 +1301,8 @@ function readinessStatusLabel(value: unknown) {
   if (raw === "DISABLED") return "Disabled";
   if (raw === "NO_PERMISSION") return "No Permission";
   if (raw === "BLOCKED") return "Blocked";
+  if (raw === "STALE") return "Stale";
+  if (raw === "FAILED") return "Failed";
   if (raw === "WARNING" || raw === "IN_PROGRESS") return "Missing";
   return raw ? title(raw) : "Missing";
 }
@@ -1483,12 +1490,41 @@ function onboardingModuleStateSummary(rows: Array<{ status: string }>) {
 
 type OnboardingWorkspaceMutationResult = { workspace?: Row } & Record<string, unknown>;
 
+function onboardingActivationReadinessStatus(readiness: Row) {
+  const raw = String(readiness.status ?? readiness.readiness_status ?? readiness.refresh_status ?? "").toLowerCase();
+  if (raw === "failed") return "failed";
+  if (raw === "stale" || boolValue(readiness.is_stale)) return "stale";
+  if (raw === "refreshing" || boolValue(readiness.refreshing)) return "refreshing";
+  if (raw === "ready" || readiness.can_activate === true) return "ready";
+  if (raw === "not_required") return "not_required";
+  return "blocked";
+}
+
+function readinessAllowsActivation(readiness: Row) {
+  return readiness.can_activate === true && onboardingActivationReadinessStatus(readiness) === "ready" && !boolValue(readiness.is_stale) && !boolValue(readiness.refreshing);
+}
+
+function readinessRefreshIsActive(readiness: Row, workspaceMeta: Row) {
+  const status = onboardingActivationReadinessStatus(readiness);
+  return status === "refreshing" || (boolValue(workspaceMeta.refreshing) && status !== "stale" && status !== "failed");
+}
+
+function readinessRefreshMessage(readiness: Row) {
+  const status = onboardingActivationReadinessStatus(readiness);
+  if (status === "ready") return "Ready for activation.";
+  if (status === "stale") return String(readiness.refresh_reason ?? "Using last saved readiness. Refresh readiness to confirm activation.");
+  if (status === "failed") return String(readiness.failed_reason ?? readiness.refresh_reason ?? "Readiness refresh failed. Retry.");
+  if (status === "refreshing") return "Refreshing readiness...";
+  return "Blocked by onboarding requirements.";
+}
+
 function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReason, queryState }: { workspace: Row; caseId: string; onClose: () => void; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void; queryState?: { refreshing: boolean; backgroundError: Error | null; retry: () => Promise<void> } }) {
   const { token, user } = useAuth();
   const alerts = useAlert();
   const [activeTab, setActiveTab] = useState<OnboardingWorkspaceTab>("Overview");
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [readinessUpdating, setReadinessUpdating] = useState(false);
+  const [readinessRetrying, setReadinessRetrying] = useState(false);
   const scope = useMemo(() => workspaceScope(token, user), [token, user]);
   const workspaceMutation = useWorkspaceMutation<OnboardingWorkspaceMutationResult, { action: () => Promise<unknown>; slices: WorkspaceSlice[] }>({
     mutationFn: async (variables) => variables.action() as Promise<OnboardingWorkspaceMutationResult>,
@@ -1500,11 +1536,34 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   async function save(action: () => Promise<unknown>, success: string, slices: WorkspaceSlice[]) {
     if (!token) return;
     try {
-      await workspaceMutation.mutateAsync({ action, slices });
-      setReadinessUpdating(false);
+      const result = await workspaceMutation.mutateAsync({ action, slices });
+      const resultWorkspace = asRow(result.workspace);
+      const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
+      setReadinessUpdating(readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta)));
       alerts.showSuccess(success);
     } catch (err) {
       alerts.showApiError(err, "Unable to save onboarding workspace section.");
+    }
+  }
+  async function refreshReadiness(showSuccess = false) {
+    if (!token) return;
+    setReadinessRetrying(true);
+    setReadinessUpdating(true);
+    try {
+      const result = await workspaceMutation.mutateAsync({
+        action: () => api.refreshOnboardingWorkspaceReadiness(token, caseId),
+        slices: ["readiness", "document-checklist"]
+      });
+      const resultWorkspace = asRow(result.workspace);
+      const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
+      const stillRefreshing = readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta));
+      setReadinessUpdating(stillRefreshing);
+      if (showSuccess && !stillRefreshing) alerts.showSuccess("Readiness refreshed.");
+    } catch (err) {
+      setReadinessUpdating(false);
+      alerts.showApiError(err, "Readiness refresh failed. Retry.");
+    } finally {
+      setReadinessRetrying(false);
     }
   }
   async function saveDocumentBatch(form: FormData) {
@@ -1538,7 +1597,10 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const workspaceMeta = asRow(workspace.workspace_meta);
   const optionalSectionStates = asRow(asRow(workspace.sections).optional_section_states);
   const tasks = asRows(checklist.tasks);
-  const canActivate = readiness.can_activate === true;
+  const activationReadinessStatus = onboardingActivationReadinessStatus(readiness);
+  const readinessActiveRefresh = readinessRefreshIsActive(readiness, workspaceMeta);
+  const readinessNeedsManualRefresh = activationReadinessStatus === "stale" || activationReadinessStatus === "failed";
+  const canActivate = readinessAllowsActivation(readiness);
   const taskByKey = new Map(tasks.map((task) => [String(task.task_key), task]));
   const sectionStatus = (tab: OnboardingWorkspaceTab) => {
     if (tab === "Overview") return canActivate;
@@ -1570,17 +1632,22 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       return { label: "Approve activation", intent: "approve" as const, disabled: false, title: "Approve the submitted onboarding activation.", run: () => runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved.") };
     }
     if (approvalRequired && activationStatus !== "APPROVED") {
-      return { label: "Submit activation", intent: "submit" as const, disabled: !canActivate || readinessUpdating, title: readinessUpdating ? "Readiness is updating after the latest save. Refresh readiness before activation." : canActivate ? "Submit onboarding activation for approval." : "Complete required onboarding items before submitting activation.", run: () => runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.") };
+      return { label: "Submit activation", intent: "submit" as const, disabled: !canActivate || readinessUpdating || readinessActiveRefresh || readinessNeedsManualRefresh, title: readinessUpdating || readinessActiveRefresh ? "Readiness is updating after the latest save. Refresh readiness before activation." : readinessNeedsManualRefresh ? "Refresh readiness to confirm activation eligibility." : canActivate ? "Submit onboarding activation for approval." : "Complete required onboarding items before submitting activation.", run: () => runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.") };
     }
-    return { label: "Activate Employee", intent: "confirm" as const, disabled: !canActivate || readinessUpdating, title: readinessUpdating ? "Readiness is updating after the latest save. Refresh readiness before activation." : canActivate ? "Activate employee." : "Complete required onboarding items before activation.", run: () => runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.") };
+    return { label: "Activate Employee", intent: "confirm" as const, disabled: !canActivate || readinessUpdating || readinessActiveRefresh || readinessNeedsManualRefresh, title: readinessUpdating || readinessActiveRefresh ? "Readiness is updating after the latest save. Refresh readiness before activation." : readinessNeedsManualRefresh ? "Refresh readiness to confirm activation eligibility." : canActivate ? "Activate employee." : "Complete required onboarding items before activation.", run: () => runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.") };
   })();
   useEffect(() => {
-    if (isEnabled(workspaceMeta.refreshing) || isEnabled(readiness.refreshing)) {
+    if (readinessRefreshIsActive(readiness, workspaceMeta)) {
       setReadinessUpdating(true);
-    } else if (readiness.can_activate === true || readiness.can_activate === false) {
+    } else if (["ready", "blocked", "stale", "failed", "not_required"].includes(onboardingActivationReadinessStatus(readiness))) {
       setReadinessUpdating(false);
     }
-  }, [readiness.can_activate, readiness.refreshing, workspaceMeta.refreshing]);
+  }, [readiness.can_activate, readiness.is_stale, readiness.readiness_status, readiness.refresh_status, readiness.refreshing, readiness.status, workspaceMeta.refreshing]);
+  useEffect(() => {
+    if (!readinessUpdating) return;
+    const timeout = window.setTimeout(() => setReadinessUpdating(false), 20000);
+    return () => window.clearTimeout(timeout);
+  }, [readinessUpdating]);
   return (
     <div className="OnboardingEmployeePopupLayout flex h-full min-h-0 flex-col overflow-hidden bg-slate-50" data-onboarding-employee-popup-layout>
       <header className="onboarding-popup-header shrink-0 border-b bg-white px-4 py-3 sm:px-5">
@@ -1655,9 +1722,15 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900">{activeSectionIssue.label ?? activeTab}: {sectionStatusLabel(activeSectionIssue)}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{activeSectionIssue.message ?? "This optional section is loading separately. Other onboarding setup remains available."}</p>
+                  <p className="mt-1 break-words text-sm text-muted-foreground">{activeSectionIssue.message ?? "This optional section is loading separately. Other onboarding setup remains available."}</p>
+                  {String(activeSectionIssue.section_key ?? "") === "readiness" ? <p className="mt-1 break-words text-xs text-slate-600">{readinessRefreshMessage(readiness)}</p> : null}
                 </div>
-                {sectionNeedsRetry(activeSectionIssue) ? <ActionTextButton intent="refresh" size="sm" onClick={() => void reload()}>Retry section</ActionTextButton> : null}
+                {sectionNeedsRetry(activeSectionIssue) ? (
+                  <ActionTextButton intent="refresh" size="sm" disabled={readinessRetrying} onClick={() => {
+                    if (String(activeSectionIssue.section_key ?? "") === "readiness") void refreshReadiness(false);
+                    else void reload();
+                  }}>{String(activeSectionIssue.section_key ?? "") === "readiness" ? "Retry readiness" : "Retry section"}</ActionTextButton>
+                ) : null}
               </div>
             </Panel>
           ) : null}
@@ -1723,7 +1796,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <Button variant="outline" size="sm" aria-expanded={moreActionsOpen} onClick={() => setMoreActionsOpen((value) => !value)}>More actions</Button>
               {moreActionsOpen ? (
                 <div className="absolute bottom-full right-0 z-20 mb-2 w-56 rounded-md border bg-white p-1.5 shadow-lg">
-                  <ActionTextButton intent="refresh" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void save(() => api.refreshOnboardingWorkspaceChecklist(token!, caseId), "Setup readiness refreshed.", ["document-checklist", "readiness"]).then(() => setReadinessUpdating(false)); }}>Refresh readiness</ActionTextButton>
+                  <ActionTextButton intent="refresh" size="sm" className="w-full justify-start" disabled={readinessRetrying} onClick={() => { setMoreActionsOpen(false); void refreshReadiness(false); }}>Refresh readiness</ActionTextButton>
                   <ActionTextButton intent="submit" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted."); }}>Submit activation</ActionTextButton>
                   <ActionTextButton intent="approve" size="sm" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved."); }}>Approve activation</ActionTextButton>
                   <Button size="sm" variant="danger" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); askReason("Activate with override", (reason) => runWorkspaceAction(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason), "Employee activated with override.")); }}>Override activation</Button>

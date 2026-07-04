@@ -272,7 +272,7 @@ function oldTaskStatus(status: TaskStatus) {
 const onboardingWorkspaceViewPermissions = ["onboarding.workspace.view", "onboarding.cases.view", "onboarding.cases.manage", "employees.lifecycle.view", "employees.view"];
 const onboardingWorkspaceUpdatePermissions = ["onboarding.workspace.update", "onboarding.cases.update", "onboarding.cases.manage", "employees.lifecycle.manage"];
 
-type WorkspaceOptionalSectionStatus = "COMPLETE" | "MISSING" | "NOT_REQUIRED" | "DISABLED" | "NO_PERMISSION" | "WARNING" | "TIMEOUT" | "DEFERRED";
+type WorkspaceOptionalSectionStatus = "COMPLETE" | "MISSING" | "NOT_REQUIRED" | "DISABLED" | "NO_PERMISSION" | "WARNING" | "TIMEOUT" | "DEFERRED" | "STALE" | "FAILED";
 type WorkspaceOptionalSectionState = {
   status: WorkspaceOptionalSectionStatus;
   label: string;
@@ -281,6 +281,8 @@ type WorkspaceOptionalSectionState = {
   permission_keys?: string[];
   retry_key?: string;
   refreshing?: boolean;
+  is_stale?: boolean;
+  refresh_status?: string;
   duration_ms?: number;
 };
 
@@ -550,26 +552,63 @@ function deferredOnboardingChecklist(label: string) {
   } as Awaited<ReturnType<typeof getOnboardingChecklistStatus>> & { deferred: boolean; message: string };
 }
 
-function deferredOnboardingReadiness(label: string) {
+function parseJsonObjectField(value: unknown) {
+  if (!value || typeof value !== "string") return {} as Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function deferredOnboardingReadiness(label: string, row?: Record<string, unknown> | null) {
+  const cachedBlockers = parseJsonArrayField(row?.blockers_json);
+  const cachedChecklist = parseJsonObjectField(row?.checklist_summary_json);
+  const lastCalculatedAt = optionalText(row?.updated_at ?? row?.created_at);
+  const lastKnownCanActivate = ["READY", "APPROVED"].includes(String(row?.activation_status ?? "").toUpperCase()) && cachedBlockers.length === 0;
   return {
     can_activate: false,
-    refreshing: true,
+    last_known_can_activate: lastKnownCanActivate,
+    status: "stale",
+    readiness_status: "stale",
+    refreshing: false,
     deferred: true,
+    is_stale: true,
+    last_calculated_at: lastCalculatedAt,
+    refresh_job_id: null,
+    refresh_status: "stale",
+    refresh_reason: "Readiness refresh is taking longer than expected. Use Refresh readiness to confirm the latest activation state.",
     blockers: [],
-    blocking_items: [{ type: "READINESS_REFRESHING", message: workspaceDeferredMessage(label) }],
-    warning_items: [{ type: "READINESS_REFRESHING", message: "Readiness is refreshing in the background. Activation remains disabled until the server validates the latest readiness state." }],
-    checklist: deferredOnboardingChecklist(label),
-    documents: emptyOnboardingDocumentChecklist("DEFERRED", workspaceDeferredMessage("Documents")),
-    contract: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Contract readiness") },
-    payroll: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Payroll readiness") },
-    payment_method: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Payment method readiness") },
-    pension: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Pension readiness") },
-    roster: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Roster readiness") },
-    attendance: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Attendance readiness") },
-    biometric: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Biometric readiness") },
-    user_access: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("User access readiness") },
-    assets_uniforms: { ready: false, status: "DEFERRED", message: workspaceDeferredMessage("Asset readiness") }
-  } as unknown as Awaited<ReturnType<typeof getEmployeeOnboardingReadiness>> & { deferred: boolean; refreshing: boolean };
+    blocking_items: cachedBlockers.length ? cachedBlockers : [{ type: "READINESS_STALE", message: "Using last saved readiness. Refresh readiness to confirm activation." }],
+    warning_items: [{ type: "READINESS_STALE", message: "Using last saved readiness. Refreshing can be retried without closing this onboarding workspace." }],
+    checklist: Object.keys(cachedChecklist).length ? cachedChecklist : deferredOnboardingChecklist(label),
+    documents: emptyOnboardingDocumentChecklist("STALE", "Document readiness is using the last saved state until refresh completes."),
+    contract: { ready: false, status: "STALE", message: "Contract readiness is using the last saved state." },
+    payroll: { ready: false, status: "STALE", message: "Payroll readiness is using the last saved state." },
+    payment_method: { ready: false, status: "STALE", message: "Payment method readiness is using the last saved state." },
+    pension: { ready: false, status: "STALE", message: "Pension readiness is using the last saved state." },
+    roster: { ready: false, status: "STALE", message: "Roster readiness is using the last saved state." },
+    attendance: { ready: false, status: "STALE", message: "Attendance readiness is using the last saved state." },
+    biometric: { ready: false, status: "STALE", message: "Biometric readiness is using the last saved state." },
+    user_access: { ready: false, status: "STALE", message: "User access readiness is using the last saved state." },
+    assets_uniforms: { ready: false, status: "STALE", message: "Asset readiness is using the last saved state." }
+  } as unknown as Awaited<ReturnType<typeof getEmployeeOnboardingReadiness>> & { deferred: boolean; refreshing: boolean; is_stale: boolean };
+}
+
+function failedOnboardingReadiness(label: string, error: unknown, row?: Record<string, unknown> | null) {
+  const safeMessage = error instanceof Error && error.message ? error.message : "Readiness refresh failed.";
+  return {
+    ...deferredOnboardingReadiness(label, row),
+    status: "failed",
+    readiness_status: "failed",
+    refresh_status: "failed",
+    failed_reason: "Readiness could not be refreshed. Try again.",
+    refresh_reason: "Readiness could not be refreshed. Try again.",
+    blocking_items: [{ type: "READINESS_REFRESH_FAILED", message: "Readiness could not be refreshed. Try again." }],
+    warning_items: [{ type: "READINESS_REFRESH_FAILED", message: "Readiness refresh failed. Retry readiness from this workspace." }],
+    safe_error_message: safeMessage.slice(0, 160)
+  } as unknown as Awaited<ReturnType<typeof getEmployeeOnboardingReadiness>> & { failed_reason: string };
 }
 
 async function loadRequiredOnboardingWorkspaceSection<T>(
@@ -590,13 +629,16 @@ async function loadRequiredOnboardingWorkspaceSection<T>(
       onLateFailure: (error) => console.warn("Required onboarding workspace section late failure", { section: options.key, error: error instanceof Error ? error.message : String(error) })
     });
     if (result.status === "timeout") {
+      const readinessTimeout = options.key === "readiness";
       return {
         value: options.fallback,
-        state: workspaceSectionState("DEFERRED", options.label, workspaceDeferredMessage(options.label), null, [], {
+        state: workspaceSectionState(readinessTimeout ? "STALE" : "DEFERRED", options.label, readinessTimeout ? "Using last saved readiness. Refresh readiness to confirm activation." : workspaceDeferredMessage(options.label), null, [], {
           retry_key: workspaceRetryKey("onboarding.workspace", options.key),
-          refreshing: true,
+          refreshing: !readinessTimeout,
+          is_stale: readinessTimeout,
+          refresh_status: readinessTimeout ? "stale" : "refreshing",
           duration_ms: result.durationMs
-        })
+        } as Partial<WorkspaceOptionalSectionState>)
       };
     }
     return {
@@ -605,12 +647,14 @@ async function loadRequiredOnboardingWorkspaceSection<T>(
     };
   } catch (error) {
     console.warn("Required onboarding workspace section unavailable", { section: options.key, error: error instanceof Error ? error.message : String(error) });
+    const readinessFailure = options.key === "readiness";
     return {
-      value: options.fallback,
-      state: workspaceSectionState("WARNING", options.label, `${options.label} is temporarily unavailable. The workspace shell remains available.`, null, [], {
+      value: readinessFailure ? failedOnboardingReadiness(options.label, error) as T : options.fallback,
+      state: workspaceSectionState(readinessFailure ? "FAILED" : "WARNING", options.label, readinessFailure ? "Readiness refresh failed. Retry readiness from this workspace." : `${options.label} is temporarily unavailable. The workspace shell remains available.`, null, [], {
         retry_key: workspaceRetryKey("onboarding.workspace", options.key),
-        refreshing: false
-      })
+        refreshing: false,
+        refresh_status: readinessFailure ? "failed" : undefined
+      } as Partial<WorkspaceOptionalSectionState>)
     };
   }
 }
@@ -763,6 +807,9 @@ async function markLifecycleUserAccountDeactivated(c: Context<AppBindings>, empl
 }
 
 async function refreshWorkspaceReadiness(c: Context<AppBindings>, caseId: string, taskKey?: string, action?: string) {
+  const requestId = c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? crypto.randomUUID();
+  const startedAt = Date.now();
+  console.info(JSON.stringify({ level: "info", event: "onboarding.readiness.refresh.start", request_id: requestId, case_id: caseId, task_key: taskKey ?? null }));
   let employeeId: string | null = null;
   if (taskKey && action) {
     const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
@@ -783,12 +830,15 @@ async function refreshWorkspaceReadiness(c: Context<AppBindings>, caseId: string
       employee_id: employeeId,
       onboarding_case_id: caseId,
       can_activate: Boolean(readiness?.can_activate),
+      status: readiness?.status ?? null,
+      last_calculated_at: readiness?.last_calculated_at ?? null,
       task_key: taskKey ?? null,
       safe_label: "Onboarding readiness updated"
     },
     queryKeys: ["onboarding.workspace", "onboarding.readiness", "background-jobs"],
     dedupeKey: `onboarding.readiness.updated:${caseId}:${taskKey ?? "manual"}:${Boolean(readiness?.can_activate) ? 1 : 0}`
   });
+  console.info(JSON.stringify({ level: "info", event: "onboarding.readiness.refresh.complete", request_id: requestId, case_id: caseId, task_key: taskKey ?? null, status: readiness?.status ?? null, can_activate: Boolean(readiness?.can_activate), duration_ms: Date.now() - startedAt }));
   return readiness;
 }
 
@@ -1112,7 +1162,7 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     reportingManagers
   ] = await Promise.all([
     loadRequiredOnboardingWorkspaceSection(c, { key: "checklist", label: "Setup checklist", fallback: deferredOnboardingChecklist("Setup checklist"), run: () => getOnboardingChecklistStatus(c, caseId) }),
-    loadRequiredOnboardingWorkspaceSection(c, { key: "readiness", label: "Activation readiness", fallback: deferredOnboardingReadiness("Activation readiness"), run: () => getEmployeeOnboardingReadiness(c, caseId), timeoutMs: 2200 }),
+    loadRequiredOnboardingWorkspaceSection(c, { key: "readiness", label: "Activation readiness", fallback: deferredOnboardingReadiness("Activation readiness", gate.row), run: () => getEmployeeOnboardingReadiness(c, caseId), timeoutMs: 2200 }),
     c.env.DB.prepare(`SELECT ${LIFECYCLE_CONTACT_COLUMNS} FROM employee_contacts WHERE employee_id = ? AND archived_at IS NULL ORDER BY is_primary DESC, contact_type LIMIT 25`).bind(employeeId).all<Record<string, unknown>>(),
     c.env.DB.prepare(`SELECT ${LIFECYCLE_ADDRESS_COLUMNS} FROM employee_addresses WHERE employee_id = ? ORDER BY is_primary DESC, address_type LIMIT 10`).bind(employeeId).all<Record<string, unknown>>(),
     loadOptionalOnboardingWorkspaceSection(c, { key: "documents", label: "Documents", moduleKey: "documents", moduleStatuses, permissions: ["documents.view", "documents.checklist.view", "documents.upload", "onboarding.workspace.documents.upload", "onboarding.cases.manage"], fallback: emptyOnboardingDocumentChecklist("NO_PERMISSION", "No permission to load documents."), run: () => getOnboardingDocumentChecklist(c, caseId) }),
@@ -1217,6 +1267,9 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     custom_deductions: workspaceSectionState(moduleStatuses.custom_deductions ? "MISSING" : "DISABLED", "Custom deductions", moduleStatuses.custom_deductions ? "Custom deductions are handled by payroll after onboarding." : "Custom deductions are disabled or not required for onboarding.", "custom_deductions"),
     final_settlement: workspaceSectionState(moduleStatuses.final_settlement ? "NOT_REQUIRED" : "DISABLED", "Final settlement", moduleStatuses.final_settlement ? "Final settlement is an offboarding-only section and is not required for onboarding." : "Final settlement is disabled or not required for onboarding.", "final_settlement")
   };
+  if (readinessSection.state.status === "STALE") {
+    runLifecycleBackgroundTask(c, refreshWorkspaceReadiness(c, caseId, undefined, "onboarding.workspace.readiness_stale_refresh"), "onboarding.workspace.readiness_stale_refresh", { case_id: caseId });
+  }
   return {
     case: gate.row,
     employee: gate.employee,
@@ -1227,7 +1280,7 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
       request_id: requestId,
       generated_at: nowIso(),
       duration_ms: Date.now() - startedAt,
-      partial: Object.values(optionalSectionStates).some((state) => ["TIMEOUT", "DEFERRED", "WARNING"].includes(state.status)),
+      partial: Object.values(optionalSectionStates).some((state) => ["TIMEOUT", "DEFERRED", "WARNING", "STALE", "FAILED"].includes(state.status)),
       refreshing: Object.values(optionalSectionStates).some((state) => state.refreshing === true)
     },
     refs: {
@@ -1260,6 +1313,36 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     },
     events: events.results
   };
+}
+
+function workspaceWithConfirmedReadiness<T extends Record<string, unknown> | null>(workspace: T, readiness: unknown): T {
+  if (!workspace || !readiness) return workspace;
+  const sections = workspace.sections && typeof workspace.sections === "object" && !Array.isArray(workspace.sections) ? workspace.sections as Record<string, unknown> : {};
+  const optionalStates = sections.optional_section_states && typeof sections.optional_section_states === "object" && !Array.isArray(sections.optional_section_states) ? sections.optional_section_states as Record<string, unknown> : {};
+  const meta = workspace.workspace_meta && typeof workspace.workspace_meta === "object" && !Array.isArray(workspace.workspace_meta) ? workspace.workspace_meta as Record<string, unknown> : {};
+  return {
+    ...workspace,
+    readiness,
+    workspace_meta: {
+      ...meta,
+      refreshing: false,
+      partial: Object.entries(optionalStates).some(([key, state]) => {
+        if (key === "readiness") return false;
+        const row = state && typeof state === "object" && !Array.isArray(state) ? state as Record<string, unknown> : {};
+        return ["TIMEOUT", "DEFERRED", "WARNING", "FAILED"].includes(String(row.status ?? ""));
+      })
+    },
+    sections: {
+      ...sections,
+      optional_section_states: {
+        ...optionalStates,
+        readiness: workspaceSectionState("COMPLETE", "Activation readiness", "Activation readiness is available.", null, [], {
+          refreshing: false,
+          refresh_status: "succeeded"
+        })
+      }
+    }
+  } as T;
 }
 
 async function getCaseEmployee(c: Context<AppBindings>, caseType: LifecycleCaseType, caseId: string, action: "view" | "manage" = "view") {
@@ -1926,6 +2009,8 @@ export async function getOnboardingAssetUniformBlockers(_c: Context<AppBindings>
 }
 
 export async function getEmployeeOnboardingReadiness(c: Context<AppBindings>, caseId: string) {
+  const requestId = c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? crypto.randomUUID();
+  const startedAt = Date.now();
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return null;
   await refreshOnboardingChecklist(c, caseId);
@@ -1933,8 +2018,17 @@ export async function getEmployeeOnboardingReadiness(c: Context<AppBindings>, ca
   const checklist = await getOnboardingChecklistStatus(c, caseId);
   const documents = await getOnboardingDocumentChecklist(c, caseId);
   const warningItems = Array.isArray(documents.warnings) ? documents.warnings : [];
+  const calculatedAt = nowIso();
+  const canActivate = blockers.length === 0;
   const readiness = {
-    can_activate: blockers.length === 0,
+    status: canActivate ? "ready" : "blocked",
+    readiness_status: canActivate ? "ready" : "blocked",
+    can_activate: canActivate,
+    last_calculated_at: calculatedAt,
+    is_stale: false,
+    refresh_job_id: null,
+    refresh_status: "succeeded",
+    reason: canActivate ? "Ready for activation." : "Blocked by onboarding requirements.",
     blockers,
     blocking_items: blockers,
     warning_items: warningItems,
@@ -1951,8 +2045,9 @@ export async function getEmployeeOnboardingReadiness(c: Context<AppBindings>, ca
     assets_uniforms: await getOnboardingAssetUniformStatus(c, caseId)
   };
   await c.env.DB.prepare("UPDATE employee_onboarding_cases SET checklist_summary_json = ?, blockers_json = ?, onboarding_status = ?, activation_status = ?, updated_at = ? WHERE id = ?")
-    .bind(JSON.stringify(readiness.checklist), JSON.stringify(blockers), readiness.can_activate ? "READY_FOR_APPROVAL" : "BLOCKED", readiness.can_activate ? "READY" : "NOT_READY", nowIso(), caseId)
+    .bind(JSON.stringify(readiness.checklist), JSON.stringify(blockers), readiness.can_activate ? "READY_FOR_APPROVAL" : "BLOCKED", readiness.can_activate ? "READY" : "NOT_READY", calculatedAt, caseId)
     .run();
+  console.info(JSON.stringify({ level: "info", event: "onboarding.readiness.calculate.complete", request_id: requestId, case_id: caseId, status: readiness.status, can_activate: readiness.can_activate, blocker_count: blockers.length, duration_ms: Date.now() - startedAt }));
   return readiness;
 }
 
@@ -3105,14 +3200,15 @@ onboardingRoutes.post("/cases/:caseId/documents/batch", requireAnyPermission(["o
     uploaded_count: uploaded.length,
     document_ids: uploaded.map((item) => item.documentId)
   });
-  await refreshWorkspaceReadiness(c, caseId, "documents", "onboarding.workspace.documents_batch_uploaded");
+  const readiness = await refreshWorkspaceReadiness(c, caseId, "documents", "onboarding.workspace.documents_batch_uploaded");
+  const workspace = workspaceWithConfirmedReadiness(await loadOnboardingWorkspace(c, caseId), readiness);
 
   return ok(c, {
     uploaded_count: uploaded.length,
     failed_count: 0,
     documents: uploaded.map((item) => item.document),
-    readiness: await getEmployeeOnboardingReadiness(c, caseId),
-    workspace: await loadOnboardingWorkspace(c, caseId)
+    readiness,
+    workspace
   }, 201);
 });
 
@@ -3193,7 +3289,9 @@ onboardingRoutes.patch("/cases/:caseId/payroll-profile", requireAnyPermission(["
   ).bind(profileId, employeeId, salary, optionalText(body.currency) ?? "MVR", normalizedProfilePaymentMethod, profileStoresBankDetails ? optionalText(body.bank_name) : null, profileStoresBankDetails ? optionalText(body.bank_account_no) : null, profileStoresBankDetails ? optionalText(body.bank_account_name) : null, asSqlBool(body.payroll_included ?? true), asSqlBool(body.overtime_eligible), asSqlBool(body.benefits_eligible), asSqlBool(body.advance_eligible), asSqlBool(body.missed_day_deduction_enabled ?? true), asSqlBool(body.leave_deduction_enabled ?? true), optionalText(body.daily_rate_mode) ?? "FIXED_30_DAYS", optionalText(body.effective_from) ?? new Date().toISOString().slice(0, 10)).run();
   await setOnboardingTaskState(c, c.req.param("caseId"), "payroll_profile", "COMPLETED", "Payroll profile saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.payroll_profile_saved", "employee_payroll_profile", profileId, null, body);
-  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const readiness = await refreshWorkspaceReadiness(c, c.req.param("caseId"), "payroll_profile", "onboarding.workspace.payroll_profile_saved");
+  const workspace = workspaceWithConfirmedReadiness(await loadOnboardingWorkspace(c, c.req.param("caseId")), readiness);
+  return ok(c, { readiness, workspace });
 });
 
 onboardingRoutes.post("/cases/:caseId/payment-methods", requireAnyPermission(["onboarding.workspace.payment_methods.update", "employees.payment_methods.create", "employees.payment_methods.manage", "payroll.payment_methods.manage", "onboarding.cases.manage"]), async (c) => {
@@ -3235,7 +3333,9 @@ onboardingRoutes.post("/cases/:caseId/payment-methods", requireAnyPermission(["o
     queryKeys: ["payroll", "employee.profile", "onboarding.workspace", "onboarding.readiness"],
     safeLabel: "Payment method saved"
   });
-  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) }, 201);
+  const readiness = await refreshWorkspaceReadiness(c, c.req.param("caseId"), "payment_method", "onboarding.workspace.payment_method_saved");
+  const workspace = workspaceWithConfirmedReadiness(await loadOnboardingWorkspace(c, c.req.param("caseId")), readiness);
+  return ok(c, { readiness, workspace }, 201);
 });
 
 onboardingRoutes.post("/cases/:caseId/pension-profile", requireAnyPermission(["onboarding.workspace.pension.update", "employees.pension_profiles.update", "employees.pension_profiles.manage", "onboarding.cases.manage"]), async (c) => {
@@ -3265,7 +3365,9 @@ onboardingRoutes.post("/cases/:caseId/pension-profile", requireAnyPermission(["o
   ).bind(profileId, employeeId, optionalText(body.pension_scheme_id), optionalText(body.pension_member_id), optionalText(body.registration_number), optionalText(body.enrollment_status) ?? "ENROLLED", numberOrNull(body.employee_contribution_percent_override), numberOrNull(body.employer_contribution_percent_override), asSqlBool(body.employer_pays_employee_share), numberOrNull(body.employee_extra_voluntary_contribution_amount) ?? 0, optionalText(body.contribution_basis_override), optionalText(body.effective_date) ?? new Date().toISOString().slice(0, 10), optionalText(body.exemption_reason), optionalText(body.notes), c.get("currentUser").id, c.get("currentUser").id).run();
   await setOnboardingTaskState(c, c.req.param("caseId"), "pension_profile", "COMPLETED", "Pension profile saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.pension_profile_saved", "employee_pension_profile", profileId, null, body);
-  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const readiness = await refreshWorkspaceReadiness(c, c.req.param("caseId"), "pension_profile", "onboarding.workspace.pension_profile_saved");
+  const workspace = workspaceWithConfirmedReadiness(await loadOnboardingWorkspace(c, c.req.param("caseId")), readiness);
+  return ok(c, { readiness, workspace });
 });
 
 onboardingRoutes.post("/cases/:caseId/biometric-mapping", requireAnyPermission(["onboarding.workspace.attendance.update", "attendance.devices.manage", "attendance.manage", "onboarding.cases.manage"]), async (c) => {
@@ -3427,8 +3529,20 @@ onboardingRoutes.post("/cases/:caseId/user-account", requireAnyPermission(["onbo
 });
 
 onboardingRoutes.post("/cases/:caseId/refresh-checklist", requireAnyPermission(["onboarding.workspace.update", "onboarding.tasks.manage", "onboarding.cases.manage"]), async (c) => {
-  await refreshOnboardingChecklist(c, c.req.param("caseId"));
-  return ok(c, { workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const caseId = c.req.param("caseId");
+  await refreshOnboardingChecklist(c, caseId);
+  const readiness = await refreshWorkspaceReadiness(c, caseId, undefined, "onboarding.workspace.readiness_manual_refresh");
+  const workspace = workspaceWithConfirmedReadiness(await loadOnboardingWorkspace(c, caseId), readiness);
+  return ok(c, { refreshed: true, readiness, workspace });
+});
+
+onboardingRoutes.post("/cases/:caseId/refresh-readiness", requireAnyPermission(["onboarding.workspace.update", "onboarding.activation.view", "onboarding.cases.view", "onboarding.cases.manage"]), async (c) => {
+  const caseId = c.req.param("caseId");
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  const readiness = await refreshWorkspaceReadiness(c, caseId, undefined, "onboarding.workspace.readiness_manual_retry");
+  const workspace = workspaceWithConfirmedReadiness(await loadOnboardingWorkspace(c, caseId), readiness);
+  return ok(c, { refreshed: true, readiness, workspace });
 });
 
 onboardingRoutes.post("/cases/:caseId/complete", requireAnyPermission(["onboarding.workspace.complete", "onboarding.activation.submit", "onboarding.activation.manage"]), async (c) => {
