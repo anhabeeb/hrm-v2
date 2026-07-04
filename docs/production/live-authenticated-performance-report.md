@@ -1,16 +1,16 @@
 # Live Authenticated Performance Report
 
-Generated: 2026-07-04T22:16:40.475Z
+Generated: 2026-07-04T23:02:44.017Z
 
 Frontend URL: https://hr.cafeasiana.com.mv
 
 API URL: https://hr.api.cafeasiana.com.mv
 
-Overall status: **SKIPPED**
+Overall status: **FAIL**
 
-Credentials: not provided; live authenticated checks skipped
+Credentials: provided through environment variables
 
-Save test: SKIPPED - live credentials were not provided.
+Save test: SKIPPED - `HRM_LIVE_ENABLE_SAVE_TEST` is not true.
 
 No password, bearer token, session token, response body, or sensitive HR/payroll/document data is written to this report.
 
@@ -18,7 +18,21 @@ No password, bearer token, session token, response body, or sensitive HR/payroll
 
 | Status | Check | HTTP | Duration ms | Threshold ms | Detail |
 | --- | --- | --- | --- | --- | --- |
-| SKIPPED | Authenticated live verification | - | - | - | Missing environment variables: HRM_PROD_FRONTEND_URL, HRM_PROD_API_URL, HRM_LIVE_LOGIN_EMAIL, HRM_LIVE_LOGIN_PASSWORD |
+| WARNING | Login API | 200 | 4526 | 2000 | cache=private, no-store type=application/json request-id=present |
+| WARNING | Current user/session | 200 | 3520 | 2000 | cache=private, no-store type=application/json request-id=present |
+| PASS | Bootstrap/status | 200 | 637 | 2000 | cache=private, no-store type=application/json request-id=present |
+| WARNING | Command Center summary | 200 | 4226 | 2000 | cache=private, no-store type=application/json request-id=present |
+| FAIL | Employee list | ERR | 15016 | 2000 | This operation was aborted |
+| WARNING | Onboarding case list | 200 | 4997 | 2000 | cache=private, no-store type=application/json request-id=present |
+| WARNING | Notification unread-count | 200 | 3941 | 2000 | cache=private, no-store type=application/json request-id=present |
+| WARNING | App events since | 200 | 3980 | 2000 | cache=private, no-store type=application/json request-id=present |
+| WARNING | App events stream status | 200 | 3012 | 2000 | cache=private, no-store type=application/json request-id=present |
+| WARNING | Payment institutions optional direct endpoint | 403 | 9889 | 2000 | cache=private, no-store type=application/json request-id=present |
+| WARNING | Pension schemes optional direct endpoint | 403 | 9424 | 2000 | cache=private, no-store type=application/json request-id=present |
+| PASS | App events stream CORS preflight | 204 | 21 | 2000 | cors-origin=https://hr.cafeasiana.com.mv allow-headers=present cache=none |
+| WARNING | App events stream connection attempt | 200 | 3648 | 2000 | cors-origin=https://hr.cafeasiana.com.mv allow-headers=present cache=private, no-store |
+| SKIPPED | Onboarding workspace detail | - | - | - | `HRM_LIVE_TEST_CASE_ID` was not provided. |
+| PASS | Authenticated API cache safety | - | - | - | No public cache marker was observed in measured authenticated API rows. |
 
 ## Source Safeguards
 

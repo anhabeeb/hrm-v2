@@ -176,6 +176,7 @@ async function timedFetchRaw(label, url, options = {}, validate = (response) => 
     const durationMs = Math.round(performance.now() - started);
     const headers = safeHeaders(response);
     const ok = Boolean(validate(response, headers));
+    await response.body?.cancel().catch(() => undefined);
     return {
       row: makeRow({
         status: statusForDuration(durationMs, thresholdMs, ok),
