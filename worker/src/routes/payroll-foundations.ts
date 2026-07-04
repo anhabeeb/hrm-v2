@@ -155,7 +155,28 @@ function payrollSubmoduleEnabled(settings: Row | null | undefined, key: PayrollS
   return bool(settings?.module_enabled, true) && bool(settings?.[key], true);
 }
 
+function fastPayrollSubmoduleDenied(c: Context<AppBindings>, key: PayrollSubmoduleKey) {
+  const pathname = new URL(c.req.url).pathname;
+  const method = c.req.method.toUpperCase();
+  const isPaymentInstitution = key === "payment_institutions_enabled" && /\/api\/v1\/payroll\/payment-institutions(?:\/|$)/.test(pathname);
+  const isPensionScheme = key === "pension_enabled" && /\/api\/v1\/payroll\/pension-schemes(?:\/|$)/.test(pathname);
+  if (!isPaymentInstitution && !isPensionScheme) return null;
+
+  const prefix = isPaymentInstitution ? "payroll.payment_institutions" : "payroll.pension_schemes";
+  const permissions = method === "GET"
+    ? [`${prefix}.view`, `${prefix}.manage`, "payroll.view", "payroll.manage"]
+    : pathname.endsWith("/archive")
+      ? [`${prefix}.archive`, `${prefix}.manage`, "payroll.manage"]
+      : method === "PATCH"
+        ? [`${prefix}.update`, `${prefix}.manage`, "payroll.manage"]
+        : [`${prefix}.create`, `${prefix}.manage`, "payroll.manage"];
+
+  return hasAny(c, permissions) ? null : fail(c, 403, "FORBIDDEN", "You do not have permission to perform this action.");
+}
+
 async function requirePayrollSubmoduleEnabled(c: Context<AppBindings>, key: PayrollSubmoduleKey) {
+  const permissionDenied = fastPayrollSubmoduleDenied(c, key);
+  if (permissionDenied) return permissionDenied;
   const centralSubmodule = key.replace(/_enabled$/, "").replace("bank_loan_deductions", "bank_loans");
   const centralDisabled = await requireOperationalSubmoduleEnabled(c, "payroll", centralSubmodule, PAYROLL_SUBMODULE_LABELS[key]);
   if (centralDisabled) return centralDisabled;

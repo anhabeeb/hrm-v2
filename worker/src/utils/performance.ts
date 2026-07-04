@@ -25,8 +25,11 @@ function safeUserId(c: Context<AppBindings>) {
 
 function timingState(c: Context<AppBindings>) {
   const timing = c.get("routeTiming");
-  if (timing) return timing;
-  const next = { queryCount: 0, d1DurationMs: 0, d1Warnings: [] as string[], requestId: undefined as string | undefined };
+  if (timing) {
+    timing.stages ??= {};
+    return timing;
+  }
+  const next = { queryCount: 0, d1DurationMs: 0, d1Warnings: [] as string[], requestId: undefined as string | undefined, stages: {} as Record<string, number> };
   c.set("routeTiming", next);
   return next;
 }
@@ -38,6 +41,9 @@ export function appendServerTiming(c: Context<AppBindings>, durationMs: number) 
     `d1;dur=${Math.max(0, Math.round(timing.d1DurationMs))}`,
     `d1-count;desc="${timing.queryCount}"`
   ];
+  for (const [stage, value] of Object.entries(timing.stages ?? {})) {
+    entries.push(`${stage};dur=${Math.max(0, Math.round(value))}`);
+  }
   c.header("Server-Timing", entries.join(", "));
 }
 
@@ -115,11 +121,23 @@ export async function timeD1<T>(c: Context<AppBindings>, operation: () => Promis
   }
 }
 
+export async function timeStage<T>(c: Context<AppBindings>, group: "auth" | "permission" | "optional" | "serialization" | "session" | "d1", operation: () => Promise<T>) {
+  const timing = timingState(c);
+  const stages = timing.stages ??= {};
+  const start = Date.now();
+  try {
+    return await operation();
+  } finally {
+    const duration = Date.now() - start;
+    stages[group] = (stages[group] ?? 0) + duration;
+  }
+}
+
 export function withRequestTiming(): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
     const start = Date.now();
     const requestId = c.req.header("CF-Ray") ?? crypto.randomUUID();
-    c.set("routeTiming", { queryCount: 0, d1DurationMs: 0, d1Warnings: [], requestId });
+    c.set("routeTiming", { queryCount: 0, d1DurationMs: 0, d1Warnings: [], requestId, stages: {} });
     c.header("X-Request-Id", requestId);
     await next();
     const durationMs = Date.now() - start;

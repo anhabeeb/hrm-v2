@@ -516,6 +516,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(recipient_user_id, is_read, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_employee_read ON notifications(recipient_employee_id, is_read, created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_read_created ON notifications(is_read, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_module ON notifications(module_key, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_entity ON notifications(entity_type, entity_id);
 

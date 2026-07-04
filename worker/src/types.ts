@@ -96,6 +96,7 @@ export interface AppVariables {
     d1DurationMs: number;
     d1Warnings: string[];
     requestId?: string;
+    stages?: Record<string, number>;
   };
 }
 

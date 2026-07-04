@@ -51,6 +51,21 @@ function main() {
   assertNoFailures((report.seed_blockers ?? []).length === 0, failures, `Seed blockers: ${(report.seed_blockers ?? []).map((item) => `${item.table}.${item.column}`).join(", ")}`);
   assertNoFailures((report.stale_repair_tables ?? []).length === 0, failures, `Stale repair tables exist: ${(report.stale_repair_tables ?? []).join(", ")}`);
 
+  const liveBottleneckRequiredIndexes = [
+    ["employees", "idx_phase3_employees_created_active"],
+    ["employee_onboarding_cases", "idx_phase3_onboarding_activation_created"],
+    ["notifications", "idx_notifications_user_read"],
+    ["notifications", "idx_notifications_employee_read"],
+    ["notifications", "idx_notifications_read_created"],
+    ["app_events", "idx_app_events_company_created"],
+    ["app_events", "idx_app_events_user_created"],
+    ["dashboard_summary_snapshots", "idx_dashboard_summary_snapshots_key_scope"]
+  ];
+  for (const [tableName, indexName] of liveBottleneckRequiredIndexes) {
+    const remoteIndexNames = new Set((report.remote_tables?.[tableName]?.indexes ?? []).map((index) => String(index.name)));
+    assertNoFailures(remoteIndexNames.has(indexName), failures, `${tableName}.${indexName} is missing for live endpoint bottleneck readiness`);
+  }
+
   for (const value of advancedDeductionModes) {
     for (const tableName of ["leave_policies", "leave_requests", "leave_policy_deduction_rules"]) {
       const sql = report.remote_tables?.[tableName]?.sql ?? "";

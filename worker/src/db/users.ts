@@ -16,6 +16,22 @@ interface UserDisplayProfileRow {
   job_level_name: string | null;
 }
 
+const AUTH_USER_CACHE_TTL_MS = 5000;
+const authUserCache = new Map<string, { expiresAt: number; value: AuthUser }>();
+
+function authUserCacheKey(user: DbUser) {
+  return `${user.id}:${user.updated_at}:${user.employee_id ?? "none"}:${user.status}:${user.is_owner}`;
+}
+
+function cloneAuthUser(user: AuthUser): AuthUser {
+  return {
+    ...user,
+    roles: [...user.roles],
+    permissions: [...user.permissions],
+    module_visibility: user.module_visibility ? { ...user.module_visibility } : undefined
+  };
+}
+
 function cleanDisplayText(value: string | null | undefined) {
   const text = String(value ?? "").trim();
   if (!text || /^(undefined|null|\[object object\])$/i.test(text)) return null;
@@ -116,16 +132,26 @@ async function getLinkedEmployeeDisplayProfile(db: Env["DB"], user: DbUser) {
 }
 
 export async function toAuthUser(db: Env["DB"], user: DbUser): Promise<AuthUser> {
-  const roles = await getRolesForUser(db, user.id);
-  const permissions = await getPermissionsForUser(db, user.id);
-  const employeeDisplayProfile = await getLinkedEmployeeDisplayProfile(db, user);
-  return {
+  const cacheKey = authUserCacheKey(user);
+  const cached = authUserCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) {
+    return cloneAuthUser(cached.value);
+  }
+  const [roles, permissions, employeeDisplayProfile] = await Promise.all([
+    getRolesForUser(db, user.id),
+    getPermissionsForUser(db, user.id),
+    getLinkedEmployeeDisplayProfile(db, user)
+  ]);
+  const authUser = {
     ...toSafeUser(user),
     ...employeeDisplayProfile,
     roles,
     permissions,
     module_visibility: await getModuleVisibilityForUser(db, { permissions, is_owner: user.is_owner === 1 })
   };
+  authUserCache.set(cacheKey, { expiresAt: now + AUTH_USER_CACHE_TTL_MS, value: cloneAuthUser(authUser) });
+  return authUser;
 }
 
 export async function setUserStatus(db: Env["DB"], userId: string, status: UserStatus) {

@@ -40,7 +40,7 @@ authRoutes.post("/login", async (c) => {
     .bind(new Date().toISOString(), new Date().toISOString(), user.id)
     .run();
 
-  await recordAudit(c.env.DB, {
+  const auditWrite = recordAudit(c.env.DB, {
     actorUserId: user.id,
     action: "auth.login",
     module: "auth",
@@ -49,6 +49,13 @@ authRoutes.post("/login", async (c) => {
     ipAddress: getClientIp(c.req.raw),
     userAgent: c.req.header("User-Agent") ?? null
   });
+  (c as unknown as { executionCtx?: ExecutionContext }).executionCtx?.waitUntil(auditWrite.catch((error) => {
+    console.warn(JSON.stringify({
+      level: "warn",
+      event: "auth.login_audit_deferred_failed",
+      message: error instanceof Error ? error.message.slice(0, 160) : "Login audit write failed"
+    }));
+  }));
 
   const authUser = await toAuthUser(c.env.DB, { ...user, last_login_at: new Date().toISOString() });
   const token = await signJwt(requireJwtSecret(c.env.JWT_SECRET), user.id, user.email);

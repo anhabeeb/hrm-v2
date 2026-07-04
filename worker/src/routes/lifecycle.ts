@@ -14,7 +14,7 @@ import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { isOperationalModuleEnabled, requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { runOptionalSectionWithTimeout } from "../utils/optional-section-timeout";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
-import { timeD1 } from "../utils/performance";
+import { timeD1, timeStage } from "../utils/performance";
 import { isEmail, normalizeEmail, readString } from "../utils/validation";
 import { workspaceDeferredMessage, workspaceRetryKey } from "../utils/workspace-response";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
@@ -468,6 +468,9 @@ async function optionalSettingEnabled(db: D1Database, sql: string, fallback = tr
 
 const ONBOARDING_WORKSPACE_OPTIONAL_SECTION_TIMEOUT_MS = 1400;
 const ONBOARDING_WORKSPACE_REQUIRED_SECTION_TIMEOUT_MS = 1800;
+const ONBOARDING_DIRECT_READINESS_TIMEOUT_MS = 2200;
+const ONBOARDING_READINESS_BACKGROUND_REFRESH_TTL_MS = 30_000;
+const onboardingReadinessRefreshInFlight = new Map<string, number>();
 
 async function getOnboardingWorkspaceModuleStatuses(c: Context<AppBindings>) {
   const moduleKeys = [
@@ -619,6 +622,18 @@ function failedOnboardingReadiness(label: string, error: unknown, row?: Record<s
     warning_items: [{ type: "READINESS_REFRESH_FAILED", message: "Readiness refresh failed. Retry readiness from this workspace." }],
     safe_error_message: safeMessage.slice(0, 160)
   } as unknown as Awaited<ReturnType<typeof getEmployeeOnboardingReadiness>> & { failed_reason: string };
+}
+
+function backgroundRefreshingOnboardingReadiness(label: string, row?: Record<string, unknown> | null) {
+  return {
+    ...deferredOnboardingReadiness(label, row),
+    status: "refreshing",
+    readiness_status: "refreshing",
+    refreshing: true,
+    refresh_status: "refreshing",
+    refresh_reason: "Refreshing activation readiness in the background.",
+    warning_items: [{ type: "READINESS_REFRESHING", message: "Activation readiness is refreshing. The workspace remains available while this finishes." }]
+  } as Awaited<ReturnType<typeof getEmployeeOnboardingReadiness>> & { refreshing: boolean };
 }
 
 async function loadRequiredOnboardingWorkspaceSection<T>(
@@ -875,6 +890,24 @@ function runLifecycleBackgroundTask(c: Context<AppBindings>, task: Promise<unkno
   const executionCtx = (c as unknown as { executionCtx?: { waitUntil: (promise: Promise<unknown>) => void } }).executionCtx;
   if (executionCtx) executionCtx.waitUntil(safeTask);
   else void safeTask;
+}
+
+function queueOnboardingReadinessRefresh(c: Context<AppBindings>, caseId: string, action: string) {
+  const nowMs = Date.now();
+  const lastQueuedAt = onboardingReadinessRefreshInFlight.get(caseId);
+  if (lastQueuedAt && nowMs - lastQueuedAt < ONBOARDING_READINESS_BACKGROUND_REFRESH_TTL_MS) {
+    return { queued: false, reason: "recently_queued" };
+  }
+  onboardingReadinessRefreshInFlight.set(caseId, nowMs);
+  const task = (async () => {
+    try {
+      await refreshWorkspaceReadiness(c, caseId, undefined, action);
+    } finally {
+      onboardingReadinessRefreshInFlight.delete(caseId);
+    }
+  })();
+  runLifecycleBackgroundTask(c, task, action, { case_id: caseId });
+  return { queued: true, reason: "queued" };
 }
 
 type OnboardingFastSaveInput = {
@@ -2805,7 +2838,7 @@ async function listOnboardingCases(c: Context<AppBindings>): Promise<Record<stri
 async function listOnboardingCases(c: Context<AppBindings>, options: { paginate: true }): Promise<{ rows: Record<string, unknown>[]; pagination: ReturnType<typeof paginationMeta> }>;
 async function listOnboardingCases(c: Context<AppBindings>, options: { paginate?: boolean } = {}) {
   const user = c.get("currentUser");
-  const scope = await buildEmployeeScopeWhereClause(c.env.DB, user, "employees", "view", "e");
+  const scope = await timeStage(c, "permission", () => buildEmployeeScopeWhereClause(c.env.DB, user, "employees", "view", "e"));
   const conditions = [scope.sql];
   const binds: BindValue[] = [...scope.params];
   const pagination = options.paginate ? parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 }) : null;
@@ -2815,22 +2848,34 @@ async function listOnboardingCases(c: Context<AppBindings>, options: { paginate?
     binds.push(status);
   }
   if (c.req.query("overdue") === "1") conditions.push("oc.due_date IS NOT NULL AND date(oc.due_date) < date('now') AND oc.onboarding_status NOT IN ('ACTIVATED', 'CANCELLED')");
-  const rows = await c.env.DB.prepare(
-    `SELECT oc.*, e.employee_no, e.full_name AS employee_name, e.joining_date AS planned_start_date,
-       e.primary_department_id, e.primary_location_id, e.primary_position_id, e.job_level_id,
-       d.name AS department_name, l.name AS location_name, p.title AS position_name, jl.name AS job_level_name,
-       owner.name AS assigned_owner_name
-     FROM employee_onboarding_cases oc
-     INNER JOIN employees e ON e.id = oc.employee_id
-     LEFT JOIN departments d ON d.id = e.primary_department_id
-     LEFT JOIN locations l ON l.id = e.primary_location_id
-     LEFT JOIN positions p ON p.id = e.primary_position_id
-     LEFT JOIN job_levels jl ON jl.id = e.job_level_id
-     LEFT JOIN users owner ON owner.id = oc.assigned_owner_user_id
-     ${where(conditions)}
-     ORDER BY oc.created_at DESC
-     ${pagination ? "LIMIT ? OFFSET ?" : ""}`
-  ).bind(...binds, ...(pagination ? [pagination.limit, pagination.offset] : [])).all<Record<string, unknown>>();
+  const rows = await timeD1(
+    c,
+    () => c.env.DB.prepare(
+      `SELECT
+         oc.id, oc.case_number, oc.employee_id, oc.employee_number_snapshot, oc.employee_name_snapshot,
+         oc.department_snapshot, oc.worksite_snapshot, oc.location_snapshot, oc.position_snapshot,
+         oc.employment_type_snapshot, oc.employee_type_snapshot, oc.onboarding_status, oc.activation_status,
+         oc.assigned_owner_user_id, oc.due_date, oc.completed_at, oc.activated_by_user_id, oc.activated_at,
+         oc.cancelled_by_user_id, oc.cancelled_at, oc.cancellation_reason, oc.approval_instance_id,
+         oc.checklist_summary_json, oc.blockers_json, oc.notes, oc.created_by_user_id, oc.updated_by_user_id,
+         oc.created_at, oc.updated_at,
+         e.employee_no, e.full_name AS employee_name, e.joining_date AS planned_start_date,
+         e.primary_department_id, e.primary_location_id, e.primary_position_id, e.job_level_id,
+         d.name AS department_name, l.name AS location_name, p.title AS position_name, jl.name AS job_level_name,
+         owner.name AS assigned_owner_name
+       FROM employee_onboarding_cases oc
+       INNER JOIN employees e ON e.id = oc.employee_id
+       LEFT JOIN departments d ON d.id = e.primary_department_id
+       LEFT JOIN locations l ON l.id = e.primary_location_id
+       LEFT JOIN positions p ON p.id = e.primary_position_id
+       LEFT JOIN job_levels jl ON jl.id = e.job_level_id
+       LEFT JOIN users owner ON owner.id = oc.assigned_owner_user_id
+       ${where(conditions)}
+       ORDER BY oc.created_at DESC
+       ${pagination ? "LIMIT ? OFFSET ?" : ""}`
+    ).bind(...binds, ...(pagination ? [pagination.limit, pagination.offset] : [])).all<Record<string, unknown>>(),
+    "onboarding.cases.list.lightweight"
+  );
   if (!pagination) return rows.results;
   return { rows: rows.results, pagination: paginationMeta(pagination, rows.results.length) };
 }
@@ -4232,7 +4277,32 @@ onboardingRoutes.get("/cases/:caseId/tasks", requireAnyPermission(["onboarding.t
   return ok(c, { checklist: await getOnboardingChecklistStatus(c, c.req.param("caseId")) });
 });
 onboardingRoutes.post("/cases/:caseId/tasks/refresh", requireAnyPermission(["onboarding.tasks.manage"]), async (c) => ok(c, { checklist: await refreshOnboardingChecklist(c, c.req.param("caseId")) }));
-onboardingRoutes.get("/cases/:caseId/readiness", requireAnyPermission(["onboarding.activation.view", "onboarding.cases.view", "employees.lifecycle.view", "employees.view"]), async (c) => ok(c, { readiness: await getEmployeeOnboardingReadiness(c, c.req.param("caseId")) }));
+onboardingRoutes.get("/cases/:caseId/readiness", requireAnyPermission(["onboarding.activation.view", "onboarding.cases.view", "employees.lifecycle.view", "employees.view"]), async (c) => {
+  const caseId = c.req.param("caseId");
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+
+  const forceFresh = c.req.query("fresh") === "1" || c.req.query("refresh") === "1";
+  if (forceFresh) {
+    const result = await runOptionalSectionWithTimeout({
+      label: "onboarding.readiness.direct",
+      timeoutMs: ONBOARDING_DIRECT_READINESS_TIMEOUT_MS,
+      run: () => timeD1(c, () => getEmployeeOnboardingReadiness(c, caseId), "onboarding.readiness.direct"),
+      onLateFailure: (error) => console.warn("Direct onboarding readiness late failure", { case_id: caseId, error: error instanceof Error ? error.message : String(error) })
+    });
+    if (result.status === "ready") return ok(c, { readiness: result.value, refresh: { status: "succeeded", duration_ms: result.durationMs } });
+  }
+
+  const queued = queueOnboardingReadinessRefresh(c, caseId, "onboarding.readiness.direct_background_refresh");
+  return ok(c, {
+    readiness: backgroundRefreshingOnboardingReadiness("Activation readiness", gate.row),
+    refresh: {
+      status: queued.queued ? "queued" : "already_queued",
+      reason: queued.reason,
+      message: queued.queued ? "Activation readiness is refreshing in the background." : "Activation readiness refresh is already running."
+    }
+  });
+});
 onboardingRoutes.post("/cases/:caseId/submit-activation", requireAnyPermission(["onboarding.activation.submit", "onboarding.activation.manage"]), async (c) => ok(c, { submitted: await submitEmployeeActivationForApproval(c, c.req.param("caseId")), approval: await createOnboardingApprovalInstance(c, c.req.param("caseId")) }));
 onboardingRoutes.post("/cases/:caseId/approve-activation", requireAnyPermission(["onboarding.activation.approve", "onboarding.activation.manage"]), async (c) => ok(c, { approved: await approveEmployeeActivation(c, c.req.param("caseId")), approval: await syncOnboardingApprovalStatus(c, c.req.param("caseId")) }));
 onboardingRoutes.post("/cases/:caseId/activate", requireAnyPermission(["onboarding.activation.activate", "onboarding.activation.manage", "onboarding.workspace.activate"]), async (c) => {

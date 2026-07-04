@@ -26,12 +26,32 @@ const requiredEnv = [
 
 const thresholds = {
   login: 2000,
+  currentSession: 1500,
   commandCenter: 2000,
   employeeList: 2000,
   onboardingCaseList: 2000,
+  notificationUnreadCount: 1000,
+  appEvents: 1000,
+  optionalForbidden: 500,
   onboardingWorkspace: 3000,
   saveCommit: 2000
 };
+
+const previousTimings = new Map([
+  ["Login API", 4500],
+  ["Current user/session", 3500],
+  ["Bootstrap/status", 600],
+  ["Command Center summary", 4200],
+  ["Employee list", 15000],
+  ["Onboarding case list", 5000],
+  ["Notification unread-count", 3900],
+  ["App events since", 4000],
+  ["App events stream status", 3000],
+  ["Payment institutions optional direct endpoint", 9900],
+  ["Pension schemes optional direct endpoint", 9400],
+  ["App events stream CORS preflight", 21],
+  ["App events stream connection attempt", 3600]
+]);
 
 function read(relativePath) {
   return fs.readFileSync(path.join(rootDir, relativePath), "utf8");
@@ -73,23 +93,30 @@ function safeHeaders(response) {
 }
 
 function makeRow(input) {
+  const previous = previousTimings.get(input.check);
+  const duration = Number(input.duration_ms);
+  const delta = Number.isFinite(duration) && previous != null ? duration - previous : null;
   return {
     status: input.status,
     check: input.check,
     http: input.http ?? "-",
     duration_ms: input.duration_ms ?? "-",
     threshold_ms: input.threshold_ms ?? "-",
+    previous_ms: previous ?? "-",
+    delta_ms: delta == null ? "-" : delta,
     detail: redact(input.detail ?? "")
   };
 }
 
 function rowTable(rows) {
-  return markdownTable(["Status", "Check", "HTTP", "Duration ms", "Threshold ms", "Detail"], rows.map((row) => [
+  return markdownTable(["Status", "Check", "HTTP", "Duration ms", "Threshold ms", "Previous ms", "Delta ms", "Detail"], rows.map((row) => [
     row.status,
     row.check,
     row.http,
     row.duration_ms,
     row.threshold_ms,
+    row.previous_ms,
+    row.delta_ms,
     row.detail
   ]));
 }
@@ -130,7 +157,7 @@ async function timedFetchJson(label, url, options = {}, validate = (response) =>
         http: response.status,
         duration_ms: durationMs,
         threshold_ms: thresholdMs || "-",
-        detail: `cache=${headers.cache || "none"} type=${headers.contentType || "none"} request-id=${headers.requestId ? "present" : "not returned"}`
+        detail: `cache=${headers.cache || "none"} type=${headers.contentType || "none"} request-id=${headers.requestId ? "present" : "not returned"} server-timing=${headers.serverTiming ? headers.serverTiming.slice(0, 180) : "none"}`
       }),
       response,
       headers,
@@ -184,7 +211,7 @@ async function timedFetchRaw(label, url, options = {}, validate = (response) => 
         http: response.status,
         duration_ms: durationMs,
         threshold_ms: thresholdMs || "-",
-        detail: `cors-origin=${headers.corsAllowOrigin || "none"} allow-headers=${headers.corsAllowHeaders ? "present" : "none"} cache=${headers.cache || "none"}`
+        detail: `cors-origin=${headers.corsAllowOrigin || "none"} allow-headers=${headers.corsAllowHeaders ? "present" : "none"} cache=${headers.cache || "none"} server-timing=${headers.serverTiming ? headers.serverTiming.slice(0, 180) : "none"}`
       }),
       response,
       headers,
@@ -297,6 +324,13 @@ function summarizeWorkspacePayload(workspaceData, workspaceDuration) {
   ];
 }
 
+function productionBottlenecks(rows) {
+  const measuredRows = rows.filter((row) => previousTimings.has(row.check));
+  const remaining = measuredRows.filter((row) => row.status === "FAIL" || row.status === "WARNING");
+  if (!remaining.length) return "- No measured production bottlenecks remain above the configured thresholds.";
+  return remaining.map((row) => `- ${escapeTable(row.check)}: ${escapeTable(row.status)} at ${escapeTable(String(row.duration_ms))}ms (target ${escapeTable(String(row.threshold_ms))}ms, delta ${escapeTable(String(row.delta_ms))}ms).`).join("\n");
+}
+
 function buildReport(input) {
   const liveStatus = input.liveRows.some((row) => row.status === "FAIL") ? "FAIL"
     : input.liveRows.some((row) => row.status === "WARNING" || row.status === "SKIPPED") ? "WARNING"
@@ -323,6 +357,10 @@ No password, bearer token, session token, response body, or sensitive HR/payroll
 
 ${rowTable(input.liveRows)}
 
+## Production Bottlenecks Remaining
+
+${productionBottlenecks(input.liveRows)}
+
 ## Source Safeguards
 
 ${rowTable(input.sourceRows)}
@@ -346,7 +384,7 @@ async function main() {
   const notes = [
     "Live write/save checks are disabled unless `HRM_LIVE_ENABLE_SAVE_TEST=true` is set.",
     "When save testing is enabled, use a dedicated test onboarding case only.",
-    "Thresholds: login, command center, employee list, and onboarding case list under 2 seconds; workspace core under 3 seconds."
+    "Thresholds: login and Command Center under 2 seconds; current session under 1.5 seconds; employee/onboarding first pages under 2 seconds; unread/app-events under 1 second; optional 403 responses under 500ms; workspace core under 3 seconds."
   ];
 
   if (missingEnv.length > 0) {
@@ -401,16 +439,16 @@ async function main() {
 
   const auth = { Authorization: `Bearer ${token}`, Origin: frontendUrl };
   const authenticatedChecks = [
-    ["Current user/session", "/api/v1/auth/me", thresholds.login, (response) => response.ok],
+    ["Current user/session", "/api/v1/auth/me", thresholds.currentSession, (response) => response.ok],
     ["Bootstrap/status", "/api/v1/bootstrap/status", thresholds.login, (response) => response.status < 500],
     ["Command Center summary", "/api/v1/dashboard/command-center-summary", thresholds.commandCenter, (response) => response.ok],
     ["Employee list", "/api/v1/employees?limit=10&page=1", thresholds.employeeList, (response) => response.ok || response.status === 403],
     ["Onboarding case list", "/api/v1/onboarding/cases?limit=10&page=1", thresholds.onboardingCaseList, (response) => response.ok || response.status === 403],
-    ["Notification unread-count", "/api/v1/notifications/unread-count", thresholds.login, (response) => response.status !== 503 && response.status < 500],
-    ["App events since", "/api/v1/app-events/since?limit=5", thresholds.login, (response) => response.ok || response.status === 403],
-    ["App events stream status", "/api/v1/app-events/stream?status=1", thresholds.login, (response) => response.status < 500],
-    ["Payment institutions optional direct endpoint", "/api/v1/payroll/payment-institutions", thresholds.login, (response) => response.status < 500],
-    ["Pension schemes optional direct endpoint", "/api/v1/payroll/pension-schemes", thresholds.login, (response) => response.status < 500]
+    ["Notification unread-count", "/api/v1/notifications/unread-count", thresholds.notificationUnreadCount, (response) => response.status !== 503 && response.status < 500],
+    ["App events since", "/api/v1/app-events/since?limit=5", thresholds.appEvents, (response) => response.ok || response.status === 403],
+    ["App events stream status", "/api/v1/app-events/stream?status=1", thresholds.appEvents, (response) => response.status < 500],
+    ["Payment institutions optional direct endpoint", "/api/v1/payroll/payment-institutions", thresholds.optionalForbidden, (response) => response.status < 500],
+    ["Pension schemes optional direct endpoint", "/api/v1/payroll/pension-schemes", thresholds.optionalForbidden, (response) => response.status < 500]
   ];
 
   for (const [label, pathname, threshold, validate] of authenticatedChecks) {
@@ -434,7 +472,7 @@ async function main() {
       && /x-request-id/i.test(headers.corsAllowHeaders)
       && headers.corsAllowOrigin === frontendUrl
       && /origin/i.test(headers.vary),
-    thresholds.login
+    thresholds.appEvents
   );
   liveRows.push(preflight.row);
 
@@ -449,7 +487,7 @@ async function main() {
       timeoutMs: 5000
     },
     (response, headers) => response.status < 500 && /text\/event-stream|json|text/i.test(headers.contentType || "text/event-stream"),
-    thresholds.login
+    thresholds.appEvents
   );
   liveRows.push(streamAttempt.row);
 

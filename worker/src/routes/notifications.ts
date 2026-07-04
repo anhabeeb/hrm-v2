@@ -209,8 +209,25 @@ export async function getNotificationsForUser(c: Context<AppBindings>) {
 }
 
 export async function getUnreadNotificationCount(c: Context<AppBindings>) {
-  const rows = await baseNotificationRows(c, NOTIFICATION_LIMIT_MAX, { read: "unread" });
-  return rows.length;
+  const user = c.get("currentUser");
+  if (hasAny(user, ["notifications.admin.view", "notifications.manage"])) {
+    const row = await c.env.DB
+      .prepare("SELECT COUNT(*) AS count FROM notifications WHERE is_read = 0")
+      .first<{ count: number | null }>();
+    return Number(row?.count ?? 0);
+  }
+
+  const employeeId = user.employee_id ?? "__no_employee__";
+  const row = await c.env.DB
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM notifications
+       WHERE is_read = 0
+         AND (recipient_user_id = ? OR recipient_employee_id = ? OR employee_id = ?)`
+    )
+    .bind(user.id, employeeId, employeeId)
+    .first<{ count: number | null }>();
+  return Number(row?.count ?? 0);
 }
 
 async function ensureCanUpdateNotification(c: Context<AppBindings>, notificationId: string) {

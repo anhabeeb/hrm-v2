@@ -332,10 +332,11 @@ function eventEmployeeId(row: AppEventRow, payload: Record<string, unknown>) {
   return typeof employeeId === "string" && employeeId ? employeeId : null;
 }
 
-export async function canUserReceiveEvent(db: Env["DB"], user: AuthUser, row: AppEventRow) {
+export async function canUserReceiveEvent(db: Env["DB"], user: AuthUser, row: AppEventRow, moduleEnabled?: Map<string, boolean>) {
   if (user.is_owner) return true;
   const moduleKey = normalizeModuleKey(row.module_key);
-  if (!(await isOperationalModuleEnabled(db, moduleKey))) return false;
+  const enabled = moduleEnabled?.get(moduleKey) ?? await isOperationalModuleEnabled(db, moduleKey);
+  if (!enabled) return false;
 
   if (row.visibility === "USER") {
     return row.user_scope_id === user.id || (Boolean(user.employee_id) && row.user_scope_id === user.employee_id);
@@ -404,9 +405,15 @@ export async function listAppEventsSince(db: Env["DB"], user: AuthUser, input: {
     limit * 2
   ).all<AppEventRow>();
 
+  const modules = Array.from(new Set(rows.results.map((row) => normalizeModuleKey(row.module_key))));
+  const moduleEnabled = new Map<string, boolean>();
+  await Promise.all(modules.map(async (moduleKey) => {
+    moduleEnabled.set(moduleKey, await isOperationalModuleEnabled(db, moduleKey));
+  }));
+
   const events = [];
   for (const row of rows.results) {
-    if (!(await canUserReceiveEvent(db, user, row))) continue;
+    if (!(await canUserReceiveEvent(db, user, row, moduleEnabled))) continue;
     events.push(sanitizeEventForUser(row));
     if (events.length >= limit) break;
   }

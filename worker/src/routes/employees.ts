@@ -14,6 +14,7 @@ import type { AppBindings, DbUser, UserStatus } from "../types";
 import { fail, getClientIp, ok, okCached } from "../utils/http";
 import { requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
+import { timeD1, timeStage } from "../utils/performance";
 import { isEmail, normalizeEmail, readJsonBody, readString } from "../utils/validation";
 
 type EmployeeType = "LOCAL" | "FOREIGN" | "OTHER";
@@ -1365,7 +1366,7 @@ employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
   const params: BindValue[] = [];
   // Phase 4 verifier compatibility: const EMPLOYEE_LIST_DEFAULT_LIMIT and const EMPLOYEE_LIST_MAX_LIMIT are enforced through parsePaginationParams.
   const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
-  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "employees", "view", "e");
+  const scope = await timeStage(c, "permission", () => buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "employees", "view", "e"));
   conditions.push(scope.sql);
   params.push(...scope.params);
   const search = readString(c.req.query("search"));
@@ -1405,11 +1406,19 @@ employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
   if (c.req.query("show_archived") !== "true") {
     conditions.push("e.archived_at IS NULL");
   }
-  const rows = await c.env.DB
+  const rows = await timeD1(c, () => c.env.DB
     .prepare(
-      `SELECT e.*, s.key AS status_key, s.name AS status_name,
+      `SELECT
+        e.id, e.employee_no, e.profile_photo_document_id, e.full_name, e.display_name,
+        e.gender, e.date_of_birth, e.nationality, e.employee_type, e.employment_type,
+        e.status_id, e.primary_department_id, e.primary_position_id, e.primary_location_id,
+        e.job_level_id, e.joining_date, e.confirmation_date, e.contract_start_date,
+        e.contract_end_date, e.probation_end_date, e.reporting_manager_employee_id,
+        e.payroll_included, e.roster_eligible, e.user_id, e.exit_date, e.exit_reason,
+        e.notes_summary, e.created_at, e.updated_at, e.archived_at,
+        s.key AS status_key, s.name AS status_name,
         d.name AS department_name, p.title AS position_title, l.name AS location_name, l.code AS location_code,
-        jl.name AS job_level_name, m.full_name AS reporting_manager_name, u.email AS linked_user_email,
+        jl.name AS job_level_name, m.full_name AS reporting_manager_name,
         oc.id AS active_onboarding_case_id, oc.case_number AS active_onboarding_case_number,
         oc.onboarding_status AS active_onboarding_status, oc.activation_status AS active_activation_status
        FROM employees e
@@ -1419,16 +1428,15 @@ employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
        LEFT JOIN locations l ON l.id = e.primary_location_id
        LEFT JOIN job_levels jl ON jl.id = e.job_level_id
        LEFT JOIN employees m ON m.id = e.reporting_manager_employee_id
-       LEFT JOIN users u ON u.id = e.user_id
        LEFT JOIN employee_onboarding_cases oc ON oc.employee_id = e.id AND oc.onboarding_status != 'CANCELLED' AND oc.activation_status != 'ACTIVATED'
        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
        ORDER BY e.created_at DESC
        LIMIT ? OFFSET ?`
     )
     .bind(...params, pagination.limit, pagination.offset)
-    .all<EmployeeRow>();
+    .all<EmployeeRow>(), "employees.list.lightweight");
   return ok(c, {
-    employees: rows.results.map((row) => toEmployee(row, hasPermission(c, "employees.sensitive.view"))),
+    employees: await timeStage(c, "serialization", async () => rows.results.map((row) => toEmployee(row, hasPermission(c, "employees.sensitive.view")))),
     pagination: paginationMeta(pagination, rows.results.length)
   });
 });
