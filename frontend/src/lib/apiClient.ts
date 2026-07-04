@@ -8,16 +8,20 @@ const inflightGetRequests = new Map<string, Promise<unknown>>();
 export class ApiError extends Error {
   code: string;
   status: number;
+  requestId?: string;
+  category?: "validation" | "permission" | "network" | "timeout" | "server" | "invalid-response" | "not-found" | "module-disabled" | "unknown";
   validationErrors: Array<Record<string, unknown>>;
   fieldErrors: Record<string, string[]>;
   actionErrors: string[];
   details?: Record<string, unknown>;
 
-  constructor(message: string, code: string, status: number, options: { validationErrors?: Array<Record<string, unknown>>; fieldErrors?: Record<string, string[]>; actionErrors?: string[]; details?: Record<string, unknown> } = {}) {
+  constructor(message: string, code: string, status: number, options: { requestId?: string; category?: ApiError["category"]; validationErrors?: Array<Record<string, unknown>>; fieldErrors?: Record<string, string[]>; actionErrors?: string[]; details?: Record<string, unknown> } = {}) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.requestId = options.requestId;
+    this.category = options.category;
     this.validationErrors = options.validationErrors ?? [];
     this.fieldErrors = options.fieldErrors ?? {};
     this.actionErrors = options.actionErrors ?? [];
@@ -25,8 +29,21 @@ export class ApiError extends Error {
   }
 }
 
-export function apiErrorFromEnvelope(envelope: ApiEnvelope<unknown>, status: number, fallback = "Request failed.") {
+function classifyStatus(status: number, code?: string): ApiError["category"] {
+  const upper = String(code ?? "").toUpperCase();
+  if (status === 400 || status === 422 || upper.includes("VALIDATION")) return "validation";
+  if (status === 401 || status === 403 || upper.includes("PERMISSION") || upper.includes("FORBIDDEN")) return "permission";
+  if (status === 404) return "not-found";
+  if (upper.includes("MODULE")) return "module-disabled";
+  if (status >= 500) return "server";
+  return "unknown";
+}
+
+export function apiErrorFromEnvelope(envelope: ApiEnvelope<unknown>, status: number, fallback = "Request failed.", requestId?: string | null) {
+  const errorRequestId = envelope.error?.request_id ?? envelope.error?.details?.request_id ?? requestId ?? undefined;
   return new ApiError(envelope.error?.message ?? fallback, envelope.error?.code ?? "REQUEST_FAILED", status, {
+    requestId: errorRequestId ? String(errorRequestId) : undefined,
+    category: classifyStatus(status, envelope.error?.code),
     validationErrors: envelope.error?.validation_errors ?? [],
     fieldErrors: envelope.error?.field_errors ?? {},
     actionErrors: envelope.error?.action_errors ?? [],
@@ -101,6 +118,29 @@ export async function parseEnvelope<T>(response: Response) {
   }
 }
 
+function responseRequestId(response: Response, fallbackRequestId: string) {
+  return response.headers.get("X-Request-Id") ?? response.headers.get("X-Request-ID") ?? fallbackRequestId;
+}
+
+function classifyFetchFailure(error: unknown, requestId: string, aborted: boolean) {
+  if (aborted) {
+    return new ApiError("Save timed out. Your data may not have been confirmed. Refresh this section before retrying.", "REQUEST_ABORTED", 0, {
+      requestId,
+      category: "timeout",
+      details: { request_id: requestId, retry_recommended: true, refresh_before_retry: true }
+    });
+  }
+  const original = error instanceof Error ? error.message : String(error ?? "");
+  const networkMessage = /failed to fetch|networkerror|load failed|fetch/i.test(original)
+    ? "Could not reach the server. Check connection or try again."
+    : "Could not reach the server. Check connection or try again.";
+  return new ApiError(networkMessage, "NETWORK_ERROR", 0, {
+    requestId,
+    category: "network",
+    details: { request_id: requestId, error_category: "cors_or_network_failure" }
+  });
+}
+
 async function performRequest<T>(path: string, init: ApiRequestInit = {}) {
   const method = normalizeMethod(init.method);
   const token = init.token;
@@ -148,7 +188,7 @@ async function performRequest<T>(path: string, init: ApiRequestInit = {}) {
         if (String(envelope.error?.code ?? "").includes("MODULE")) {
           dispatchApiEvent("hrm-v2-module-disabled", { code: envelope.error?.code, request_id: requestId, path });
         }
-        throw apiErrorFromEnvelope(envelope as ApiEnvelope<unknown>, response.status);
+        throw apiErrorFromEnvelope(envelope as ApiEnvelope<unknown>, response.status, "Request failed.", responseRequestId(response, requestId));
       }
       return envelope.data;
     })
@@ -156,8 +196,7 @@ async function performRequest<T>(path: string, init: ApiRequestInit = {}) {
       if (error instanceof ApiError) throw error;
       const durationMs = performance.now() - startedAt;
       recordApiRequestTiming({ method, path, status: null, durationMs, requestId, cache: "network" });
-      if (timeout.signal.aborted) throw new ApiError("Request was cancelled or timed out.", "REQUEST_ABORTED", 0);
-      throw new ApiError(error instanceof Error ? error.message : "Request failed.", "NETWORK_ERROR", 0);
+      throw classifyFetchFailure(error, requestId, timeout.signal.aborted);
     })
     .finally(() => {
       timeout.cleanup();
@@ -210,15 +249,14 @@ export async function multipartRequest<T>(path: string, body: FormData, token?: 
       if (response.status === 401 && token && typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("hrm-v2-session-expired", { detail: { code: envelope.error?.code ?? "UNAUTHENTICATED" } }));
       }
-      throw apiErrorFromEnvelope(envelope as ApiEnvelope<unknown>, response.status);
+      throw apiErrorFromEnvelope(envelope as ApiEnvelope<unknown>, response.status, "Request failed.", responseRequestId(response, requestId));
     }
 
     return envelope.data;
   } catch (error) {
     if (error instanceof ApiError) throw error;
     recordApiRequestTiming({ method: "POST", path, status: null, durationMs: performance.now() - startedAt, requestId, cache: "network" });
-    if (timeout.signal.aborted) throw new ApiError("Request was cancelled or timed out.", "REQUEST_ABORTED", 0);
-    throw new ApiError(error instanceof Error ? error.message : "Request failed.", "NETWORK_ERROR", 0);
+    throw classifyFetchFailure(error, requestId, timeout.signal.aborted);
   } finally {
     timeout.cleanup();
   }

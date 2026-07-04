@@ -1,16 +1,4 @@
-import { API_BASE_URL, ApiError } from "./apiClient";
-import { createApiRequestId, recordApiRequestTiming } from "./performance";
-
-type ApiEnvelope<T> = {
-  ok: boolean;
-  data?: T;
-  error?: {
-    code?: string;
-    message?: string;
-    validation_errors?: Array<Record<string, unknown>>;
-    field_errors?: Record<string, string[]>;
-  };
-};
+import { apiClient } from "./apiClient";
 
 export type PreparedDocumentUploadRow = {
   client_row_id: string;
@@ -62,32 +50,11 @@ export type CompleteDocumentUploadsResult = {
 };
 
 async function requestJson<T>(path: string, token: string, body: Record<string, unknown>) {
-  const requestId = createApiRequestId();
-  const startedAt = performance.now();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      "X-Request-ID": requestId
-    },
-    body: JSON.stringify(body)
+  return apiClient.post<T>(path, body, {
+    token,
+    requestLabel: "onboarding.workspace.documents.upload",
+    timeoutMs: 15000
   });
-  recordApiRequestTiming({ method: "POST", path, status: response.status, durationMs: performance.now() - startedAt, requestId, cache: "network", serverTiming: response.headers.get("Server-Timing") });
-  let envelope: ApiEnvelope<T>;
-  try {
-    envelope = (await response.json()) as ApiEnvelope<T>;
-  } catch {
-    envelope = { ok: false, error: { code: "INVALID_RESPONSE", message: "The server returned an invalid response." } };
-  }
-  if (!response.ok || !envelope.ok || !envelope.data) {
-    throw new ApiError(envelope.error?.message ?? "Document upload request failed.", envelope.error?.code ?? "DOCUMENT_UPLOAD_REQUEST_FAILED", response.status, {
-      validationErrors: envelope.error?.validation_errors ?? [],
-      fieldErrors: envelope.error?.field_errors ?? {}
-    });
-  }
-  return envelope.data;
 }
 
 export function prepareOnboardingDocumentUploads(token: string, caseId: string, rows: PreparedDocumentUploadRow[]) {

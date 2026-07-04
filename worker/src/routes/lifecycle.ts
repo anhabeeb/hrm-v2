@@ -915,6 +915,7 @@ function fastOnboardingWorkspaceSave(c: Context<AppBindings>, input: OnboardingF
   return ok(c, {
     ok: true,
     saved: true,
+    request_id: requestId,
     section: input.section,
     section_status: input.readiness === false ? "not_required" : "saved",
     readiness_refresh: readinessRefresh,

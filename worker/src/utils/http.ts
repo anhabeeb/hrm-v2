@@ -31,7 +31,10 @@ export function okCached<T>(c: Context, data: T, maxAgeSeconds = 60, etagSeed?: 
 }
 
 export function fail(c: Context, status: ContentfulStatusCode, code: string, message: string) {
-  const payload = { ok: false, error: { code, message } };
+  const requestId = c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? c.res.headers.get("X-Request-Id") ?? crypto.randomUUID();
+  c.header("X-Request-Id", requestId);
+  c.header("Cache-Control", "private, no-store");
+  const payload = { ok: false, error: { code, message, request_id: requestId } };
   c.header("X-HRM-Payload-Bytes", String(estimatePayloadBytes(payload)));
   return c.json(payload, status);
 }

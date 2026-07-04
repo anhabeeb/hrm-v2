@@ -43,6 +43,17 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "";
 }
 
+function getRequestId(error: unknown) {
+  if (!isRecord(error)) return "";
+  const direct = typeof error.requestId === "string" ? error.requestId : "";
+  const details = isRecord(error.details) && typeof error.details.request_id === "string" ? error.details.request_id : "";
+  return direct || details;
+}
+
+function withRequestId(message: string, requestId: string) {
+  return requestId ? `${message} Request ID: ${requestId}` : message;
+}
+
 export function isModuleDisabledError(error: unknown) {
   const code = getErrorCode(error).toUpperCase();
   return code.includes("MODULE_DISABLED") || code.includes("SUBMODULE_DISABLED") || code.includes("NOT_AVAILABLE") || /module.+disabled/i.test(getErrorMessage(error));
@@ -52,6 +63,7 @@ export function mapApiErrorToAlert(error: unknown, fallbackTitle = "Request fail
   const status = getErrorStatus(error);
   const code = getErrorCode(error).toUpperCase();
   const rawMessage = getErrorMessage(error);
+  const requestId = getRequestId(error);
   const fieldErrors = isRecord(error) ? error.fieldErrors : undefined;
   const validationErrors = isRecord(error) ? error.validationErrors : undefined;
   const hasValidationDetails =
@@ -128,11 +140,41 @@ export function mapApiErrorToAlert(error: unknown, fallbackTitle = "Request fail
     };
   }
 
+  if (status === 0 && (code.includes("REQUEST_ABORTED") || code.includes("TIMEOUT"))) {
+    return {
+      type: "warning",
+      title: "Save timed out",
+      message: withRequestId("Save timed out. Your data may not have been confirmed. Refresh this section before retrying.", requestId),
+      autoDismissMs: 10000,
+      dedupeKey: `timeout:${requestId || code}`
+    };
+  }
+
+  if (status === 0 && (code.includes("NETWORK") || code.includes("FETCH") || /failed to fetch/i.test(rawMessage))) {
+    return {
+      type: "error",
+      title: "Could not reach server",
+      message: withRequestId("Could not reach the server. Check connection or try again.", requestId),
+      autoDismissMs: 10000,
+      dedupeKey: `network:${requestId || code || rawMessage}`
+    };
+  }
+
+  if (code.includes("INVALID_RESPONSE")) {
+    return {
+      type: "error",
+      title: "Invalid server response",
+      message: withRequestId("Server returned an invalid response.", requestId),
+      autoDismissMs: 10000,
+      dedupeKey: `invalid-response:${requestId || rawMessage}`
+    };
+  }
+
   if (status >= 500) {
     return {
       type: "error",
       title: "Server error",
-      message: "The server could not complete the request. Please try again or contact your administrator.",
+      message: withRequestId("The server could not complete the request. Please try again or contact your administrator.", requestId),
       autoDismissMs: 10000,
       dedupeKey: `server:${status}:${code}`
     };
@@ -141,7 +183,7 @@ export function mapApiErrorToAlert(error: unknown, fallbackTitle = "Request fail
   return {
     type: "error",
     title: fallbackTitle,
-    message: sanitizeAlertMessage(rawMessage),
+    message: withRequestId(sanitizeAlertMessage(rawMessage), requestId),
     autoDismissMs: 9000,
     dedupeKey: `error:${status}:${code}:${rawMessage}`
   };

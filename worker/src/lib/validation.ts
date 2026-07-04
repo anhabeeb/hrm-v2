@@ -17,6 +17,7 @@ export function validationIssue(code: string, field: string | undefined, message
 }
 
 export function validationResponse(c: Context<AppBindings>, issues: ValidationIssue[], status: 400 | 409 | 423 = 400) {
+  const requestId = c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? c.res.headers.get("X-Request-Id") ?? crypto.randomUUID();
   const fieldErrors = issues
     .filter((issue) => issue.severity === "error" && issue.field)
     .reduce<Record<string, string[]>>((acc, issue) => {
@@ -30,11 +31,14 @@ export function validationResponse(c: Context<AppBindings>, issues: ValidationIs
   const safeDetails = issues.some((issue) => issue.details)
     ? { issues_with_details: issues.filter((issue) => issue.details).map((issue) => ({ code: issue.code, field: issue.field, details: issue.details })) }
     : undefined;
+  c.header("X-Request-Id", requestId);
+  c.header("Cache-Control", "private, no-store");
   return c.json({
     ok: false,
     error: {
       code: "VALIDATION_ERROR",
       message: issues.find((issue) => issue.severity === "error")?.message ?? "Please review the highlighted validation messages.",
+      request_id: requestId,
       validation_errors: issues,
       field_errors: fieldErrors,
       action_errors: actionErrors,
