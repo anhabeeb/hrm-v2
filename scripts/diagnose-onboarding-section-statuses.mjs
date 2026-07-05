@@ -6,6 +6,9 @@ const reportPath = path.join(root, "docs", "production", "onboarding-section-sta
 const schemaPath = path.join(root, "database", "schema.sql");
 const registryPath = path.join(root, "worker", "src", "onboarding", "section-status-registry.ts");
 const helperPath = path.join(root, "worker", "src", "onboarding", "section-status.ts");
+const evaluatorPath = path.join(root, "worker", "src", "onboarding", "section-evaluators.ts");
+const lifecyclePath = path.join(root, "worker", "src", "routes", "lifecycle.ts");
+const frontendPath = path.join(root, "frontend", "src", "pages", "LifecyclePage.tsx");
 
 function read(filePath) {
   return fs.readFileSync(filePath, "utf8");
@@ -23,6 +26,9 @@ function safeId(value) {
 const schema = read(schemaPath);
 const registry = read(registryPath);
 const helpers = read(helperPath);
+const evaluators = read(evaluatorPath);
+const lifecycle = read(lifecyclePath);
+const frontend = read(frontendPath);
 const keys = sectionKeys(registry);
 const requiredKeys = [
   "employee_info",
@@ -53,7 +59,12 @@ const lines = [
   `- Table present in schema: ${schema.includes("CREATE TABLE IF NOT EXISTS onboarding_setup_section_statuses") ? "PASS" : "FAIL"}`,
   `- Unique case/section protection: ${schema.includes("UNIQUE (case_id, section_key)") ? "PASS" : "FAIL"}`,
   `- Helper module present: ${helpers.includes("aggregateOnboardingReadinessFromSections") && helpers.includes("markOnboardingSectionStale") ? "PASS" : "FAIL"}`,
+  `- Section-scoped evaluator present: ${evaluators.includes("evaluateOnboardingSectionStatusesForKeys") ? "PASS" : "FAIL"}`,
+  `- Save integration helper present: ${lifecycle.includes("updateOnboardingSectionStatusAfterSave") ? "PASS" : "FAIL"}`,
+  `- Save response payload present: ${lifecycle.includes("section_status_update") ? "PASS" : "FAIL"}`,
+  `- Frontend applies save payload: ${frontend.includes("applySectionStatusUpdatePayload") ? "PASS" : "FAIL"}`,
   `- Registry section count: ${keys.length}`,
+  `- Expected section list: ${keys.join(", ")}`,
   `- Missing registry sections: ${missingRegistryKeys.length ? missingRegistryKeys.join(", ") : "none"}`,
   "",
   "## Runtime Case Inspection",
@@ -78,8 +89,13 @@ if (!caseId) {
     "",
     "```sql",
     `SELECT section_key, section_label, status, is_required, is_complete, is_verified, is_stale, status_reason_code, updated_at FROM onboarding_setup_section_statuses WHERE case_id = '${caseId}' ORDER BY section_key;`,
+    `SELECT section_key, status, last_saved_at, last_evaluated_at, updated_at FROM onboarding_setup_section_statuses WHERE case_id = '${caseId}' ORDER BY updated_at DESC;`,
     `SELECT section_key, COUNT(*) AS duplicate_count FROM onboarding_setup_section_statuses WHERE case_id = '${caseId}' GROUP BY section_key HAVING COUNT(*) > 1;`,
     `SELECT section_key, status, status_reason_code FROM onboarding_setup_section_statuses WHERE case_id = '${caseId}' AND status IN ('stale', 'failed', 'blocked') ORDER BY section_key;`,
+    `SELECT expected.section_key FROM (${requiredKeys.map((key) => `SELECT '${key}' AS section_key`).join(" UNION ALL ")}) expected LEFT JOIN onboarding_setup_section_statuses actual ON actual.case_id = '${caseId}' AND actual.section_key = expected.section_key WHERE actual.section_key IS NULL;`,
+    `SELECT section_key, section_label, status_message, next_action FROM onboarding_setup_section_statuses WHERE case_id = '${caseId}' AND status = 'stale' ORDER BY section_key;`,
+    `SELECT section_key, section_label, status_reason_code, status_message, next_action FROM onboarding_setup_section_statuses WHERE case_id = '${caseId}' AND status = 'failed' ORDER BY section_key;`,
+    `SELECT action, entity_type, entity_id, created_at FROM audit_logs WHERE entity_id IN ('${caseId}'${employeeId ? `, '${employeeId}'` : ""}) AND action LIKE 'onboarding.%' ORDER BY created_at DESC LIMIT 25;`,
     "```",
     ""
   );
@@ -89,6 +105,8 @@ lines.push(
   "## Shadow Comparison Notes",
   "",
   "- The Phase 1 section readiness system is shadow/read-only.",
+  "- Phase 2 save integration updates only affected section statuses after successful section commits.",
+  "- Use the timestamp query to verify the latest saved/evaluated section rows after each onboarding save.",
   "- Candidate readiness from section statuses must not enable activation.",
   "- Missing setup should appear as blocked/incomplete, while failed is reserved for system/checker failures.",
   "- Do not include payroll amounts, bank account values, document numbers, file contents, passwords, tokens, or raw SQL errors in diagnostic output.",

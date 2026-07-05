@@ -223,6 +223,16 @@ export type OnboardingWorkspaceSaveResponse = {
   targeted_workspace_slices?: string[];
   readiness_updating?: boolean;
   warning?: string | null;
+  section_status_update?: {
+    mode?: "shadow" | string;
+    updated_sections?: Record<string, unknown>[];
+    stale_sections?: Record<string, unknown>[];
+    stale_section_keys?: string[];
+    readiness?: Record<string, unknown>;
+    sections?: Record<string, unknown>[];
+    warning?: string | null;
+  } | null;
+  shadow_readiness?: Record<string, unknown> | null;
   readiness?: Record<string, unknown>;
   workspace?: Record<string, unknown>;
 };

@@ -47,6 +47,17 @@ export type CompleteDocumentUploadsResult = {
   recalculation_status?: string;
   background_job_ids?: string[];
   targeted_workspace_slices?: string[];
+  section_status_update?: {
+    mode?: "shadow" | string;
+    updated_sections?: Array<Record<string, unknown>>;
+    stale_sections?: Array<Record<string, unknown>>;
+    stale_section_keys?: string[];
+    readiness?: Record<string, unknown>;
+    sections?: Array<Record<string, unknown>>;
+    warning?: string | null;
+  } | null;
+  shadow_readiness?: Record<string, unknown> | null;
+  warning?: string | null;
 };
 
 async function requestJson<T>(path: string, token: string, body: Record<string, unknown>) {

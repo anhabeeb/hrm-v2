@@ -1664,7 +1664,7 @@ function OnboardingSectionReadinessPreview({
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Badge tone={sectionPreviewStatusTone(status)}>{sectionPreviewStatusLabel(status)}</Badge>
-        <span className="text-xs text-muted-foreground">Candidate activation remains disabled in Phase 1.</span>
+        <span className="text-xs text-muted-foreground">Candidate activation remains disabled in Phase 2.</span>
       </div>
       {error ? (
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -1755,6 +1755,20 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
     void queryClient.invalidateQueries({ queryKey: queryKeys.onboarding.readiness(scope, caseId) });
     return nextReadiness;
   }
+  function applySectionStatusUpdatePayload(result: Record<string, unknown>) {
+    const update = asRow(result.section_status_update);
+    if (!Object.keys(update).length) return false;
+    const readiness = asRow(update.readiness ?? result.shadow_readiness);
+    const sections = asRows(update.sections);
+    const fallbackRows = [...asRows(update.updated_sections), ...asRows(update.stale_sections)];
+    setSectionReadinessPreview((current) => ({
+      mode: "shadow",
+      readiness: Object.keys(readiness).length ? readiness : asRow(current?.readiness),
+      sections: sections.length ? sections : fallbackRows.length ? fallbackRows : asRows(current?.sections)
+    }));
+    setSectionReadinessError(null);
+    return true;
+  }
   const loadSectionReadinessPreview = useCallback(async (rebuild = false) => {
     if (!token) return;
     const controller = new AbortController();
@@ -1787,6 +1801,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       const result = await workspaceMutation.mutateAsync({ action, slices });
       const resultWorkspace = asRow(result.workspace);
       const nextReadiness = applyReadinessPayload(result);
+      const sectionPreviewUpdated = applySectionStatusUpdatePayload(result);
       const queuedReadiness = saveResponseQueuedReadiness(result);
       const tracker = readinessRefreshTrackerFromResult(result);
       if (tracker) setReadinessRefreshJob(tracker);
@@ -1795,7 +1810,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
         setReadinessQueuedAt(Date.now());
       }
       setReadinessUpdating(queuedReadiness || readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta)));
-      void loadSectionReadinessPreview(false);
+      if (!sectionPreviewUpdated) void loadSectionReadinessPreview(false);
       alerts.showSuccess(queuedReadiness ? "Saved. Updating readiness..." : success);
       const warning = typeof result.warning === "string" ? result.warning : null;
       if (warning) alerts.showWarning(warning);
@@ -1810,6 +1825,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
             invalidateOnboardingWorkspaceSlices({ scope, caseId, slices });
             const resultWorkspace = asRow(result.workspace);
             const nextReadiness = applyReadinessPayload(result);
+            const sectionPreviewUpdated = applySectionStatusUpdatePayload(result);
             const queuedReadiness = saveResponseQueuedReadiness(result);
             const tracker = readinessRefreshTrackerFromResult(result);
             if (tracker) setReadinessRefreshJob(tracker);
@@ -1818,7 +1834,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               setReadinessQueuedAt(Date.now());
             }
             setReadinessUpdating(queuedReadiness || readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta)));
-            void loadSectionReadinessPreview(false);
+            if (!sectionPreviewUpdated) void loadSectionReadinessPreview(false);
             alerts.showSuccess(queuedReadiness ? "Saved. Updating readiness..." : success);
             const warning = typeof result.warning === "string" ? result.warning : null;
             if (warning) alerts.showWarning(warning);
@@ -1879,11 +1895,12 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       const uploaded = Number(result.uploaded_count ?? 0);
       applyWorkspacePayload(scope, caseId, result as OnboardingWorkspaceMutationResult);
       applyReadinessPayload(result as OnboardingWorkspaceMutationResult);
+      const sectionPreviewUpdated = applySectionStatusUpdatePayload(result as Record<string, unknown>);
       invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: ["documents", "document-checklist", "readiness"] });
       const tracker = readinessRefreshTrackerFromResult(result as OnboardingWorkspaceMutationResult);
       if (tracker) setReadinessRefreshJob(tracker);
       setReadinessUpdating(Boolean((result as Record<string, unknown>).readiness_updating ?? true));
-      void loadSectionReadinessPreview(false);
+      if (!sectionPreviewUpdated) void loadSectionReadinessPreview(false);
       alerts.showSuccess(uploaded === 1 ? "1 document uploaded." : `${uploaded} documents uploaded.`);
       return result;
     } catch (err) {
@@ -2171,8 +2188,9 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       {activeTab === "Job Assignment" ? <JobAssignmentWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.updateOnboardingWorkspaceJobAssignment(token!, caseId, input), "Job assignment saved.", ["job-assignment", "documents", "document-checklist", "readiness"])} /> : null}
       {activeTab === "Documents" ? <DocumentsWorkspaceForm workspace={workspace} caseId={caseId} token={token} onSave={saveDocumentBatch} onAcceleratedResult={(result) => {
         invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: ["documents", "document-checklist", "readiness"] });
+        const sectionPreviewUpdated = applySectionStatusUpdatePayload(result as Record<string, unknown>);
         setReadinessUpdating(Boolean(result.readiness_updating || result.recalculation_status === "queued"));
-        void loadSectionReadinessPreview(false);
+        if (!sectionPreviewUpdated) void loadSectionReadinessPreview(false);
         alerts.showSuccess(result.completed_count === 1 ? "1 document uploaded. Updating readiness..." : `${result.completed_count} documents uploaded. Updating readiness...`);
       }} /> : null}
       {activeTab === "Contract" ? <ContractWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceContract(token!, caseId, input), "Contract draft created.", ["contract", "readiness"])} /> : null}

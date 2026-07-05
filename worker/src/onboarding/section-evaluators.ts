@@ -413,6 +413,15 @@ async function safeEvaluate(definition: OnboardingSectionDefinition, context: Ev
 }
 
 export async function evaluateOnboardingSectionStatuses(db: D1Database, caseId: string, actorUserId?: string | null) {
+  const { definitions, context } = await createEvaluationContext(db, caseId, actorUserId ?? null);
+  const statuses = [];
+  for (const definition of definitions) {
+    statuses.push(await safeEvaluate(definition, context));
+  }
+  return { definitions, statuses };
+}
+
+async function createEvaluationContext(db: D1Database, caseId: string, actorUserId?: string | null) {
   const [caseEmployee, settings, moduleStatuses] = await Promise.all([
     getCaseEmployee(db, caseId),
     getOnboardingSettings(db),
@@ -423,9 +432,16 @@ export async function evaluateOnboardingSectionStatuses(db: D1Database, caseId: 
   }
   const definitions = getOnboardingSectionRegistry({ settings, moduleStatuses, employee: caseEmployee });
   const context: EvaluationContext = { db, caseId, actorUserId, caseEmployee, settings, moduleStatuses, definitions };
+  return { definitions, context };
+}
+
+export async function evaluateOnboardingSectionStatusesForKeys(db: D1Database, caseId: string, sectionKeys: string[], actorUserId?: string | null) {
+  const { definitions, context } = await createEvaluationContext(db, caseId, actorUserId ?? null);
+  const requestedKeys = new Set(sectionKeys.map((key) => String(key ?? "").trim()).filter(Boolean));
+  const selectedDefinitions = definitions.filter((definition) => requestedKeys.has(definition.section_key));
   const statuses = [];
-  for (const definition of definitions) {
+  for (const definition of selectedDefinitions) {
     statuses.push(await safeEvaluate(definition, context));
   }
-  return { definitions, statuses };
+  return { definitions, statuses, selected_definitions: selectedDefinitions };
 }

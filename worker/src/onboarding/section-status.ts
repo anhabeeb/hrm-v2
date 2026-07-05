@@ -7,7 +7,7 @@ import {
   type OnboardingSectionDefinition,
   type OnboardingSectionStatusValue
 } from "./section-status-registry";
-import { evaluateOnboardingSectionStatuses } from "./section-evaluators";
+import { evaluateOnboardingSectionStatuses, evaluateOnboardingSectionStatusesForKeys } from "./section-evaluators";
 
 export type OnboardingSectionStatusInput = {
   case_id: string;
@@ -404,6 +404,39 @@ export async function rebuildOnboardingSectionStatusesForCase(db: D1Database, ca
   };
 }
 
+export async function updateOnboardingSectionStatusesForKeys(db: D1Database, input: {
+  caseId: string;
+  sectionKeys: string[];
+  actorUserId?: string | null;
+}) {
+  await ensureOnboardingSectionStatusesSchema(db);
+  const uniqueKeys = Array.from(new Set(input.sectionKeys.map((key) => String(key ?? "").trim()).filter(Boolean)));
+  const evaluated = uniqueKeys.length
+    ? await evaluateOnboardingSectionStatusesForKeys(db, input.caseId, uniqueKeys, input.actorUserId ?? null)
+    : {
+        definitions: await getOnboardingSectionDefinitions(db, input.caseId),
+        statuses: []
+      };
+  for (const status of evaluated.statuses) {
+    await upsertOnboardingSectionStatus(db, {
+      ...status,
+      source_version: "section-status-phase2-save-integration",
+      last_saved_at: nowIso()
+    });
+  }
+  const rows = await getOnboardingSectionStatuses(db, input.caseId);
+  const definitions = evaluated.definitions.length ? evaluated.definitions : await getOnboardingSectionDefinitions(db, input.caseId);
+  const previewRows = composeOnboardingSectionStatusRows(definitions, rows, input.caseId);
+  const readiness = aggregateOnboardingReadinessFromSections(definitions, previewRows, input.caseId);
+  const updatedKeySet = new Set(uniqueKeys);
+  const updatedRows = previewRows.filter((row) => updatedKeySet.has(row.section_key));
+  return {
+    updated_sections: updatedRows.map(serializeOnboardingSectionStatus),
+    readiness,
+    sections: previewRows.map(serializeOnboardingSectionStatus)
+  };
+}
+
 export async function markOnboardingSectionStale(db: D1Database, input: {
   caseId: string;
   employeeId?: string | null;
@@ -457,6 +490,18 @@ export async function markOnboardingSectionStale(db: D1Database, input: {
       updated_by_user_id: input.updatedByUserId ?? null
     });
   }
+}
+
+export async function getOnboardingSectionPreviewPayload(db: D1Database, caseId: string) {
+  await ensureOnboardingSectionStatusesSchema(db);
+  const definitions = await getOnboardingSectionDefinitions(db, caseId);
+  const storedRows = await getOnboardingSectionStatuses(db, caseId);
+  const previewRows = composeOnboardingSectionStatusRows(definitions, storedRows, caseId);
+  const readiness = aggregateOnboardingReadinessFromSections(definitions, previewRows, caseId);
+  return {
+    readiness,
+    sections: previewRows.map(serializeOnboardingSectionStatus)
+  };
 }
 
 export function sanitizeSectionStatusError(error: unknown, sectionKey = "readiness") {
