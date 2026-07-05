@@ -469,8 +469,28 @@ async function optionalSettingEnabled(db: D1Database, sql: string, fallback = tr
 const ONBOARDING_WORKSPACE_OPTIONAL_SECTION_TIMEOUT_MS = 1400;
 const ONBOARDING_WORKSPACE_REQUIRED_SECTION_TIMEOUT_MS = 1800;
 const ONBOARDING_DIRECT_READINESS_TIMEOUT_MS = 2200;
-const ONBOARDING_READINESS_BACKGROUND_REFRESH_TTL_MS = 30_000;
-const onboardingReadinessRefreshInFlight = new Map<string, number>();
+const ONBOARDING_READINESS_REFRESH_RESULT_TTL_MS = 120_000;
+const ONBOARDING_READINESS_REFRESH_MAX_RUNNING_MS = 90_000;
+
+type OnboardingReadinessRefreshStatus = "queued" | "running" | "completed" | "failed";
+type OnboardingReadinessRefreshState = {
+  jobId: string;
+  caseId: string;
+  action: string;
+  status: OnboardingReadinessRefreshStatus;
+  startedAt: string;
+  startedAtMs: number;
+  updatedAt: string;
+  updatedAtMs: number;
+  completedAt?: string | null;
+  lastCalculatedAt?: string | null;
+  readinessStatus?: string | null;
+  canActivate?: boolean;
+  blockers?: unknown[];
+  errorCode?: string | null;
+  message?: string | null;
+};
+const onboardingReadinessRefreshInFlight = new Map<string, OnboardingReadinessRefreshState>();
 
 async function getOnboardingWorkspaceModuleStatuses(c: Context<AppBindings>) {
   const moduleKeys = [
@@ -634,6 +654,105 @@ function backgroundRefreshingOnboardingReadiness(label: string, row?: Record<str
     refresh_reason: "Refreshing activation readiness in the background.",
     warning_items: [{ type: "READINESS_REFRESHING", message: "Activation readiness is refreshing. The workspace remains available while this finishes." }]
   } as Awaited<ReturnType<typeof getEmployeeOnboardingReadiness>> & { refreshing: boolean };
+}
+
+function cleanupOnboardingReadinessRefreshState(caseId: string, nowMs = Date.now()) {
+  const state = onboardingReadinessRefreshInFlight.get(caseId);
+  if (!state) return null;
+  if ((state.status === "queued" || state.status === "running") && nowMs - state.startedAtMs > ONBOARDING_READINESS_REFRESH_MAX_RUNNING_MS) {
+    const failedAt = nowIso();
+    state.status = "failed";
+    state.updatedAt = failedAt;
+    state.updatedAtMs = nowMs;
+    state.completedAt = failedAt;
+    state.errorCode = "READINESS_REFRESH_TIMEOUT";
+    state.message = "Readiness refresh did not complete in time. Retry readiness refresh.";
+  }
+  if ((state.status === "completed" || state.status === "failed") && nowMs - state.updatedAtMs > ONBOARDING_READINESS_REFRESH_RESULT_TTL_MS) {
+    onboardingReadinessRefreshInFlight.delete(caseId);
+    return null;
+  }
+  return state;
+}
+
+function registerOnboardingReadinessRefreshState(caseId: string, action: string, jobId?: string | null, queuedAt?: string | null) {
+  const nowMs = Date.now();
+  const existing = cleanupOnboardingReadinessRefreshState(caseId, nowMs);
+  if (existing && isActiveOnboardingReadinessRefresh(existing)) {
+    return { state: existing, reused: true };
+  }
+  const startedAt = queuedAt ?? nowIso();
+  const parsedStartedAt = Date.parse(startedAt);
+  const state: OnboardingReadinessRefreshState = {
+    jobId: jobId ?? `onboarding_readiness_refresh_${crypto.randomUUID()}`,
+    caseId,
+    action,
+    status: "queued",
+    startedAt,
+    startedAtMs: Number.isFinite(parsedStartedAt) ? parsedStartedAt : nowMs,
+    updatedAt: startedAt,
+    updatedAtMs: nowMs,
+    message: "Activation readiness refresh is queued."
+  };
+  onboardingReadinessRefreshInFlight.set(caseId, state);
+  return { state, reused: false };
+}
+
+function isActiveOnboardingReadinessRefresh(state: OnboardingReadinessRefreshState | null | undefined) {
+  return Boolean(state && (state.status === "queued" || state.status === "running"));
+}
+
+function cachedOnboardingReadinessFromCase(row: Record<string, unknown>, state?: OnboardingReadinessRefreshState | null) {
+  if (state && isActiveOnboardingReadinessRefresh(state)) {
+    return {
+      ...backgroundRefreshingOnboardingReadiness("Activation readiness", row),
+      refresh_job_id: state.jobId,
+      refresh_status: state.status,
+      last_calculated_at: optionalText(row.updated_at ?? row.created_at),
+      can_activate: false
+    };
+  }
+  if (state?.status === "failed") {
+    return {
+      ...failedOnboardingReadiness("Activation readiness", new Error(state.message ?? "Readiness refresh failed."), row),
+      refresh_job_id: state.jobId,
+      refresh_status: "failed",
+      can_activate: false
+    };
+  }
+  const blockers = parseJsonArrayField(row.blockers_json);
+  const activationStatus = String(row.activation_status ?? "").toUpperCase();
+  const canActivate = ["READY", "APPROVED", "ACTIVATED", "OVERRIDDEN"].includes(activationStatus) && blockers.length === 0;
+  const status = canActivate ? "ready" : "blocked";
+  return {
+    can_activate: canActivate,
+    status,
+    readiness_status: status,
+    is_stale: false,
+    refreshing: false,
+    last_calculated_at: optionalText(row.updated_at ?? row.created_at),
+    refresh_job_id: state?.jobId ?? null,
+    refresh_status: state?.status === "completed" ? "completed" : "succeeded",
+    reason: canActivate ? "Ready for activation." : "Blocked by onboarding requirements.",
+    blockers,
+    blocking_items: blockers
+  };
+}
+
+function onboardingReadinessRefreshPayload(state: OnboardingReadinessRefreshState | null, caseId: string, row?: Record<string, unknown> | null) {
+  const lastCalculatedAt = state?.lastCalculatedAt ?? optionalText(row?.updated_at ?? row?.created_at);
+  return {
+    status: state?.status ?? "completed",
+    job_id: state?.jobId ?? null,
+    case_id: caseId,
+    started_at: state?.startedAt ?? null,
+    completed_at: state?.completedAt ?? null,
+    last_calculated_at: lastCalculatedAt,
+    poll_after_ms: 1500,
+    retry_allowed: !state || state.status === "failed" || state.status === "completed",
+    message: state?.message ?? null,
+    error_code: state?.errorCode ?? null
+  };
 }
 
 async function loadRequiredOnboardingWorkspaceSection<T>(
@@ -893,21 +1012,59 @@ function runLifecycleBackgroundTask(c: Context<AppBindings>, task: Promise<unkno
 }
 
 function queueOnboardingReadinessRefresh(c: Context<AppBindings>, caseId: string, action: string) {
-  const nowMs = Date.now();
-  const lastQueuedAt = onboardingReadinessRefreshInFlight.get(caseId);
-  if (lastQueuedAt && nowMs - lastQueuedAt < ONBOARDING_READINESS_BACKGROUND_REFRESH_TTL_MS) {
-    return { queued: false, reason: "recently_queued" };
-  }
-  onboardingReadinessRefreshInFlight.set(caseId, nowMs);
+  const registered = registerOnboardingReadinessRefreshState(caseId, action);
+  const state = registered.state;
+  if (registered.reused) return { queued: false, reason: "already_queued", state };
   const task = (async () => {
     try {
-      await refreshWorkspaceReadiness(c, caseId, undefined, action);
-    } finally {
-      onboardingReadinessRefreshInFlight.delete(caseId);
+      const runningAt = nowIso();
+      state.status = "running";
+      state.updatedAt = runningAt;
+      state.updatedAtMs = Date.now();
+      state.message = "Activation readiness refresh is running.";
+      const readiness = await refreshWorkspaceReadiness(c, caseId, undefined, action);
+      const completedAt = nowIso();
+      state.status = "completed";
+      state.completedAt = completedAt;
+      state.updatedAt = completedAt;
+      state.updatedAtMs = Date.now();
+      state.lastCalculatedAt = optionalText(readiness?.last_calculated_at) ?? completedAt;
+      state.readinessStatus = optionalText(readiness?.status ?? readiness?.readiness_status) ?? "completed";
+      state.canActivate = Boolean(readiness?.can_activate);
+      state.blockers = Array.isArray(readiness?.blocking_items) ? readiness.blocking_items : Array.isArray(readiness?.blockers) ? readiness.blockers : [];
+      state.message = `Readiness refresh completed with ${state.readinessStatus} state.`;
+    } catch (error) {
+      const failedAt = nowIso();
+      state.status = "failed";
+      state.completedAt = failedAt;
+      state.updatedAt = failedAt;
+      state.updatedAtMs = Date.now();
+      state.errorCode = "READINESS_REFRESH_FAILED";
+      state.message = "Readiness refresh failed. Retry readiness refresh.";
+      try {
+        await safeEmitAppEvent(c.env.DB, {
+          eventType: "onboarding.readiness.updated",
+          moduleKey: "onboarding",
+          entityType: "onboarding_case",
+          entityId: caseId,
+          visibility: "COMPANY",
+          createdByUserId: c.get("currentUser").id,
+          payload: {
+            onboarding_case_id: caseId,
+            status: "failed",
+            safe_label: "Onboarding readiness refresh failed"
+          },
+          queryKeys: ["onboarding.workspace", "onboarding.readiness"],
+          dedupeKey: `onboarding.readiness.failed:${caseId}:${state.jobId}`
+        });
+      } catch {
+        // Readiness failure events are best-effort; the refresh state still records failure for polling.
+      }
+      throw error;
     }
   })();
   runLifecycleBackgroundTask(c, task, action, { case_id: caseId });
-  return { queued: true, reason: "queued" };
+  return { queued: true, reason: "queued", state };
 }
 
 type OnboardingFastSaveInput = {
@@ -1219,6 +1376,14 @@ function scheduleOnboardingPostSaveRefresh(c: Context<AppBindings>, input: Onboa
   if (input.readiness !== false) {
     logOnboardingSaveStage(c, "readiness_refresh_queued", { caseId: input.caseId, section: input.section });
     runLifecycleBackgroundTask(c, (async () => {
+      const refreshState = cleanupOnboardingReadinessRefreshState(input.caseId);
+      if (refreshState && refreshState.jobId === readinessRefresh.job_id) {
+        const runningAt = nowIso();
+        refreshState.status = "running";
+        refreshState.updatedAt = runningAt;
+        refreshState.updatedAtMs = Date.now();
+        refreshState.message = "Readiness refresh is running.";
+      }
       await updateOnboardingSaveReadinessStatus(c, { requestId, idempotencyKey, status: "running", message: "Readiness refresh is running.", started: true });
       try {
         if (input.event) await emitOnboardingWorkspaceEvent(c, input.event).catch((error) => {
@@ -1232,8 +1397,29 @@ function scheduleOnboardingPostSaveRefresh(c: Context<AppBindings>, input: Onboa
           }));
         });
         const readiness = await refreshWorkspaceReadiness(c, input.caseId, input.taskKey ?? undefined, input.action ?? undefined);
+        if (refreshState && refreshState.jobId === readinessRefresh.job_id) {
+          const completedAt = nowIso();
+          refreshState.status = "completed";
+          refreshState.completedAt = completedAt;
+          refreshState.updatedAt = completedAt;
+          refreshState.updatedAtMs = Date.now();
+          refreshState.lastCalculatedAt = optionalText(readiness?.last_calculated_at) ?? completedAt;
+          refreshState.readinessStatus = optionalText(readiness?.status ?? readiness?.readiness_status) ?? "completed";
+          refreshState.canActivate = Boolean(readiness?.can_activate);
+          refreshState.blockers = Array.isArray(readiness?.blocking_items) ? readiness.blocking_items : Array.isArray(readiness?.blockers) ? readiness.blockers : [];
+          refreshState.message = `Readiness refresh completed with ${refreshState.readinessStatus} state.`;
+        }
         await updateOnboardingSaveReadinessStatus(c, { requestId, idempotencyKey, status: "succeeded", message: `Readiness refresh completed with ${String(readiness?.status ?? "unknown")} state.`, completed: true });
       } catch (error) {
+        if (refreshState && refreshState.jobId === readinessRefresh.job_id) {
+          const failedAt = nowIso();
+          refreshState.status = "failed";
+          refreshState.completedAt = failedAt;
+          refreshState.updatedAt = failedAt;
+          refreshState.updatedAtMs = Date.now();
+          refreshState.errorCode = "READINESS_REFRESH_FAILED";
+          refreshState.message = "Readiness refresh failed. Retry readiness refresh.";
+        }
         await updateOnboardingSaveReadinessStatus(c, { requestId, idempotencyKey, status: "failed", message: "Readiness refresh failed. Retry readiness refresh.", completed: true });
         throw error;
       }
@@ -1257,6 +1443,19 @@ async function fastOnboardingWorkspaceSave(c: Context<AppBindings>, input: Onboa
   const idempotencyKey = onboardingIdempotencyKey(c);
   const startedAt = Date.now();
   const readinessRefresh = buildOnboardingPostSaveRefresh(input);
+  if (input.readiness !== false) {
+    const readinessRefreshRecord = readinessRefresh as Record<string, unknown>;
+    const registered = registerOnboardingReadinessRefreshState(
+      input.caseId,
+      input.action ?? "onboarding.workspace.save_background_refresh",
+      typeof readinessRefreshRecord.job_id === "string" ? readinessRefreshRecord.job_id : null,
+      typeof readinessRefreshRecord.queued_at === "string" ? readinessRefreshRecord.queued_at : null
+    );
+    readinessRefreshRecord.status = registered.reused ? "already_queued" : "queued";
+    readinessRefreshRecord.job_id = registered.state.jobId;
+    readinessRefreshRecord.started_at = registered.state.startedAt;
+    readinessRefreshRecord.poll_after_ms = 1500;
+  }
   const responseData = {
     ok: true,
     saved: true,
@@ -1707,7 +1906,7 @@ async function loadOnboardingWorkspace(c: Context<AppBindings>, caseId: string) 
     final_settlement: workspaceSectionState(moduleStatuses.final_settlement ? "NOT_REQUIRED" : "DISABLED", "Final settlement", moduleStatuses.final_settlement ? "Final settlement is an offboarding-only section and is not required for onboarding." : "Final settlement is disabled or not required for onboarding.", "final_settlement")
   };
   if (readinessSection.state.status === "STALE") {
-    runLifecycleBackgroundTask(c, refreshWorkspaceReadiness(c, caseId, undefined, "onboarding.workspace.readiness_stale_refresh"), "onboarding.workspace.readiness_stale_refresh", { case_id: caseId });
+    queueOnboardingReadinessRefresh(c, caseId, "onboarding.workspace.readiness_stale_refresh");
   }
   return {
     case: gate.row,
@@ -4238,13 +4437,16 @@ onboardingRoutes.post("/cases/:caseId/refresh-readiness", requireAnyPermission([
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
   const queued = queueOnboardingReadinessRefresh(c, caseId, "onboarding.workspace.readiness_manual_retry");
-  const readiness = backgroundRefreshingOnboardingReadiness("Activation readiness", gate.row);
+  const state = queued.state ?? cleanupOnboardingReadinessRefreshState(caseId);
+  const readiness = cachedOnboardingReadinessFromCase(gate.row, state);
+  const refresh = onboardingReadinessRefreshPayload(state, caseId, gate.row);
   return ok(c, {
     refreshed: false,
     queued: queued.queued,
     readiness,
     readiness_refresh: {
-      status: queued.queued ? "queued" : "already_queued",
+      ...refresh,
+      status: queued.queued ? "queued" : state?.status === "running" ? "running" : "already_queued",
       reason: queued.reason,
       message: queued.queued ? "Activation readiness is refreshing in the background." : "Activation readiness refresh is already running."
     },
@@ -4288,6 +4490,25 @@ onboardingRoutes.get("/cases/:caseId/tasks", requireAnyPermission(["onboarding.t
   return ok(c, { checklist: await getOnboardingChecklistStatus(c, c.req.param("caseId")) });
 });
 onboardingRoutes.post("/cases/:caseId/tasks/refresh", requireAnyPermission(["onboarding.tasks.manage"]), async (c) => ok(c, { checklist: await refreshOnboardingChecklist(c, c.req.param("caseId")) }));
+onboardingRoutes.get("/cases/:caseId/readiness-status", requireAnyPermission(["onboarding.activation.view", "onboarding.cases.view", "employees.lifecycle.view", "employees.view"]), async (c) => {
+  const caseId = c.req.param("caseId");
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  c.header("Cache-Control", "private, no-store");
+  const state = cleanupOnboardingReadinessRefreshState(caseId);
+  const readiness = cachedOnboardingReadinessFromCase(gate.row, state);
+  const refresh = onboardingReadinessRefreshPayload(state, caseId, gate.row);
+  return ok(c, {
+    readiness,
+    readiness_refresh: refresh,
+    can_activate: Boolean(readiness.can_activate),
+    blockers: Array.isArray(readiness.blocking_items) ? readiness.blocking_items : Array.isArray(readiness.blockers) ? readiness.blockers : [],
+    last_calculated_at: readiness.last_calculated_at ?? refresh.last_calculated_at,
+    is_stale: Boolean(readiness.is_stale),
+    active_refresh_job_id: isActiveOnboardingReadinessRefresh(state) ? state?.jobId ?? null : null,
+    active_refresh_status: state?.status ?? null
+  });
+});
 onboardingRoutes.get("/cases/:caseId/readiness", requireAnyPermission(["onboarding.activation.view", "onboarding.cases.view", "employees.lifecycle.view", "employees.view"]), async (c) => {
   const caseId = c.req.param("caseId");
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
@@ -4305,10 +4526,12 @@ onboardingRoutes.get("/cases/:caseId/readiness", requireAnyPermission(["onboardi
   }
 
   const queued = queueOnboardingReadinessRefresh(c, caseId, "onboarding.readiness.direct_background_refresh");
+  const state = queued.state ?? cleanupOnboardingReadinessRefreshState(caseId);
   return ok(c, {
-    readiness: backgroundRefreshingOnboardingReadiness("Activation readiness", gate.row),
+    readiness: cachedOnboardingReadinessFromCase(gate.row, state),
     refresh: {
-      status: queued.queued ? "queued" : "already_queued",
+      ...onboardingReadinessRefreshPayload(state, caseId, gate.row),
+      status: queued.queued ? "queued" : state?.status === "running" ? "running" : "already_queued",
       reason: queued.reason,
       message: queued.queued ? "Activation readiness is refreshing in the background." : "Activation readiness refresh is already running."
     }

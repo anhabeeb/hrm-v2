@@ -227,6 +227,27 @@ export type OnboardingWorkspaceSaveResponse = {
   workspace?: Record<string, unknown>;
 };
 
+export type OnboardingReadinessStatusResponse = {
+  readiness: Record<string, unknown>;
+  readiness_refresh?: {
+    status?: "queued" | "already_queued" | "running" | "completed" | "failed" | string;
+    job_id?: string | null;
+    case_id?: string | null;
+    started_at?: string | null;
+    completed_at?: string | null;
+    last_calculated_at?: string | null;
+    poll_after_ms?: number | null;
+    retry_allowed?: boolean;
+    message?: string | null;
+  } | null;
+  can_activate?: boolean;
+  blockers?: unknown[];
+  last_calculated_at?: string | null;
+  is_stale?: boolean;
+  active_refresh_job_id?: string | null;
+  active_refresh_status?: string | null;
+};
+
 export type OnboardingWorkspaceSaveStatusResponse = {
   committed: boolean;
   retryable: boolean;
@@ -985,6 +1006,9 @@ export const api = {
   },
   refreshOnboardingWorkspaceReadiness(token: string, caseId: string) {
     return request<{ refreshed: boolean; queued?: boolean; readiness: Record<string, unknown>; workspace?: Record<string, unknown>; readiness_refresh?: Record<string, unknown>; readiness_updating?: boolean; targeted_workspace_slices?: string[] }>(`/api/v1/onboarding/cases/${caseId}/refresh-readiness`, { method: "POST" }, token);
+  },
+  getOnboardingReadinessStatus(token: string, caseId: string, params?: { job_id?: string | null }) {
+    return request<OnboardingReadinessStatusResponse>(`/api/v1/onboarding/cases/${caseId}/readiness-status${query(params)}`, { requestLabel: "onboarding.readiness-status", dedupe: false }, token);
   },
   completeOnboardingWorkspace(token: string, caseId: string) {
     return request<{ workspace?: Record<string, unknown>; submitted?: boolean; approval?: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/complete`, { method: "POST" }, token);

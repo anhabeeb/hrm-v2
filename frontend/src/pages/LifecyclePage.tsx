@@ -34,6 +34,7 @@ import { ApiError, api } from "../lib/api";
 import type { CompleteDocumentUploadsResult } from "../lib/documentUploadApi";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateField, validateRequiredField } from "../lib/form-validation";
 import { sectionNeedsRetry, sectionStatusLabel, type ModuleSectionState } from "../lib/moduleSectionLoading";
+import { queryClient } from "../lib/queryClient";
 import { queryKeys } from "../lib/queryKeys";
 import { applyWorkspacePayload, invalidateOnboardingWorkspaceSlices, workspaceScope, type WorkspaceSlice } from "../lib/workspaceInvalidation";
 import type { Employee } from "../types/employees";
@@ -1520,7 +1521,27 @@ function readinessRefreshMessage(readiness: Row) {
 
 function saveResponseQueuedReadiness(result: OnboardingWorkspaceMutationResult) {
   const refresh = asRow(result.readiness_refresh);
-  return String(refresh.status ?? "").toLowerCase() === "queued" || boolValue(result.readiness_updating);
+  const status = String(refresh.status ?? "").toLowerCase();
+  return ["queued", "already_queued", "running", "refreshing"].includes(status) || boolValue(result.readiness_updating);
+}
+
+type ReadinessRefreshTracker = {
+  jobId: string | null;
+  status: string;
+  startedAt: string | null;
+  pollAfterMs: number;
+};
+
+function readinessRefreshTrackerFromResult(result: OnboardingWorkspaceMutationResult): ReadinessRefreshTracker | null {
+  const refresh = asRow(result.readiness_refresh);
+  const status = String(refresh.status ?? "").toLowerCase();
+  if (!["queued", "already_queued", "running", "refreshing"].includes(status)) return null;
+  return {
+    jobId: typeof refresh.job_id === "string" ? refresh.job_id : null,
+    status,
+    startedAt: typeof refresh.started_at === "string" ? refresh.started_at : null,
+    pollAfterMs: Math.max(1000, Math.min(5000, Number(refresh.poll_after_ms ?? 1500) || 1500))
+  };
 }
 
 function isOnboardingSaveTimeoutError(error: unknown): error is ApiError {
@@ -1536,6 +1557,8 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const [readinessPendingConfirmation, setReadinessPendingConfirmation] = useState(false);
   const [readinessQueuedAt, setReadinessQueuedAt] = useState<number | null>(null);
   const [readinessRetrying, setReadinessRetrying] = useState(false);
+  const [readinessRefreshJob, setReadinessRefreshJob] = useState<ReadinessRefreshTracker | null>(null);
+  const [readinessOverride, setReadinessOverride] = useState<Row | null>(null);
   const scope = useMemo(() => workspaceScope(token, user), [token, user]);
   const workspaceMutation = useWorkspaceMutation<OnboardingWorkspaceMutationResult, { action: () => Promise<unknown>; slices: WorkspaceSlice[] }>({
     mutationFn: async (variables) => variables.action() as Promise<OnboardingWorkspaceMutationResult>,
@@ -1544,13 +1567,36 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: variables.slices });
     }
   });
+  function applyReadinessPayload(result: OnboardingWorkspaceMutationResult) {
+    const resultWorkspace = asRow(result.workspace);
+    const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
+    if (!Object.keys(nextReadiness).length) return nextReadiness;
+    setReadinessOverride(nextReadiness);
+    queryClient.setQueryData(queryKeys.onboarding.workspace(scope, caseId), (current: unknown) => {
+      const currentRow = asRow(current);
+      if (!Object.keys(currentRow).length) return current;
+      const currentMeta = asRow(currentRow.workspace_meta);
+      return {
+        ...currentRow,
+        readiness: nextReadiness,
+        workspace_meta: {
+          ...currentMeta,
+          refreshing: readinessRefreshIsActive(nextReadiness, currentMeta)
+        }
+      };
+    });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.onboarding.readiness(scope, caseId) });
+    return nextReadiness;
+  }
   async function save(action: () => Promise<unknown>, success: string, slices: WorkspaceSlice[]) {
     if (!token) return;
     try {
       const result = await workspaceMutation.mutateAsync({ action, slices });
       const resultWorkspace = asRow(result.workspace);
-      const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
+      const nextReadiness = applyReadinessPayload(result);
       const queuedReadiness = saveResponseQueuedReadiness(result);
+      const tracker = readinessRefreshTrackerFromResult(result);
+      if (tracker) setReadinessRefreshJob(tracker);
       if (queuedReadiness) {
         setReadinessPendingConfirmation(true);
         setReadinessQueuedAt(Date.now());
@@ -1569,8 +1615,10 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
             applyWorkspacePayload(scope, caseId, result);
             invalidateOnboardingWorkspaceSlices({ scope, caseId, slices });
             const resultWorkspace = asRow(result.workspace);
-            const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
+            const nextReadiness = applyReadinessPayload(result);
             const queuedReadiness = saveResponseQueuedReadiness(result);
+            const tracker = readinessRefreshTrackerFromResult(result);
+            if (tracker) setReadinessRefreshJob(tracker);
             if (queuedReadiness) {
               setReadinessPendingConfirmation(true);
               setReadinessQueuedAt(Date.now());
@@ -1593,6 +1641,9 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   }
   async function refreshReadiness(showSuccess = false) {
     if (!token) return;
+    if (readinessRetrying || readinessRefreshJob) {
+      return;
+    }
     setReadinessRetrying(true);
     setReadinessUpdating(true);
     try {
@@ -1601,8 +1652,10 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
         slices: ["readiness", "document-checklist"]
       });
       const resultWorkspace = asRow(result.workspace);
-      const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
+      const nextReadiness = applyReadinessPayload(result);
       const queuedReadiness = saveResponseQueuedReadiness(result) || boolValue(result.queued);
+      const tracker = readinessRefreshTrackerFromResult(result);
+      if (tracker) setReadinessRefreshJob(tracker);
       const stillRefreshing = queuedReadiness || readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta));
       if (queuedReadiness) {
         setReadinessPendingConfirmation(true);
@@ -1612,11 +1665,13 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       if (!stillRefreshing) {
         setReadinessPendingConfirmation(false);
         setReadinessQueuedAt(null);
+        setReadinessRefreshJob(null);
       }
       if (showSuccess && !stillRefreshing) alerts.showSuccess("Readiness refreshed.");
       else if (queuedReadiness) alerts.showInfo("Readiness refresh started", "Activation stays disabled until readiness is confirmed.");
     } catch (err) {
       setReadinessUpdating(false);
+      setReadinessRefreshJob(null);
       alerts.showApiError(err, "Readiness refresh failed. Retry.");
     } finally {
       setReadinessRetrying(false);
@@ -1628,7 +1683,10 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       const result = await api.uploadOnboardingWorkspaceDocumentBatch(token, caseId, form);
       const uploaded = Number(result.uploaded_count ?? 0);
       applyWorkspacePayload(scope, caseId, result as OnboardingWorkspaceMutationResult);
+      applyReadinessPayload(result as OnboardingWorkspaceMutationResult);
       invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: ["documents", "document-checklist", "readiness"] });
+      const tracker = readinessRefreshTrackerFromResult(result as OnboardingWorkspaceMutationResult);
+      if (tracker) setReadinessRefreshJob(tracker);
       setReadinessUpdating(Boolean((result as Record<string, unknown>).readiness_updating ?? true));
       alerts.showSuccess(uploaded === 1 ? "1 document uploaded." : `${uploaded} documents uploaded.`);
       return result;
@@ -1649,7 +1707,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const rowCase = asRow(workspace.case);
   const employee = asRow(workspace.employee);
   const checklist = asRow(workspace.checklist);
-  const readiness = asRow(workspace.readiness);
+  const readiness = readinessOverride ?? asRow(workspace.readiness);
   const workspaceMeta = asRow(workspace.workspace_meta);
   const optionalSectionStates = asRow(asRow(workspace.sections).optional_section_states);
   const tasks = asRows(checklist.tasks);
@@ -1712,6 +1770,50 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       setReadinessQueuedAt(null);
     }
   }, [readiness.last_calculated_at, readiness.calculated_at, readiness.refreshing, readiness.status, readiness.readiness_status, readiness.refresh_status, readinessPendingConfirmation, readinessQueuedAt, workspaceMeta.refreshing]);
+  useEffect(() => {
+    if (!token || !readinessRefreshJob) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await api.getOnboardingReadinessStatus(token, caseId, { job_id: readinessRefreshJob.jobId });
+        if (cancelled) return;
+        const nextReadiness = applyReadinessPayload(result as OnboardingWorkspaceMutationResult);
+        const refresh = asRow(result.readiness_refresh);
+        const refreshStatus = String(refresh.status ?? result.active_refresh_status ?? readinessRefreshJob.status ?? "").toLowerCase();
+        const nextStatus = onboardingActivationReadinessStatus(nextReadiness);
+        const refreshActive = ["queued", "already_queued", "running", "refreshing"].includes(refreshStatus) || nextStatus === "refreshing" || Boolean(result.active_refresh_job_id);
+        if (refreshActive) {
+          setReadinessUpdating(true);
+          setReadinessPendingConfirmation(true);
+          setReadinessRefreshJob({
+            jobId: typeof refresh.job_id === "string" ? refresh.job_id : readinessRefreshJob.jobId,
+            status: refreshStatus || readinessRefreshJob.status,
+            startedAt: typeof refresh.started_at === "string" ? refresh.started_at : readinessRefreshJob.startedAt,
+            pollAfterMs: Math.max(1000, Math.min(5000, Number(refresh.poll_after_ms ?? readinessRefreshJob.pollAfterMs) || 1500))
+          });
+          return;
+        }
+        setReadinessUpdating(false);
+        setReadinessPendingConfirmation(false);
+        setReadinessQueuedAt(null);
+        setReadinessRefreshJob(null);
+        invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: ["readiness", "document-checklist"] });
+        if (nextStatus === "ready") alerts.showSuccess("Readiness confirmed.");
+        else if (nextStatus === "failed") alerts.showWarning("Readiness refresh failed. Retry.");
+        else if (nextStatus === "blocked") alerts.showInfo("Readiness confirmed", "Some onboarding requirements are still blocking activation.");
+      } catch (err) {
+        if (cancelled) return;
+        setReadinessUpdating(false);
+        setReadinessPendingConfirmation(false);
+        setReadinessRefreshJob(null);
+        alerts.showApiError(err, "Readiness refresh failed. Retry.");
+      }
+    }, readinessRefreshJob.pollAfterMs);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [token, caseId, readinessRefreshJob, scope, alerts]);
   return (
     <div className="OnboardingEmployeePopupLayout flex h-full min-h-0 flex-col overflow-hidden bg-slate-50" data-onboarding-employee-popup-layout>
       <header className="onboarding-popup-header shrink-0 border-b bg-white px-4 py-3 sm:px-5">
@@ -1785,10 +1887,10 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
             <Panel className="border-sky-200 bg-sky-50 p-3" data-onboarding-readiness-background-refresh>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-sky-950">{readinessUpdating ? "Updating readiness..." : "Readiness refresh pending"}</p>
-                  <p className="mt-1 break-words text-sm text-sky-800">Your section save is complete. Activation stays disabled until readiness is confirmed.</p>
+                  <p className="text-sm font-semibold text-sky-950">{readinessRefreshJob ? "Refreshing readiness..." : readinessUpdating ? "Using last saved readiness. Refreshing in background..." : "Readiness refresh pending"}</p>
+                  <p className="mt-1 break-words text-sm text-sky-800">{readinessRefreshJob ? "The workspace remains available while activation readiness is confirmed." : "Your section save is complete. Activation stays disabled until readiness is confirmed."}</p>
                 </div>
-                <ActionTextButton intent="refresh" size="sm" disabled={readinessRetrying} onClick={() => void refreshReadiness(false)}>Refresh readiness</ActionTextButton>
+                <ActionTextButton intent="refresh" size="sm" disabled={readinessRetrying || Boolean(readinessRefreshJob)} onClick={() => void refreshReadiness(false)}>{readinessRefreshJob ? "Refresh running" : "Refresh readiness"}</ActionTextButton>
               </div>
             </Panel>
           ) : null}
@@ -1801,10 +1903,10 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
                   {String(activeSectionIssue.section_key ?? "") === "readiness" ? <p className="mt-1 break-words text-xs text-slate-600">{readinessRefreshMessage(readiness)}</p> : null}
                 </div>
                 {sectionNeedsRetry(activeSectionIssue) ? (
-                  <ActionTextButton intent="refresh" size="sm" disabled={readinessRetrying} onClick={() => {
+                  <ActionTextButton intent="refresh" size="sm" disabled={readinessRetrying || Boolean(readinessRefreshJob)} onClick={() => {
                     if (String(activeSectionIssue.section_key ?? "") === "readiness") void refreshReadiness(false);
                     else void reload();
-                  }}>{String(activeSectionIssue.section_key ?? "") === "readiness" ? "Retry readiness" : "Retry section"}</ActionTextButton>
+                  }}>{String(activeSectionIssue.section_key ?? "") === "readiness" ? readinessRefreshJob ? "Refresh running" : "Retry readiness" : "Retry section"}</ActionTextButton>
                 ) : null}
               </div>
             </Panel>
@@ -1871,7 +1973,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <Button variant="outline" size="sm" aria-expanded={moreActionsOpen} onClick={() => setMoreActionsOpen((value) => !value)}>More actions</Button>
               {moreActionsOpen ? (
                 <div className="absolute bottom-full right-0 z-20 mb-2 w-56 rounded-md border bg-white p-1.5 shadow-lg">
-                  <ActionTextButton intent="refresh" size="sm" className="w-full justify-start" disabled={readinessRetrying} onClick={() => { setMoreActionsOpen(false); void refreshReadiness(false); }}>Refresh readiness</ActionTextButton>
+                  <ActionTextButton intent="refresh" size="sm" className="w-full justify-start" disabled={readinessRetrying || Boolean(readinessRefreshJob)} onClick={() => { setMoreActionsOpen(false); void refreshReadiness(false); }}>{readinessRefreshJob ? "Refresh running" : "Refresh readiness"}</ActionTextButton>
                   <ActionTextButton intent="submit" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted."); }}>Submit activation</ActionTextButton>
                   <ActionTextButton intent="approve" size="sm" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved."); }}>Approve activation</ActionTextButton>
                   <Button size="sm" variant="danger" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); askReason("Activate with override", (reason) => runWorkspaceAction(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason), "Employee activated with override.")); }}>Override activation</Button>

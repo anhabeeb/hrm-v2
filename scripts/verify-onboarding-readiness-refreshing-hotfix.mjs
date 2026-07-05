@@ -56,7 +56,7 @@ for (const marker of [
   "failedOnboardingReadiness",
   "workspaceWithConfirmedReadiness",
   "queueOnboardingReadinessRefresh(c, caseId, \"onboarding.workspace.readiness_manual_retry\")",
-  "backgroundRefreshingOnboardingReadiness(\"Activation readiness\", gate.row)",
+  "cachedOnboardingReadinessFromCase(gate.row, state)",
   "onboarding.workspace.readiness_stale_refresh",
   "onboarding.readiness.updated",
   "onboarding.readiness.refresh.complete",
