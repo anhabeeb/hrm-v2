@@ -4237,9 +4237,20 @@ onboardingRoutes.post("/cases/:caseId/refresh-readiness", requireAnyPermission([
   const caseId = c.req.param("caseId");
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
-  const readiness = await refreshWorkspaceReadiness(c, caseId, undefined, "onboarding.workspace.readiness_manual_retry");
-  const workspace = workspaceWithConfirmedReadiness(await loadOnboardingWorkspace(c, caseId), readiness);
-  return ok(c, { refreshed: true, readiness, workspace });
+  const queued = queueOnboardingReadinessRefresh(c, caseId, "onboarding.workspace.readiness_manual_retry");
+  const readiness = backgroundRefreshingOnboardingReadiness("Activation readiness", gate.row);
+  return ok(c, {
+    refreshed: false,
+    queued: queued.queued,
+    readiness,
+    readiness_refresh: {
+      status: queued.queued ? "queued" : "already_queued",
+      reason: queued.reason,
+      message: queued.queued ? "Activation readiness is refreshing in the background." : "Activation readiness refresh is already running."
+    },
+    readiness_updating: true,
+    targeted_workspace_slices: ["readiness", "document-checklist"]
+  });
 });
 
 onboardingRoutes.post("/cases/:caseId/complete", requireAnyPermission(["onboarding.workspace.complete", "onboarding.activation.submit", "onboarding.activation.manage"]), async (c) => {

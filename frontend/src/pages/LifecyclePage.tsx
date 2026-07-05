@@ -1602,13 +1602,19 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       });
       const resultWorkspace = asRow(result.workspace);
       const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
-      const stillRefreshing = readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta));
+      const queuedReadiness = saveResponseQueuedReadiness(result) || boolValue(result.queued);
+      const stillRefreshing = queuedReadiness || readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta));
+      if (queuedReadiness) {
+        setReadinessPendingConfirmation(true);
+        setReadinessQueuedAt(Date.now());
+      }
       setReadinessUpdating(stillRefreshing);
       if (!stillRefreshing) {
         setReadinessPendingConfirmation(false);
         setReadinessQueuedAt(null);
       }
       if (showSuccess && !stillRefreshing) alerts.showSuccess("Readiness refreshed.");
+      else if (queuedReadiness) alerts.showInfo("Readiness refresh started", "Activation stays disabled until readiness is confirmed.");
     } catch (err) {
       setReadinessUpdating(false);
       alerts.showApiError(err, "Readiness refresh failed. Retry.");

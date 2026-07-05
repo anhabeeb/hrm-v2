@@ -1,6 +1,6 @@
 # Onboarding Save Timeout Hotfix Diagnostics
 
-Generated: 2026-07-04T21:08:43.564Z
+Generated: 2026-07-05T03:50:01.115Z
 
 Result: PASS (15/15 checks passed)
 
@@ -11,7 +11,7 @@ Result: PASS (15/15 checks passed)
 | Committed status is recorded before refresh is scheduled | PASS | Save response path records the section commit before non-blocking readiness work. |
 | Idempotent replay exists | PASS | Duplicate retries can return the committed result safely. |
 | Optional event failures are isolated | PASS | App events/streams cannot block save completion. |
-| Manual readiness refresh is direct | PASS | Manual retry calculates readiness and returns confirmed workspace data. |
+| Manual readiness refresh is queued | PASS | Manual retry returns quickly and refreshes readiness in the background. |
 | Activation remains server validated | PASS | Activation does not rely on stale frontend state. |
 | Frontend save-status API exists | PASS | Timed-out saves can be checked by request id. |
 | Frontend timeout reconciliation exists | PASS | The popup checks committed status before asking for retry. |

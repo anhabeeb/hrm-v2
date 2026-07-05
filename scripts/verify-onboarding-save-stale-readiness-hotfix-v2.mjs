@@ -76,7 +76,9 @@ assert(lifecyclePage.includes("Saved. Updating readiness..."), "frontend does no
 assert(lifecyclePage.includes("readinessPendingConfirmation"), "activation guard while readiness is pending is missing");
 
 const refreshRoute = span(lifecycle, 'onboardingRoutes.post("/cases/:caseId/refresh-readiness"', 'onboardingRoutes.post("/cases/:caseId/complete"');
-assert(refreshRoute.includes("refreshWorkspaceReadiness") && refreshRoute.includes("workspaceWithConfirmedReadiness"), "manual readiness refresh is not direct/bounded");
+assert(refreshRoute.includes("queueOnboardingReadinessRefresh") && refreshRoute.includes("backgroundRefreshingOnboardingReadiness"), "manual readiness refresh does not queue a background refresh");
+assert(refreshRoute.includes("readiness_updating: true") && refreshRoute.includes('status: queued.queued ? "queued" : "already_queued"'), "manual readiness refresh does not return a queued/updating response");
+assert(!refreshRoute.includes("refreshWorkspaceReadiness") && !refreshRoute.includes("loadOnboardingWorkspace") && !refreshRoute.includes("workspaceWithConfirmedReadiness"), "manual readiness refresh still waits for direct readiness/workspace reload");
 const completeRoute = span(lifecycle, 'onboardingRoutes.post("/cases/:caseId/complete"', 'onboardingRoutes.get("/cases/:caseId"');
 assert(completeRoute.includes("getEmployeeOnboardingReadiness") && completeRoute.includes("ONBOARDING_WORKSPACE_NOT_READY"), "activation submission no longer validates server-side readiness");
 const activateRoute = span(lifecycle, 'onboardingRoutes.post("/cases/:caseId/activate"', 'onboardingRoutes.post("/cases/:caseId/activate-with-override"');

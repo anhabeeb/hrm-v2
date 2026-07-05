@@ -55,6 +55,8 @@ for (const marker of [
   "deferredOnboardingReadiness(\"Activation readiness\", gate.row)",
   "failedOnboardingReadiness",
   "workspaceWithConfirmedReadiness",
+  "queueOnboardingReadinessRefresh(c, caseId, \"onboarding.workspace.readiness_manual_retry\")",
+  "backgroundRefreshingOnboardingReadiness(\"Activation readiness\", gate.row)",
   "onboarding.workspace.readiness_stale_refresh",
   "onboarding.readiness.updated",
   "onboarding.readiness.refresh.complete",
@@ -65,6 +67,12 @@ for (const marker of [
 
 check("worker/src/routes/lifecycle.ts: timeout fallback must not mark readiness as active refreshing", lifecycleRoute.includes('workspaceSectionState(readinessTimeout ? "STALE" : "DEFERRED"') && lifecycleRoute.includes("refreshing: !readinessTimeout"));
 check("worker/src/routes/lifecycle.ts: manual refresh-readiness endpoint exists", lifecycleRoute.includes('/cases/:caseId/refresh-readiness') && lifecycleRoute.includes("onboarding.workspace.readiness_manual_retry"));
+{
+  const routeStart = lifecycleRoute.indexOf('onboardingRoutes.post("/cases/:caseId/refresh-readiness"');
+  const routeEnd = lifecycleRoute.indexOf('onboardingRoutes.post("/cases/:caseId/complete"', routeStart);
+  const refreshRoute = lifecycleRoute.slice(routeStart, routeEnd);
+  check("worker/src/routes/lifecycle.ts: manual refresh-readiness queues instead of blocking", refreshRoute.includes("queueOnboardingReadinessRefresh") && refreshRoute.includes("readiness_updating: true") && !refreshRoute.includes("refreshWorkspaceReadiness") && !refreshRoute.includes("loadOnboardingWorkspace"));
+}
 check("worker/src/routes/lifecycle.ts: refresh-checklist returns readiness and confirmed workspace", lifecycleRoute.includes("onboarding.workspace.readiness_manual_refresh") && lifecycleRoute.includes("return ok(c, { refreshed: true, readiness, workspace })"));
 check("worker/src/routes/lifecycle.ts: payroll/payment/pension saves queue readiness without blocking save", lifecycleRoute.includes("onboarding.workspace.payroll_profile_saved") && lifecycleRoute.includes("onboarding.workspace.payment_method_saved") && lifecycleRoute.includes("onboarding.workspace.pension_profile_saved") && lifecycleRoute.includes("fastOnboardingWorkspaceSave") && lifecycleRoute.includes("enqueueOnboardingPostSaveRefresh") && lifecycleRoute.includes("onboarding.workspace.save_background_refresh"));
 
@@ -115,7 +123,8 @@ check("frontend/src/pages/LifecyclePage.tsx: retry is scoped and does not requir
 check("frontend/src/pages/LifecyclePage.tsx: global popup spam avoided for manual refresh", lifecyclePage.includes("refreshReadiness(showSuccess = false)") && lifecyclePage.includes("if (showSuccess && !stillRefreshing) alerts.showSuccess"));
 
 includes("frontend/src/lib/api.ts", "/refresh-readiness", "frontend API exposes manual readiness refresh endpoint");
-includes("frontend/src/lib/api.ts", "request<{ refreshed: boolean; readiness: Record<string, unknown>; workspace: Record<string, unknown> }>", "manual readiness refresh returns readiness and workspace");
+includes("frontend/src/lib/api.ts", "queued?: boolean", "manual readiness refresh exposes queued response metadata");
+includes("frontend/src/lib/api.ts", "workspace?: Record<string, unknown>", "manual readiness refresh no longer requires full workspace payload");
 
 includes("worker/src/utils/performance.ts", "private, no-store", "authenticated HR API data remains private/no-store");
 excludes("worker/src/utils/performance.ts", /Cache-Control["',\s]+public/i, "authenticated HR API data must not become public cached");

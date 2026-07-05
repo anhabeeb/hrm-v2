@@ -984,7 +984,7 @@ export const api = {
     return request<{ refreshed?: boolean; readiness?: Record<string, unknown>; workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/refresh-checklist`, { method: "POST" }, token);
   },
   refreshOnboardingWorkspaceReadiness(token: string, caseId: string) {
-    return request<{ refreshed: boolean; readiness: Record<string, unknown>; workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/refresh-readiness`, { method: "POST" }, token);
+    return request<{ refreshed: boolean; queued?: boolean; readiness: Record<string, unknown>; workspace?: Record<string, unknown>; readiness_refresh?: Record<string, unknown>; readiness_updating?: boolean; targeted_workspace_slices?: string[] }>(`/api/v1/onboarding/cases/${caseId}/refresh-readiness`, { method: "POST" }, token);
   },
   completeOnboardingWorkspace(token: string, caseId: string) {
     return request<{ workspace?: Record<string, unknown>; submitted?: boolean; approval?: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/complete`, { method: "POST" }, token);
