@@ -13,6 +13,8 @@ function check(label, condition) {
 }
 
 const lifecycle = read("worker/src/routes/lifecycle.ts");
+const backgroundJobs = read("worker/src/utils/background-jobs.ts");
+const backgroundJobRoutes = read("worker/src/routes/background-jobs.ts");
 const lifecyclePage = read("frontend/src/pages/LifecyclePage.tsx");
 const api = read("frontend/src/lib/api.ts");
 const packageJson = JSON.parse(read("package.json"));
@@ -29,6 +31,24 @@ check("backend uses four readiness progress phases", lifecycle.includes("progres
 check("backend detects stale queued/running readiness jobs", lifecycle.includes("isStaleOnboardingReadinessJob") && lifecycle.includes("heartbeat_age_ms") && lifecycle.includes("ONBOARDING_READINESS_REFRESH_MAX_RUNNING_MS"));
 check("backend recovers stale running readiness jobs as failed", lifecycle.includes("recoverStaleOnboardingReadinessJob") && lifecycle.includes("stale_running_job") && lifecycle.includes("markJobFailed(c.env.DB, job!.id"));
 check("backend active refresh payload exposes runtime/stale fields", lifecycle.includes("runtime_ms") && lifecycle.includes("heartbeat_age_ms") && lifecycle.includes("warning_after_ms") && lifecycle.includes("max_runtime_ms") && lifecycle.includes("is_stale"));
+
+const runJobByTypeBody = backgroundJobs.slice(backgroundJobs.indexOf("export async function runJobByType"), backgroundJobs.indexOf("function isQueueMessage"));
+const queueRefreshBody = lifecycle.slice(lifecycle.indexOf("async function queueOnboardingReadinessRefresh"), lifecycle.indexOf("type OnboardingFastSaveInput"));
+const durableRunnerStart = lifecycle.indexOf("export async function runOnboardingReadinessRecalculationJob");
+const durableRunnerEnd = lifecycle.indexOf('registerBackgroundJobRunner("ONBOARDING_READINESS_RECALCULATION"', durableRunnerStart);
+const durableRunnerBody = lifecycle.slice(durableRunnerStart, durableRunnerEnd);
+
+check("background runner registry exists for durable job dispatch", backgroundJobs.includes("registerBackgroundJobRunner") && lifecycle.includes('registerBackgroundJobRunner("ONBOARDING_READINESS_RECALCULATION", runOnboardingReadinessRecalculationJob)'));
+check("runJobByType explicitly handles readiness jobs", runJobByTypeBody.includes("ONBOARDING_READINESS_JOB_TYPE") && runJobByTypeBody.includes("READINESS_BACKGROUND_RUNNER_FAILED") && runJobByTypeBody.includes("BACKGROUND_JOB_RUNNERS.get(job.job_type)"));
+check("generic fallback cannot falsely succeed readiness jobs", runJobByTypeBody.indexOf("if (job.job_type === ONBOARDING_READINESS_JOB_TYPE)") > -1 && runJobByTypeBody.indexOf("if (job.job_type === ONBOARDING_READINESS_JOB_TYPE)") < runJobByTypeBody.indexOf("await markJobRunning(db, job.id, \"Running background job.\")"));
+check("durable runner calculates real readiness before success", durableRunnerBody.includes("refreshWorkspaceReadiness(internalContext") && durableRunnerBody.includes("markJobSucceeded(env.DB, job.id") && durableRunnerBody.indexOf("refreshWorkspaceReadiness(internalContext") < durableRunnerBody.indexOf("markJobSucceeded(env.DB, job.id"));
+check("readiness runner is independent of live Hono request context", durableRunnerBody.includes("env: Env") && durableRunnerBody.includes("internalLifecycleContext(env, actor, requestId)") && !durableRunnerBody.includes("c.req") && !durableRunnerBody.includes("c.get(\"currentUser\")"));
+check("readiness job dedupe key is stable per case", queueRefreshBody.includes("const dedupeKey = `onboarding_readiness:${caseId}`") && !/dedupeKey:\s*`onboarding_readiness:\$\{caseId\}:\$\{state\.jobId\}/.test(lifecycle));
+check("readiness D1 active dedupe recovers stale jobs", backgroundJobs.includes("WHERE dedupe_key = ?") && backgroundJobs.includes("status IN ('QUEUED', 'RUNNING', 'RETRYING')") && backgroundJobs.includes("recoverStaleOnboardingReadinessBackgroundJob(db, existing"));
+check("queue consumer runs real readiness recalculation", backgroundJobs.includes("runQueuedBackgroundJobMessage") && backgroundJobs.includes("runJobByType(env, claimed)") && backgroundJobs.includes("recoverStaleOnboardingReadinessBackgroundJob(env.DB, existing"));
+check("scheduled D1 fallback runs real readiness recalculation", backgroundJobs.includes("runScheduledBackgroundJobs") && backgroundJobs.includes("await runJobByType(env, job)"));
+check("save path starts D1 fallback with durable runner only after commit", lifecycle.includes("startOnboardingReadinessJobFallback") && lifecycle.includes("d1_fallback_after_save_commit") && lifecycle.includes("dispatchImmediately?: boolean"));
+check("background job list/detail recover stale readiness jobs", backgroundJobRoutes.includes("recoverStaleOnboardingReadinessBackgroundJobs") && backgroundJobRoutes.includes("recoverStaleOnboardingReadinessBackgroundJob"));
 
 const failureCodes = [
   "READINESS_JOB_TIMEOUT",

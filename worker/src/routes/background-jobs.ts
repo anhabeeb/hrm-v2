@@ -9,6 +9,8 @@ import {
   getJob,
   jobToApi,
   listJobs,
+  recoverStaleOnboardingReadinessBackgroundJob,
+  recoverStaleOnboardingReadinessBackgroundJobs,
   retryJob,
   runJobByType,
   runJobWithWaitUntil,
@@ -78,9 +80,10 @@ backgroundJobRoutes.get("/", async (c) => {
     requestedByUserId: user.id,
     includeAll
   });
+  const safeRows = await recoverStaleOnboardingReadinessBackgroundJobs(c.env.DB, rows, c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? null);
   return ok(c, {
-    jobs: rows.map((row) => jobToApi(row)),
-    pagination: paginationMeta(pagination, rows.length)
+    jobs: safeRows.map((row) => jobToApi(row)),
+    pagination: paginationMeta(pagination, safeRows.length)
   });
 });
 
@@ -89,12 +92,13 @@ backgroundJobRoutes.post("/run-next", async (c) => {
   if (!hasAny(user, RUN_PERMISSIONS)) return fail(c, 403, "FORBIDDEN", "You do not have permission to run background jobs.");
   const job = await claimNextJob(c.env.DB);
   if (!job) return ok(c, { job: null, message: "No queued background jobs are ready." });
-  runJobWithWaitUntil(getExecutionCtx(c), runJobByType(c.env.DB, job), { jobId: job.id, jobType: job.job_type });
+  runJobWithWaitUntil(getExecutionCtx(c), runJobByType(c.env, job), { jobId: job.id, jobType: job.job_type });
   return ok(c, { job: jobToApi(job), message: "Background job runner started." }, 202);
 });
 
 backgroundJobRoutes.get("/:jobId", async (c) => {
-  const job = await getScopedJob(c, c.req.param("jobId"));
+  const scoped = await getScopedJob(c, c.req.param("jobId"));
+  const job = scoped ? (await recoverStaleOnboardingReadinessBackgroundJob(c.env.DB, scoped, c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? null)).job : null;
   if (!job) return fail(c, 404, "NOT_FOUND", "Background job was not found.");
   const events = await c.env.DB.prepare(
     `SELECT id, job_id, event_type, message, NULL AS metadata_json, created_at
@@ -132,6 +136,6 @@ backgroundJobRoutes.post("/:jobId/run", async (c) => {
   const job = await getJob(c.env.DB, c.req.param("jobId"));
   if (!job) return fail(c, 404, "NOT_FOUND", "Background job was not found.");
   if (!["QUEUED", "RETRYING"].includes(job.status)) return fail(c, 409, "JOB_NOT_RUNNABLE", "This job cannot be started in its current status.");
-  runJobWithWaitUntil(getExecutionCtx(c), runJobByType(c.env.DB, job), { jobId: job.id, jobType: job.job_type });
+  runJobWithWaitUntil(getExecutionCtx(c), runJobByType(c.env, job), { jobId: job.id, jobType: job.job_type });
   return ok(c, { job: jobToApi(job), message: "Background job runner started." }, 202);
 });

@@ -100,6 +100,11 @@ const TERMINAL_JOB_STATUSES: BackgroundJobStatus[] = ["SUCCEEDED", "FAILED", "CA
 const SENSITIVE_PAYLOAD_KEY = /(password|token|secret|credential|document_number|file|raw|account|iban|swift|salary|amount|payload|contents|private|hash)/i;
 const QUEUE_ENABLED_VALUES = new Set(["1", "true", "yes", "enabled", "queue", "hybrid"]);
 const DEFAULT_SCHEDULED_RUN_LIMIT = 10;
+const ONBOARDING_READINESS_JOB_TYPE = "ONBOARDING_READINESS_RECALCULATION";
+const ONBOARDING_READINESS_JOB_MAX_RUNNING_MS = 180_000;
+const ONBOARDING_READINESS_TIMEOUT_CODE = "READINESS_JOB_TIMEOUT";
+const ONBOARDING_READINESS_TIMEOUT_MESSAGE = "Readiness recalculation took too long and was stopped. Please retry readiness.";
+const ONBOARDING_READINESS_NEXT_ACTION = "Click Retry readiness. If it fails again, share the Job ID and Request ID with support.";
 
 export const QUEUE_SUPPORTED_JOB_TYPES = [
   "DATA_RETENTION_CLEANUP",
@@ -114,6 +119,13 @@ export const QUEUE_SUPPORTED_JOB_TYPES = [
   "DOCUMENT_UPLOAD_FOLLOW_UP"
 ] as const;
 
+export type BackgroundJobRunner = (env: Env, job: BackgroundJobRow, options?: { requestId?: string | null; source?: string | null }) => Promise<void>;
+const BACKGROUND_JOB_RUNNERS = new Map<string, BackgroundJobRunner>();
+
+export function registerBackgroundJobRunner(jobType: string, runner: BackgroundJobRunner) {
+  BACKGROUND_JOB_RUNNERS.set(jobType, runner);
+}
+
 function safeJsonParse(value: string | null): unknown {
   if (!value) return null;
   try {
@@ -121,6 +133,49 @@ function safeJsonParse(value: string | null): unknown {
   } catch {
     return null;
   }
+}
+
+function jobRuntimeMs(job: BackgroundJobRow, nowMs = Date.now()) {
+  const start = Date.parse(job.started_at ?? job.created_at);
+  return Number.isFinite(start) ? Math.max(0, nowMs - start) : null;
+}
+
+function jobHeartbeatAgeMs(job: BackgroundJobRow, nowMs = Date.now()) {
+  const heartbeat = Date.parse(job.updated_at ?? job.started_at ?? job.created_at);
+  return Number.isFinite(heartbeat) ? Math.max(0, nowMs - heartbeat) : null;
+}
+
+export function isStaleOnboardingReadinessBackgroundJob(job: BackgroundJobRow, nowMs = Date.now()) {
+  if (job.job_type !== ONBOARDING_READINESS_JOB_TYPE || !isActiveJobStatus(job.status)) return false;
+  const runtimeMs = jobRuntimeMs(job, nowMs);
+  const heartbeatAgeMs = jobHeartbeatAgeMs(job, nowMs);
+  return Boolean(
+    (runtimeMs !== null && runtimeMs > ONBOARDING_READINESS_JOB_MAX_RUNNING_MS) ||
+    (heartbeatAgeMs !== null && heartbeatAgeMs > ONBOARDING_READINESS_JOB_MAX_RUNNING_MS)
+  );
+}
+
+export async function recoverStaleOnboardingReadinessBackgroundJob(db: Env["DB"], job: BackgroundJobRow, requestId?: string | null) {
+  if (!isStaleOnboardingReadinessBackgroundJob(job)) return { job, recovered: false };
+  const payload = safeJsonParse(job.payload_json) as Record<string, unknown> | null;
+  const payloadRequestId = typeof payload?.request_id === "string" ? payload.request_id : null;
+  await markJobFailed(db, job.id, ONBOARDING_READINESS_TIMEOUT_CODE, ONBOARDING_READINESS_TIMEOUT_MESSAGE, {
+    failed_section_key: "readiness",
+    failed_section_label: "Activation readiness",
+    next_action: ONBOARDING_READINESS_NEXT_ACTION,
+    request_id: requestId ?? payloadRequestId,
+    stale_running_job: true
+  });
+  return { job: await getJob(db, job.id) ?? job, recovered: true };
+}
+
+export async function recoverStaleOnboardingReadinessBackgroundJobs(db: Env["DB"], jobs: BackgroundJobRow[], requestId?: string | null) {
+  const recovered: BackgroundJobRow[] = [];
+  for (const job of jobs) {
+    const result = await recoverStaleOnboardingReadinessBackgroundJob(db, job, requestId);
+    recovered.push(result.job);
+  }
+  return recovered;
 }
 
 function truncate(value: string, max = 160) {
@@ -176,6 +231,8 @@ export function isActiveJobStatus(status: string | null | undefined) {
 
 export function jobToApi(job: BackgroundJobRow, includePayload = false) {
   const safePayload = sanitizeJobPayload(safeJsonParse(job.payload_json));
+  const runtimeMs = jobRuntimeMs(job);
+  const heartbeatAgeMs = jobHeartbeatAgeMs(job);
   return {
     id: job.id,
     job_type: job.job_type,
@@ -199,6 +256,9 @@ export function jobToApi(job: BackgroundJobRow, includePayload = false) {
     last_error_message: job.last_error_message,
     created_at: job.created_at,
     updated_at: job.updated_at,
+    runtime_ms: runtimeMs,
+    heartbeat_age_ms: heartbeatAgeMs,
+    is_stale: isStaleOnboardingReadinessBackgroundJob(job),
     payload_summary: includePayload ? safePayload : undefined
   };
 }
@@ -384,6 +444,9 @@ export async function enqueueJob(db: Env["DB"], input: EnqueueJobInput, options:
        LIMIT 1`
     ).bind(dedupeKey).first<BackgroundJobRow>();
     if (existing) {
+      if (input.jobType === ONBOARDING_READINESS_JOB_TYPE && isStaleOnboardingReadinessBackgroundJob(existing)) {
+        await recoverStaleOnboardingReadinessBackgroundJob(db, existing, options.requestId);
+      } else {
       await appendJobEvent(db, existing.id, "deduped", "Existing active background job reused.", {
         job_type: input.jobType,
         entity_type: input.entityType ?? existing.entity_type,
@@ -396,6 +459,7 @@ export async function enqueueJob(db: Env["DB"], input: EnqueueJobInput, options:
         else queueStatus = await queueTask;
       }
       return { job: existing, deduped: true, queue: queueStatus };
+      }
     }
   }
 
@@ -628,12 +692,42 @@ export async function cancelJob(db: Env["DB"], jobId: string, requestedByUserId?
   return getJob(db, jobId);
 }
 
-export async function runJobByType(db: Env["DB"], job: BackgroundJobRow) {
+export async function runJobByType(env: Env, job: BackgroundJobRow) {
+  const db = env.DB;
   const startedAt = Date.now();
   try {
+    const payload = safeJsonParse(job.payload_json) as Record<string, unknown> | null;
+    const registeredRunner = BACKGROUND_JOB_RUNNERS.get(job.job_type);
+    if (registeredRunner) {
+      await registeredRunner(env, job, { requestId: typeof payload?.request_id === "string" ? payload.request_id : null, source: "runJobByType" });
+      const latest = await getJob(db, job.id);
+      const latestStatus = latest?.status ?? job.status;
+      safeJobLog(latestStatus === "SUCCEEDED" ? "background_job.succeeded" : latestStatus === "FAILED" ? "background_job.failed" : "background_job.runner_completed", {
+        job_id: job.id,
+        job_type: job.job_type,
+        status: latestStatus,
+        duration_ms: Date.now() - startedAt,
+        runner: "registered"
+      });
+      return;
+    }
+    if (job.job_type === ONBOARDING_READINESS_JOB_TYPE) {
+      await markJobFailed(db, job.id, "READINESS_BACKGROUND_RUNNER_FAILED", "Readiness recalculation could not start because the durable runner was not registered. Please retry readiness.", {
+        job_type: job.job_type,
+        failed_section_key: "readiness",
+        failed_section_label: "Activation readiness",
+        next_action: ONBOARDING_READINESS_NEXT_ACTION
+      });
+      safeJobLog("background_job.failed", {
+        job_id: job.id,
+        job_type: job.job_type,
+        duration_ms: Date.now() - startedAt,
+        message: "Registered readiness runner missing"
+      });
+      return;
+    }
     await markJobRunning(db, job.id, "Running background job.");
     if (job.job_type === "DATA_RETENTION_CLEANUP") {
-      const payload = safeJsonParse(job.payload_json) as Record<string, unknown> | null;
       const dryRun = payload?.dry_run !== false;
       const limit = Number(payload?.limit ?? 250);
       await updateJobProgress(db, job.id, { current: 1, total: 3, message: dryRun ? "Running retention dry-run." : "Running guarded retention cleanup." });
@@ -691,23 +785,24 @@ function isQueueMessage(value: unknown): value is BackgroundJobQueueMessage {
   return message.source === "background_jobs" && typeof message.job_id === "string" && typeof message.job_type === "string";
 }
 
-async function runClaimedJobFromMessage(db: Env["DB"], message: BackgroundJobQueueMessage) {
-  const existing = await getJob(db, message.job_id);
+async function runClaimedJobFromMessage(env: Env, message: BackgroundJobQueueMessage) {
+  const existing = await getJob(env.DB, message.job_id);
   if (!existing || isTerminalJobStatus(existing.status)) return existing;
+  const stale = existing.job_type === ONBOARDING_READINESS_JOB_TYPE ? await recoverStaleOnboardingReadinessBackgroundJob(env.DB, existing, message.request_id ?? null) : { job: existing, recovered: false };
+  if (stale.recovered) return stale.job;
   if (!["QUEUED", "RETRYING", "RUNNING"].includes(existing.status)) return existing;
-  if (existing.status !== "RUNNING") {
-    const now = nowIso();
-    const update = await db.prepare(
-      `UPDATE background_jobs
-       SET status = 'RUNNING', attempt_count = attempt_count + 1, started_at = COALESCE(started_at, ?),
-           progress_message = 'Running from Cloudflare Queue', updated_at = ?
-       WHERE id = ? AND status IN ('QUEUED', 'RETRYING')`
-    ).bind(now, now, existing.id).run();
-    if (!update.success) return getJob(db, existing.id);
-  }
-  const claimed = await getJob(db, existing.id);
-  if (claimed) await runJobByType(db, claimed);
-  return getJob(db, existing.id);
+  if (existing.status === "RUNNING") return existing;
+  const now = nowIso();
+  const update = await env.DB.prepare(
+    `UPDATE background_jobs
+     SET status = 'RUNNING', attempt_count = attempt_count + 1, started_at = COALESCE(started_at, ?),
+         progress_message = 'Running from Cloudflare Queue', updated_at = ?
+     WHERE id = ? AND status IN ('QUEUED', 'RETRYING')`
+  ).bind(now, now, existing.id).run();
+  if (!update.success) return getJob(env.DB, existing.id);
+  const claimed = await getJob(env.DB, existing.id);
+  if (claimed) await runJobByType(env, claimed);
+  return getJob(env.DB, existing.id);
 }
 
 export async function runQueuedBackgroundJobMessage(env: Env, messageBody: unknown) {
@@ -728,7 +823,7 @@ export async function runQueuedBackgroundJobMessage(env: Env, messageBody: unkno
     job_type: messageBody.job_type,
     request_id: messageBody.request_id ?? null
   });
-  await runClaimedJobFromMessage(env.DB, messageBody);
+  await runClaimedJobFromMessage(env, messageBody);
 }
 
 export async function handleBackgroundJobQueue(batch: MessageBatch<unknown>, env: Env, ctx: ExecutionContext) {
@@ -777,7 +872,7 @@ export async function runScheduledBackgroundJobs(env: Env, options: { limit?: nu
     await appendJobEvent(env.DB, job.id, "scheduled_runner_claimed", "Scheduled D1 fallback runner claimed this job.", {
       request_id: options.requestId ?? null
     });
-    await runJobByType(env.DB, job);
+    await runJobByType(env, job);
     const latest = await getJob(env.DB, job.id);
     ran.push({ job_id: job.id, job_type: job.job_type, status: latest?.status ?? job.status });
   }

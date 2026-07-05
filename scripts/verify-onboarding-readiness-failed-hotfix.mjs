@@ -39,10 +39,10 @@ check("package.json: diagnostic script is registered", packageJson.scripts?.["di
 
 check("backend: safe readiness error normalizer exists", lifecycle.includes("sanitizeOnboardingReadinessError") && lifecycle.includes("failed_section") && lifecycle.includes("failure_message"));
 check("backend: readiness refresh state stores safe failure diagnostics", lifecycle.includes("errorCode?: string | null") && lifecycle.includes("failedSection?: string | null") && lifecycle.includes("last_error_message"));
-check("backend: readiness refresh creates durable diagnostic background job", lifecycle.includes('jobType: "ONBOARDING_READINESS_RECALCULATION"') && lifecycle.includes("enqueueJob(c.env.DB") && lifecycle.includes("queue: false"));
-check("backend: readiness job writes running/success/failure status", lifecycle.includes("markJobRunning(c.env.DB") && lifecycle.includes("markJobSucceeded(c.env.DB") && lifecycle.includes("markJobFailed(c.env.DB"));
-check("backend: background job events include failed diagnostics", lifecycle.includes("appendJobEvent") || lifecycle.includes("markJobFailed(c.env.DB"));
-check("backend: failed job emits targeted app event without throwing metrics/notifications into the user flow", lifecycle.includes("safeEmitAppEvent(c.env.DB") && lifecycle.includes("onboarding.readiness.failed") && lifecycle.includes("try {") && lifecycle.includes("catch"));
+check("backend: readiness refresh creates durable diagnostic background job", lifecycle.includes('jobType: "ONBOARDING_READINESS_RECALCULATION"') && lifecycle.includes("enqueueJob(c.env.DB") && lifecycle.includes("dedupeKey"));
+check("backend: readiness job writes running/success/failure status", lifecycle.includes("markJobRunning(env.DB") && lifecycle.includes("markJobSucceeded(env.DB") && lifecycle.includes("markJobFailed(env.DB"));
+check("backend: background job events include failed diagnostics", lifecycle.includes("appendJobEvent") || lifecycle.includes("markJobFailed(env.DB") || lifecycle.includes("markJobFailed(c.env.DB"));
+check("backend: failed job emits targeted app event without throwing metrics/notifications into the user flow", (lifecycle.includes("safeEmitAppEvent(c.env.DB") || lifecycle.includes("safeEmitAppEvent(env.DB")) && lifecycle.includes("onboarding.readiness.failed") && lifecycle.includes("try {") && lifecycle.includes("catch"));
 check("backend: app-event failure remains best effort", lifecycle.includes("onboarding.readiness.event_emit_failed") && lifecycle.includes("Readiness failure events are best-effort"));
 
 check("backend: readiness section wrapper prevents optional section crashes from crashing entire job", lifecycle.includes("runOnboardingReadinessSection") && lifecycle.includes("failedReadinessSection") && lifecycle.includes("sectionFailures"));

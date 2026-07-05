@@ -8,9 +8,9 @@ import { getActiveOwnerCount, getUserByEmail, getUserById } from "../db/users";
 import { hasValidationErrors, validateAccessScope, validateDateRange, validateDuplicateConflict, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
-import type { AppBindings, AuthUser, DbUser, UserStatus } from "../types";
+import type { AppBindings, AuthUser, DbUser, Env, UserStatus } from "../types";
 import { safeEmitAppEvent } from "../utils/app-events";
-import { appendJobEvent, enqueueJob, markJobFailed, markJobRunning, markJobSucceeded, updateJobProgress, type BackgroundJobRow } from "../utils/background-jobs";
+import { enqueueJob, markJobFailed, markJobRunning, markJobSucceeded, recoverStaleOnboardingReadinessBackgroundJob, registerBackgroundJobRunner, runJobWithWaitUntil, updateJobProgress, type BackgroundJobRow } from "../utils/background-jobs";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { isOperationalModuleEnabled, requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { runOptionalSectionWithTimeout } from "../utils/optional-section-timeout";
@@ -1341,6 +1341,205 @@ async function refreshWorkspaceReadiness(c: Context<AppBindings>, caseId: string
   return readiness;
 }
 
+async function backgroundReadinessActor(env: Env, job: BackgroundJobRow): Promise<AuthUser> {
+  const row = job.requested_by_user_id
+    ? await getUserById(env.DB, job.requested_by_user_id).catch(() => null)
+    : await env.DB.prepare("SELECT * FROM users WHERE status = 'ACTIVE' AND is_owner = 1 ORDER BY created_at LIMIT 1").first<DbUser>().catch(() => null);
+  const base = row as DbUser | null;
+  return {
+    id: base?.id ?? "system_background_job",
+    name: base?.name ?? "System Background Job",
+    email: base?.email ?? "system-background-job@internal.local",
+    username: base?.username ?? null,
+    status: "ACTIVE",
+    is_owner: true,
+    employee_id: base?.employee_id ?? null,
+    last_login_at: base?.last_login_at ?? null,
+    created_at: base?.created_at ?? nowIso(),
+    updated_at: base?.updated_at ?? nowIso(),
+    roles: ["SYSTEM_BACKGROUND_JOB"],
+    permissions: ["onboarding.cases.view", "onboarding.cases.manage", "employees.view", "employees.manage", "employees.lifecycle.view"]
+  };
+}
+
+function internalLifecycleContext(env: Env, actor: AuthUser, requestId: string): Context<AppBindings> {
+  const responseHeaders = new Headers();
+  return {
+    env,
+    req: {
+      header: (name: string) => {
+        const normalized = name.toLowerCase();
+        if (normalized === "x-request-id" || normalized === "x-client-request-id" || normalized === "x-correlation-id") return requestId;
+        return undefined;
+      }
+    },
+    res: { headers: responseHeaders },
+    header: (name: string, value: string) => {
+      responseHeaders.set(name, value);
+    },
+    get: (key: string) => {
+      if (key === "currentUser") return actor;
+      return undefined;
+    },
+    set: () => undefined
+  } as unknown as Context<AppBindings>;
+}
+
+async function updateOnboardingReadinessSaveStatusFromJob(env: Env, payload: Record<string, unknown> | null, input: { status: "running" | "succeeded" | "failed"; jobId: string; message: string; completed?: boolean }) {
+  const requestId = optionalText(payload?.save_request_id);
+  if (!requestId) return;
+  const now = nowIso();
+  await env.DB.prepare(
+    `UPDATE onboarding_workspace_save_statuses
+        SET readiness_refresh_status = ?,
+            readiness_refresh_job_id = ?,
+            readiness_refresh_message = ?,
+            readiness_refresh_started_at = COALESCE(readiness_refresh_started_at, ?),
+            readiness_refresh_completed_at = CASE WHEN ? = 1 THEN ? ELSE readiness_refresh_completed_at END,
+            updated_at = ?
+      WHERE request_id = ?`
+  ).bind(input.status, input.jobId, input.message, now, input.completed ? 1 : 0, input.completed ? now : null, now, requestId).run();
+}
+
+export async function runOnboardingReadinessRecalculationJob(env: Env, job: BackgroundJobRow, options: { requestId?: string | null; source?: string | null } = {}) {
+  const startedAt = Date.now();
+  const payload = parseJsonObjectField(job.payload_json);
+  const caseId = optionalText(job.entity_id ?? payload.case_id);
+  const requestId = options.requestId ?? optionalText(payload.request_id) ?? job.id;
+  const action = optionalText(payload.action) ?? "onboarding.readiness.background_job";
+  const taskKey = optionalText(payload.task_key);
+  if (!caseId) {
+    await markJobFailed(env.DB, job.id, "READINESS_BACKGROUND_RUNNER_FAILED", "Readiness recalculation could not start because the onboarding case was not identified. Please retry readiness.", {
+      failed_section_key: "readiness",
+      failed_section_label: "Activation readiness",
+      next_action: "Click Retry readiness. If it fails again, share the Job ID and Request ID with support.",
+      request_id: requestId
+    });
+    return;
+  }
+
+  const state = onboardingReadinessRefreshInFlight.get(caseId);
+  if (state && (state.jobId === job.id || state.status === "queued" || state.status === "running")) {
+    state.jobId = job.id;
+    state.status = "running";
+    state.requestId = requestId;
+    state.message = "Preparing readiness refresh.";
+    state.updatedAt = nowIso();
+    state.updatedAtMs = Date.now();
+  }
+
+  try {
+    await markJobRunning(env.DB, job.id, "Preparing readiness refresh.");
+    await updateOnboardingReadinessSaveStatusFromJob(env, payload, { status: "running", jobId: job.id, message: "Readiness refresh is running." });
+    await updateJobProgress(env.DB, job.id, { current: 1, total: 4, message: "Preparing readiness refresh." });
+    await updateJobProgress(env.DB, job.id, { current: 2, total: 4, message: "Checking onboarding readiness sections." });
+    const actor = await backgroundReadinessActor(env, job);
+    const internalContext = internalLifecycleContext(env, actor, requestId);
+    const refreshResult = await runOptionalSectionWithTimeout({
+      label: "onboarding.readiness.durable_job",
+      timeoutMs: ONBOARDING_READINESS_REFRESH_MAX_RUNNING_MS,
+      run: () => refreshWorkspaceReadiness(internalContext, caseId, taskKey ?? undefined, action),
+      onLateFailure: (error) => {
+        const safe = sanitizeOnboardingReadinessError(error, "readiness");
+        console.warn("Durable onboarding readiness job late failure", { case_id: caseId, job_id: job.id, request_id: requestId, code: safe.code, message: safe.raw_log_message });
+      }
+    });
+    if (refreshResult.status === "timeout") throw new Error("Readiness refresh timed out.");
+    const readiness = refreshResult.value;
+    const readinessStatus = String(readiness?.status ?? readiness?.readiness_status ?? "").toLowerCase();
+    if (readinessStatus === "failed") {
+      const sectionError = new Error(String(readiness?.failure_message ?? readiness?.error_message ?? "Readiness section failed."));
+      (sectionError as Error & { readinessSection?: string | null; readinessPayload?: unknown }).readinessSection = optionalText(readiness?.failed_section_key ?? readiness?.failed_section) ?? "readiness";
+      (sectionError as Error & { readinessSection?: string | null; readinessPayload?: unknown }).readinessPayload = readiness;
+      throw sectionError;
+    }
+
+    await updateJobProgress(env.DB, job.id, { current: 3, total: 4, message: "Saving readiness result." });
+    await updateJobProgress(env.DB, job.id, { current: 4, total: 4, message: "Publishing readiness update." });
+    const completedAt = nowIso();
+    const nextState = onboardingReadinessRefreshInFlight.get(caseId);
+    if (nextState && nextState.jobId === job.id) {
+      nextState.status = "completed";
+      nextState.completedAt = completedAt;
+      nextState.updatedAt = completedAt;
+      nextState.updatedAtMs = Date.now();
+      nextState.lastCalculatedAt = optionalText(readiness?.last_calculated_at) ?? completedAt;
+      nextState.readinessStatus = optionalText(readiness?.status ?? readiness?.readiness_status) ?? "completed";
+      nextState.canActivate = Boolean(readiness?.can_activate);
+      nextState.blockers = Array.isArray(readiness?.blocking_items) ? readiness.blocking_items : Array.isArray(readiness?.blockers) ? readiness.blockers : [];
+      nextState.message = `Readiness refresh completed with ${nextState.readinessStatus} state.`;
+    }
+    await updateOnboardingReadinessSaveStatusFromJob(env, payload, { status: "succeeded", jobId: job.id, message: `Readiness refresh completed with ${String(readiness?.status ?? "unknown")} state.`, completed: true });
+    await markJobSucceeded(env.DB, job.id, "Activation readiness refresh completed.", {
+      case_id: caseId,
+      status: readiness?.status ?? null,
+      can_activate: Boolean(readiness?.can_activate),
+      blocker_count: Array.isArray(readiness?.blocking_items) ? readiness.blocking_items.length : Array.isArray(readiness?.blockers) ? readiness.blockers.length : 0,
+      duration_ms: Date.now() - startedAt,
+      request_id: requestId,
+      source: options.source ?? "durable_runner"
+    });
+  } catch (error) {
+    const readinessPayload = (error as Error & { readinessPayload?: unknown }).readinessPayload as Record<string, unknown> | undefined;
+    const errorSection = optionalText((error as Error & { readinessSection?: string | null }).readinessSection) ?? optionalText(readinessPayload?.failed_section_key ?? readinessPayload?.failed_section) ?? "readiness";
+    const safe = sanitizeOnboardingReadinessError(error, errorSection);
+    const failedAt = nowIso();
+    const nextState = onboardingReadinessRefreshInFlight.get(caseId);
+    if (nextState && nextState.jobId === job.id) {
+      nextState.status = "failed";
+      nextState.completedAt = failedAt;
+      nextState.updatedAt = failedAt;
+      nextState.updatedAtMs = Date.now();
+      nextState.errorCode = safe.code;
+      nextState.failedSection = safe.section;
+      nextState.message = safe.message;
+      nextState.reason = safe.reason;
+      nextState.nextAction = safe.next_action;
+      nextState.requestId = requestId;
+      nextState.blockers = Array.isArray(readinessPayload?.blocking_items) ? readinessPayload.blocking_items : Array.isArray(readinessPayload?.blockers) ? readinessPayload.blockers : [];
+    }
+    await updateOnboardingReadinessSaveStatusFromJob(env, payload, { status: "failed", jobId: job.id, message: safe.message, completed: true });
+    await markJobFailed(env.DB, job.id, safe.code, safe.message, {
+      case_id: caseId,
+      failed_section: safe.section,
+      failed_section_key: safe.section,
+      failed_section_label: safe.label,
+      next_action: safe.next_action,
+      request_id: requestId,
+      action
+    });
+    try {
+      await safeEmitAppEvent(env.DB, {
+        eventType: "onboarding.readiness.failed",
+        moduleKey: "onboarding",
+        entityType: "onboarding_case",
+        entityId: caseId,
+        visibility: "COMPANY",
+        createdByUserId: job.requested_by_user_id ?? null,
+        payload: {
+          onboarding_case_id: caseId,
+          status: "failed",
+          job_id: job.id,
+          failed_section: safe.section,
+          failed_section_key: safe.section,
+          failed_section_label: safe.label,
+          error_code: safe.code,
+          message: safe.message,
+          next_action: safe.next_action,
+          request_id: requestId,
+          safe_label: "Onboarding readiness refresh failed"
+        },
+        queryKeys: ["onboarding.workspace", "onboarding.readiness", "background-jobs"],
+        dedupeKey: `onboarding.readiness.failed:${caseId}:${job.id}`
+      });
+    } catch {
+      // Readiness failure events are best-effort; the job row remains the durable source of truth.
+    }
+  }
+}
+
+registerBackgroundJobRunner("ONBOARDING_READINESS_RECALCULATION", runOnboardingReadinessRecalculationJob);
+
 function runLifecycleBackgroundTask(c: Context<AppBindings>, task: Promise<unknown>, label: string, meta: Record<string, unknown>) {
   const safeTask = task.catch((error) => {
     console.warn("Lifecycle background task failed", {
@@ -1355,158 +1554,79 @@ function runLifecycleBackgroundTask(c: Context<AppBindings>, task: Promise<unkno
   else void safeTask;
 }
 
-async function queueOnboardingReadinessRefresh(c: Context<AppBindings>, caseId: string, action: string) {
-  const registered = registerOnboardingReadinessRefreshState(caseId, action);
-  const state = registered.state;
-  if (registered.reused) return { queued: false, reason: "already_queued", state, job: null as BackgroundJobRow | null };
+type OnboardingReadinessRefreshQueueOptions = {
+  taskKey?: string | null;
+  saveRequestId?: string | null;
+  saveIdempotencyKey?: string | null;
+  dispatchImmediately?: boolean;
+};
+
+function cacheOnboardingReadinessRefreshJob(caseId: string, action: string, job: BackgroundJobRow, requestId: string | null) {
+  const startedAt = job.started_at ?? job.created_at ?? nowIso();
+  const parsedStartedAt = Date.parse(startedAt);
+  const status = normalizeReadinessJobStatus(job.status);
+  const state: OnboardingReadinessRefreshState = {
+    jobId: job.id,
+    caseId,
+    action,
+    status: status === "running" ? "running" : "queued",
+    startedAt,
+    startedAtMs: Number.isFinite(parsedStartedAt) ? parsedStartedAt : Date.now(),
+    updatedAt: job.updated_at ?? startedAt,
+    updatedAtMs: Date.now(),
+    requestId,
+    message: job.progress_message ?? "Activation readiness refresh is queued."
+  };
+  onboardingReadinessRefreshInFlight.set(caseId, state);
+  return state;
+}
+
+async function queueOnboardingReadinessRefresh(c: Context<AppBindings>, caseId: string, action: string, options: OnboardingReadinessRefreshQueueOptions = {}) {
   const requestId = onboardingRequestId(c);
-  state.requestId = requestId;
-  let diagnosticJob: BackgroundJobRow | null = null;
-  try {
-    const enqueued = await enqueueJob(c.env.DB, {
-      jobType: "ONBOARDING_READINESS_RECALCULATION",
-      moduleKey: "onboarding",
-      entityType: "onboarding_case",
-      entityId: caseId,
-      dedupeKey: `onboarding_readiness:${caseId}:${state.jobId}`,
-      requestedByUserId: c.get("currentUser").id,
-      payload: {
-        case_id: caseId,
-        action,
-        request_id: requestId,
-        source: "stuck-readiness-job-hotfix"
-      },
-      priority: 5,
-      maxAttempts: 1,
-      progressTotal: 4,
-      progressMessage: "Preparing readiness refresh."
-    }, { env: c.env, requestId, queue: false });
-    diagnosticJob = enqueued.job;
-    state.jobId = diagnosticJob.id;
-    state.startedAt = diagnosticJob.created_at;
-    state.updatedAt = diagnosticJob.updated_at;
-    state.requestId = requestId;
-    state.message = "Preparing readiness refresh.";
-  } catch (error) {
-    const safe = sanitizeOnboardingReadinessError(error, "readiness");
-    console.warn("Readiness diagnostic job could not be recorded", { case_id: caseId, request_id: requestId, code: safe.code, message: safe.message });
+  const dedupeKey = `onboarding_readiness:${caseId}`;
+  const enqueued = await enqueueJob(c.env.DB, {
+    jobType: "ONBOARDING_READINESS_RECALCULATION",
+    moduleKey: "onboarding",
+    entityType: "onboarding_case",
+    entityId: caseId,
+    dedupeKey,
+    requestedByUserId: c.get("currentUser").id,
+    payload: {
+      case_id: caseId,
+      action,
+      task_key: options.taskKey ?? null,
+      request_id: requestId,
+      save_request_id: options.saveRequestId ?? null,
+      save_idempotency_key: options.saveIdempotencyKey ?? null,
+      source: "durable-readiness-job-hotfix"
+    },
+    priority: 5,
+    maxAttempts: 1,
+    progressTotal: 4,
+    progressMessage: "Preparing readiness refresh."
+  }, { env: c.env, requestId });
+
+  const job = enqueued.job;
+  const recovered = await recoverStaleOnboardingReadinessBackgroundJob(c.env.DB, job, requestId);
+  const safeJob = recovered.job;
+  const state = cacheOnboardingReadinessRefreshJob(caseId, action, safeJob, requestId);
+  if (enqueued.deduped && !recovered.recovered) {
+    return { queued: false, reason: "already_queued", state, job: safeJob };
   }
-  const task = (async () => {
-    try {
-      const runningAt = nowIso();
-      state.status = "running";
-      state.updatedAt = runningAt;
-      state.updatedAtMs = Date.now();
-      state.requestId = requestId;
-      state.message = "Preparing readiness refresh.";
-      if (diagnosticJob) {
-        await markJobRunning(c.env.DB, diagnosticJob.id, "Preparing readiness refresh.");
-        await updateJobProgress(c.env.DB, diagnosticJob.id, { current: 1, total: 4, message: "Preparing readiness refresh." });
-      }
-      state.message = "Checking onboarding readiness sections.";
-      state.updatedAt = nowIso();
-      state.updatedAtMs = Date.now();
-      if (diagnosticJob) await updateJobProgress(c.env.DB, diagnosticJob.id, { current: 2, total: 4, message: "Checking onboarding readiness sections." });
-      const refreshResult = await runOptionalSectionWithTimeout({
-        label: "onboarding.readiness.background_job",
-        timeoutMs: ONBOARDING_READINESS_REFRESH_MAX_RUNNING_MS,
-        run: () => refreshWorkspaceReadiness(c, caseId, undefined, action),
-        onLateFailure: (error) => {
-          const safe = sanitizeOnboardingReadinessError(error, "readiness");
-          console.warn("Onboarding readiness background job late failure", { case_id: caseId, request_id: requestId, code: safe.code, message: safe.raw_log_message });
-        }
-      });
-      if (refreshResult.status === "timeout") throw new Error("Readiness refresh timed out.");
-      const readiness = refreshResult.value;
-      const readinessStatus = String(readiness?.status ?? readiness?.readiness_status ?? "").toLowerCase();
-      if (readinessStatus === "failed") {
-        const sectionError = new Error(String(readiness?.failure_message ?? readiness?.error_message ?? "Readiness section failed."));
-        (sectionError as Error & { readinessSection?: string | null; readinessPayload?: unknown }).readinessSection = optionalText(readiness?.failed_section_key ?? readiness?.failed_section) ?? "readiness";
-        (sectionError as Error & { readinessSection?: string | null; readinessPayload?: unknown }).readinessPayload = readiness;
-        throw sectionError;
-      }
-      state.message = "Saving readiness result.";
-      state.updatedAt = nowIso();
-      state.updatedAtMs = Date.now();
-      if (diagnosticJob) await updateJobProgress(c.env.DB, diagnosticJob.id, { current: 3, total: 4, message: "Saving readiness result." });
-      const completedAt = nowIso();
-      state.status = "completed";
-      state.completedAt = completedAt;
-      state.updatedAt = completedAt;
-      state.updatedAtMs = Date.now();
-      state.lastCalculatedAt = optionalText(readiness?.last_calculated_at) ?? completedAt;
-      state.readinessStatus = optionalText(readiness?.status ?? readiness?.readiness_status) ?? "completed";
-      state.canActivate = Boolean(readiness?.can_activate);
-      state.blockers = Array.isArray(readiness?.blocking_items) ? readiness.blocking_items : Array.isArray(readiness?.blockers) ? readiness.blockers : [];
-      state.message = `Readiness refresh completed with ${state.readinessStatus} state.`;
-      if (diagnosticJob) {
-        await updateJobProgress(c.env.DB, diagnosticJob.id, { current: 4, total: 4, message: "Publishing readiness update." });
-        await markJobSucceeded(c.env.DB, diagnosticJob.id, "Activation readiness refresh completed.", {
-          case_id: caseId,
-          status: state.readinessStatus ?? null,
-          can_activate: Boolean(state.canActivate),
-          blocker_count: state.blockers?.length ?? 0
-        });
-      }
-    } catch (error) {
-      const failedAt = nowIso();
-      const readinessPayload = (error as Error & { readinessPayload?: unknown }).readinessPayload as Record<string, unknown> | undefined;
-      const errorSection = optionalText((error as Error & { readinessSection?: string | null }).readinessSection) ?? optionalText(readinessPayload?.failed_section_key ?? readinessPayload?.failed_section) ?? "readiness";
-      const safe = sanitizeOnboardingReadinessError(error, errorSection);
-      state.status = "failed";
-      state.completedAt = failedAt;
-      state.updatedAt = failedAt;
-      state.updatedAtMs = Date.now();
-      state.errorCode = safe.code;
-      state.failedSection = safe.section;
-      state.message = safe.message;
-      state.reason = safe.reason;
-      state.nextAction = safe.next_action;
-      state.requestId = requestId;
-      state.blockers = Array.isArray(readinessPayload?.blocking_items) ? readinessPayload.blocking_items : Array.isArray(readinessPayload?.blockers) ? readinessPayload.blockers : [];
-      if (diagnosticJob) {
-        await markJobFailed(c.env.DB, diagnosticJob.id, safe.code, safe.message, {
-          case_id: caseId,
-          failed_section: safe.section,
-          failed_section_key: safe.section,
-          failed_section_label: safe.label,
-          next_action: safe.next_action,
-          request_id: requestId,
-          action
-        });
-      }
-      try {
-        await safeEmitAppEvent(c.env.DB, {
-          eventType: "onboarding.readiness.failed",
-          moduleKey: "onboarding",
-          entityType: "onboarding_case",
-          entityId: caseId,
-          visibility: "COMPANY",
-          createdByUserId: c.get("currentUser").id,
-          payload: {
-            onboarding_case_id: caseId,
-            status: "failed",
-            job_id: state.jobId,
-            failed_section: safe.section,
-            failed_section_key: safe.section,
-            failed_section_label: safe.label,
-            error_code: safe.code,
-            message: safe.message,
-            next_action: safe.next_action,
-            request_id: requestId,
-            safe_label: "Onboarding readiness refresh failed"
-          },
-          queryKeys: ["onboarding.workspace", "onboarding.readiness"],
-          dedupeKey: `onboarding.readiness.failed:${caseId}:${state.jobId}`
-        });
-      } catch {
-        // Readiness failure events are best-effort; the refresh state still records failure for polling.
-      }
-      throw error;
-    }
-  })();
-  runLifecycleBackgroundTask(c, task, action, { case_id: caseId });
-  return { queued: true, reason: "queued", state, job: diagnosticJob };
+
+  const queueAccepted = enqueued.queue?.queued === true;
+  if (!queueAccepted && options.dispatchImmediately !== false) {
+    startOnboardingReadinessJobFallback(c, safeJob, requestId, "d1_fallback_immediate");
+  }
+  return { queued: true, reason: queueAccepted ? "queued_to_cloudflare_queue" : "queued_d1_fallback", state, job: safeJob, queueAccepted };
+}
+
+function startOnboardingReadinessJobFallback(c: Context<AppBindings>, job: BackgroundJobRow, requestId: string | null, source: string) {
+  runJobWithWaitUntil(
+    (c as unknown as { executionCtx?: ExecutionContext }).executionCtx,
+    runOnboardingReadinessRecalculationJob(c.env, job, { requestId, source }),
+    { jobId: job.id, jobType: job.job_type }
+  );
 }
 
 type OnboardingFastSaveInput = {
@@ -1800,13 +1920,12 @@ async function timeOnboardingWorkspaceSave<T>(c: Context<AppBindings>, section: 
 }
 
 function buildOnboardingPostSaveRefresh(input: OnboardingFastSaveInput) {
-  const refreshId = `onboarding_readiness_refresh_${crypto.randomUUID()}`;
   const queuedAt = nowIso();
   return input.readiness === false
     ? { status: "not_required", job_id: null, queued_at: queuedAt }
     : {
         status: "queued",
-        job_id: refreshId,
+        job_id: null,
         queued_at: queuedAt,
         terminal_states: ["ready", "blocked", "stale", "failed", "refreshing"],
         message: "Saved. Updating activation readiness in the background."
@@ -1814,61 +1933,7 @@ function buildOnboardingPostSaveRefresh(input: OnboardingFastSaveInput) {
 }
 
 function scheduleOnboardingPostSaveRefresh(c: Context<AppBindings>, input: OnboardingFastSaveInput, readinessRefresh: Record<string, unknown>, requestId: string, idempotencyKey: string | null) {
-  // enqueueOnboardingPostSaveRefresh legacy marker: the queue step now happens only after committed save status is recorded.
-  if (input.readiness !== false) {
-    logOnboardingSaveStage(c, "readiness_refresh_queued", { caseId: input.caseId, section: input.section });
-    runLifecycleBackgroundTask(c, (async () => {
-      const refreshState = cleanupOnboardingReadinessRefreshState(input.caseId);
-      if (refreshState && refreshState.jobId === readinessRefresh.job_id) {
-        const runningAt = nowIso();
-        refreshState.status = "running";
-        refreshState.updatedAt = runningAt;
-        refreshState.updatedAtMs = Date.now();
-        refreshState.message = "Readiness refresh is running.";
-      }
-      await updateOnboardingSaveReadinessStatus(c, { requestId, idempotencyKey, status: "running", message: "Readiness refresh is running.", started: true });
-      try {
-        if (input.event) await emitOnboardingWorkspaceEvent(c, input.event).catch((error) => {
-          console.warn(JSON.stringify({
-            level: "warn",
-            event: "onboarding.workspace.save.optional_event_failed",
-            request_id: requestId,
-            case_id: input.caseId,
-            section: input.section,
-            message: error instanceof Error ? error.message : String(error)
-          }));
-        });
-        const readiness = await refreshWorkspaceReadiness(c, input.caseId, input.taskKey ?? undefined, input.action ?? undefined);
-        if (refreshState && refreshState.jobId === readinessRefresh.job_id) {
-          const completedAt = nowIso();
-          refreshState.status = "completed";
-          refreshState.completedAt = completedAt;
-          refreshState.updatedAt = completedAt;
-          refreshState.updatedAtMs = Date.now();
-          refreshState.lastCalculatedAt = optionalText(readiness?.last_calculated_at) ?? completedAt;
-          refreshState.readinessStatus = optionalText(readiness?.status ?? readiness?.readiness_status) ?? "completed";
-          refreshState.canActivate = Boolean(readiness?.can_activate);
-          refreshState.blockers = Array.isArray(readiness?.blocking_items) ? readiness.blocking_items : Array.isArray(readiness?.blockers) ? readiness.blockers : [];
-          refreshState.message = `Readiness refresh completed with ${refreshState.readinessStatus} state.`;
-        }
-        await updateOnboardingSaveReadinessStatus(c, { requestId, idempotencyKey, status: "succeeded", message: `Readiness refresh completed with ${String(readiness?.status ?? "unknown")} state.`, completed: true });
-      } catch (error) {
-        const safe = sanitizeOnboardingReadinessError(error, input.section || "readiness");
-        if (refreshState && refreshState.jobId === readinessRefresh.job_id) {
-          const failedAt = nowIso();
-          refreshState.status = "failed";
-          refreshState.completedAt = failedAt;
-          refreshState.updatedAt = failedAt;
-          refreshState.updatedAtMs = Date.now();
-          refreshState.errorCode = safe.code;
-          refreshState.failedSection = safe.section;
-          refreshState.message = safe.message;
-        }
-        await updateOnboardingSaveReadinessStatus(c, { requestId, idempotencyKey, status: "failed", message: safe.message, completed: true });
-        throw error;
-      }
-    })(), "onboarding.workspace.save_background_refresh", { case_id: input.caseId, refresh_id: readinessRefresh.job_id ?? null, section: input.section });
-  } else if (input.event) {
+  if (input.event) {
     runLifecycleBackgroundTask(c, emitOnboardingWorkspaceEvent(c, input.event).catch((error) => {
       console.warn(JSON.stringify({
         level: "warn",
@@ -1878,7 +1943,7 @@ function scheduleOnboardingPostSaveRefresh(c: Context<AppBindings>, input: Onboa
         section: input.section,
         message: error instanceof Error ? error.message : String(error)
       }));
-    }), "onboarding.workspace.save_background_event", { case_id: input.caseId, refresh_id: readinessRefresh.job_id ?? null, section: input.section });
+    }), "onboarding.workspace.save_background_event", { case_id: input.caseId, refresh_id: readinessRefresh.job_id ?? null, idempotency_key: idempotencyKey, section: input.section });
   }
 }
 
@@ -1887,18 +1952,35 @@ async function fastOnboardingWorkspaceSave(c: Context<AppBindings>, input: Onboa
   const idempotencyKey = onboardingIdempotencyKey(c);
   const startedAt = Date.now();
   const readinessRefresh = buildOnboardingPostSaveRefresh(input);
+  let queuedReadiness: Awaited<ReturnType<typeof queueOnboardingReadinessRefresh>> | null = null;
   if (input.readiness !== false) {
     const readinessRefreshRecord = readinessRefresh as Record<string, unknown>;
-    const registered = registerOnboardingReadinessRefreshState(
-      input.caseId,
-      input.action ?? "onboarding.workspace.save_background_refresh",
-      typeof readinessRefreshRecord.job_id === "string" ? readinessRefreshRecord.job_id : null,
-      typeof readinessRefreshRecord.queued_at === "string" ? readinessRefreshRecord.queued_at : null
-    );
-    readinessRefreshRecord.status = registered.reused ? "already_queued" : "queued";
-    readinessRefreshRecord.job_id = registered.state.jobId;
-    readinessRefreshRecord.started_at = registered.state.startedAt;
-    readinessRefreshRecord.poll_after_ms = 1500;
+    try {
+      queuedReadiness = await queueOnboardingReadinessRefresh(c, input.caseId, input.action ?? "onboarding.workspace.save_background_refresh", {
+        taskKey: input.taskKey ?? null,
+        saveRequestId: requestId,
+        saveIdempotencyKey: idempotencyKey,
+        dispatchImmediately: false
+      });
+      readinessRefreshRecord.status = queuedReadiness.reason === "already_queued" ? "queued" : "queued";
+      readinessRefreshRecord.reason = queuedReadiness.reason;
+      readinessRefreshRecord.job_id = queuedReadiness.job?.id ?? queuedReadiness.state.jobId;
+      readinessRefreshRecord.started_at = queuedReadiness.state.startedAt;
+      readinessRefreshRecord.poll_after_ms = 1500;
+      readinessRefreshRecord.message = queuedReadiness.reason === "already_queued"
+        ? "Saved. Activation readiness is already refreshing in the background."
+        : "Saved. Updating activation readiness in the background.";
+      logOnboardingSaveStage(c, "readiness_refresh_queued", { caseId: input.caseId, section: input.section });
+    } catch (error) {
+      const safe = sanitizeOnboardingReadinessError(error, input.section || "readiness");
+      readinessRefreshRecord.status = "failed";
+      readinessRefreshRecord.error_code = safe.code;
+      readinessRefreshRecord.error_message = safe.message;
+      readinessRefreshRecord.failed_section_key = safe.section;
+      readinessRefreshRecord.failed_section_label = safe.label;
+      readinessRefreshRecord.next_action = safe.next_action;
+      readinessRefreshRecord.message = safe.message;
+    }
   }
   const responseData = {
     ok: true,
@@ -1923,6 +2005,9 @@ async function fastOnboardingWorkspaceSave(c: Context<AppBindings>, input: Onboa
       section: input.section,
       message: error instanceof Error ? error.message : String(error)
     }));
+  }
+  if (queuedReadiness?.queued && queuedReadiness.queueAccepted !== true && queuedReadiness.job) {
+    startOnboardingReadinessJobFallback(c, queuedReadiness.job, requestId, "d1_fallback_after_save_commit");
   }
   scheduleOnboardingPostSaveRefresh(c, input, readinessRefresh, requestId, idempotencyKey);
   console.info(JSON.stringify({

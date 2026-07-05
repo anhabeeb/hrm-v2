@@ -74,7 +74,7 @@ check("worker/src/routes/lifecycle.ts: manual refresh-readiness endpoint exists"
   check("worker/src/routes/lifecycle.ts: manual refresh-readiness queues instead of blocking", refreshRoute.includes("queueOnboardingReadinessRefresh") && refreshRoute.includes("readiness_updating: true") && !refreshRoute.includes("refreshWorkspaceReadiness") && !refreshRoute.includes("loadOnboardingWorkspace"));
 }
 check("worker/src/routes/lifecycle.ts: refresh-checklist returns readiness and confirmed workspace", lifecycleRoute.includes("onboarding.workspace.readiness_manual_refresh") && lifecycleRoute.includes("return ok(c, { refreshed: true, readiness, workspace })"));
-check("worker/src/routes/lifecycle.ts: payroll/payment/pension saves queue readiness without blocking save", lifecycleRoute.includes("onboarding.workspace.payroll_profile_saved") && lifecycleRoute.includes("onboarding.workspace.payment_method_saved") && lifecycleRoute.includes("onboarding.workspace.pension_profile_saved") && lifecycleRoute.includes("fastOnboardingWorkspaceSave") && lifecycleRoute.includes("enqueueOnboardingPostSaveRefresh") && lifecycleRoute.includes("onboarding.workspace.save_background_refresh"));
+check("worker/src/routes/lifecycle.ts: payroll/payment/pension saves queue readiness without blocking save", lifecycleRoute.includes("onboarding.workspace.payroll_profile_saved") && lifecycleRoute.includes("onboarding.workspace.payment_method_saved") && lifecycleRoute.includes("onboarding.workspace.pension_profile_saved") && lifecycleRoute.includes("fastOnboardingWorkspaceSave") && lifecycleRoute.includes("queueOnboardingReadinessRefresh") && lifecycleRoute.includes("onboarding.workspace.save_background_refresh"));
 
 for (const marker of [
   "moduleStatuses.pension === false",

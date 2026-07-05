@@ -31,7 +31,7 @@ const packageJson = JSON.parse(read("package.json"));
 const wrangler = read("worker/wrangler.toml");
 
 assert(lifecycle.includes("fastOnboardingWorkspaceSave"), "fastOnboardingWorkspaceSave helper is missing");
-assert(lifecycle.includes("enqueueOnboardingPostSaveRefresh"), "background readiness refresh queue helper is missing");
+assert(lifecycle.includes("queueOnboardingReadinessRefresh"), "background readiness refresh queue helper is missing");
 assert(lifecycle.includes("timeOnboardingWorkspaceSave"), "save D1 timing helper is missing");
 assert(lifecycle.includes("onboarding.workspace.save.fast_commit"), "safe save timing log marker is missing");
 assert(lifecycle.includes("onboarding.workspace.save_background_refresh"), "background readiness refresh marker is missing");

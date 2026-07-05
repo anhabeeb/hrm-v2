@@ -51,9 +51,10 @@ assert(fastSaveSpan.includes("response_returned"), "fast save response timing ma
 assert(!/workspace:\s*await\s+loadOnboardingWorkspace/.test(fastSaveSpan), "fast save response still waits for a full workspace reload");
 
 const scheduleSpan = span(lifecycle, "function scheduleOnboardingPostSaveRefresh", "async function fastOnboardingWorkspaceSave");
-assert(scheduleSpan.includes("updateOnboardingSaveReadinessStatus"), "background readiness status reconciliation updates are missing");
-assert(scheduleSpan.includes("status: \"running\"") && scheduleSpan.includes("status: \"succeeded\"") && scheduleSpan.includes("status: \"failed\""), "background readiness terminal status updates are incomplete");
-assert(scheduleSpan.includes("refreshWorkspaceReadiness"), "background refresh no longer calls readiness calculation");
+const durableRunnerSpan = span(lifecycle, "export async function runOnboardingReadinessRecalculationJob", 'registerBackgroundJobRunner("ONBOARDING_READINESS_RECALCULATION"');
+assert(lifecycle.includes("updateOnboardingReadinessSaveStatusFromJob"), "background readiness status reconciliation updates are missing");
+assert(durableRunnerSpan.includes('status: "running"') && durableRunnerSpan.includes('status: "succeeded"') && durableRunnerSpan.includes('status: "failed"'), "background readiness terminal status updates are incomplete");
+assert(durableRunnerSpan.includes("refreshWorkspaceReadiness"), "background refresh no longer calls readiness calculation");
 assert(scheduleSpan.includes("optional_event_failed"), "optional event failures can still block save/readiness flow");
 
 const refreshSpan = span(lifecycle, "async function refreshWorkspaceReadiness", "function runLifecycleBackgroundTask");
