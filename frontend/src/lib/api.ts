@@ -998,14 +998,14 @@ export const api = {
     return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/workspace`, { signal, timeoutMs, requestLabel: "onboarding.workspace" }, token);
   },
   getOnboardingSectionReadiness(token: string, caseId: string, signal?: AbortSignal) {
-    return request<{ ok: boolean; mode: "shadow"; readiness: Record<string, unknown>; sections: Record<string, unknown>[] }>(
+    return request<{ ok: boolean; mode: "section_status"; readiness: Record<string, unknown>; sections: Record<string, unknown>[]; section_timings?: Record<string, unknown>[] }>(
       `/api/v1/onboarding/cases/${caseId}/section-readiness`,
       { signal, timeoutMs: 6000, requestLabel: "onboarding.section-readiness" },
       token
     );
   },
   rebuildOnboardingSectionStatuses(token: string, caseId: string) {
-    return request<{ request_id: string; rebuilt_count: number; failed_count: number; readiness: Record<string, unknown>; sections: Record<string, unknown>[] }>(
+    return request<{ request_id: string; mode: "section_status"; rebuilt_count: number; failed_count: number; readiness: Record<string, unknown>; sections: Record<string, unknown>[]; section_timings?: Record<string, unknown>[] }>(
       `/api/v1/onboarding/cases/${caseId}/section-statuses/rebuild`,
       { method: "POST", timeoutMs: 8000, requestLabel: "onboarding.section-statuses.rebuild", dedupe: false },
       token
@@ -1063,7 +1063,7 @@ export const api = {
     return request<{ refreshed?: boolean; readiness?: Record<string, unknown>; workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/refresh-checklist`, { method: "POST" }, token);
   },
   refreshOnboardingWorkspaceReadiness(token: string, caseId: string) {
-    return request<{ refreshed: boolean; queued?: boolean; readiness: Record<string, unknown>; workspace?: Record<string, unknown>; readiness_refresh?: Record<string, unknown>; readiness_updating?: boolean; targeted_workspace_slices?: string[] }>(`/api/v1/onboarding/cases/${caseId}/refresh-readiness`, { method: "POST" }, token);
+    return request<{ refreshed: boolean; queued?: boolean; mode?: string; readiness: Record<string, unknown>; sections?: Record<string, unknown>[]; section_timings?: Record<string, unknown>[]; workspace?: Record<string, unknown>; readiness_refresh?: Record<string, unknown>; readiness_updating?: boolean; targeted_workspace_slices?: string[] }>(`/api/v1/onboarding/cases/${caseId}/refresh-readiness`, { method: "POST" }, token);
   },
   getOnboardingReadinessStatus(token: string, caseId: string, params?: { job_id?: string | null }) {
     return request<OnboardingReadinessStatusResponse>(`/api/v1/onboarding/cases/${caseId}/readiness-status${query(params)}`, { requestLabel: "onboarding.readiness-status", dedupe: false }, token);

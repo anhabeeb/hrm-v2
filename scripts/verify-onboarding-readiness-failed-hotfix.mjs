@@ -53,13 +53,21 @@ check("backend: Bank Transfer validation remains strict", lifecycle.includes('me
 check("backend: local/foreign document validation remains delegated to document compliance", lifecycle.includes("calculateEmployeeDocumentCompliance") && lifecycle.includes("Visa") === false ? true : true);
 
 const refreshRoute = sliceBetween(lifecycle, 'onboardingRoutes.post("/cases/:caseId/refresh-readiness"', 'onboardingRoutes.post("/cases/:caseId/complete"');
-check("backend: retry readiness still dedupes active refreshes", refreshRoute.includes("already_queued") && refreshRoute.includes("queueOnboardingReadinessRefresh"));
+check(
+  "backend: retry readiness still dedupes active refreshes or returns terminal section-status result",
+  (refreshRoute.includes("already_queued") && refreshRoute.includes("queueOnboardingReadinessRefresh")) ||
+    (refreshRoute.includes("rebuildStaleOrMissingOnboardingSectionReadiness") && refreshRoute.includes("readiness_updating: false") && refreshRoute.includes("section_timings"))
+);
 check("backend: refresh-readiness does not synchronously run heavy workspace/readiness", !refreshRoute.includes("await refreshWorkspaceReadiness") && !refreshRoute.includes("loadOnboardingWorkspace"));
 
 const statusRoute = sliceBetween(lifecycle, 'onboardingRoutes.get("/cases/:caseId/readiness-status"', 'onboardingRoutes.get("/cases/:caseId/readiness"');
 check("backend: readiness-status endpoint exists", statusRoute.length > 0);
 check("backend: readiness-status is lightweight and no-store", statusRoute.includes('Cache-Control", "private, no-store"') && !statusRoute.includes("getEmployeeOnboardingReadiness") && !statusRoute.includes("loadOnboardingWorkspace"));
-check("backend: readiness-status returns active_refresh with safe error fields", statusRoute.includes("active_refresh") && statusRoute.includes("last_error_code") && statusRoute.includes("last_error_message"));
+check(
+  "backend: readiness-status returns active_refresh or section-status safe error fields",
+  (statusRoute.includes("active_refresh") && statusRoute.includes("last_error_code") && statusRoute.includes("last_error_message")) ||
+    (statusRoute.includes("active_refresh: null") && statusRoute.includes("blockers") && statusRoute.includes("can_activate_candidate"))
+);
 check("backend: readiness-status can read latest diagnostic job", lifecycle.includes("getOnboardingReadinessDiagnosticJob") && lifecycle.includes("ONBOARDING_READINESS_RECALCULATION"));
 
 check("frontend API: readiness-status exposes active_refresh", api.includes("active_refresh?:") && api.includes("last_error_message") && api.includes("failed_section"));

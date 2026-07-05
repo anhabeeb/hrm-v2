@@ -55,8 +55,6 @@ for (const marker of [
   "deferredOnboardingReadiness(\"Activation readiness\", gate.row)",
   "failedOnboardingReadiness",
   "workspaceWithConfirmedReadiness",
-  "queueOnboardingReadinessRefresh(c, caseId, \"onboarding.workspace.readiness_manual_retry\")",
-  "cachedOnboardingReadinessFromCase(gate.row, state)",
   "onboarding.workspace.readiness_stale_refresh",
   "onboarding.readiness.updated",
   "onboarding.readiness.refresh.complete",
@@ -64,14 +62,24 @@ for (const marker of [
 ]) {
   check(`worker/src/routes/lifecycle.ts: readiness reconciliation marker missing ${marker}`, lifecycleRoute.includes(marker));
 }
+check(
+  "worker/src/routes/lifecycle.ts: readiness reconciliation marker missing section-status manual retry replacement",
+  lifecycleRoute.includes("rebuildStaleOrMissingOnboardingSectionReadiness") && lifecycleRoute.includes("onboarding.section_readiness.updated")
+);
 
 check("worker/src/routes/lifecycle.ts: timeout fallback must not mark readiness as active refreshing", lifecycleRoute.includes('workspaceSectionState(readinessTimeout ? "STALE" : "DEFERRED"') && lifecycleRoute.includes("refreshing: !readinessTimeout"));
-check("worker/src/routes/lifecycle.ts: manual refresh-readiness endpoint exists", lifecycleRoute.includes('/cases/:caseId/refresh-readiness') && lifecycleRoute.includes("onboarding.workspace.readiness_manual_retry"));
+check("worker/src/routes/lifecycle.ts: manual refresh-readiness endpoint exists", lifecycleRoute.includes('/cases/:caseId/refresh-readiness') && (lifecycleRoute.includes("onboarding.workspace.readiness_manual_retry") || lifecycleRoute.includes("rebuildStaleOrMissingOnboardingSectionReadiness")));
 {
   const routeStart = lifecycleRoute.indexOf('onboardingRoutes.post("/cases/:caseId/refresh-readiness"');
   const routeEnd = lifecycleRoute.indexOf('onboardingRoutes.post("/cases/:caseId/complete"', routeStart);
   const refreshRoute = lifecycleRoute.slice(routeStart, routeEnd);
-  check("worker/src/routes/lifecycle.ts: manual refresh-readiness queues instead of blocking", refreshRoute.includes("queueOnboardingReadinessRefresh") && refreshRoute.includes("readiness_updating: true") && !refreshRoute.includes("refreshWorkspaceReadiness") && !refreshRoute.includes("loadOnboardingWorkspace"));
+  check(
+    "worker/src/routes/lifecycle.ts: manual refresh-readiness is fast and does not block on old heavy workspace readiness",
+    ((refreshRoute.includes("queueOnboardingReadinessRefresh") && refreshRoute.includes("readiness_updating: true")) || (refreshRoute.includes("rebuildStaleOrMissingOnboardingSectionReadiness") && refreshRoute.includes("readiness_updating: false"))) &&
+      !refreshRoute.includes("refreshWorkspaceReadiness") &&
+      !refreshRoute.includes("loadOnboardingWorkspace") &&
+      !refreshRoute.includes("getEmployeeOnboardingReadiness")
+  );
 }
 check("worker/src/routes/lifecycle.ts: refresh-checklist returns readiness and confirmed workspace", lifecycleRoute.includes("onboarding.workspace.readiness_manual_refresh") && lifecycleRoute.includes("return ok(c, { refreshed: true, readiness, workspace })"));
 check("worker/src/routes/lifecycle.ts: payroll/payment/pension saves queue readiness without blocking save", lifecycleRoute.includes("onboarding.workspace.payroll_profile_saved") && lifecycleRoute.includes("onboarding.workspace.payment_method_saved") && lifecycleRoute.includes("onboarding.workspace.pension_profile_saved") && lifecycleRoute.includes("fastOnboardingWorkspaceSave") && lifecycleRoute.includes("queueOnboardingReadinessRefresh") && lifecycleRoute.includes("onboarding.workspace.save_background_refresh"));
@@ -120,7 +128,7 @@ const readinessStatusHelper = lifecyclePage.slice(
 );
 check("frontend/src/pages/LifecyclePage.tsx: stale readiness must not enable activation", readinessStatusHelper.indexOf("raw === \"stale\"") >= 0 && readinessStatusHelper.indexOf("raw === \"stale\"") < readinessStatusHelper.indexOf("readiness.can_activate === true"));
 check("frontend/src/pages/LifecyclePage.tsx: retry is scoped and does not require closing popup", lifecyclePage.includes("void refreshReadiness(false)") && !lifecyclePage.includes("window.location.reload"));
-check("frontend/src/pages/LifecyclePage.tsx: global popup spam avoided for manual refresh", lifecyclePage.includes("refreshReadiness(showSuccess = false)") && lifecyclePage.includes("if (showSuccess && !stillRefreshing) alerts.showSuccess"));
+check("frontend/src/pages/LifecyclePage.tsx: global popup spam avoided for manual refresh", lifecyclePage.includes("refreshReadiness(showSuccess = false)") && lifecyclePage.includes("if (readinessRetrying || readinessRefreshJob)") && lifecyclePage.includes("Setup readiness refreshed."));
 
 includes("frontend/src/lib/api.ts", "/refresh-readiness", "frontend API exposes manual readiness refresh endpoint");
 includes("frontend/src/lib/api.ts", "queued?: boolean", "manual readiness refresh exposes queued response metadata");

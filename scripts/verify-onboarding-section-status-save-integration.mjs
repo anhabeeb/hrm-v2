@@ -96,7 +96,7 @@ check(lifecycle.includes("activateEmployeeFromOnboarding") && lifecycle.includes
 check(lifecyclePage.includes("applySectionStatusUpdatePayload"), "frontend does not apply section_status_update from save response");
 check(lifecyclePage.includes("section_status_update"), "frontend save response handling does not reference section_status_update");
 check(lifecyclePage.includes("if (!sectionPreviewUpdated) void loadSectionReadinessPreview(false)") || lifecyclePage.includes("sectionPreviewUpdated"), "manual rebuild/refetch remains the only preview update path");
-check(lifecyclePage.includes("Rebuild") && lifecyclePage.includes("Preview only"), "manual rebuild or shadow preview labeling regressed");
+check((lifecyclePage.includes("Rebuild") || lifecyclePage.includes("Recheck")) && (lifecyclePage.includes("Preview only") || lifecyclePage.includes("Final verification required")), "manual rebuild/recheck or setup-readiness labeling regressed");
 check(api.includes("section_status_update"), "frontend API save type is missing section_status_update");
 check(documentUploadApi.includes("section_status_update"), "accelerated document upload type is missing section_status_update");
 

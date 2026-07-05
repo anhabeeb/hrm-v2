@@ -8,19 +8,20 @@ import { getActiveOwnerCount, getUserByEmail, getUserById } from "../db/users";
 import { hasValidationErrors, validateAccessScope, validateDateRange, validateDuplicateConflict, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
 import {
-  aggregateOnboardingReadinessFromSections,
-  composeOnboardingSectionStatusRows,
   ensureOnboardingSectionStatusesSchema,
-  getOnboardingSectionDefinitions,
   getOnboardingSectionPreviewPayload,
   getOnboardingSectionStatuses,
   markOnboardingSectionStale,
-  rebuildOnboardingSectionStatusesForCase,
   sanitizeSectionStatusError,
-  serializeOnboardingSectionStatus,
   upsertOnboardingSectionStatus,
   updateOnboardingSectionStatusesForKeys
 } from "../onboarding/section-status";
+import {
+  compareOldAndSectionReadiness,
+  getFastOnboardingSectionReadiness,
+  rebuildAndAggregateOnboardingSectionReadiness,
+  rebuildStaleOrMissingOnboardingSectionReadiness
+} from "../onboarding/section-readiness-aggregator";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, DbUser, Env, UserStatus } from "../types";
 import { safeEmitAppEvent } from "../utils/app-events";
@@ -4256,23 +4257,18 @@ onboardingRoutes.get("/cases/:caseId/section-readiness", requireAnyPermission(["
   const caseId = c.req.param("caseId");
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
-  await ensureOnboardingSectionStatusesSchema(c.env.DB);
   if (c.req.query("rebuild") === "1") {
     if (!hasAny(c, ["onboarding.cases.manage", "onboarding.workspace.update", "employees.lifecycle.manage"])) {
       return fail(c, 403, "ONBOARDING_SECTION_REBUILD_DENIED", "You do not have permission to rebuild onboarding section status preview.");
     }
-    const rebuilt = await rebuildOnboardingSectionStatusesForCase(c.env.DB, caseId, c.get("currentUser").id);
-    return ok(c, { mode: "shadow", rebuilt: true, ...rebuilt });
+    const rebuilt = await rebuildAndAggregateOnboardingSectionReadiness(c.env.DB, caseId, c.get("currentUser").id, {
+      requestId: c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? null
+    });
+    return ok(c, { rebuilt: true, ...rebuilt });
   }
-  const definitions = await getOnboardingSectionDefinitions(c.env.DB, caseId);
-  const storedRows = await getOnboardingSectionStatuses(c.env.DB, caseId);
-  const previewRows = composeOnboardingSectionStatusRows(definitions, storedRows, caseId);
-  const readiness = aggregateOnboardingReadinessFromSections(definitions, previewRows, caseId);
-  return ok(c, {
-    mode: "shadow",
-    readiness,
-    sections: previewRows.map(serializeOnboardingSectionStatus)
-  });
+  return ok(c, await getFastOnboardingSectionReadiness(c.env.DB, caseId, {
+    requestId: c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? null
+  }));
 });
 
 onboardingRoutes.post("/cases/:caseId/section-statuses/rebuild", requireAnyPermission(["onboarding.cases.manage", "onboarding.workspace.update", "employees.lifecycle.manage"]), async (c) => {
@@ -4280,13 +4276,16 @@ onboardingRoutes.post("/cases/:caseId/section-statuses/rebuild", requireAnyPermi
   const caseId = c.req.param("caseId");
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "manage");
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
-  const result = await rebuildOnboardingSectionStatusesForCase(c.env.DB, caseId, c.get("currentUser").id);
+  const result = await rebuildAndAggregateOnboardingSectionReadiness(c.env.DB, caseId, c.get("currentUser").id, {
+    retryFailed: true,
+    requestId: c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? null
+  });
   await auditLifecycle(c, "onboarding.section_statuses.rebuilt", "employee_onboarding_case", caseId, null, {
     rebuilt_count: result.rebuilt_count,
     failed_count: result.failed_count,
-    shadow_status: result.readiness.status
+    setup_status: result.readiness.status
   });
-  return ok(c, { mode: "shadow", ...result });
+  return ok(c, result);
 });
 
 onboardingRoutes.get("/cases/:caseId/save-status", requireAnyPermission([...onboardingWorkspaceViewPermissions, ...onboardingWorkspaceUpdatePermissions]), async (c) => {
@@ -5484,24 +5483,66 @@ onboardingRoutes.post("/cases/:caseId/refresh-readiness", requireAnyPermission([
   const caseId = c.req.param("caseId");
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
-  const queued = await queueOnboardingReadinessRefresh(c, caseId, "onboarding.workspace.readiness_manual_retry");
-  const state = queued.state ?? cleanupOnboardingReadinessRefreshState(caseId);
-  const readiness = cachedOnboardingReadinessFromCase(gate.row, state);
-  const refresh = onboardingReadinessRefreshPayload(state, caseId, gate.row);
-  const activeRefresh = onboardingReadinessActiveRefreshPayload(state, queued.job);
+  c.header("Cache-Control", "private, no-store");
+  c.header("Vary", "Origin");
+  const requestId = c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? `section_readiness_retry_${crypto.randomUUID()}`;
+  const result = await rebuildStaleOrMissingOnboardingSectionReadiness(c.env.DB, caseId, c.get("currentUser").id, {
+    retryFailed: true,
+    requestId
+  });
+  try {
+    await safeEmitAppEvent(c.env.DB, {
+      eventType: "onboarding.section_readiness.updated",
+      moduleKey: "onboarding",
+      entityType: "onboarding_case",
+      entityId: caseId,
+      visibility: "COMPANY",
+      createdByUserId: c.get("currentUser").id,
+      payload: {
+        onboarding_case_id: caseId,
+        employee_id: gate.row.employee_id ?? null,
+        status: result.readiness.status,
+        can_activate_candidate: Boolean(result.readiness.can_activate_candidate),
+        activation_requires_final_verification: true,
+        safe_label: "Onboarding setup readiness updated"
+      },
+      queryKeys: ["onboarding.workspace", "onboarding.readiness", "onboarding.section-readiness"],
+      dedupeKey: `onboarding.section_readiness.updated:${caseId}:${result.readiness.status}:${result.rebuilt_sections ?? 0}`
+    });
+  } catch (error) {
+    console.warn(JSON.stringify({
+      level: "warn",
+      event: "onboarding.section_readiness.event_emit_failed",
+      request_id: requestId,
+      case_id: caseId,
+      message: error instanceof Error ? error.message : String(error)
+    }));
+  }
   return ok(c, {
-    refreshed: false,
-    queued: queued.queued,
-    readiness,
+    refreshed: true,
+    queued: false,
+    already_queued: false,
+    mode: "section_status",
+    readiness: result.readiness,
+    sections: result.sections,
+    section_timings: result.section_timings,
     readiness_refresh: {
-      ...refresh,
-      status: queued.queued ? "queued" : state?.status === "running" ? "running" : "already_queued",
-      reason: queued.reason,
-      message: queued.queued ? "Activation readiness is refreshing in the background." : "Activation readiness refresh is already running."
+      status: "completed",
+      mode: "section_status",
+      job_id: null,
+      request_id: requestId,
+      duration_ms: result.duration_ms,
+      rebuilt_sections: result.rebuilt_sections,
+      failed_sections: result.failed_count,
+      poll_after_ms: null,
+      message: result.readiness.status === "ready"
+        ? "Setup readiness is ready for final server verification."
+        : "Setup readiness was refreshed. Review sections that still need action."
     },
-    active_refresh: activeRefresh,
-    readiness_updating: true,
-    targeted_workspace_slices: ["readiness", "document-checklist"]
+    active_refresh: null,
+    readiness_updating: false,
+    targeted_workspace_slices: ["readiness", "section-readiness", "document-checklist"],
+    activation_requires_final_verification: true
   });
 });
 
@@ -5559,98 +5600,79 @@ onboardingRoutes.get("/cases/:caseId/readiness-status", requireAnyPermission(["o
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
   c.header("Cache-Control", "private, no-store");
   c.header("Vary", "Origin");
-  const state = cleanupOnboardingReadinessRefreshState(caseId);
-  const requestedJobId = optionalText(c.req.query("job_id"));
-  const diagnosticJob = await getOnboardingReadinessDiagnosticJob(c.env.DB, caseId, requestedJobId ?? state?.jobId ?? null);
-  const recovered = await recoverStaleOnboardingReadinessJob(c, caseId, diagnosticJob);
-  const recoveredState = cleanupOnboardingReadinessRefreshState(caseId);
-  const readiness = cachedOnboardingReadinessFromCase(gate.row, recoveredState ?? state);
-  const refresh = onboardingReadinessRefreshPayload(recoveredState ?? state, caseId, gate.row);
-  const activeRefresh = onboardingReadinessActiveRefreshPayload(recoveredState ?? state, recovered.job ?? diagnosticJob, { staleRecovered: recovered.recovered });
-  const failedReadiness = activeRefresh.status === "failed" || activeRefresh.status === "stale_failed"
-    ? {
-        ...readiness,
-        status: "failed",
-        readiness_status: "failed",
-        can_activate: false,
-        job_id: activeRefresh.job_id ?? null,
-        request_id: activeRefresh.request_id ?? null,
-        error_code: activeRefresh.error_code ?? activeRefresh.last_error_code ?? "READINESS_UNKNOWN_ERROR",
-        error_message: activeRefresh.error_message ?? activeRefresh.last_error_message ?? "Readiness refresh failed. Retry readiness.",
-        failed_section: activeRefresh.failed_section_key ?? activeRefresh.failed_section ?? "readiness",
-        failed_section_key: activeRefresh.failed_section_key ?? activeRefresh.failed_section ?? "readiness",
-        failed_section_label: activeRefresh.failed_section_label ?? humanOnboardingReadinessSection(activeRefresh.failed_section_key ?? activeRefresh.failed_section ?? "readiness"),
-        failure_code: activeRefresh.error_code ?? activeRefresh.last_error_code ?? "READINESS_UNKNOWN_ERROR",
-        failure_message: activeRefresh.error_message ?? activeRefresh.last_error_message ?? "Readiness refresh failed. Retry readiness.",
-        failure_reason: activeRefresh.failure_reason ?? "The background readiness job stopped before completion.",
-        failed_reason: activeRefresh.error_message ?? activeRefresh.last_error_message ?? "Readiness refresh failed. Retry readiness.",
-        next_action: activeRefresh.next_action ?? "Click Retry readiness. If it fails again, share the Job ID and Request ID with support.",
-        retry_allowed: true,
-        refresh_reason: activeRefresh.error_message ?? activeRefresh.last_error_message ?? "Readiness refresh failed. Retry readiness.",
-        blocking_items: [{
-          type: "READINESS_REFRESH_FAILED",
-          section: activeRefresh.failed_section_key ?? activeRefresh.failed_section ?? "readiness",
-          section_label: activeRefresh.failed_section_label ?? humanOnboardingReadinessSection(activeRefresh.failed_section_key ?? activeRefresh.failed_section ?? "readiness"),
-          code: activeRefresh.error_code ?? activeRefresh.last_error_code ?? "READINESS_UNKNOWN_ERROR",
-          message: activeRefresh.error_message ?? activeRefresh.last_error_message ?? "Readiness refresh failed. Retry readiness.",
-          next_action: activeRefresh.next_action ?? "Click Retry readiness. If it fails again, share the Job ID and Request ID with support."
-        }]
-      }
-    : readiness;
+  const requestId = c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? optionalText(c.req.query("request_id")) ?? `section_readiness_status_${crypto.randomUUID()}`;
+  const result = await getFastOnboardingSectionReadiness(c.env.DB, caseId, { requestId });
+  const readiness = result.readiness;
   return ok(c, {
-    readiness: failedReadiness,
+    mode: "section_status",
+    readiness,
+    sections: result.sections,
+    section_timings: result.section_timings,
     readiness_refresh: {
-      ...refresh,
-      status: activeRefresh.status ?? refresh.status,
-      job_id: activeRefresh.job_id ?? refresh.job_id,
-      last_error_code: activeRefresh.last_error_code,
-      last_error_message: activeRefresh.last_error_message,
-      error_code: activeRefresh.error_code,
-      error_message: activeRefresh.error_message,
-      failed_section: activeRefresh.failed_section,
-      failed_section_key: activeRefresh.failed_section_key,
-      failed_section_label: activeRefresh.failed_section_label,
-      failure_reason: activeRefresh.failure_reason,
-      next_action: activeRefresh.next_action,
-      request_id: activeRefresh.request_id,
-      retry_allowed: activeRefresh.retry_allowed
+      status: "completed",
+      mode: "section_status",
+      job_id: null,
+      request_id: requestId,
+      poll_after_ms: null,
+      duration_ms: readiness.duration_ms ?? null,
+      message: readiness.status === "ready"
+        ? "Setup readiness is ready for final server verification."
+        : "Setup readiness is available. Review any sections that still need action."
     },
-    active_refresh: activeRefresh,
-    can_activate: Boolean(failedReadiness.can_activate),
-    blockers: Array.isArray(failedReadiness.blocking_items) ? failedReadiness.blocking_items : Array.isArray(failedReadiness.blockers) ? failedReadiness.blockers : [],
-    last_calculated_at: failedReadiness.last_calculated_at ?? refresh.last_calculated_at,
-    is_stale: Boolean(failedReadiness.is_stale),
-    active_refresh_job_id: ["queued", "running"].includes(String(activeRefresh.status)) ? activeRefresh.job_id : null,
-    active_refresh_status: activeRefresh.status ?? null
+    active_refresh: null,
+    can_activate: false,
+    can_activate_candidate: Boolean(readiness.can_activate_candidate),
+    activation_requires_final_verification: true,
+    blockers: Array.isArray(readiness.blockers) ? readiness.blockers : [],
+    last_calculated_at: readiness.last_evaluated_at ?? null,
+    is_stale: readiness.status === "stale",
+    active_refresh_job_id: null,
+    active_refresh_status: null
   });
 });
 onboardingRoutes.get("/cases/:caseId/readiness", requireAnyPermission(["onboarding.activation.view", "onboarding.cases.view", "employees.lifecycle.view", "employees.view"]), async (c) => {
   const caseId = c.req.param("caseId");
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
-
-  const forceFresh = c.req.query("fresh") === "1" || c.req.query("refresh") === "1";
-  if (forceFresh) {
-    const result = await runOptionalSectionWithTimeout({
-      label: "onboarding.readiness.direct",
-      timeoutMs: ONBOARDING_DIRECT_READINESS_TIMEOUT_MS,
-      run: () => timeD1(c, () => getEmployeeOnboardingReadiness(c, caseId), "onboarding.readiness.direct"),
-      onLateFailure: (error) => console.warn("Direct onboarding readiness late failure", { case_id: caseId, error: error instanceof Error ? error.message : String(error) })
-    });
-    if (result.status === "ready") return ok(c, { readiness: result.value, refresh: { status: "succeeded", duration_ms: result.durationMs } });
-  }
-
-  const queued = await queueOnboardingReadinessRefresh(c, caseId, "onboarding.readiness.direct_background_refresh");
-  const state = queued.state ?? cleanupOnboardingReadinessRefreshState(caseId);
-  return ok(c, {
-    readiness: cachedOnboardingReadinessFromCase(gate.row, state),
+  c.header("Cache-Control", "private, no-store");
+  c.header("Vary", "Origin");
+  const requestId = c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? `section_readiness_${crypto.randomUUID()}`;
+  const result = c.req.query("fresh") === "1" || c.req.query("refresh") === "1"
+    ? await rebuildStaleOrMissingOnboardingSectionReadiness(c.env.DB, caseId, c.get("currentUser").id, { retryFailed: true, requestId })
+    : await getFastOnboardingSectionReadiness(c.env.DB, caseId, { requestId });
+  const response: Record<string, unknown> = {
+    mode: "section_status",
+    readiness: result.readiness,
+    sections: result.sections,
+    section_timings: result.section_timings,
     refresh: {
-      ...onboardingReadinessRefreshPayload(state, caseId, gate.row),
-      status: queued.queued ? "queued" : state?.status === "running" ? "running" : "already_queued",
-      reason: queued.reason,
-      message: queued.queued ? "Activation readiness is refreshing in the background." : "Activation readiness refresh is already running."
-    }
-  });
+      status: "completed",
+      mode: "section_status",
+      duration_ms: result.readiness.duration_ms ?? result.duration_ms ?? null,
+      request_id: requestId,
+      activation_requires_final_verification: true
+    },
+    activation_requires_final_verification: true
+  };
+
+  if (c.req.query("include_legacy_comparison") === "1") {
+    const legacy = await runOptionalSectionWithTimeout({
+      label: "onboarding.readiness.legacy_comparison",
+      timeoutMs: Math.min(ONBOARDING_DIRECT_READINESS_TIMEOUT_MS, 1500),
+      run: () => timeD1(c, () => getEmployeeOnboardingReadiness(c, caseId), "onboarding.readiness.legacy_comparison"),
+      onLateFailure: (error) => console.warn("Legacy onboarding readiness comparison late failure", { case_id: caseId, error: error instanceof Error ? error.message : String(error) })
+    });
+    response.legacy_comparison = legacy.status === "ready"
+      ? compareOldAndSectionReadiness(legacy.value as Record<string, unknown>, result.readiness)
+      : {
+          diagnostic_only: true,
+          status: legacy.status,
+          timed_out: legacy.status === "timeout",
+          activation_requires_final_verification: true,
+          message: "Legacy readiness comparison did not finish within the diagnostic timeout."
+        };
+  }
+  return ok(c, response);
 });
 onboardingRoutes.post("/cases/:caseId/submit-activation", requireAnyPermission(["onboarding.activation.submit", "onboarding.activation.manage"]), async (c) => ok(c, { submitted: await submitEmployeeActivationForApproval(c, c.req.param("caseId")), approval: await createOnboardingApprovalInstance(c, c.req.param("caseId")) }));
 onboardingRoutes.post("/cases/:caseId/approve-activation", requireAnyPermission(["onboarding.activation.approve", "onboarding.activation.manage"]), async (c) => ok(c, { approved: await approveEmployeeActivation(c, c.req.param("caseId")), approval: await syncOnboardingApprovalStatus(c, c.req.param("caseId")) }));

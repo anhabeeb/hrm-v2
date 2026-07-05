@@ -89,18 +89,18 @@ check(evaluators.includes("document_required_rules") && evaluators.includes("emp
 check(evaluators.includes("sanitizeEvaluatorError"), "evaluator failure sanitization is missing");
 check(!/error\.stack|stackTrace|raw_stack/i.test(evaluators), "evaluator failure may expose raw stack traces");
 
-check(lifecycle.includes('onboardingRoutes.get("/cases/:caseId/section-readiness"'), "shadow section-readiness endpoint is missing");
+check(lifecycle.includes('onboardingRoutes.get("/cases/:caseId/section-readiness"'), "section-readiness endpoint is missing");
 check(lifecycle.includes('onboardingRoutes.post("/cases/:caseId/section-statuses/rebuild"'), "section statuses rebuild endpoint is missing");
-check(lifecycle.includes("requireAnyPermission") && lifecycle.includes("getCaseEmployee(c, \"ONBOARDING\", caseId, \"view\")"), "shadow endpoint is not permission/scope protected");
+check(lifecycle.includes("requireAnyPermission") && lifecycle.includes("getCaseEmployee(c, \"ONBOARDING\", caseId, \"view\")"), "section readiness endpoint is not permission/scope protected");
 check(lifecycle.includes("getCaseEmployee(c, \"ONBOARDING\", caseId, \"manage\")"), "rebuild endpoint is not manage-scoped");
 check(lifecycle.includes("markOnboardingShadowSectionsStale"), "stale marking foundation is not wired into onboarding saves");
 check(!lifecycle.includes("can_activate_candidate: true"), "Phase 1 must not use shadow readiness to enable activation");
 
 check(api.includes("getOnboardingSectionReadiness") && api.includes("/section-readiness"), "frontend API helper for section readiness is missing");
 check(api.includes("rebuildOnboardingSectionStatuses") && api.includes("/section-statuses/rebuild"), "frontend API helper for section rebuild is missing");
-check(lifecyclePage.includes("Section Readiness Preview"), "frontend shadow preview is missing");
-check(lifecyclePage.includes("data-shadow-readiness-preview") && lifecyclePage.includes("Preview only"), "frontend preview is not clearly marked shadow/preview");
-check(lifecyclePage.includes("Activation still uses the existing server validation"), "frontend preview does not clarify activation is unchanged");
+check(lifecyclePage.includes("Setup Readiness"), "frontend setup readiness display is missing");
+check(lifecyclePage.includes("data-setup-readiness-display") && lifecyclePage.includes("Final verification required"), "frontend setup readiness is not clearly marked final-verification-only");
+check(lifecyclePage.includes("Activation still runs final server validation"), "frontend setup readiness does not clarify activation is unchanged");
 
 for (const marker of [
   "verify:onboarding-readiness-stuck-job-hotfix",

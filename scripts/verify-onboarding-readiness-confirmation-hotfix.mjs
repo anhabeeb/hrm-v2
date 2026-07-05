@@ -46,13 +46,22 @@ check("backend: stale workspace refresh shares deduped queue", lifecycle.include
 
 const refreshRoute = sliceBetween(lifecycle, 'onboardingRoutes.post("/cases/:caseId/refresh-readiness"', 'onboardingRoutes.post("/cases/:caseId/complete"');
 check("backend: refresh-readiness route exists", refreshRoute.length > 0);
-check("backend: refresh-readiness response returns trackable status fields", refreshRoute.includes("onboardingReadinessRefreshPayload") && refreshRoute.includes("readiness_refresh") && refreshRoute.includes("queued.queued ? \"queued\"") && refreshRoute.includes("already_queued"));
+check(
+  "backend: refresh-readiness response returns trackable status fields",
+  (refreshRoute.includes("onboardingReadinessRefreshPayload") && refreshRoute.includes("readiness_refresh") && refreshRoute.includes("queued.queued ? \"queued\"") && refreshRoute.includes("already_queued")) ||
+    (refreshRoute.includes("readiness_refresh") && refreshRoute.includes('status: "completed"') && refreshRoute.includes("request_id") && refreshRoute.includes("section_timings"))
+);
 check("backend: refresh-readiness route does not run heavy readiness/workspace synchronously", !refreshRoute.includes("await refreshWorkspaceReadiness") && !refreshRoute.includes("loadOnboardingWorkspace"));
 
 const statusRoute = sliceBetween(lifecycle, 'onboardingRoutes.get("/cases/:caseId/readiness-status"', 'onboardingRoutes.get("/cases/:caseId/readiness"');
 check("backend: lightweight readiness-status endpoint exists", statusRoute.length > 0);
 check("backend: readiness-status endpoint returns readiness and active job status", statusRoute.includes("active_refresh_job_id") && statusRoute.includes("active_refresh_status") && statusRoute.includes("readiness_refresh") && lifecycle.includes("poll_after_ms"));
-check("backend: readiness-status endpoint is lightweight and bounded", !statusRoute.includes("loadOnboardingWorkspace") && !statusRoute.includes("getEmployeeOnboardingReadiness") && statusRoute.includes("cachedOnboardingReadinessFromCase"));
+check(
+  "backend: readiness-status endpoint is lightweight and bounded",
+  !statusRoute.includes("loadOnboardingWorkspace") &&
+    !statusRoute.includes("getEmployeeOnboardingReadiness") &&
+    (statusRoute.includes("cachedOnboardingReadinessFromCase") || statusRoute.includes("getFastOnboardingSectionReadiness"))
+);
 check("backend: readiness status endpoint is no-store", statusRoute.includes('Cache-Control", "private, no-store"'));
 check("backend: readiness success emits targeted app event", lifecycle.includes('eventType: "onboarding.readiness.updated"') && lifecycle.includes('queryKeys: ["onboarding.workspace", "onboarding.readiness", "background-jobs"]'));
 check("backend: readiness failure emits safe update event", lifecycle.includes("onboarding.readiness.failed") && lifecycle.includes("Onboarding readiness refresh failed"));

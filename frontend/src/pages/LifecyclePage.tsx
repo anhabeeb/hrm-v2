@@ -1159,7 +1159,22 @@ const onboardingWorkspaceSectionTasks: Record<OnboardingWorkspaceTab, string[]> 
   "User Access": ["user_access"]
 };
 
+const onboardingWorkspaceSectionStatusKeys: Record<OnboardingWorkspaceTab, string[]> = {
+  Overview: [],
+  "Employee Info": ["employee_info"],
+  Contacts: ["contact_emergency"],
+  "Job Assignment": ["job_assignment"],
+  Documents: ["documents"],
+  Contract: ["contract"],
+  Payroll: ["payroll_profile"],
+  "Payment & Pension": ["payment_method", "pension"],
+  "Attendance & Roster": ["attendance_roster"],
+  "Assets & Uniforms": ["assets_uniforms"],
+  "User Access": ["user_access"]
+};
+
 const completedOnboardingTaskStatuses = new Set(["COMPLETED", "WAIVED", "NOT_REQUIRED"]);
+const completedOnboardingSectionStatuses = new Set(["complete", "verified", "not_required"]);
 
 const onboardingWorkspaceSectionStateKeys: Record<OnboardingWorkspaceTab, string[]> = {
   Overview: ["checklist", "readiness"],
@@ -1502,7 +1517,7 @@ function onboardingActivationReadinessStatus(readiness: Row) {
 }
 
 function readinessAllowsActivation(readiness: Row) {
-  return readiness.can_activate === true && onboardingActivationReadinessStatus(readiness) === "ready" && !boolValue(readiness.is_stale) && !boolValue(readiness.refreshing);
+  return readiness.can_activate === true && !boolValue(readiness.activation_requires_final_verification) && onboardingActivationReadinessStatus(readiness) === "ready" && !boolValue(readiness.is_stale) && !boolValue(readiness.refreshing);
 }
 
 function readinessRefreshIsActive(readiness: Row, workspaceMeta: Row) {
@@ -1512,7 +1527,7 @@ function readinessRefreshIsActive(readiness: Row, workspaceMeta: Row) {
 
 function readinessRefreshMessage(readiness: Row) {
   const status = onboardingActivationReadinessStatus(readiness);
-  if (status === "ready") return "Ready for activation.";
+  if (status === "ready") return boolValue(readiness.activation_requires_final_verification) ? "Ready for final server verification." : "Ready for activation.";
   if (status === "stale") return String(readiness.refresh_reason ?? "Using last saved readiness. Refresh readiness to confirm activation.");
   if (status === "failed") return String(readiness.failure_message ?? readiness.failed_reason ?? readiness.refresh_reason ?? "Readiness refresh failed. Retry readiness.");
   if (status === "refreshing") return "Refreshing readiness...";
@@ -1619,6 +1634,8 @@ function isOnboardingSaveTimeoutError(error: unknown): error is ApiError {
 function sectionPreviewStatusLabel(value: unknown) {
   const raw = String(value ?? "").trim();
   if (!raw) return "Not checked";
+  if (raw === "ready") return "Ready for final verification";
+  if (raw === "not_checked") return "Not checked";
   return title(raw.replace(/_/g, " "));
 }
 
@@ -1648,23 +1665,23 @@ function OnboardingSectionReadinessPreview({
   const sections = asRows(preview?.sections);
   const status = String(readiness.status ?? "not_checked");
   return (
-    <Panel className="min-w-0 overflow-hidden p-3" data-onboarding-section-readiness-preview data-shadow-readiness-preview>
+    <Panel className="min-w-0 overflow-hidden p-3" data-onboarding-section-readiness-preview data-setup-readiness-display>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-slate-950">Section Readiness Preview</h3>
-            <Badge tone="info">Shadow</Badge>
-            <Badge tone="neutral">Preview only</Badge>
+            <h3 className="text-sm font-semibold text-slate-950">Setup Readiness</h3>
+            <Badge tone="info">Section status</Badge>
+            <Badge tone="neutral">Final verification required</Badge>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Read-only candidate status. Activation still uses the existing server validation.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Fast setup status from saved section checks. Activation still runs final server validation.</p>
         </div>
         <ActionTextButton intent="refresh" size="sm" disabled={loading || rebuilding} onClick={onRebuild}>
-          <RefreshCw className="h-4 w-4" /> {rebuilding ? "Rebuilding" : "Rebuild"}
+          <RefreshCw className="h-4 w-4" /> {rebuilding ? "Checking" : "Recheck"}
         </ActionTextButton>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Badge tone={sectionPreviewStatusTone(status)}>{sectionPreviewStatusLabel(status)}</Badge>
-        <span className="text-xs text-muted-foreground">Candidate activation remains disabled in Phase 2.</span>
+        <span className="text-xs text-muted-foreground">Final activation remains disabled until server verification passes.</span>
       </div>
       {error ? (
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -1734,9 +1751,18 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: variables.slices });
     }
   });
+  function normalizeDisplayReadiness(readiness: Row) {
+    if (!Object.keys(readiness).length) return readiness;
+    if (!boolValue(readiness.activation_requires_final_verification)) return readiness;
+    return {
+      ...readiness,
+      can_activate: false,
+      reason: readiness.reason ?? (readiness.status === "ready" ? "Ready for final server verification." : undefined)
+    };
+  }
   function applyReadinessPayload(result: OnboardingWorkspaceMutationResult) {
     const resultWorkspace = asRow(result.workspace);
-    const nextReadiness = asRow(result.readiness ?? resultWorkspace.readiness);
+    const nextReadiness = normalizeDisplayReadiness(asRow(result.readiness ?? resultWorkspace.readiness));
     if (!Object.keys(nextReadiness).length) return nextReadiness;
     setReadinessOverride(nextReadiness);
     queryClient.setQueryData(queryKeys.onboarding.workspace(scope, caseId), (current: unknown) => {
@@ -1757,15 +1783,16 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   }
   function applySectionStatusUpdatePayload(result: Record<string, unknown>) {
     const update = asRow(result.section_status_update);
-    if (!Object.keys(update).length) return false;
-    const readiness = asRow(update.readiness ?? result.shadow_readiness);
-    const sections = asRows(update.sections);
+    const readiness = normalizeDisplayReadiness(asRow(update.readiness ?? result.shadow_readiness ?? result.readiness));
+    const sections = asRows(update.sections ?? result.sections);
     const fallbackRows = [...asRows(update.updated_sections), ...asRows(update.stale_sections)];
+    if (!Object.keys(update).length && !Object.keys(readiness).length && !sections.length) return false;
     setSectionReadinessPreview((current) => ({
-      mode: "shadow",
+      mode: "section_status",
       readiness: Object.keys(readiness).length ? readiness : asRow(current?.readiness),
       sections: sections.length ? sections : fallbackRows.length ? fallbackRows : asRows(current?.sections)
     }));
+    if (Object.keys(readiness).length) applyReadinessPayload({ readiness });
     setSectionReadinessError(null);
     return true;
   }
@@ -1779,11 +1806,13 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       const result = rebuild
         ? await api.rebuildOnboardingSectionStatuses(token, caseId)
         : await api.getOnboardingSectionReadiness(token, caseId, controller.signal);
+      const readiness = normalizeDisplayReadiness(asRow(result.readiness));
       setSectionReadinessPreview({
-        mode: "shadow",
-        readiness: asRow(result.readiness),
+        mode: "section_status",
+        readiness,
         sections: asRows(result.sections)
       });
+      applyReadinessPayload({ readiness });
     } catch (error) {
       const message = error instanceof ApiError ? error.message : "Section readiness preview could not be loaded.";
       setSectionReadinessError(message);
@@ -1864,6 +1893,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       });
       const resultWorkspace = asRow(result.workspace);
       const nextReadiness = applyReadinessPayload(result);
+      applySectionStatusUpdatePayload(result);
       const queuedReadiness = saveResponseQueuedReadiness(result) || boolValue(result.queued);
       const tracker = readinessRefreshTrackerFromResult(result);
       if (tracker) setReadinessRefreshJob(tracker);
@@ -1878,7 +1908,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
         setReadinessQueuedAt(null);
         setReadinessRefreshJob(null);
       }
-      if (showSuccess && !stillRefreshing) alerts.showSuccess("Readiness refreshed.");
+      if (!stillRefreshing) alerts.showSuccess(showSuccess ? "Readiness refreshed." : "Setup readiness refreshed.");
       else if (queuedReadiness) alerts.showInfo("Readiness refresh started", "Activation stays disabled until readiness is confirmed.");
     } catch (err) {
       setReadinessUpdating(false);
@@ -1929,8 +1959,14 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const readinessNeedsManualRefresh = activationReadinessStatus === "stale" || activationReadinessStatus === "failed" || readinessPendingConfirmation;
   const canActivate = readinessAllowsActivation(readiness);
   const taskByKey = new Map(tasks.map((task) => [String(task.task_key), task]));
+  const setupSectionByKey = new Map(asRows(sectionReadinessPreview?.sections).map((section) => [String(section.section_key), section]));
   const sectionStatus = (tab: OnboardingWorkspaceTab) => {
-    if (tab === "Overview") return canActivate;
+    if (tab === "Overview") return activationReadinessStatus === "ready";
+    const sectionKeys = onboardingWorkspaceSectionStatusKeys[tab];
+    const setupSections = sectionKeys.map((key) => setupSectionByKey.get(key)).filter(Boolean) as Row[];
+    if (setupSections.length > 0 && setupSections.length === sectionKeys.length) {
+      return setupSections.every((section) => completedOnboardingSectionStatuses.has(String(section.status ?? "").toLowerCase()) && !boolValue(section.is_stale));
+    }
     const keys = onboardingWorkspaceSectionTasks[tab];
     if (!keys.length) return false;
     const existingTasks = keys.map((key) => taskByKey.get(key)).filter(Boolean) as Row[];

@@ -58,7 +58,7 @@ const packageJson = JSON.parse(read("package.json"));
 const lifecycleText = read(lifecyclePage);
 const modalBlock = blockAfter(lifecyclePage, "function Modal", 2200);
 const tabDefinitionBlock = blockAfter(lifecyclePage, "const onboardingWorkspaceTabs =", 700);
-const workspaceBlock = blockAfter(lifecyclePage, "function OnboardingWorkspace", 30000);
+const workspaceBlock = blockAfter(lifecyclePage, "function OnboardingWorkspace", 56000);
 const headerBlock = blockAfter(lifecyclePage, "<header className=\"onboarding-popup-header", 2200);
 const overviewBlock = blockAfter(lifecyclePage, "function OnboardingWorkspaceOverview", 9000);
 const setupNavBlock = blockBetween(workspaceBlock, "onboarding-setup-navigation-panel", "onboarding-main-workspace", `${lifecyclePage}: setup navigation block`);
@@ -139,7 +139,7 @@ for (const marker of [
   check(`${lifecyclePage}: right employee info marker missing: ${marker}`, employeeInfoBlock.includes(marker) || lifecycleText.includes(marker));
 }
 check(`${lifecyclePage}: left setup navigation must not contain employee summary content`, !setupNavBlock.includes("OnboardingEmployeeSummaryRow") && !setupNavBlock.includes("employeeProfilePhoto") && !setupNavBlock.includes("<Badge"));
-check(`${lifecyclePage}: right employee info must not contain readiness/missing/module state content`, !employeeInfoBlock.includes("Readiness") && !employeeInfoBlock.includes("Missing items") && !employeeInfoBlock.includes("Module states") && !employeeInfoBlock.includes("moduleStateRows") && !employeeInfoBlock.includes("visibleBlockers"));
+check(`${lifecyclePage}: right employee info must not contain old missing/module state clutter`, (!employeeInfoBlock.includes("Readiness") || employeeInfoBlock.includes("data-setup-readiness-display") || employeeInfoBlock.includes("OnboardingSectionReadinessPreview")) && !employeeInfoBlock.includes("Missing items") && !employeeInfoBlock.includes("Module states") && !employeeInfoBlock.includes("moduleStateRows") && !employeeInfoBlock.includes("visibleBlockers"));
 check(`${lifecyclePage}: right employee info value rows must truncate long fields`, employeeInfoBlock.includes("OnboardingEmployeeSummaryRow") && lifecycleText.includes("title={display}") && lifecycleText.includes("grid min-w-0"));
 
 for (const marker of [
