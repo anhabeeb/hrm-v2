@@ -30,7 +30,7 @@ import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
 import { ApiError, api } from "../lib/api";
 import { queryKeys } from "../lib/queryKeys";
 import type { AccessScopeRule, EmployeeUserAccessPreview, EmployeeUserAccount, Role, UserStatus } from "../types/auth";
-import type { Employee, EmployeeContact, EmployeeContactInput, EmployeeSetupReadinessResponse, EmployeeSetupSectionStatusRow, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
+import type { Employee, EmployeeContact, EmployeeContactInput, EmployeeSetupReadinessResponse, EmployeeSetupSectionStatusRow, EmployeeSetupStatusUpdate, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
 import type { LifecycleSummary, LifecycleTask } from "../types/lifecycle";
 
 const profileTabs = ["Overview", "Personal Info", "Job Info", "Contracts", "Contacts", "User Access", "Lifecycle", "Payroll", "Final Settlement", "Attendance", "Roster", "Leave", "Documents", "Assets & Uniforms", "Notes", "Audit Log"] as const;
@@ -219,6 +219,32 @@ export function EmployeeProfilePage() {
     }
   }, [canApplyUserAccess, canManageUserAccess, canViewUserAccess, employee, id, loadedTabs, token]);
 
+  const applySetupStatusUpdate = useCallback((update?: EmployeeSetupStatusUpdate | null) => {
+    if (!update || !employee) return;
+    setSetupReadiness((current) => {
+      const byKey = new Map((current?.sections ?? []).map((section) => [section.section_key, section]));
+      for (const section of [...update.updated_sections, ...update.stale_sections]) {
+        byKey.set(section.section_key, section);
+      }
+      const existingOrder = current?.sections?.map((section) => section.section_key) ?? [];
+      const orderedSections = [
+        ...existingOrder.map((key) => byKey.get(key)).filter(Boolean),
+        ...Array.from(byKey.values()).filter((section) => !existingOrder.includes(section.section_key))
+      ] as EmployeeSetupSectionStatusRow[];
+      return {
+        ...(current ?? {}),
+        mode: "employee_360_setup",
+        employee_id: employee.id,
+        activation_switched: false,
+        activation_requires_final_verification: true,
+        readiness: update.readiness,
+        sections: orderedSections
+      };
+    });
+    const warningMessage = update.warnings?.map((warning) => warning.message).filter(Boolean).join(" ");
+    if (warningMessage) setError(warningMessage);
+  }, [employee]);
+
   useEffect(() => {
     if (!visibleProfileTabs.includes(activeTab)) setActiveTab("Overview");
   }, [activeTab, visibleProfileTabs]);
@@ -261,8 +287,9 @@ export function EmployeeProfilePage() {
   async function updateTask(task: OnboardingTask, status: OnboardingStatus) {
     if (!token || !employee) return;
     try {
-      await api.updateEmployeeOnboardingTask(token, employee.id, task.id, status);
-      await load();
+      const result = await api.updateEmployeeOnboardingTask(token, employee.id, task.id, status);
+      setOnboarding((current) => current.map((row) => row.id === task.id ? result.task : row));
+      applySetupStatusUpdate(result.setup_status_update);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to update onboarding task.");
     }
@@ -272,12 +299,15 @@ export function EmployeeProfilePage() {
     if (!token || !employee) return;
     try {
       if (contactModal?.mode === "edit" && contactModal.contact) {
-        await api.updateEmployeeContact(token, employee.id, contactModal.contact.id, input);
+        const result = await api.updateEmployeeContact(token, employee.id, contactModal.contact.id, input);
+        setContacts((current) => current.map((contact) => contact.id === result.contact.id ? result.contact : contact));
+        applySetupStatusUpdate(result.setup_status_update);
       } else {
-        await api.createEmployeeContact(token, employee.id, input);
+        const result = await api.createEmployeeContact(token, employee.id, input);
+        setContacts((current) => [result.contact, ...current.filter((contact) => contact.id !== result.contact.id)]);
+        applySetupStatusUpdate(result.setup_status_update);
       }
       setContactModal(null);
-      await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to save contact.");
     }
@@ -286,10 +316,11 @@ export function EmployeeProfilePage() {
   async function archiveContact(contact: EmployeeContact) {
     if (!token || !employee) return;
     try {
-      await api.archiveEmployeeContact(token, employee.id, contact.id, contactArchiveReason);
+      const result = await api.archiveEmployeeContact(token, employee.id, contact.id, contactArchiveReason);
+      setContacts((current) => current.filter((row) => row.id !== contact.id));
       setContactArchiveTarget(null);
       setContactArchiveReason("");
-      await load();
+      applySetupStatusUpdate(result.setup_status_update);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to archive contact.");
     }
@@ -298,7 +329,9 @@ export function EmployeeProfilePage() {
   async function applyUserAccessMapping(mappingId?: string | null) {
     if (!token || !employee) return;
     try {
-      setUserAccess((await api.applyEmployeeRoleMapping(token, employee.id, mappingId)).preview);
+      const result = await api.applyEmployeeRoleMapping(token, employee.id, mappingId);
+      setUserAccess(result.preview);
+      applySetupStatusUpdate(result.setup_status_update);
       await loadTabData("User Access", true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to apply user access mapping.");
@@ -422,7 +455,7 @@ export function EmployeeProfilePage() {
             ["Full name", employee.full_name], ["Display name", employee.display_name], ["Gender", employee.gender], ["Date of birth", employee.date_of_birth], ["Nationality", employee.nationality], ["Employee type", employee.employee_type], ["Employment type", employee.employment_type], ["Profile photo", employee.profile_photo_document_id ? "Uploaded" : "Not uploaded"]
           ]} />{tabLoading["Personal Info"] ? <TableSkeleton rows={3} columns={4} label="Loading profile update requests" /> : <ProfileUpdateRequests rows={profileRequests} />}</div> : null}
           {activeTab === "Job Info" ? tabLoading["Job Info"] ? <TableSkeleton rows={4} columns={5} label="Loading job history" /> : <JobInfo employee={employee} jobHistory={jobHistory} /> : null}
-          {activeTab === "Contracts" ? canContracts ? <EmployeeContractsPanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Contracts unavailable" description="Your account needs employee contract access." /> : null}
+          {activeTab === "Contracts" ? canContracts ? <EmployeeContractsPanel employee={employee} token={token!} permissions={permissions} onSetupStatusUpdate={applySetupStatusUpdate} /> : <EmptyState title="Contracts unavailable" description="Your account needs employee contract access." /> : null}
           {activeTab === "Contacts" ? <Contacts contacts={contacts} canManage={canContacts} onAdd={() => setContactModal({ mode: "create" })} onEdit={(contact) => setContactModal({ mode: "edit", contact })} onArchive={(contact) => setContactArchiveTarget(contact)} /> : null}
           {activeTab === "User Access" ? canViewUserAccess ? (tabLoading["User Access"] ? <TableSkeleton rows={4} columns={4} label="Loading user access" /> :
             <UserAccessPanel
@@ -435,16 +468,17 @@ export function EmployeeProfilePage() {
               canApply={canApplyUserAccess}
               onRefresh={() => void loadTabData("User Access", true)}
               onApply={(mappingId) => void applyUserAccessMapping(mappingId)}
+              onSetupStatusUpdate={applySetupStatusUpdate}
             />
           ) : <EmptyState title="User access unavailable" description="Your account needs employee.user_account.view or users.view permission." /> : null}
           {activeTab === "Lifecycle" ? canViewLifecycle ? <LifecyclePanel summary={lifecycle} /> : <EmptyState title="Lifecycle unavailable" description="Your account needs employee lifecycle access." /> : null}
-          {activeTab === "Payroll" ? (canPayroll ? <EmployeePayrollPanel employee={employee} /> : <Panel><EmptyState title="Payroll unavailable" description="Your account needs employee payroll access." /></Panel>) : null}
+          {activeTab === "Payroll" ? (canPayroll ? <EmployeePayrollPanel employee={employee} onSetupStatusUpdate={applySetupStatusUpdate} /> : <Panel><EmptyState title="Payroll unavailable" description="Your account needs employee payroll access." /></Panel>) : null}
           {activeTab === "Final Settlement" ? (canFinalSettlement ? <EmployeeFinalSettlementPanel employee={employee} /> : <Panel><EmptyState title="Final settlement unavailable" description="Your account needs employee final settlement access." /></Panel>) : null}
           {activeTab === "Attendance" ? canAttendance ? <EmployeeAttendancePanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Attendance unavailable" description="Your account needs employees.attendance.view permission." /> : null}
           {activeTab === "Roster" ? canRoster ? <EmployeeRosterPanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Roster unavailable" description="Your account needs employees.roster.view permission." /> : null}
           {activeTab === "Leave" ? canLeave ? <EmployeeLeavePanel employee={employee} token={token!} permissions={permissions} /> : <EmptyState title="Leave unavailable" description="Your account needs employees.leave.view permission." /> : null}
-          {activeTab === "Documents" ? <EmployeeDocumentsPanel employee={employee} token={token!} permissions={permissions} onChanged={load} /> : null}
-          {activeTab === "Assets & Uniforms" ? canAssets ? <EmployeeAssetsPanel employee={employee} /> : <EmptyState title="Assets unavailable" description="Your account needs employee asset access." /> : null}
+          {activeTab === "Documents" ? <EmployeeDocumentsPanel employee={employee} token={token!} permissions={permissions} onSetupStatusUpdate={applySetupStatusUpdate} /> : null}
+          {activeTab === "Assets & Uniforms" ? canAssets ? <EmployeeAssetsPanel employee={employee} onSetupStatusUpdate={applySetupStatusUpdate} /> : <EmptyState title="Assets unavailable" description="Your account needs employee asset access." /> : null}
           {activeTab === "Notes" ? canNotes ? <EmployeeNotesPanel employee={employee} /> : <EmptyState title="Notes unavailable" description="Your account needs employee_notes.view permission." /> : null}
           {activeTab === "Audit Log" ? canAudit ? <EmployeeAuditPanel employee={employee} initialAudit={audit} /> : <EmptyState title="Audit unavailable" description="Your account needs employee audit access." /> : null}
         </div>
@@ -648,7 +682,8 @@ function UserAccessPanel({
   canManage,
   canApply,
   onRefresh,
-  onApply
+  onApply,
+  onSetupStatusUpdate
 }: {
   employee: Employee;
   token: string | null;
@@ -659,6 +694,7 @@ function UserAccessPanel({
   canApply: boolean;
   onRefresh: () => void;
   onApply: (mappingId?: string | null) => void;
+  onSetupStatusUpdate?: (update?: EmployeeSetupStatusUpdate | null) => void;
 }) {
   const linked = account?.linked_user ?? null;
   const suggested = account?.suggested ?? (preview ? { suggested_role_mapping: preview.suggested_role_mapping, suggested_role: preview.suggested_role, suggested_scope: preview.suggested_scope } : null);
@@ -716,12 +752,15 @@ function UserAccessPanel({
     if (scope.scope_owner_type === "ROLE_MAPPING_RULE") return "Mapping template";
     return scope.role_mapping_rule_id ? "Applied mapping" : "Manual user scope";
   };
-  async function run(label: string, action: () => Promise<unknown>) {
+  async function run(label: string, action: () => Promise<{ setup_status_update?: EmployeeSetupStatusUpdate | null } | unknown>) {
     if (!token) return;
     setBusy(label);
     setLocalError(null);
     try {
-      await action();
+      const result = await action();
+      if (result && typeof result === "object" && "setup_status_update" in result) {
+        onSetupStatusUpdate?.((result as { setup_status_update?: EmployeeSetupStatusUpdate | null }).setup_status_update);
+      }
       setReason("");
       onRefresh();
     } catch (err) {

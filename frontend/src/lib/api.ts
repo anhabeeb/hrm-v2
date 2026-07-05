@@ -32,6 +32,7 @@ import type {
   EmployeeInput,
   EmployeeNumberSettings,
   EmployeeSetupReadinessResponse,
+  WithEmployeeSetupStatusUpdate,
   EmployeeStatusSetting,
   OnboardingStatus,
   OnboardingTask
@@ -539,13 +540,13 @@ export const api = {
     return request<{ contract: Record<string, unknown>; events: Record<string, unknown>[]; document_status: Record<string, unknown> }>(`/api/v1/contracts/${contractId}`, {}, token);
   },
   createEmployeeContract(token: string, employeeId: string, input: Record<string, unknown>) {
-    return request<{ contract: Record<string, unknown> }>(`/api/v1/employees/${employeeId}/contracts`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ contract: Record<string, unknown> }>>(`/api/v1/employees/${employeeId}/contracts`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   updateContract(token: string, contractId: string, input: Record<string, unknown>) {
-    return request<{ contract: Record<string, unknown> }>(`/api/v1/contracts/${contractId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ contract: Record<string, unknown> }>>(`/api/v1/contracts/${contractId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   contractAction(token: string, contractId: string, action: string, input: Record<string, unknown> = {}) {
-    return request<{ contract?: Record<string, unknown>; updated?: boolean }>(`/api/v1/contracts/${contractId}/${action}`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ contract?: Record<string, unknown>; updated?: boolean }>>(`/api/v1/contracts/${contractId}/${action}`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   listEmployeeContracts(token: string, employeeId: string) {
     return request<{ contracts: Record<string, unknown>[] }>(`/api/v1/employees/${employeeId}/contracts`, {}, token);
@@ -812,7 +813,7 @@ export const api = {
     return request<{ preview: EmployeeUserAccessPreview }>(`/api/v1/employees/${employeeId}/user-access`, { signal }, token);
   },
   applyEmployeeRoleMapping(token: string, employeeId: string, role_mapping_rule_id?: string | null) {
-    return request<{ applied: boolean; preview: EmployeeUserAccessPreview }>(
+    return request<WithEmployeeSetupStatusUpdate<{ applied: boolean; preview: EmployeeUserAccessPreview }>>(
       `/api/v1/employees/${employeeId}/user-access/apply`,
       { method: "POST", body: JSON.stringify({ role_mapping_rule_id: role_mapping_rule_id ?? null }) },
       token
@@ -822,35 +823,35 @@ export const api = {
     return request<{ user_account: EmployeeUserAccount }>(`/api/v1/employees/${employeeId}/user-account`, { signal }, token);
   },
   linkEmployeeExistingUser(token: string, employeeId: string, input: { user_id: string; replace_existing?: boolean; reason?: string | null; role_ids?: string[]; access_scope_ids?: string[]; self_service_enabled?: boolean }) {
-    return request<{ user_account: EmployeeUserAccount }>(
+    return request<WithEmployeeSetupStatusUpdate<{ user_account: EmployeeUserAccount }>>(
       `/api/v1/employees/${employeeId}/user-account/link-existing`,
       { method: "POST", body: JSON.stringify(input) },
       token
     );
   },
   provisionEmployeeUserAccount(token: string, employeeId: string, input: { name?: string; email?: string; username?: string | null; password?: string; status?: UserStatus; role_ids?: string[]; access_scope_ids?: string[]; self_service_enabled?: boolean; replace_existing?: boolean; reset_required?: boolean; email_override_reason?: string | null; reason?: string | null }) {
-    return request<{ user_account: EmployeeUserAccount }>(
+    return request<WithEmployeeSetupStatusUpdate<{ user_account: EmployeeUserAccount }>>(
       `/api/v1/employees/${employeeId}/user-account/provision`,
       { method: "POST", body: JSON.stringify(input) },
       token
     );
   },
   updateEmployeeUserAccount(token: string, employeeId: string, input: { name?: string; email?: string; username?: string | null; status?: UserStatus; role_ids?: string[]; access_scope_ids?: string[]; self_service_enabled?: boolean; reset_required?: boolean; invite_status?: string | null; reason?: string | null }) {
-    return request<{ user_account: EmployeeUserAccount }>(
+    return request<WithEmployeeSetupStatusUpdate<{ user_account: EmployeeUserAccount }>>(
       `/api/v1/employees/${employeeId}/user-account`,
       { method: "PATCH", body: JSON.stringify(input) },
       token
     );
   },
   unlinkEmployeeUserAccount(token: string, employeeId: string, input: { reason: string; disable_user?: boolean }) {
-    return request<{ user_account: EmployeeUserAccount }>(
+    return request<WithEmployeeSetupStatusUpdate<{ user_account: EmployeeUserAccount }>>(
       `/api/v1/employees/${employeeId}/user-account/unlink`,
       { method: "POST", body: JSON.stringify(input) },
       token
     );
   },
   deactivateEmployeeUserForExit(token: string, employeeId: string, input: { reason: string }) {
-    return request<{ user_account: EmployeeUserAccount }>(
+    return request<WithEmployeeSetupStatusUpdate<{ user_account: EmployeeUserAccount }>>(
       `/api/v1/employees/${employeeId}/user-account/deactivate-for-exit`,
       { method: "POST", body: JSON.stringify(input) },
       token
@@ -930,7 +931,7 @@ export const api = {
     return request<{ employee: Employee }>("/api/v1/employees", { method: "POST", body: JSON.stringify(input) }, token);
   },
   updateEmployee(token: string, id: string, input: EmployeeInput) {
-    return request<{ employee: Employee }>(`/api/v1/employees/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ employee: Employee }>>(`/api/v1/employees/${id}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   archiveEmployee(token: string, id: string, reason: string) {
     return request<{ employee: Employee }>(`/api/v1/employees/${id}/archive`, { method: "POST", body: JSON.stringify({ reason }) }, token);
@@ -951,25 +952,25 @@ export const api = {
     return request<{ contacts: EmployeeContact[] }>(`/api/v1/employees/${id}/contacts`, {}, token);
   },
   createEmployeeContact(token: string, id: string, input: EmployeeContactInput) {
-    return request<{ contact: EmployeeContact }>(`/api/v1/employees/${id}/contacts`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ contact: EmployeeContact }>>(`/api/v1/employees/${id}/contacts`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   updateEmployeeContact(token: string, id: string, contactId: string, input: EmployeeContactInput) {
-    return request<{ contact: EmployeeContact }>(`/api/v1/employees/${id}/contacts/${contactId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ contact: EmployeeContact }>>(`/api/v1/employees/${id}/contacts/${contactId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   archiveEmployeeContact(token: string, id: string, contactId: string, reason?: string | null) {
-    return request<{ archived: boolean }>(`/api/v1/employees/${id}/contacts/${contactId}/archive`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ archived: boolean }>>(`/api/v1/employees/${id}/contacts/${contactId}/archive`, { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, token);
   },
   listEmployeeJobHistory(token: string, id: string, signal?: AbortSignal) {
     return request<{ job_history: Record<string, unknown>[] }>(`/api/v1/employees/${id}/job-history`, { signal }, token);
   },
   createEmployeeJobHistory(token: string, id: string, input: Partial<EmployeeInput> & { effective_date: string; reason?: string | null }) {
-    return request<{ employee: Employee }>(`/api/v1/employees/${id}/job-history`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ employee: Employee }>>(`/api/v1/employees/${id}/job-history`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   listEmployeeOnboarding(token: string, id: string) {
     return request<{ onboarding: OnboardingTask[] }>(`/api/v1/employees/${id}/onboarding`, {}, token);
   },
   updateEmployeeOnboardingTask(token: string, id: string, taskId: string, status: OnboardingStatus) {
-    return request<{ task: OnboardingTask }>(`/api/v1/employees/${id}/onboarding/${taskId}`, { method: "PATCH", body: JSON.stringify({ status }) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ task: OnboardingTask }>>(`/api/v1/employees/${id}/onboarding/${taskId}`, { method: "PATCH", body: JSON.stringify({ status }) }, token);
   },
   createEmployeeOnboardingCase(token: string, employeeId: string) {
     return request<{ case_id: string }>(`/api/v1/employees/${employeeId}/onboarding/cases`, { method: "POST" }, token);
@@ -1257,19 +1258,19 @@ export const api = {
     return request<{ documents: EmployeeDocument[]; missing: MissingDocument[] }>(`/api/v1/employees/${employeeId}/documents`, {}, token);
   },
   uploadEmployeeDocument(token: string, employeeId: string, form: FormData) {
-    return multipartRequest<{ document: EmployeeDocument }>(`/api/v1/employees/${employeeId}/documents/upload`, form, token);
+    return multipartRequest<WithEmployeeSetupStatusUpdate<{ document: EmployeeDocument }>>(`/api/v1/employees/${employeeId}/documents/upload`, form, token);
   },
   replaceEmployeeDocument(token: string, employeeId: string, documentId: string, form: FormData) {
-    return multipartRequest<{ document: EmployeeDocument }>(`/api/v1/employees/${employeeId}/documents/${documentId}/replace`, form, token);
+    return multipartRequest<WithEmployeeSetupStatusUpdate<{ document: EmployeeDocument }>>(`/api/v1/employees/${employeeId}/documents/${documentId}/replace`, form, token);
   },
   updateEmployeeDocument(token: string, employeeId: string, documentId: string, input: { document_number?: string | null; issue_date?: string | null; expiry_date?: string | null; notes?: string | null }) {
-    return request<{ document: EmployeeDocument }>(`/api/v1/employees/${employeeId}/documents/${documentId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ document: EmployeeDocument }>>(`/api/v1/employees/${employeeId}/documents/${documentId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   employeeDocumentAction(token: string, employeeId: string, documentId: string, action: "archive" | "restore" | "soft-delete", reason: string) {
-    return request<{ document: EmployeeDocument }>(`/api/v1/employees/${employeeId}/documents/${documentId}/${action}`, { method: "POST", body: JSON.stringify({ reason }) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ document: EmployeeDocument }>>(`/api/v1/employees/${employeeId}/documents/${documentId}/${action}`, { method: "POST", body: JSON.stringify({ reason }) }, token);
   },
   permanentlyDeleteEmployeeDocument(token: string, employeeId: string, documentId: string, reason: string) {
-    return request<{ deleted: boolean }>(`/api/v1/employees/${employeeId}/documents/${documentId}/permanent-delete`, { method: "DELETE", body: JSON.stringify({ reason }) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ deleted: boolean }>>(`/api/v1/employees/${employeeId}/documents/${documentId}/permanent-delete`, { method: "DELETE", body: JSON.stringify({ reason }) }, token);
   },
   downloadEmployeeDocument(token: string, employeeId: string, documentId: string) {
     return blobRequest(`/api/v1/employees/${employeeId}/documents/${documentId}/download`, token);
@@ -1902,7 +1903,7 @@ export const api = {
     return request<{ profile: EmployeePayrollProfile }>(`/api/v1/employees/${employeeId}/payroll/profile`, {}, token);
   },
   updateEmployeePayrollProfile(token: string, employeeId: string, input: Partial<EmployeePayrollProfile> & { reason?: string }) {
-    return request<{ profile: EmployeePayrollProfile }>(`/api/v1/employees/${employeeId}/payroll/profile`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ profile: EmployeePayrollProfile }>>(`/api/v1/employees/${employeeId}/payroll/profile`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   listEmployeeSalaryHistory(token: string, employeeId: string) {
     return request<{ salary_history: Record<string, unknown>[] }>(`/api/v1/employees/${employeeId}/payroll/salary-history`, {}, token);
@@ -1926,22 +1927,22 @@ export const api = {
     return request<{ payment_methods: EmployeePaymentMethod[] }>(`/api/v1/employees/${employeeId}/payment-methods`, {}, token);
   },
   createEmployeePaymentMethod(token: string, employeeId: string, input: Record<string, unknown>) {
-    return request<{ payment_method: EmployeePaymentMethod }>(`/api/v1/employees/${employeeId}/payment-methods`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ payment_method: EmployeePaymentMethod }>>(`/api/v1/employees/${employeeId}/payment-methods`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   updateEmployeePaymentMethod(token: string, employeeId: string, methodId: string, input: Record<string, unknown>) {
-    return request<{ payment_method: EmployeePaymentMethod }>(`/api/v1/employees/${employeeId}/payment-methods/${methodId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ payment_method: EmployeePaymentMethod }>>(`/api/v1/employees/${employeeId}/payment-methods/${methodId}`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   verifyEmployeePaymentMethod(token: string, employeeId: string, methodId: string) {
-    return request<{ verified: boolean }>(`/api/v1/employees/${employeeId}/payment-methods/${methodId}/verify`, { method: "POST" }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ verified: boolean }>>(`/api/v1/employees/${employeeId}/payment-methods/${methodId}/verify`, { method: "POST" }, token);
   },
   archiveEmployeePaymentMethod(token: string, employeeId: string, methodId: string) {
-    return request<{ archived: boolean }>(`/api/v1/employees/${employeeId}/payment-methods/${methodId}/archive`, { method: "POST" }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ archived: boolean }>>(`/api/v1/employees/${employeeId}/payment-methods/${methodId}/archive`, { method: "POST" }, token);
   },
   getEmployeePensionProfile(token: string, employeeId: string) {
     return request<{ profile: EmployeePensionProfile | null }>(`/api/v1/employees/${employeeId}/pension-profile`, {}, token);
   },
   updateEmployeePensionProfile(token: string, employeeId: string, input: Record<string, unknown>) {
-    return request<{ profile: EmployeePensionProfile }>(`/api/v1/employees/${employeeId}/pension-profile`, { method: "PATCH", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ profile: EmployeePensionProfile }>>(`/api/v1/employees/${employeeId}/pension-profile`, { method: "PATCH", body: JSON.stringify(input) }, token);
   },
   listPayrollBankLoans(token: string) {
     return request<{ loans: EmployeeBankLoan[] }>("/api/v1/payroll/bank-loans", {}, token);
@@ -2424,19 +2425,19 @@ export const api = {
     return request<{ assignment: AssetAssignment }>(`/api/v1/assets/assignments/${id}`, {}, token);
   },
   issueAssetAssignment(token: string, input: Record<string, unknown>) {
-    return request<{ assignment: AssetAssignment }>("/api/v1/assets/assignments/issue", { method: "POST", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ assignment: AssetAssignment }>>("/api/v1/assets/assignments/issue", { method: "POST", body: JSON.stringify(input) }, token);
   },
   assetAssignmentAction(token: string, id: string, action: "return" | "mark-damaged" | "mark-lost" | "write-off", input?: Record<string, unknown>) {
-    return request<{ assignment: AssetAssignment }>(`/api/v1/assets/assignments/${id}/${action}`, { method: "POST", body: JSON.stringify(input ?? {}) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ assignment: AssetAssignment }>>(`/api/v1/assets/assignments/${id}/${action}`, { method: "POST", body: JSON.stringify(input ?? {}) }, token);
   },
   assetAssignmentAdvancedAction(token: string, id: string, action: "approve" | "return" | "transfer" | "mark-damaged" | "mark-lost" | "apply-deduction" | "waive" | "cancel" | "link-document", input?: Record<string, unknown>) {
-    return request<{ assignment: AssetAssignment; deduction?: Record<string, unknown>; new_assignment?: AssetAssignment }>(`/api/v1/assets/assignments/${id}/${action}`, { method: "POST", body: JSON.stringify(input ?? {}) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ assignment: AssetAssignment; deduction?: Record<string, unknown>; new_assignment?: AssetAssignment }>>(`/api/v1/assets/assignments/${id}/${action}`, { method: "POST", body: JSON.stringify(input ?? {}) }, token);
   },
   replaceAssetAssignment(token: string, id: string, input: Record<string, unknown>) {
-    return request<{ assignment: AssetAssignment }>(`/api/v1/assets/assignments/${id}/replace`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ assignment: AssetAssignment }>>(`/api/v1/assets/assignments/${id}/replace`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   linkAssetDeduction(token: string, id: string, input: Record<string, unknown>) {
-    return request<{ assignment: AssetAssignment }>(`/api/v1/assets/assignments/${id}/link-deduction`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ assignment: AssetAssignment }>>(`/api/v1/assets/assignments/${id}/link-deduction`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   listAssetAssignmentEvents(token: string, id: string) {
     return request<{ events: AssetAssignmentEvent[] }>(`/api/v1/assets/assignments/${id}/events`, {}, token);
@@ -2469,7 +2470,7 @@ export const api = {
     return request<EmployeeAssetSummary>(`/api/v1/employees/${employeeId}/assets-uniforms/summary`, {}, token);
   },
   assignAssetToEmployee(token: string, employeeId: string, input: Record<string, unknown>) {
-    return request<{ assignment: AssetAssignment }>(`/api/v1/employees/${employeeId}/assets/assign`, { method: "POST", body: JSON.stringify(input) }, token);
+    return request<WithEmployeeSetupStatusUpdate<{ assignment: AssetAssignment }>>(`/api/v1/employees/${employeeId}/assets/assign`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   listUniformTypes(token: string) {
     return request<{ types: UniformType[] }>("/api/v1/uniforms/types", {}, token);

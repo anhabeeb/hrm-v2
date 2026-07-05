@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { disabledModuleResponse, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
+import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 
 type Row = Record<string, unknown>;
 type BindValue = string | number | null;
@@ -1099,7 +1100,12 @@ employeePayrollFoundationRoutes.post("/:employeeId/payment-methods", async (c) =
     .run();
   const methods = await getEmployeePaymentMethods(c.env.DB, employeeId, true);
   await audit(c, "employee.payment_method.created", "employee_payment_method", id, { newValue: methods.find((method) => method.id === id) });
-  return ok(c, { payment_method: methods.find((method) => method.id === id) }, 201);
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, {
+    employeeId,
+    savedSectionKey: "payment_method",
+    staleSectionKeys: ["pension"]
+  });
+  return ok(c, employeeSetupStatusUpdateResponse({ payment_method: methods.find((method) => method.id === id) }, setupStatusUpdate), 201);
 });
 
 employeePayrollFoundationRoutes.patch("/:employeeId/payment-methods/:methodId", async (c) => {
@@ -1130,7 +1136,12 @@ employeePayrollFoundationRoutes.patch("/:employeeId/payment-methods/:methodId", 
     .run();
   const method = (await getEmployeePaymentMethods(c.env.DB, employeeId, true)).find((row) => row.id === old.id);
   await audit(c, "employee.payment_method.updated", "employee_payment_method", String(old.id), { oldValue: old, newValue: method });
-  return ok(c, { payment_method: method });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, {
+    employeeId,
+    savedSectionKey: "payment_method",
+    staleSectionKeys: ["pension"]
+  });
+  return ok(c, employeeSetupStatusUpdateResponse({ payment_method: method }, setupStatusUpdate));
 });
 
 employeePayrollFoundationRoutes.post("/:employeeId/payment-methods/:methodId/verify", requireAnyPermission(["employees.payment_methods.verify", "employees.payment_methods.manage", "payroll.payment_methods.manage"]), async (c) => {
@@ -1138,7 +1149,12 @@ employeePayrollFoundationRoutes.post("/:employeeId/payment-methods/:methodId/ver
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee payment method was not found.");
   await c.env.DB.prepare("UPDATE employee_payment_methods SET verification_status = 'VERIFIED', verified_by_user_id = ?, verified_at = ?, updated_by_user_id = ?, updated_at = ? WHERE id = ? AND employee_id = ?").bind(c.get("currentUser").id, now(), c.get("currentUser").id, now(), c.req.param("methodId"), employeeId).run();
   await audit(c, "employee.payment_method.verified", "employee_payment_method", c.req.param("methodId"));
-  return ok(c, { verified: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, {
+    employeeId,
+    savedSectionKey: "payment_method",
+    staleSectionKeys: ["pension"]
+  });
+  return ok(c, employeeSetupStatusUpdateResponse({ verified: true }, setupStatusUpdate));
 });
 
 employeePayrollFoundationRoutes.post("/:employeeId/payment-methods/:methodId/archive", requireAnyPermission(["employees.payment_methods.archive", "employees.payment_methods.manage", "payroll.payment_methods.manage"]), async (c) => {
@@ -1146,7 +1162,12 @@ employeePayrollFoundationRoutes.post("/:employeeId/payment-methods/:methodId/arc
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "payroll", "manage"))) return fail(c, 404, "NOT_FOUND", "Employee payment method was not found.");
   await c.env.DB.prepare("UPDATE employee_payment_methods SET status = 'ARCHIVED', archived_by_user_id = ?, archived_at = ?, updated_at = ? WHERE id = ? AND employee_id = ?").bind(c.get("currentUser").id, now(), now(), c.req.param("methodId"), employeeId).run();
   await audit(c, "employee.payment_method.archived", "employee_payment_method", c.req.param("methodId"));
-  return ok(c, { archived: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, {
+    employeeId,
+    savedSectionKey: "payment_method",
+    staleSectionKeys: ["pension"]
+  });
+  return ok(c, employeeSetupStatusUpdateResponse({ archived: true }, setupStatusUpdate));
 });
 
 async function listBankLoans(c: Context<AppBindings>, employeeId?: string) {
@@ -1710,7 +1731,9 @@ employeePayrollFoundationRoutes.patch("/:employeeId/pension-profile", requireAny
       exemption_reason = excluded.exemption_reason, notes = excluded.notes, updated_by_user_id = excluded.updated_by_user_id, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`)
     .bind(id, employeeId, text(body.pension_scheme_id) || null, text(body.pension_member_id) || null, text(body.registration_number) || null, text(body.enrollment_status) || "ENROLLED", body.employee_contribution_percent_override ?? null, body.employer_contribution_percent_override ?? null, bool(body.employer_pays_employee_share, false) ? 1 : 0, numberValue(body.employee_extra_voluntary_contribution_amount), text(body.contribution_basis_override) || null, text(body.effective_date) || now().slice(0, 10), text(body.exemption_reason) || null, text(body.notes) || null, c.get("currentUser").id, c.get("currentUser").id).run();
   await audit(c, "employee.pension_profile.updated", "employee_pension_profile", id, { oldValue: existing, newValue: body });
-  return ok(c, { profile: await c.env.DB.prepare("SELECT * FROM employee_pension_profiles WHERE id = ?").bind(id).first<Row>() });
+  const profile = await c.env.DB.prepare("SELECT * FROM employee_pension_profiles WHERE id = ?").bind(id).first<Row>();
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId, savedSectionKey: "pension" });
+  return ok(c, employeeSetupStatusUpdateResponse({ profile }, setupStatusUpdate));
 });
 
 payrollFoundationRoutes.get("/pension-contributions", requireAnyPermission(["payroll.pension_contributions.view", "payroll.pension_contributions.manage", "payroll.view"]), async (c) => ok(c, { contributions: (await c.env.DB.prepare("SELECT ppc.*, e.employee_no, e.full_name AS employee_name, ps.scheme_name FROM payroll_pension_contributions ppc INNER JOIN employees e ON e.id = ppc.employee_id INNER JOIN pension_schemes ps ON ps.id = ppc.pension_scheme_id ORDER BY ppc.created_at DESC LIMIT 500").all<Row>()).results }));

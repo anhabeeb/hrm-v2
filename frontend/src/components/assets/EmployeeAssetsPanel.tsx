@@ -12,7 +12,7 @@ import { ApiError, api } from "../../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateDateRange, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
 import type { AssetAssignment, AssetAssignmentEvent, AssetCategory, AssetItem, AssetUniformClearanceSummary, UniformAssignment } from "../../types/assets";
 import type { EmployeeDocument } from "../../types/documents";
-import type { Employee } from "../../types/employees";
+import type { Employee, EmployeeSetupStatusUpdate } from "../../types/employees";
 import { useAlert } from "../alerts/useAlert";
 import { FormErrorSummary } from "../forms/FormErrorSummary";
 import { ValidatedReasonField, ValidatedSelectField, ValidatedTextField } from "../forms/validated-fields";
@@ -38,7 +38,7 @@ function hasErrors(issues: ValidationIssue[]) {
   return issues.some((issue) => issue.severity === "error");
 }
 
-export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
+export function EmployeeAssetsPanel({ employee, onSetupStatusUpdate }: { employee: Employee; onSetupStatusUpdate?: (update?: EmployeeSetupStatusUpdate | null) => void }) {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
   const assetsUniformsVisible = user?.module_visibility?.assets_uniforms !== false;
@@ -104,6 +104,12 @@ export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
 
   useEffect(() => { void load(); }, [token, employee.id, assetsUniformsVisible]);
 
+  async function afterAssetSave(setupStatusUpdate?: EmployeeSetupStatusUpdate | null) {
+    onSetupStatusUpdate?.(setupStatusUpdate);
+    setModal(null);
+    await load();
+  }
+
   if (!assetsUniformsVisible) {
     return (
       <Panel className="p-4">
@@ -155,17 +161,17 @@ export function EmployeeAssetsPanel({ employee }: { employee: Employee }) {
         </div>
       </Panel>
       <SimpleHistory rows={history} />
-      {modal?.type === "issue" ? <IssueAssetModal employee={employee} categories={categories} items={items} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
-      {modal?.type === "lifecycle" ? <LifecycleModal row={modal.row} action={modal.action} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
-      {modal?.type === "replace" ? <ReplaceModal row={modal.row} items={items} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
-      {modal?.type === "deduction" ? <DeductionModal row={modal.row} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
+      {modal?.type === "issue" ? <IssueAssetModal employee={employee} categories={categories} items={items} onClose={() => setModal(null)} onSaved={(update) => void afterAssetSave(update)} /> : null}
+      {modal?.type === "lifecycle" ? <LifecycleModal row={modal.row} action={modal.action} onClose={() => setModal(null)} onSaved={(update) => void afterAssetSave(update)} /> : null}
+      {modal?.type === "replace" ? <ReplaceModal row={modal.row} items={items} onClose={() => setModal(null)} onSaved={(update) => void afterAssetSave(update)} /> : null}
+      {modal?.type === "deduction" ? <DeductionModal row={modal.row} onClose={() => setModal(null)} onSaved={(update) => void afterAssetSave(update)} /> : null}
       {modal?.type === "events" ? <EventsModal row={modal.row} onClose={() => setModal(null)} /> : null}
       {modal?.type === "attachments" ? <AttachmentsModal row={modal.row} onClose={() => setModal(null)} /> : null}
     </div>
   );
 }
 
-function IssueAssetModal({ employee, categories, items, onClose, onSaved }: { employee: Employee; categories: AssetCategory[]; items: AssetItem[]; onClose: () => void; onSaved: () => void }) {
+function IssueAssetModal({ employee, categories, items, onClose, onSaved }: { employee: Employee; categories: AssetCategory[]; items: AssetItem[]; onClose: () => void; onSaved: (update?: EmployeeSetupStatusUpdate | null) => void }) {
   const { token } = useAuth();
   const alerts = useAlert();
   const [assetItemId, setAssetItemId] = useState(items[0]?.id ?? "");
@@ -188,9 +194,9 @@ function IssueAssetModal({ employee, categories, items, onClose, onSaved }: { em
       return;
     }
     try {
-      await api.issueAssetAssignment(token, { employee_id: employee.id, asset_item_id: assetItemId, issued_date: issuedAt, expected_return_date: expectedReturnAt || null, notes: notes || null });
+      const result = await api.issueAssetAssignment(token, { employee_id: employee.id, asset_item_id: assetItemId, issued_date: issuedAt, expected_return_date: expectedReturnAt || null, notes: notes || null });
       alerts.showSuccess("Asset issued", "The asset assignment was created.");
-      onSaved();
+      onSaved(result.setup_status_update);
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
@@ -206,7 +212,7 @@ function IssueAssetModal({ employee, categories, items, onClose, onSaved }: { em
   return <Dialog title="Issue asset" error={error} issues={validation.issues} onClose={onClose} onSave={save} saveLabel="Issue"><ValidatedSelectField field="asset_item_id" label="Asset item" value={assetItemId} issues={validation.issues} onValueChange={setAssetItemId}>{items.map((item) => <option key={item.id} value={item.id}>{item.code} / {item.name} / {categories.find((category) => category.id === item.category_id)?.name ?? item.category_name ?? "Uncategorized"}</option>)}</ValidatedSelectField><ValidatedTextField field="issued_date" label="Issued date" type="date" value={issuedAt} issues={validation.issues} onChange={setIssuedAt} /><ValidatedTextField field="expected_return_date" label="Expected return" type="date" value={expectedReturnAt} issues={validation.issues} onChange={setExpectedReturnAt} /><ValidatedTextField field="notes" label="Issue notes" value={notes} issues={validation.issues} onChange={setNotes} /></Dialog>;
 }
 
-function LifecycleModal({ row, action, onClose, onSaved }: { row: AssetAssignment; action: LifecycleAction; onClose: () => void; onSaved: () => void }) {
+function LifecycleModal({ row, action, onClose, onSaved }: { row: AssetAssignment; action: LifecycleAction; onClose: () => void; onSaved: (update?: EmployeeSetupStatusUpdate | null) => void }) {
   const { token } = useAuth();
   const alerts = useAlert();
   const [returnedDate, setReturnedDate] = useState(new Date().toISOString().slice(0, 10));
@@ -229,9 +235,9 @@ function LifecycleModal({ row, action, onClose, onSaved }: { row: AssetAssignmen
       return;
     }
     try {
-      await api.assetAssignmentAction(token, row.id, action, { reason, returned_date: returnedDate, condition_on_return: condition, deduction_amount: deductionAmount ? Number(deductionAmount) : null });
+      const result = await api.assetAssignmentAction(token, row.id, action, { reason, returned_date: returnedDate, condition_on_return: condition, deduction_amount: deductionAmount ? Number(deductionAmount) : null });
       alerts.showSuccess("Asset assignment updated", `${action.replace("-", " ")} action completed.`);
-      onSaved();
+      onSaved(result.setup_status_update);
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
@@ -247,7 +253,7 @@ function LifecycleModal({ row, action, onClose, onSaved }: { row: AssetAssignmen
   return <Dialog title={`${action.replace("-", " ")} asset`} error={error} issues={validation.issues} onClose={onClose} onSave={save}>{action === "return" ? <><ValidatedTextField field="returned_date" label="Returned date" type="date" value={returnedDate} issues={validation.issues} onChange={setReturnedDate} /><ValidatedTextField field="condition_on_return" label="Condition on return" value={condition} issues={validation.issues} onChange={setCondition} /></> : null}<ValidatedReasonField required value={reason} issues={validation.issues} onChange={setReason} /><ValidatedTextField field="deduction_amount" label="Deduction amount" type="number" value={deductionAmount} issues={validation.issues} onChange={setDeductionAmount} /></Dialog>;
 }
 
-function ReplaceModal({ row, items, onClose, onSaved }: { row: AssetAssignment; items: AssetItem[]; onClose: () => void; onSaved: () => void }) {
+function ReplaceModal({ row, items, onClose, onSaved }: { row: AssetAssignment; items: AssetItem[]; onClose: () => void; onSaved: (update?: EmployeeSetupStatusUpdate | null) => void }) {
   const { token } = useAuth();
   const alerts = useAlert();
   const [replacementAssetItemId, setReplacementAssetItemId] = useState("");
@@ -267,9 +273,9 @@ function ReplaceModal({ row, items, onClose, onSaved }: { row: AssetAssignment; 
       return;
     }
     try {
-      await api.replaceAssetAssignment(token, row.id, { replacement_asset_item_id: replacementAssetItemId || null, reason });
+      const result = await api.replaceAssetAssignment(token, row.id, { replacement_asset_item_id: replacementAssetItemId || null, reason });
       alerts.showSuccess("Asset replaced", "The replacement asset was linked.");
-      onSaved();
+      onSaved(result.setup_status_update);
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {
@@ -285,7 +291,7 @@ function ReplaceModal({ row, items, onClose, onSaved }: { row: AssetAssignment; 
   return <Dialog title="Replace asset" error={error} issues={validation.issues} onClose={onClose} onSave={save}><ValidatedSelectField field="replacement_asset_item_id" label="Replacement item" value={replacementAssetItemId} issues={validation.issues} onValueChange={setReplacementAssetItemId}><option value="">Select replacement item</option>{items.map((item) => <option key={item.id} value={item.id}>{item.code} / {item.name}</option>)}</ValidatedSelectField><ValidatedReasonField required value={reason} issues={validation.issues} onChange={setReason} /></Dialog>;
 }
 
-function DeductionModal({ row, onClose, onSaved }: { row: AssetAssignment; onClose: () => void; onSaved: () => void }) {
+function DeductionModal({ row, onClose, onSaved }: { row: AssetAssignment; onClose: () => void; onSaved: (update?: EmployeeSetupStatusUpdate | null) => void }) {
   const { token } = useAuth();
   const alerts = useAlert();
   const [deductionId, setDeductionId] = useState(row.payroll_deduction_id ?? "");
@@ -309,9 +315,9 @@ function DeductionModal({ row, onClose, onSaved }: { row: AssetAssignment; onClo
       return;
     }
     try {
-      await api.linkAssetDeduction(token, row.id, { payroll_deduction_id: deductionId || null, payroll_adjustment_id: adjustmentId || null, deduction_amount: amount ? Number(amount) : null, reason });
+      const result = await api.linkAssetDeduction(token, row.id, { payroll_deduction_id: deductionId || null, payroll_adjustment_id: adjustmentId || null, deduction_amount: amount ? Number(amount) : null, reason });
       alerts.showSuccess("Deduction linked", "The asset recovery record was updated.");
-      onSaved();
+      onSaved(result.setup_status_update);
     } catch (err) {
       const issuesFromApi = normalizeValidationIssues(err);
       if (issuesFromApi.length) {

@@ -4,6 +4,7 @@ import { accessScopeToApi, buildEmployeeScopeWhereClause, canAccessEmployee, typ
 import { hashPassword } from "../auth/password";
 import { recordAudit } from "../db/audit";
 import { getActiveOwnerCount, getUserByEmail, getUserById } from "../db/users";
+import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 import { getEmployeeSetupSectionPreviewPayload, rebuildEmployeeSetupSectionStatuses, sanitizeEmployeeSetupStatusError } from "../employee-setup/section-status";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
@@ -1632,6 +1633,16 @@ employeeRoutes.patch("/:id", requirePermission("employees.update"), async (c) =>
     input.primary_location_id !== existing.primary_location_id ||
     input.job_level_id !== existing.job_level_id ||
     input.reporting_manager_employee_id !== existing.reporting_manager_employee_id;
+  const profileChanged =
+    input.employee_no !== existing.employee_no ||
+    input.full_name !== existing.full_name ||
+    input.display_name !== existing.display_name ||
+    input.gender !== existing.gender ||
+    input.date_of_birth !== existing.date_of_birth ||
+    input.nationality !== existing.nationality ||
+    input.employee_type !== existing.employee_type ||
+    input.employment_type !== existing.employment_type ||
+    input.joining_date !== existing.joining_date;
   await c.env.DB
     .prepare(
       `UPDATE employees SET employee_no = ?, full_name = ?, display_name = ?, gender = ?, date_of_birth = ?,
@@ -1650,7 +1661,31 @@ employeeRoutes.patch("/:id", requirePermission("employees.update"), async (c) =>
   const employee = await getEmployeeById(c.env.DB, existing.id);
   await auditEmployee(c, { action: "employee.updated", entityType: "employee", entityId: existing.id, oldValue: existing, newValue: employee });
   await publishEmployee(c, "employee.updated", existing.id, "updated");
-  return ok(c, { employee: employee ? toEmployee(employee, hasPermission(c, "employees.sensitive.view")) : null });
+  const staleSectionKeys = [
+    input.employee_type !== existing.employee_type ? "documents" : null,
+    input.employment_type !== existing.employment_type ? "documents" : null,
+    input.employment_type !== existing.employment_type ? "contract" : null,
+    input.employment_type !== existing.employment_type ? "payroll_profile" : null,
+    input.employment_type !== existing.employment_type ? "payment_method" : null,
+    input.joining_date !== existing.joining_date ? "job_assignment" : null,
+    input.joining_date !== existing.joining_date ? "attendance_roster" : null,
+    input.joining_date !== existing.joining_date ? "payroll_profile" : null,
+    input.joining_date !== existing.joining_date ? "documents" : null,
+    jobChanged ? "documents" : null,
+    jobChanged ? "contract" : null,
+    jobChanged ? "payroll_profile" : null,
+    jobChanged ? "payment_method" : null,
+    jobChanged ? "attendance_roster" : null,
+    jobChanged ? "assets_uniforms" : null,
+    jobChanged ? "approval_tasks" : null
+  ].filter(Boolean) as Array<"documents" | "contract" | "payroll_profile" | "payment_method" | "job_assignment" | "attendance_roster" | "assets_uniforms" | "approval_tasks">;
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, {
+    employeeId: existing.id,
+    savedSectionKey: jobChanged && !profileChanged ? "job_assignment" : "profile_information",
+    affectedSectionKeys: [profileChanged ? "profile_information" : null, jobChanged ? "job_assignment" : null].filter(Boolean) as Array<"profile_information" | "job_assignment">,
+    staleSectionKeys
+  });
+  return ok(c, employeeSetupStatusUpdateResponse({ employee: employee ? toEmployee(employee, hasPermission(c, "employees.sensitive.view")) : null }, setupStatusUpdate));
 });
 
 employeeRoutes.post("/:id/status", requirePermission("employees.status.manage"), async (c) => {
@@ -1845,7 +1880,8 @@ employeeRoutes.post("/:id/user-account/link-existing", async (c) => {
   });
   await publishEmployeeUserAccountChanged(c, employee.id, targetUser.id, "linked");
   const updated = await getEmployeeById(c.env.DB, employee.id);
-  return ok(c, { user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: employee.id, savedSectionKey: "user_access" });
+  return ok(c, employeeSetupStatusUpdateResponse({ user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null }, setupStatusUpdate));
 });
 
 employeeRoutes.post("/:id/user-account/provision", async (c) => {
@@ -1952,7 +1988,8 @@ employeeRoutes.post("/:id/user-account/provision", async (c) => {
   });
   await publishEmployeeUserAccountChanged(c, employee.id, userId, "provisioned");
   const updated = await getEmployeeById(c.env.DB, employee.id);
-  return ok(c, { user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null }, 201);
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: employee.id, savedSectionKey: "user_access" });
+  return ok(c, employeeSetupStatusUpdateResponse({ user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null }, setupStatusUpdate), 201);
 });
 
 employeeRoutes.patch("/:id/user-account", async (c) => {
@@ -2021,7 +2058,8 @@ employeeRoutes.patch("/:id/user-account", async (c) => {
   });
   await publishEmployeeUserAccountChanged(c, employee.id, targetUser.id, "updated");
   const updated = await getEmployeeById(c.env.DB, employee.id);
-  return ok(c, { user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: employee.id, savedSectionKey: "user_access" });
+  return ok(c, employeeSetupStatusUpdateResponse({ user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null }, setupStatusUpdate));
 });
 
 employeeRoutes.post("/:id/user-account/unlink", async (c) => {
@@ -2058,7 +2096,8 @@ employeeRoutes.post("/:id/user-account/unlink", async (c) => {
   });
   await publishEmployeeUserAccountChanged(c, employee.id, employee.user_id, "unlinked");
   const updated = await getEmployeeById(c.env.DB, employee.id);
-  return ok(c, { user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: employee.id, savedSectionKey: "user_access" });
+  return ok(c, employeeSetupStatusUpdateResponse({ user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null }, setupStatusUpdate));
 });
 
 employeeRoutes.post("/:id/user-account/deactivate-for-exit", async (c) => {
@@ -2091,7 +2130,8 @@ employeeRoutes.post("/:id/user-account/deactivate-for-exit", async (c) => {
   });
   await publishEmployeeUserAccountChanged(c, employee.id, targetUser.id, "deactivated_for_exit");
   const updated = await getEmployeeById(c.env.DB, employee.id);
-  return ok(c, { user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: employee.id, savedSectionKey: "user_access" });
+  return ok(c, employeeSetupStatusUpdateResponse({ user_account: updated ? await buildEmployeeUserAccountResponse(c, updated, true) : null }, setupStatusUpdate));
 });
 
 employeeRoutes.get("/:id/contacts", requirePermission("employees.contacts.view"), async (c) => {
@@ -2139,7 +2179,8 @@ employeeRoutes.post("/:id/contacts/:contactId/archive", requirePermission("emplo
   await c.env.DB.prepare("UPDATE employee_contacts SET archived_at = ?, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), new Date().toISOString(), contact.id).run();
   await auditEmployee(c, { action: "employee.contact.archived", entityType: "employee_contact", entityId: contact.id, oldValue: contact, reason: optionalString((await readJsonBody(c.req.raw)).reason) });
   await publishEmployee(c, "employee.updated", contact.employee_id, "contact_archived");
-  return ok(c, { archived: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: contact.employee_id, savedSectionKey: "contact_emergency" });
+  return ok(c, employeeSetupStatusUpdateResponse({ archived: true }, setupStatusUpdate));
 });
 
 employeeRoutes.get("/:id/job-history", requirePermission("employees.job_history.view"), async (c) => {
@@ -2198,7 +2239,12 @@ employeeRoutes.post("/:id/job-history", requirePermission("employees.job_history
     .run();
   await auditEmployee(c, { action: "employee.job_changed", entityType: "employee", entityId: employee.id, oldValue: employee, newValue: input, reason: optionalString(body.reason) });
   await publishEmployee(c, "employee.updated", employee.id, "job_changed");
-  return ok(c, { employee: toEmployee((await getEmployeeById(c.env.DB, employee.id))!, hasPermission(c, "employees.sensitive.view")) });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, {
+    employeeId: employee.id,
+    savedSectionKey: "job_assignment",
+    staleSectionKeys: ["documents", "contract", "payroll_profile", "payment_method", "attendance_roster", "assets_uniforms", "approval_tasks"]
+  });
+  return ok(c, employeeSetupStatusUpdateResponse({ employee: toEmployee((await getEmployeeById(c.env.DB, employee.id))!, hasPermission(c, "employees.sensitive.view")) }, setupStatusUpdate));
 });
 
 employeeRoutes.get("/:id/onboarding", requirePermission("employees.view"), async (c) => {
@@ -2235,7 +2281,8 @@ employeeRoutes.patch("/:id/onboarding/:taskId", requirePermission("employees.onb
   const updated = await c.env.DB.prepare("SELECT * FROM employee_onboarding_tasks WHERE id = ?").bind(c.req.param("taskId")).first();
   await auditEmployee(c, { action: "employee.onboarding_task.updated", entityType: "employee_onboarding_task", entityId: c.req.param("taskId"), oldValue: task, newValue: updated });
   await publishEmployee(c, "employee.onboarding_changed", c.req.param("id"), "onboarding_changed");
-  return ok(c, { task: updated });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: c.req.param("id"), savedSectionKey: "approval_tasks" });
+  return ok(c, employeeSetupStatusUpdateResponse({ task: updated as Record<string, unknown> }, setupStatusUpdate));
 });
 
 employeeRoutes.get("/:id/audit", requirePermission("employees.view"), async (c) => {
@@ -2350,5 +2397,6 @@ async function saveContact(c: Context<AppBindings>, employeeId: string, contactI
     newValue: contact
   });
   await publishEmployee(c, "employee.updated", employeeId, old ? "contact_updated" : "contact_created");
-  return ok(c, { contact: contact ? toContact(contact, hasPermission(c, "employees.sensitive.view")) : null }, old ? 200 : 201);
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId, savedSectionKey: "contact_emergency" });
+  return ok(c, employeeSetupStatusUpdateResponse({ contact: contact ? toContact(contact, hasPermission(c, "employees.sensitive.view")) : null }, setupStatusUpdate), old ? 200 : 201);
 }

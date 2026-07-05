@@ -10,6 +10,7 @@ import type { AppBindings, AuthUser } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
+import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 
 type BindValue = string | number | null;
 type CsvRow = Record<string, string>;
@@ -631,7 +632,8 @@ attendanceDeviceSyncRoutes.post("/biometric-mappings", requireAnyPermission(["at
     return fail(c, 409, "DUPLICATE_MAPPING", "An active mapping already exists for this device and biometric user ID.");
   }
   await auditAttendanceDevice(c, { action: "attendance.biometric_mapping.created", entityType: "employee_biometric_mapping", entityId: id, newValue: prepared.input });
-  return ok(c, { mapping: await c.env.DB.prepare("SELECT * FROM employee_biometric_mappings WHERE id = ?").bind(id).first() }, 201);
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId, savedSectionKey: "attendance_roster" });
+  return ok(c, employeeSetupStatusUpdateResponse({ mapping: await c.env.DB.prepare("SELECT * FROM employee_biometric_mappings WHERE id = ?").bind(id).first() ?? null }, setupStatusUpdate), 201);
 });
 
 attendanceDeviceSyncRoutes.patch("/biometric-mappings/:mappingId", requireAnyPermission(["attendance.biometric_mappings.manage"]), async (c) => {
@@ -648,7 +650,8 @@ attendanceDeviceSyncRoutes.patch("/biometric-mappings/:mappingId", requireAnyPer
      WHERE id = ?`
   ).bind(prepared.input.attendance_device_id, prepared.input.biometric_user_id, prepared.input.biometric_user_name, prepared.input.external_employee_code, prepared.input.mapping_source, prepared.input.status, prepared.input.is_primary ? 1 : 0, prepared.input.notes, c.get("currentUser").id, new Date().toISOString(), id).run();
   await auditAttendanceDevice(c, { action: "attendance.biometric_mapping.updated", entityType: "employee_biometric_mapping", entityId: id, oldValue: old, newValue: prepared.input });
-  return ok(c, { mapping: await c.env.DB.prepare("SELECT * FROM employee_biometric_mappings WHERE id = ?").bind(id).first() });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(old.employee_id), savedSectionKey: "attendance_roster" });
+  return ok(c, employeeSetupStatusUpdateResponse({ mapping: await c.env.DB.prepare("SELECT * FROM employee_biometric_mappings WHERE id = ?").bind(id).first() ?? null }, setupStatusUpdate));
 });
 
 attendanceDeviceSyncRoutes.post("/biometric-mappings/:mappingId/archive", requireAnyPermission(["attendance.biometric_mappings.manage"]), async (c) => {
@@ -657,7 +660,8 @@ attendanceDeviceSyncRoutes.post("/biometric-mappings/:mappingId/archive", requir
   if (!old) return fail(c, 404, "NOT_FOUND", "Biometric mapping was not found.");
   await c.env.DB.prepare("UPDATE employee_biometric_mappings SET status = 'ARCHIVED', archived_at = ?, archived_by_user_id = ?, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), c.get("currentUser").id, new Date().toISOString(), id).run();
   await auditAttendanceDevice(c, { action: "attendance.biometric_mapping.archived", entityType: "employee_biometric_mapping", entityId: id, oldValue: old });
-  return ok(c, { archived: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(old.employee_id), savedSectionKey: "attendance_roster" });
+  return ok(c, employeeSetupStatusUpdateResponse({ archived: true }, setupStatusUpdate));
 });
 
 attendanceDeviceSyncRoutes.get("/import-batches", requireAnyPermission(["attendance.import_batches.view", "attendance.import_batches.manage", "attendance.devices.manage"]), async (c) => {
@@ -995,7 +999,8 @@ employeeAttendanceDeviceSyncRoutes.post("/:employeeId/biometric-mappings", requi
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(id, employeeId, prepared.input.attendance_device_id, prepared.input.biometric_user_id, prepared.input.biometric_user_name, prepared.input.external_employee_code, prepared.input.mapping_source, prepared.input.status, prepared.input.is_primary ? 1 : 0, prepared.input.notes, c.get("currentUser").id, c.get("currentUser").id).run();
   await auditAttendanceDevice(c, { action: "attendance.biometric_mapping.created", entityType: "employee_biometric_mapping", entityId: id, newValue: prepared.input });
-  return ok(c, { mapping: await c.env.DB.prepare("SELECT * FROM employee_biometric_mappings WHERE id = ?").bind(id).first() }, 201);
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId, savedSectionKey: "attendance_roster" });
+  return ok(c, employeeSetupStatusUpdateResponse({ mapping: await c.env.DB.prepare("SELECT * FROM employee_biometric_mappings WHERE id = ?").bind(id).first() ?? null }, setupStatusUpdate), 201);
 });
 
 employeeAttendanceDeviceSyncRoutes.get("/:employeeId/attendance/device-summary", requireAnyPermission(["employees.attendance.view", "attendance.view", "attendance.biometric_mappings.view"]), async (c) => {

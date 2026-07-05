@@ -15,6 +15,7 @@ import { requireOperationalModuleMiddleware } from "../utils/module-enforcement"
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { createDirectR2PresignedPutUrl, createSecureDocumentObjectKey, getConfiguredDocumentUploadMode, getDirectUploadMaxBytes, getDirectUploadTtlSeconds, isDirectR2UploadConfigured, resolveDocumentUploadMode } from "../utils/r2-direct-upload";
 import { readJsonBody, readString } from "../utils/validation";
+import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 
 type BindValue = string | number | null;
 type StoredStatus = "ACTIVE" | "ARCHIVED" | "SOFT_DELETED";
@@ -1588,6 +1589,7 @@ export async function completeDocumentUploadSessions(c: Context<AppBindings>, up
   const documents: Array<ReturnType<typeof maskDocument> | null> = [];
   const results: Array<Record<string, unknown>> = [];
   const backgroundJobIds = new Set<string>();
+  const completedEmployeeIds = new Set<string>();
   for (const uploadId of uploadIds) {
     const session = await getUploadSessionForActor(c, uploadId);
     if (!session) {
@@ -1605,6 +1607,7 @@ export async function completeDocumentUploadSessions(c: Context<AppBindings>, up
     try {
       const completed = await commitUploadedDocumentSession(c, session);
       documents.push(completed.document);
+      completedEmployeeIds.add(session.employee_id);
       if (completed.backgroundJobId) backgroundJobIds.add(completed.backgroundJobId);
       results.push({
         upload_id: completed.uploadId,
@@ -1625,11 +1628,18 @@ export async function completeDocumentUploadSessions(c: Context<AppBindings>, up
     }
   }
   const completedCount = results.filter((result) => result.status === "UPLOADED").length;
+  const setupStatusUpdate = completedCount > 0 && completedEmployeeIds.size === 1
+    ? await updateEmployeeSetupSectionStatusAfterSave(c, {
+      employeeId: [...completedEmployeeIds][0],
+      savedSectionKey: "documents"
+    })
+    : null;
   return {
     completed_count: completedCount,
     failed_count: results.length - completedCount,
     documents: documents.filter(Boolean),
     results,
+    setup_status_update: setupStatusUpdate,
     recalculation_status: completedCount > 0 ? "queued" : "not_queued",
     readiness_updating: completedCount > 0,
     background_job_ids: [...backgroundJobIds],
@@ -1805,7 +1815,8 @@ export async function uploadEmployeeDocument(c: Context<AppBindings>, replaceDoc
   });
   if (prepared.response || !prepared.prepared) return prepared.response ?? fail(c, 400, "INVALID_DOCUMENT_UPLOAD", "Document upload could not be prepared.");
   const saved = await savePreparedEmployeeDocumentUpload(c, prepared.prepared);
-  return ok(c, { document: saved.document }, replaceDocumentId ? 200 : 201);
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId, savedSectionKey: "documents" });
+  return ok(c, employeeSetupStatusUpdateResponse({ document: saved.document }, setupStatusUpdate), replaceDocumentId ? 200 : 201);
 }
 
 employeeDocumentRoutes.post("/:employeeId/documents/upload", requirePermission("documents.upload"), (c) => uploadEmployeeDocument(c));
@@ -1827,7 +1838,8 @@ employeeDocumentRoutes.patch("/:employeeId/documents/:documentId", requirePermis
   const updated = await getDocument(c.env.DB, doc.id, doc.employee_id);
   await auditDocument(c, { action: "document.metadata_updated", entityType: "document", entityId: doc.id, oldValue: doc, newValue: updated });
   await refreshDocumentComplianceQuietly(c, doc.employee_id, doc.id);
-  return ok(c, { document: updated ? maskDocument(updated, hasPermission(c, "documents.sensitive.view")) : null });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: doc.employee_id, savedSectionKey: "documents" });
+  return ok(c, employeeSetupStatusUpdateResponse({ document: updated ? maskDocument(updated, hasPermission(c, "documents.sensitive.view")) : null }, setupStatusUpdate));
 });
 
 async function documentStatusAction(c: Context<AppBindings>, status: StoredStatus, permission: "documents.archive" | "documents.delete", action: string) {
@@ -1853,7 +1865,8 @@ async function documentStatusAction(c: Context<AppBindings>, status: StoredStatu
   await auditDocument(c, { action: `document.${action}`, entityType: "document", entityId: doc.id, oldValue: doc, newValue: updated, reason: reasonResult.reason });
   await publishDocument(c, action === "archived" ? "document.archived" : action === "restored" ? "document.restored" : "document.soft_deleted", doc.id, action);
   await refreshDocumentComplianceQuietly(c, doc.employee_id, doc.id);
-  return ok(c, { document: updated ? maskDocument(updated, hasPermission(c, "documents.sensitive.view")) : null });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: doc.employee_id, savedSectionKey: "documents" });
+  return ok(c, employeeSetupStatusUpdateResponse({ document: updated ? maskDocument(updated, hasPermission(c, "documents.sensitive.view")) : null }, setupStatusUpdate));
 }
 
 employeeDocumentRoutes.post("/:employeeId/documents/:documentId/archive", (c) => documentStatusAction(c, "ARCHIVED", "documents.archive", "archived"));
@@ -1878,7 +1891,8 @@ employeeDocumentRoutes.delete("/:employeeId/documents/:documentId/permanent-dele
   await c.env.DB.prepare("DELETE FROM employee_documents WHERE id = ?").bind(doc.id).run();
   await publishDocument(c, "document.permanently_deleted", doc.id, "permanently_deleted");
   await refreshDocumentComplianceQuietly(c, doc.employee_id, doc.id);
-  return ok(c, { deleted: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: doc.employee_id, savedSectionKey: "documents" });
+  return ok(c, employeeSetupStatusUpdateResponse({ deleted: true }, setupStatusUpdate));
 });
 
 employeeDocumentRoutes.get("/:employeeId/documents/:documentId/download", async (c) => {

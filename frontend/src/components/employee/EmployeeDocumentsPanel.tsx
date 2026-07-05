@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateRange, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
 import type { DocumentType, EmployeeDocument, EmployeeDocumentVersion, MissingDocument } from "../../types/documents";
-import type { Employee } from "../../types/employees";
+import type { Employee, EmployeeSetupStatusUpdate } from "../../types/employees";
 import { useAlert } from "../alerts/useAlert";
 import { FormErrorSummary } from "../forms/FormErrorSummary";
 import { ValidatedFileField, ValidatedReasonField, ValidatedSelectField, ValidatedTextField } from "../forms/validated-fields";
@@ -56,7 +56,7 @@ function validateDocumentUploadForm(input: {
   ];
 }
 
-export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged }: { employee: Employee; token: string; permissions: Set<string>; onChanged?: () => Promise<void> }) {
+export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged, onSetupStatusUpdate }: { employee: Employee; token: string; permissions: Set<string>; onChanged?: () => Promise<void>; onSetupStatusUpdate?: (update?: EmployeeSetupStatusUpdate | null) => void }) {
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [missing, setMissing] = useState<MissingDocument[]>([]);
   const [types, setTypes] = useState<DocumentType[]>([]);
@@ -92,7 +92,8 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
     void load();
   }, [employee.id, token]);
 
-  async function afterChange() {
+  async function afterChange(setupStatusUpdate?: EmployeeSetupStatusUpdate | null) {
+    onSetupStatusUpdate?.(setupStatusUpdate);
     await load();
     await onChanged?.();
   }
@@ -110,9 +111,9 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
 
   async function action(document: EmployeeDocument, name: "archive" | "restore" | "soft-delete", reason: string) {
     try {
-      await api.employeeDocumentAction(token, employee.id, document.id, name, reason);
+      const result = await api.employeeDocumentAction(token, employee.id, document.id, name, reason);
       setDocumentAction(null);
-      await afterChange();
+      await afterChange(result.setup_status_update);
       alerts.showSuccess("Document updated", `Document ${name.replace("-", " ")} action completed.`);
     } catch (err) {
       alerts.showApiError(err, "Document action failed");
@@ -122,9 +123,9 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
 
   async function permanentlyDelete(document: EmployeeDocument, reason: string) {
     try {
-      await api.permanentlyDeleteEmployeeDocument(token, employee.id, document.id, reason);
+      const result = await api.permanentlyDeleteEmployeeDocument(token, employee.id, document.id, reason);
       setDocumentAction(null);
-      await afterChange();
+      await afterChange(result.setup_status_update);
       alerts.showSuccess("Document permanently deleted", "The document metadata and versions were removed.");
     } catch (err) {
       alerts.showApiError(err, "Document deletion failed");
@@ -261,7 +262,7 @@ function DocumentActionModal({ action, onChange, onClose, onConfirm }: { action:
   );
 }
 
-function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }: { employee: Employee; token: string; types: DocumentType[]; state: { mode: "upload" | "replace" | "photo"; document?: EmployeeDocument }; onClose: () => void; onSaved: () => Promise<void> }) {
+function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }: { employee: Employee; token: string; types: DocumentType[]; state: { mode: "upload" | "replace" | "photo"; document?: EmployeeDocument }; onClose: () => void; onSaved: (setupStatusUpdate?: EmployeeSetupStatusUpdate | null) => Promise<void> }) {
   const activeTypes = useMemo(() => types.filter((type) => type.is_active), [types]);
   const profilePhotoType = activeTypes.find((type) => type.code === "PROFILE_PHOTO");
   const [documentTypeId, setDocumentTypeId] = useState(state.document?.document_type_id ?? (state.mode === "photo" ? profilePhotoType?.id : activeTypes[0]?.id) ?? "");
@@ -297,14 +298,17 @@ function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }
     form.append("reason_for_replacement", reason);
     setSaving(true);
     try {
+      let setupStatusUpdate: EmployeeSetupStatusUpdate | null | undefined;
       if (state.mode === "replace" && state.document) {
-        await api.replaceEmployeeDocument(token, employee.id, state.document.id, form);
+        const result = await api.replaceEmployeeDocument(token, employee.id, state.document.id, form);
+        setupStatusUpdate = result.setup_status_update;
       } else if (state.mode === "photo") {
         await api.uploadEmployeeProfilePhoto(token, employee.id, form);
       } else {
-        await api.uploadEmployeeDocument(token, employee.id, form);
+        const result = await api.uploadEmployeeDocument(token, employee.id, form);
+        setupStatusUpdate = result.setup_status_update;
       }
-      await onSaved();
+      await onSaved(setupStatusUpdate);
       alerts.showSuccess(state.mode === "photo" ? "Profile photo uploaded" : state.mode === "replace" ? "Document replaced" : "Document uploaded", "The employee document record was updated.");
       onClose();
     } catch (err) {

@@ -12,6 +12,7 @@ import type {
   PaymentInstitution,
   PensionScheme
 } from "../../types/payroll";
+import type { EmployeeSetupStatusUpdate } from "../../types/employees";
 import { useAlert } from "../alerts/useAlert";
 import { Badge } from "../ui/badge";
 import { Button, RowActionButton } from "../ui/button";
@@ -140,7 +141,7 @@ function validateCustomDeductionForm(form: CustomDeductionForm): ValidationIssue
   ];
 }
 
-export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload }: { employeeId: string; summary: EmployeePayrollSummary; onReload: () => Promise<void> }) {
+export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload, onSetupStatusUpdate }: { employeeId: string; summary: EmployeePayrollSummary; onReload: () => Promise<void>; onSetupStatusUpdate?: (update?: EmployeeSetupStatusUpdate | null) => void }) {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
   const featureStatus = summary.payroll_feature_status ?? {};
@@ -190,11 +191,14 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
   const customDeductions = summary.custom_deductions ?? [];
   const customDeductionApplications = summary.custom_deduction_applications ?? [];
 
-  async function run(action: () => Promise<void>, success: string) {
+  async function run(action: () => Promise<{ setup_status_update?: EmployeeSetupStatusUpdate | null } | void>, success: string) {
     if (!token) return;
     setError(null);
     try {
-      await action();
+      const result = await action();
+      if (result && typeof result === "object" && "setup_status_update" in result) {
+        onSetupStatusUpdate?.(result.setup_status_update);
+      }
       setMessage(success);
       alerts.showSuccess("Payroll foundation updated", success);
       await onReload();
@@ -221,12 +225,13 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
       return;
     }
     await run(async () => {
-      await api.createEmployeePaymentMethod(token, employeeId, {
+      const result = await api.createEmployeePaymentMethod(token, employeeId, {
         ...paymentForm,
         allocation_percentage: paymentForm.allocation_percentage ? Number(paymentForm.allocation_percentage) : null,
         allocation_amount: paymentForm.allocation_amount ? Number(paymentForm.allocation_amount) : null
       });
       setPaymentForm(null);
+      return result;
     }, "Payment method saved.");
   }
 
@@ -261,13 +266,14 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
       return;
     }
     await run(async () => {
-      await api.updateEmployeePensionProfile(token, employeeId, {
+      const result = await api.updateEmployeePensionProfile(token, employeeId, {
         ...pensionForm,
         employee_contribution_percent_override: pensionForm.employee_contribution_percent_override ? Number(pensionForm.employee_contribution_percent_override) : null,
         employer_contribution_percent_override: pensionForm.employer_contribution_percent_override ? Number(pensionForm.employer_contribution_percent_override) : null,
         employee_extra_voluntary_contribution_amount: pensionForm.employee_extra_voluntary_contribution_amount ? Number(pensionForm.employee_extra_voluntary_contribution_amount) : 0
       });
       setPensionForm(null);
+      return result;
     }, "Pension profile saved.");
   }
 
@@ -323,8 +329,8 @@ export function EmployeePayrollFoundationPanels({ employeeId, summary, onReload 
           columns={["payment_method_type", "payment_institution_name", "bank_account_number_masked", "allocation_type", "allocation_percentage", "allocation_amount", "status", "verification_status"]}
           actions={(row) => canManagePayment || canVerifyPayment ? (
             <div className="flex justify-end gap-2">
-              {canVerifyPayment && row.verification_status !== "VERIFIED" ? <RowActionButton intent="approve" size="sm" title="Verify payment method" onClick={() => token && run(async () => { await api.verifyEmployeePaymentMethod(token, employeeId, String(row.id)); }, "Payment method verified.")}>Verify</RowActionButton> : null}
-              {canManagePayment ? <RowActionButton intent="archive" size="sm" title="Archive payment method" onClick={() => token && run(async () => { await api.archiveEmployeePaymentMethod(token, employeeId, String(row.id)); }, "Payment method archived.")}>Archive</RowActionButton> : null}
+              {canVerifyPayment && row.verification_status !== "VERIFIED" ? <RowActionButton intent="approve" size="sm" title="Verify payment method" onClick={() => token && run(async () => api.verifyEmployeePaymentMethod(token, employeeId, String(row.id)), "Payment method verified.")}>Verify</RowActionButton> : null}
+              {canManagePayment ? <RowActionButton intent="archive" size="sm" title="Archive payment method" onClick={() => token && run(async () => api.archiveEmployeePaymentMethod(token, employeeId, String(row.id)), "Payment method archived.")}>Archive</RowActionButton> : null}
             </div>
           ) : null}
           empty="No payment methods have been configured."

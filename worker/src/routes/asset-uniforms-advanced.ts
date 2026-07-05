@@ -12,6 +12,7 @@ import { hasValidationErrors, validateAssetUniformRules, validationResponse } fr
 import { fail, getClientIp, ok } from "../utils/http";
 import { disabledSubmoduleResponse, requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
+import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 
 type Row = Record<string, unknown>;
 type BindValue = string | number | null;
@@ -376,6 +377,14 @@ async function createAssignmentApproval(c: Context<AppBindings>, entityType: "as
   } catch {
     return null;
   }
+}
+
+async function setupAwareAssetUniformOk(c: Context<AppBindings>, employeeId: string, payload: Row, status: 200 | 201 = 200) {
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, {
+    employeeId,
+    savedSectionKey: "assets_uniforms"
+  });
+  return ok(c, employeeSetupStatusUpdateResponse(payload, setupStatusUpdate), status);
 }
 
 export async function createAssetApprovalInstance(c: Context<AppBindings>, assignmentId: string, actionKey = "asset.clearance") {
@@ -1002,7 +1011,7 @@ assetUniformAdvancedRoutes.post("/items/:assetId/archive", requireAnyPermission(
 
 assetUniformAdvancedRoutes.post("/assignments/issue", requireAnyPermission(["assets.issue", "assets.assignments.issue"]), async (c) => {
   const result = await issueAssetToEmployee(c, await readJsonBody(c.req.raw));
-  return result.response ?? ok(c, { assignment: result.assignment, approval: result.approval }, 201);
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment, approval: result.approval }, 201);
 });
 
 assetUniformAdvancedRoutes.post("/assignments/:assignmentId/approve", requireAnyPermission(["assets.manage", "assets.assignments.approve"]), async (c) => {
@@ -1012,37 +1021,37 @@ assetUniformAdvancedRoutes.post("/assignments/:assignmentId/approve", requireAny
   const saved = await getAssetAssignment(c, String(gate.assignment.id));
   await insertAssetUniformEvent(c, { entityType: "ASSET_ASSIGNMENT", assignmentId: String(gate.assignment.id), employeeId: String(gate.assignment.employee_id), action: "APPROVED", previousStatus: String(gate.assignment.assignment_status ?? gate.assignment.status), newStatus: "ASSIGNED" });
   await audit(c, "asset.assignment.approved", "asset_assignment", String(gate.assignment.id), { oldValue: gate.assignment, newValue: saved });
-  return ok(c, { assignment: saved });
+  return setupAwareAssetUniformOk(c, String(gate.assignment.employee_id), { assignment: saved });
 });
 
 assetUniformAdvancedRoutes.post("/assignments/:assignmentId/return", requireAnyPermission(["assets.return", "assets.assignments.return"]), async (c) => {
   const result = await returnEmployeeAsset(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw).catch(() => ({})));
-  return result.response ?? ok(c, { assignment: result.assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment });
 });
 
 assetUniformAdvancedRoutes.post("/assignments/:assignmentId/transfer", requireAnyPermission(["assets.issue", "assets.assignments.transfer"]), async (c) => {
   const result = await transferEmployeeAsset(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw));
-  return result.response ?? ok(c, { assignment: result.assignment, new_assignment: result.new_assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment, new_assignment: result.new_assignment });
 });
 
 assetUniformAdvancedRoutes.post("/assignments/:assignmentId/mark-damaged", requireAnyPermission(["assets.damage", "assets.assignments.damage", "assets.assignments.mark_damaged"]), async (c) => {
   const result = await markEmployeeAssetDamaged(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw).catch(() => ({})));
-  return result.response ?? ok(c, { assignment: result.assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment });
 });
 
 assetUniformAdvancedRoutes.post("/assignments/:assignmentId/mark-lost", requireAnyPermission(["assets.lost", "assets.assignments.lost", "assets.assignments.mark_lost"]), async (c) => {
   const result = await markEmployeeAssetLost(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw).catch(() => ({})));
-  return result.response ?? ok(c, { assignment: result.assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment });
 });
 
 assetUniformAdvancedRoutes.post("/assignments/:assignmentId/apply-deduction", requireAnyPermission(["assets.deductions.manage", "assets.deductions.apply", "assets.assignments.apply_deduction"]), async (c) => {
   const result = await applyAssetDeduction(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw));
-  return result.response ?? ok(c, { assignment: result.assignment, deduction: result.deduction });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment, deduction: result.deduction });
 });
 
 assetUniformAdvancedRoutes.post("/assignments/:assignmentId/waive", requireAnyPermission(["assets.deductions.manage", "assets.deductions.waive", "assets.assignments.waive"]), async (c) => {
   const result = await waiveAssetDeduction(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw).catch(() => ({})));
-  return result.response ?? ok(c, { assignment: result.assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment });
 });
 
 assetUniformAdvancedRoutes.post("/assignments/:assignmentId/cancel", requireAnyPermission(["assets.manage", "assets.assignments.cancel"]), async (c) => {
@@ -1057,13 +1066,13 @@ assetUniformAdvancedRoutes.post("/assignments/:assignmentId/cancel", requireAnyP
   const saved = await getAssetAssignment(c, String(gate.assignment.id));
   await insertAssetUniformEvent(c, { entityType: "ASSET_ASSIGNMENT", assignmentId: String(gate.assignment.id), employeeId: String(gate.assignment.employee_id), action: "CANCELLED", previousStatus: String(gate.assignment.assignment_status ?? gate.assignment.status), newStatus: "CANCELLED", reason });
   await audit(c, "asset.assignment.cancelled", "asset_assignment", String(gate.assignment.id), { oldValue: gate.assignment, newValue: saved, reason });
-  return ok(c, { assignment: saved });
+  return setupAwareAssetUniformOk(c, String(gate.assignment.employee_id), { assignment: saved });
 });
 
 assetUniformAdvancedRoutes.post("/assignments/:assignmentId/link-document", requireAnyPermission(["assets.manage", "assets.documents.link"]), async (c) => {
   const body = await readJsonBody(c.req.raw);
   const result = await linkAssetAssignmentDocument(c, c.req.param("assignmentId"), text(body.document_id));
-  return result.response ?? ok(c, { assignment: result.assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment });
 });
 
 assetUniformAdvancedRoutes.get("/assignments/:assignmentId/approval-summary", requireAnyPermission(["assets.view", "assets.assignments.view"]), async (c) => {
@@ -1085,7 +1094,7 @@ assetUniformAdvancedRoutes.get("/assignments/:assignmentId/events", requireAnyPe
 employeeAssetUniformRoutes.post("/:employeeId/assets/assign", requireAnyPermission(["assets.issue", "assets.assignments.issue"]), async (c) => {
   const body = await readJsonBody(c.req.raw);
   const result = await issueAssetToEmployee(c, { ...body, employee_id: c.req.param("employeeId") });
-  return result.response ?? ok(c, { assignment: result.assignment, approval: result.approval }, 201);
+  return result.response ?? setupAwareAssetUniformOk(c, c.req.param("employeeId"), { assignment: result.assignment, approval: result.approval }, 201);
 });
 
 employeeAssetUniformRoutes.get("/:employeeId/assets-uniforms/summary", requireAnyPermission(["employees.assets.view", "assets.view", "uniforms.view"]), async (c) => {
@@ -1121,7 +1130,7 @@ employeeAssetUniformRoutes.get("/:employeeId/uniforms", requireAnyPermission(["e
 employeeAssetUniformRoutes.post("/:employeeId/uniforms/issue", requireAnyPermission(["assets.issue", "uniforms.issue", "uniforms.assignments.issue"]), async (c) => {
   const body = await readJsonBody(c.req.raw);
   const result = await issueUniformToEmployee(c, { ...body, employee_id: c.req.param("employeeId") });
-  return result.response ?? ok(c, { assignment: result.assignment, approval: result.approval }, 201);
+  return result.response ?? setupAwareAssetUniformOk(c, c.req.param("employeeId"), { assignment: result.assignment, approval: result.approval }, 201);
 });
 
 uniformRoutes.get("/settings", requireAnyPermission(["assets.settings.manage", "uniforms.settings.manage", "uniforms.view"]), async (c) => ok(c, { settings: await getAssetUniformSettings(c.env.DB) }));
@@ -1226,32 +1235,32 @@ uniformRoutes.get("/assignments", requireAnyPermission(["uniforms.view", "assets
 
 uniformRoutes.post("/assignments", requireAnyPermission(["uniforms.issue", "uniforms.assignments.issue", "assets.issue"]), async (c) => {
   const result = await issueUniformToEmployee(c, await readJsonBody(c.req.raw));
-  return result.response ?? ok(c, { assignment: result.assignment, approval: result.approval }, 201);
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment, approval: result.approval }, 201);
 });
 
 uniformRoutes.post("/assignments/:assignmentId/return", requireAnyPermission(["uniforms.return", "uniforms.assignments.return", "assets.return"]), async (c) => {
   const result = await returnEmployeeUniform(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw).catch(() => ({})));
-  return result.response ?? ok(c, { assignment: result.assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment });
 });
 
 uniformRoutes.post("/assignments/:assignmentId/mark-damaged", requireAnyPermission(["uniforms.damage", "uniforms.assignments.mark_damaged", "assets.damage"]), async (c) => {
   const result = await markEmployeeUniformDamaged(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw).catch(() => ({})));
-  return result.response ?? ok(c, { assignment: result.assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment });
 });
 
 uniformRoutes.post("/assignments/:assignmentId/mark-lost", requireAnyPermission(["uniforms.lost", "uniforms.assignments.mark_lost", "assets.lost"]), async (c) => {
   const result = await markEmployeeUniformLost(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw).catch(() => ({})));
-  return result.response ?? ok(c, { assignment: result.assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment });
 });
 
 uniformRoutes.post("/assignments/:assignmentId/apply-deduction", requireAnyPermission(["uniforms.deductions.apply", "uniforms.assignments.apply_deduction", "assets.deductions.manage"]), async (c) => {
   const result = await applyUniformDeduction(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw));
-  return result.response ?? ok(c, { assignment: result.assignment, deduction: result.deduction });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment, deduction: result.deduction });
 });
 
 uniformRoutes.post("/assignments/:assignmentId/waive", requireAnyPermission(["uniforms.deductions.waive", "uniforms.assignments.waive", "assets.deductions.manage"]), async (c) => {
   const result = await waiveUniformDeduction(c, c.req.param("assignmentId"), await readJsonBody(c.req.raw).catch(() => ({})));
-  return result.response ?? ok(c, { assignment: result.assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment });
 });
 
 uniformRoutes.post("/assignments/:assignmentId/cancel", requireAnyPermission(["uniforms.manage", "uniforms.assignments.cancel", "uniforms.assignments.manage"]), async (c) => {
@@ -1292,13 +1301,13 @@ uniformRoutes.post("/assignments/:assignmentId/cancel", requireAnyPermission(["u
     amount: remainingQuantity
   });
   await audit(c, "uniform.assignment.cancelled", "uniform_assignment", String(gate.assignment.id), { oldValue: gate.assignment, newValue: saved, reason });
-  return ok(c, { assignment: saved });
+  return setupAwareAssetUniformOk(c, String(gate.assignment.employee_id), { assignment: saved });
 });
 
 uniformRoutes.post("/assignments/:assignmentId/link-document", requireAnyPermission(["uniforms.manage", "assets.documents.link"]), async (c) => {
   const body = await readJsonBody(c.req.raw);
   const result = await linkUniformAssignmentDocument(c, c.req.param("assignmentId"), text(body.document_id));
-  return result.response ?? ok(c, { assignment: result.assignment });
+  return result.response ?? setupAwareAssetUniformOk(c, String(result.assignment.employee_id), { assignment: result.assignment });
 });
 
 uniformRoutes.get("/assignments/:assignmentId/events", requireAnyPermission(["uniforms.view", "assets.view"]), async (c) => {

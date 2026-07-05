@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { ACCESS_SCOPE_TYPES, accessScopeToApi, stringifyIdList, type AccessScopeRuleRow, type AccessScopeType } from "../auth/access-scopes";
 import { recordAudit } from "../db/audit";
+import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 import { getRoleById } from "../db/roles";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
@@ -448,7 +449,8 @@ export async function applyRoleMappingToEmployee(c: Context<AppBindings>, employ
 
   await auditMapping(c, { action: "role_mapping.applied_to_user", entityId: mapping.id, newValue: { employee_id: employee.id, user_id: employee.user_id, role_id: mapping.default_role_id, scope_ids: appliedScopeIds } });
   await publishAccessEvent(c.env, "access.changed", { actor_user_id: actor, entity_type: "role_mapping_rule", entity_id: mapping.id, action: "applied_to_user" });
-  return ok(c, { applied: true, preview: await roleMappingPreviewForEmployee(c, employee.id) });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: employee.id, savedSectionKey: "user_access" });
+  return ok(c, employeeSetupStatusUpdateResponse({ applied: true, preview: await roleMappingPreviewForEmployee(c, employee.id) }, setupStatusUpdate));
 }
 
 roleMappingRoutes.post("/apply/:employeeId", requirePermission("role_mappings.apply"), async (c) => {

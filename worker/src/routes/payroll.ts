@@ -13,6 +13,7 @@ import { disabledModuleResponse, isOperationalModuleEnabled, requireOperationalM
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { markSnapshotsStaleForEmployee, markSnapshotsStaleForPeriod, recalculatePayrollSnapshot } from "../utils/snapshots";
 import { readJsonBody, readString } from "../utils/validation";
+import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 import {
   calculatePayrollPensionContribution,
   applyCustomDeductionsToPayroll,
@@ -1592,7 +1593,12 @@ employeePayrollRoutes.patch("/:employeeId/payroll/profile", requirePermission("e
   }
   await auditPayroll(c, { action: "payroll.profile.updated", entityType: "payroll_profile", entityId: employeeId, oldValue: old, newValue: saved, reason });
   await publishPayroll(c, "employee.payroll.changed", "payroll_profile", employeeId, "updated");
-  return ok(c, { profile: saved });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, {
+    employeeId,
+    savedSectionKey: "payroll_profile",
+    staleSectionKeys: ["payment_method", "pension"]
+  });
+  return ok(c, employeeSetupStatusUpdateResponse({ profile: saved }, setupStatusUpdate));
 });
 
 employeePayrollRoutes.get("/:employeeId/payroll/salary-history", requireAnyPermission(["employees.payroll.view", "payroll.view"]), async (c) => {

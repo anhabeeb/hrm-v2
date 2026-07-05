@@ -146,6 +146,7 @@
     "verify:onboarding-final-activation-verifier": "node scripts/verify-onboarding-final-activation-verifier.mjs",
     "verify:live-onboarding-readiness-redesign-phase5": "node scripts/verify-live-onboarding-readiness-redesign-phase5.mjs",
     "verify:employee360-setup-foundation": "node scripts/verify-employee360-setup-foundation.mjs",
+    "verify:employee360-setup-save-integration": "node scripts/verify-employee360-setup-save-integration.mjs",
     "diagnose:onboarding-readiness-failure": "node scripts/diagnose-onboarding-readiness-failure.mjs",
     "diagnose:onboarding-readiness-stuck-job": "node scripts/diagnose-onboarding-readiness-stuck-job.mjs",
     "diagnose:onboarding-save-timeout-hotfix": "node scripts/diagnose-onboarding-save-timeout-hotfix.mjs",

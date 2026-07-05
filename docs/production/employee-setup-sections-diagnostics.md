@@ -1,6 +1,6 @@
 # Employee 360 Setup Sections Diagnostics
 
-Generated at: 2026-07-05T20:56:11.143Z
+Generated at: 2026-07-05T22:06:41.313Z
 
 ## Source Checks
 
@@ -15,6 +15,13 @@ Generated at: 2026-07-05T20:56:11.143Z
 - Setup-sections rebuild endpoint present: PASS
 - Employee 360 preview panel present: PASS
 - Activation remains preview-only: PASS
+- latest status update timestamps: checked via bounded SQL when HRM_DIAG_EMPLOYEE_ID is provided
+- stale sections: checked via bounded SQL when HRM_DIAG_EMPLOYEE_ID is provided
+- failed sections: checked via bounded SQL when HRM_DIAG_EMPLOYEE_ID is provided
+- missing required section rows: checked via bounded SQL when HRM_DIAG_EMPLOYEE_ID is provided
+- duplicate section rows: checked via bounded SQL when HRM_DIAG_EMPLOYEE_ID is provided
+- setup readiness summary: checked via bounded SQL when HRM_DIAG_EMPLOYEE_ID is provided
+- recent employee save/update events: checked via bounded SQL when HRM_DIAG_EMPLOYEE_ID is provided
 
 ## Runtime Employee Inspection
 

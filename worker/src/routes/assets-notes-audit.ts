@@ -10,6 +10,7 @@ import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { requireOperationalModuleMiddleware } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
+import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 
 type BindValue = string | number | null;
 
@@ -484,7 +485,8 @@ assetRoutes.post("/assignments/issue", requirePermission("assets.issue"), async 
   await audit(c, { module: "assets", action: "asset.assignment.issued", entityType: "asset_assignment", entityId: id, newValue: assignment, reason: optionalString(body.reason) });
   await publish(c, "asset.assignment.issued", "asset_assignment", id, "issued");
   await publish(c, "employee.assets.changed", "asset_assignment", employeeId, "issued");
-  return ok(c, { assignment }, 201);
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId, savedSectionKey: "assets_uniforms" });
+  return ok(c, employeeSetupStatusUpdateResponse({ assignment }, setupStatusUpdate), 201);
 });
 
 async function assignmentLifecycle(c: Context<AppBindings>, action: "RETURNED" | "DAMAGED" | "LOST" | "WRITTEN_OFF") {
@@ -509,7 +511,8 @@ async function assignmentLifecycle(c: Context<AppBindings>, action: "RETURNED" |
   await audit(c, { module: "assets", action: `asset.assignment.${actionKey}`, entityType: "asset_assignment", entityId: String(assignment.id), oldValue: assignment, newValue: saved, reason });
   await publish(c, action === "RETURNED" ? "asset.assignment.returned" : action === "DAMAGED" ? "asset.assignment.damaged" : action === "LOST" ? "asset.assignment.lost" : "asset.assignment.written_off", "asset_assignment", String(assignment.id), actionKey);
   await publish(c, "employee.assets.changed", "asset_assignment", String(assignment.employee_id), actionKey);
-  return ok(c, { assignment: saved });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(assignment.employee_id), savedSectionKey: "assets_uniforms" });
+  return ok(c, employeeSetupStatusUpdateResponse({ assignment: saved }, setupStatusUpdate));
 }
 
 assetRoutes.post("/assignments/:id/return", requirePermission("assets.return"), (c) => assignmentLifecycle(c, "RETURNED"));
@@ -545,7 +548,8 @@ assetRoutes.post("/assignments/:id/replace", requireAnyPermission(["assets.issue
     await audit(c, { module: "assets", action: "asset.assignment.replacement_issued", entityType: "asset_assignment", entityId: replacementAssignmentId, newValue: replacementAssignment, reason });
   }
   await publish(c, "employee.assets.changed", "asset_assignment", String(assignment.employee_id), "replaced");
-  return ok(c, { assignment: saved, replacement_assignment: replacementAssignment });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(assignment.employee_id), savedSectionKey: "assets_uniforms" });
+  return ok(c, employeeSetupStatusUpdateResponse({ assignment: saved, replacement_assignment: replacementAssignment }, setupStatusUpdate));
 });
 
 assetRoutes.post("/assignments/:id/link-deduction", requirePermission("assets.deductions.manage"), async (c) => {
@@ -571,7 +575,8 @@ assetRoutes.post("/assignments/:id/link-deduction", requirePermission("assets.de
   const saved = (await getAssignment(c, String(assignment.id)))!;
   await insertAssetEvent(c, { assignment: saved, eventType: "DEDUCTION_LINKED", oldValue: assignment, newValue: saved, reason });
   await audit(c, { module: "assets", action: "asset.assignment.deduction_linked", entityType: "asset_assignment", entityId: String(assignment.id), oldValue: assignment, newValue: saved, reason });
-  return ok(c, { assignment: saved });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(assignment.employee_id), savedSectionKey: "assets_uniforms" });
+  return ok(c, employeeSetupStatusUpdateResponse({ assignment: saved }, setupStatusUpdate));
 });
 
 assetRoutes.get("/assignments/:id/events", requirePermission("assets.view"), async (c) => {

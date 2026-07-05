@@ -73,7 +73,7 @@ type EvaluationContext = {
   sourceCaseId?: string | null;
 };
 
-type SectionEvaluation = {
+export type EmployeeSetupSectionEvaluation = {
   section_key: string;
   section_label: string;
   status: EmployeeSetupSectionStatusValue;
@@ -260,7 +260,7 @@ function enabledStatus(definition: EmployeeSetupSectionDefinition, context: Eval
   return isEmployeeSetupSectionModuleEnabled(definition, context.moduleStatuses);
 }
 
-function notRequired(definition: EmployeeSetupSectionDefinition, message: string): SectionEvaluation {
+function notRequired(definition: EmployeeSetupSectionDefinition, message: string): EmployeeSetupSectionEvaluation {
   return {
     section_key: definition.section_key,
     section_label: definition.section_label,
@@ -276,7 +276,7 @@ function notRequired(definition: EmployeeSetupSectionDefinition, message: string
   };
 }
 
-function complete(definition: EmployeeSetupSectionDefinition, message: string, fieldStatus: Record<string, unknown> = {}): SectionEvaluation {
+function complete(definition: EmployeeSetupSectionDefinition, message: string, fieldStatus: Record<string, unknown> = {}): EmployeeSetupSectionEvaluation {
   return {
     section_key: definition.section_key,
     section_label: definition.section_label,
@@ -291,7 +291,7 @@ function complete(definition: EmployeeSetupSectionDefinition, message: string, f
   };
 }
 
-function blocked(definition: EmployeeSetupSectionDefinition, missingFields: string[], message: string, fieldStatus: Record<string, unknown> = {}): SectionEvaluation {
+function blocked(definition: EmployeeSetupSectionDefinition, missingFields: string[], message: string, fieldStatus: Record<string, unknown> = {}): EmployeeSetupSectionEvaluation {
   return {
     section_key: definition.section_key,
     section_label: definition.section_label,
@@ -307,7 +307,7 @@ function blocked(definition: EmployeeSetupSectionDefinition, missingFields: stri
   };
 }
 
-function toStatusInput(context: EvaluationContext, evaluation: SectionEvaluation): EmployeeSetupSectionStatusInput {
+function toStatusInput(context: EvaluationContext, evaluation: EmployeeSetupSectionEvaluation): EmployeeSetupSectionStatusInput {
   return {
     employee_id: context.employeeId,
     company_id: null,
@@ -541,7 +541,7 @@ async function evaluateFinalVerification(definition: EmployeeSetupSectionDefinit
   );
 }
 
-const evaluators: Record<string, (definition: EmployeeSetupSectionDefinition, context: EvaluationContext) => Promise<SectionEvaluation>> = {
+const evaluators: Record<string, (definition: EmployeeSetupSectionDefinition, context: EvaluationContext) => Promise<EmployeeSetupSectionEvaluation>> = {
   profile_information: evaluateProfileInformation,
   contact_emergency: evaluateContactEmergency,
   job_assignment: evaluateJobAssignment,
@@ -577,7 +577,7 @@ export function sanitizeEmployeeSetupStatusError(error: unknown, sectionKey = "r
   };
 }
 
-async function safeEvaluate(definition: EmployeeSetupSectionDefinition, context: EvaluationContext): Promise<EmployeeSetupSectionStatusInput> {
+export async function safeEvaluateEmployeeSetupSection(definition: EmployeeSetupSectionDefinition, context: EvaluationContext): Promise<EmployeeSetupSectionStatusInput> {
   try {
     if (!enabledStatus(definition, context)) {
       return toStatusInput(context, notRequired(definition, `${definition.section_label} is not required because its module or submodule is disabled.`));
@@ -607,7 +607,7 @@ async function safeEvaluate(definition: EmployeeSetupSectionDefinition, context:
   }
 }
 
-async function createEvaluationContext(db: D1Database, employeeId: string, actorUserId?: string | null) {
+export async function createEmployeeSetupEvaluationContext(db: D1Database, employeeId: string, actorUserId?: string | null) {
   const [employee, settings, moduleStatuses] = await Promise.all([
     getEmployeeSetupContextEmployee(db, employeeId),
     getOnboardingSettings(db),
@@ -818,10 +818,10 @@ export function aggregateEmployeeSetupReadiness(definitions: EmployeeSetupSectio
 
 export async function rebuildEmployeeSetupSectionStatuses(db: D1Database, employeeId: string, actorUserId?: string | null) {
   await ensureEmployeeSetupSectionStatusesSchema(db);
-  const { definitions, context } = await createEvaluationContext(db, employeeId, actorUserId ?? null);
+  const { definitions, context } = await createEmployeeSetupEvaluationContext(db, employeeId, actorUserId ?? null);
   const statuses: EmployeeSetupSectionStatusInput[] = [];
   for (const definition of definitions) {
-    statuses.push(await safeEvaluate(definition, context));
+    statuses.push(await safeEvaluateEmployeeSetupSection(definition, context));
   }
   for (const status of statuses) {
     await upsertEmployeeSetupSectionStatus(db, status);

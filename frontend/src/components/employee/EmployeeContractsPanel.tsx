@@ -11,7 +11,7 @@ import { Panel } from "../ui/panel";
 import { StatusBadge } from "../ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { api } from "../../lib/api";
-import type { Employee } from "../../types/employees";
+import type { Employee, EmployeeSetupStatusUpdate } from "../../types/employees";
 
 type Row = Record<string, unknown>;
 
@@ -23,7 +23,7 @@ function bool(value: unknown) {
   return value === true || value === 1;
 }
 
-export function EmployeeContractsPanel({ employee, token, permissions }: { employee: Employee; token: string; permissions: Set<string> }) {
+export function EmployeeContractsPanel({ employee, token, permissions, onSetupStatusUpdate }: { employee: Employee; token: string; permissions: Set<string>; onSetupStatusUpdate?: (update?: EmployeeSetupStatusUpdate | null) => void }) {
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
   const [types, setTypes] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,7 +61,8 @@ export function EmployeeContractsPanel({ employee, token, permissions }: { emplo
   }, [employee.id, token]);
 
   async function saveContract(input: Row) {
-    await api.createEmployeeContract(token, employee.id, input);
+    const result = await api.createEmployeeContract(token, employee.id, input);
+    onSetupStatusUpdate?.(result.setup_status_update);
     setCreateOpen(false);
     setMessage("Contract draft created.");
     await load();
@@ -69,7 +70,8 @@ export function EmployeeContractsPanel({ employee, token, permissions }: { emplo
 
   async function runAction(reason?: string | null) {
     if (!actionTarget) return;
-    await api.contractAction(token, String(actionTarget.row.id), actionTarget.action, { reason });
+    const result = await api.contractAction(token, String(actionTarget.row.id), actionTarget.action, { reason });
+    onSetupStatusUpdate?.(result.setup_status_update);
     setActionTarget(null);
     setMessage(`${actionTarget.title} completed.`);
     await load();

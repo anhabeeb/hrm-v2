@@ -10,6 +10,7 @@ import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
 import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
+import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 
 type BindValue = string | number | null;
 type AssignmentStatus =
@@ -1005,7 +1006,12 @@ rosterRoutes.post("/assignments", requireAnyPermission(ASSIGNMENT_CREATE_PERMISS
   const result = await saveAssignment(c, period, body);
   if (result.error) return fail(c, 400, result.errorCode ?? "VALIDATION_ERROR", result.error);
   if (result.assignment) await refreshAttendanceFromRosterChange(c, result.assignment);
-  return ok(c, { assignment: result.assignment, warning: result.warning, warnings: result.warnings ?? [] }, 201);
+  const setupStatusUpdate = result.assignment
+    ? await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(result.assignment.employee_id), savedSectionKey: "attendance_roster" })
+    : null;
+  return ok(c, setupStatusUpdate
+    ? employeeSetupStatusUpdateResponse({ assignment: result.assignment, warning: result.warning, warnings: result.warnings ?? [] }, setupStatusUpdate)
+    : { assignment: result.assignment, warning: result.warning, warnings: result.warnings ?? [] }, 201);
 });
 
 rosterRoutes.get("/assignments/:id", requireAnyPermission(ASSIGNMENT_READ_PERMISSIONS), async (c) => {
@@ -1027,7 +1033,12 @@ rosterRoutes.patch("/assignments/:id", requireAnyPermission(ASSIGNMENT_WRITE_PER
   const result = await saveAssignment(c, period, { ...old, ...body });
   if (result.error) return fail(c, 400, result.errorCode ?? "VALIDATION_ERROR", result.error);
   if (result.assignment) await refreshAttendanceFromRosterChange(c, result.assignment);
-  return ok(c, { assignment: result.assignment, warning: result.warning, warnings: result.warnings ?? [] });
+  const setupStatusUpdate = result.assignment
+    ? await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(result.assignment.employee_id), savedSectionKey: "attendance_roster" })
+    : null;
+  return ok(c, setupStatusUpdate
+    ? employeeSetupStatusUpdateResponse({ assignment: result.assignment, warning: result.warning, warnings: result.warnings ?? [] }, setupStatusUpdate)
+    : { assignment: result.assignment, warning: result.warning, warnings: result.warnings ?? [] });
 });
 
 rosterRoutes.post("/assignments/:id/cancel", requireAnyPermission(ASSIGNMENT_CANCEL_PERMISSIONS), async (c) => {
@@ -1059,7 +1070,10 @@ rosterRoutes.post("/assignments/:id/cancel", requireAnyPermission(ASSIGNMENT_CAN
   await auditRoster(c, { action: "roster.assignment.cancelled", entityType: "roster_assignment", entityId: id, oldValue: old, newValue: saved, reason });
   await publishRoster(c, "roster.changed", "roster_assignment", id, "cancelled");
   if (saved) await refreshAttendanceFromRosterChange(c, saved);
-  return ok(c, { assignment: saved });
+  const setupStatusUpdate = saved
+    ? await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(saved.employee_id), savedSectionKey: "attendance_roster" })
+    : null;
+  return ok(c, setupStatusUpdate ? employeeSetupStatusUpdateResponse({ assignment: saved }, setupStatusUpdate) : { assignment: saved });
 });
 
 rosterRoutes.post("/assignments/batch", requireAnyPermission(ASSIGNMENT_BULK_PERMISSIONS), async (c) => {
@@ -1075,7 +1089,11 @@ rosterRoutes.post("/assignments/batch", requireAnyPermission(ASSIGNMENT_BULK_PER
     if (result.error) return fail(c, 400, result.errorCode ?? "VALIDATION_ERROR", result.error);
     saved.push(result.assignment);
   }
-  return ok(c, { assignments: saved });
+  const employeeIds = Array.from(new Set(saved.map((assignment) => String((assignment as Record<string, unknown> | null | undefined)?.employee_id ?? "")).filter(Boolean)));
+  const setupStatusUpdate = employeeIds.length === 1
+    ? await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: employeeIds[0], savedSectionKey: "attendance_roster" })
+    : null;
+  return ok(c, setupStatusUpdate ? employeeSetupStatusUpdateResponse({ assignments: saved }, setupStatusUpdate) : { assignments: saved });
 });
 
 rosterRoutes.post("/assignments/bulk", requireAnyPermission(ASSIGNMENT_BULK_PERMISSIONS), async (c) => {

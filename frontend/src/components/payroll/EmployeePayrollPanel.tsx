@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { useAuth } from "../../hooks/useAuth";
 import { ApiError, api } from "../../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateAmount, validateDateField, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
-import type { Employee } from "../../types/employees";
+import type { Employee, EmployeeSetupStatusUpdate } from "../../types/employees";
 import type { EmployeePayrollProfile, EmployeePayrollSummary } from "../../types/payroll";
 import { useAlert } from "../alerts/useAlert";
 import { FormErrorSummary } from "../forms/FormErrorSummary";
@@ -44,7 +44,7 @@ function validateAdvanceForm(input: { amount: string; payment_date: string }): V
   ];
 }
 
-export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
+export function EmployeePayrollPanel({ employee, onSetupStatusUpdate }: { employee: Employee; onSetupStatusUpdate?: (update?: EmployeeSetupStatusUpdate | null) => void }) {
   const { token, user } = useAuth();
   const permissions = new Set(user?.permissions ?? []);
   const canView = permissions.has("employees.payroll.view") || permissions.has("payroll.view");
@@ -104,6 +104,7 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
     }
     try {
       const result = await api.updateEmployeePayrollProfile(token, employee.id, { ...form, reason });
+      onSetupStatusUpdate?.(result.setup_status_update);
       setForm(result.profile);
       setSummary(summary ? { ...summary, profile: result.profile } : null);
       setEditing(false);
@@ -185,7 +186,7 @@ export function EmployeePayrollPanel({ employee }: { employee: Employee }) {
           <Toggle disabled={!editing} label="Leave deduction" checked={Boolean(form.leave_deduction_enabled)} onChange={(value) => update("leave_deduction_enabled", value)} />
         </div>
       </Panel>
-      <EmployeePayrollFoundationPanels employeeId={employee.id} summary={summary} onReload={load} />
+      <EmployeePayrollFoundationPanels employeeId={employee.id} summary={summary} onReload={load} onSetupStatusUpdate={onSetupStatusUpdate} />
       <div className="grid gap-4 xl:grid-cols-2">
         <RowsPanel title="Salary history" rows={summary.salary_history ?? []} columns={["effective_date", "old_basic_salary", "new_basic_salary", "reason", "created_by_name"]} action={canUpdate ? <ActionTextButton intent="create" size="sm" onClick={() => setIncrementForm({ amount: "", effective_date: new Date().toISOString().slice(0, 10), reason: "" })}><Plus className="h-4 w-4" /> Add increment</ActionTextButton> : null} />
         <RowsPanel title="Increment history" rows={summary.increments ?? []} columns={["effective_date", "old_salary", "increment_amount", "new_salary", "reason"]} />

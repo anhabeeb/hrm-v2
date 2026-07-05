@@ -9,6 +9,7 @@ import { hasValidationErrors, validateContractRules, validationResponse } from "
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
 import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
+import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 
 type BindValue = string | number | null;
 type ContractStatus = "DRAFT" | "PENDING_APPROVAL" | "ACTIVE" | "EXPIRING_SOON" | "EXPIRED" | "RENEWED" | "TERMINATED" | "CANCELLED" | "ARCHIVED";
@@ -1028,7 +1029,8 @@ contractRoutes.patch("/:contractId", requireAnyPermission(CONTRACT_UPDATE), asyn
   await createContractEvent(c, contract, "UPDATED", contract.status, updated?.status ?? contract.status, stringOrNull(body.reason), null);
   await auditContract(c, { action: "contract.updated", entityType: "contract", entityId: contract.id, oldValue: contract, newValue: updated, reason: stringOrNull(body.reason) });
   await publishContract(c, "contract.updated", "contract", contract.id, "updated");
-  return ok(c, { contract: toApiContract(c, updated!) });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: contract.employee_id, savedSectionKey: "contract" });
+  return ok(c, employeeSetupStatusUpdateResponse({ contract: toApiContract(c, updated!) }, setupStatusUpdate));
 });
 
 async function transitionContract(c: Context<AppBindings>, contractId: string | null | undefined, nextStatus: ContractStatus, nextApproval?: ApprovalStatus, action = "contract.status_changed", reasonRequired = false) {
@@ -1074,7 +1076,8 @@ async function transitionContract(c: Context<AppBindings>, contractId: string | 
   await createContractEvent(c, contract, action, previousStatus, nextStatus, reason, stringOrNull(body.note));
   await auditContract(c, { action, entityType: "contract", entityId: contract.id, oldValue: contract, newValue: updated, reason });
   await publishContract(c, "contract.lifecycle_changed", "contract", contract.id, action);
-  return ok(c, { contract: toApiContract(c, updated!) });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: contract.employee_id, savedSectionKey: "contract" });
+  return ok(c, employeeSetupStatusUpdateResponse({ contract: toApiContract(c, updated!) }, setupStatusUpdate));
 }
 
 contractRoutes.post("/:contractId/submit-for-approval", requireAnyPermission(CONTRACT_UPDATE), (c) => transitionContract(c, c.req.param("contractId"), "PENDING_APPROVAL", "PENDING", "contract.submitted"));
@@ -1103,7 +1106,8 @@ contractRoutes.post("/:contractId/probation/extend", requireAnyPermission(PROBAT
   await c.env.DB.prepare("UPDATE employee_contracts SET probation_status = 'EXTENDED', probation_end_date = ?, confirmation_due_date = COALESCE(?, confirmation_due_date), updated_at = ? WHERE id = ?").bind(newEndDate, stringOrNull(body.confirmation_due_date), nowIso(), contract.id).run();
   await c.env.DB.prepare("INSERT INTO employee_probation_events (id, contract_id, employee_id, action, previous_probation_end_date, new_probation_end_date, confirmation_due_date, reason, actor_user_id) VALUES (?, ?, ?, 'EXTENDED', ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), contract.id, contract.employee_id, contract.probation_end_date, newEndDate, stringOrNull(body.confirmation_due_date), reason, c.get("currentUser").id).run();
   await auditContract(c, { action: "contract.probation.extended", entityType: "contract", entityId: contract.id, oldValue: contract, reason });
-  return ok(c, { updated: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: contract.employee_id, savedSectionKey: "contract" });
+  return ok(c, employeeSetupStatusUpdateResponse({ updated: true }, setupStatusUpdate));
 });
 
 async function probationAction(c: Context<AppBindings>, action: "CONFIRMED" | "FAILED" | "TERMINATED_DURING_PROBATION" | "NOT_APPLICABLE", status: ProbationStatus) {
@@ -1117,7 +1121,8 @@ async function probationAction(c: Context<AppBindings>, action: "CONFIRMED" | "F
   if (confirmedDate) await c.env.DB.prepare("UPDATE employees SET confirmation_date = COALESCE(confirmation_date, ?) WHERE id = ?").bind(confirmedDate, contract.employee_id).run();
   await c.env.DB.prepare("INSERT INTO employee_probation_events (id, contract_id, employee_id, action, previous_probation_end_date, new_probation_end_date, confirmation_due_date, confirmed_date, reason, actor_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), contract.id, contract.employee_id, action, contract.probation_end_date, contract.probation_end_date, contract.confirmation_due_date, confirmedDate, reason, c.get("currentUser").id).run();
   await auditContract(c, { action: `contract.probation.${action.toLowerCase()}`, entityType: "contract", entityId: contract.id, oldValue: contract, reason });
-  return ok(c, { updated: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: contract.employee_id, savedSectionKey: "contract" });
+  return ok(c, employeeSetupStatusUpdateResponse({ updated: true }, setupStatusUpdate));
 }
 
 contractRoutes.post("/:contractId/probation/confirm", requireAnyPermission(PROBATION_CONFIRM), (c) => probationAction(c, "CONFIRMED", "CONFIRMED"));
@@ -1170,7 +1175,8 @@ contractRoutes.post("/:contractId/renew", requireAnyPermission(CONTRACT_RENEW), 
   await c.env.DB.prepare("UPDATE employee_contracts SET renewal_status = 'PENDING_RENEWAL', updated_at = ? WHERE id = ?").bind(nowIso(), contract.id).run();
   await createContractEvent(c, { id: newContractId, employee_id: contract.employee_id }, "RENEWAL_CREATED", null, "DRAFT", stringOrNull(body.reason), null, { original_contract_id: contract.id, renewal_id: renewalId });
   await auditContract(c, { action: "contract.renewal.created", entityType: "contract_renewal", entityId: renewalId, newValue: { renewal_contract_id: newContractId }, reason: stringOrNull(body.reason) });
-  return ok(c, { renewal_id: renewalId, renewal_contract_id: newContractId }, 201);
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: contract.employee_id, savedSectionKey: "contract" });
+  return ok(c, employeeSetupStatusUpdateResponse({ renewal_id: renewalId, renewal_contract_id: newContractId }, setupStatusUpdate), 201);
 });
 
 contractRoutes.post("/renewals/:renewalId/approve", requireAnyPermission(RENEWALS_APPROVE), async (c) => {
@@ -1179,7 +1185,8 @@ contractRoutes.post("/renewals/:renewalId/approve", requireAnyPermission(RENEWAL
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(renewal.employee_id), "contracts", "manage"))) return fail(c, 404, "CONTRACT_SCOPE_DENIED", "Renewal was not found.");
   await c.env.DB.prepare("UPDATE employee_contract_renewals SET renewal_status = 'APPROVED', approved_by_user_id = ?, approved_at = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, nowIso(), nowIso(), String(renewal.id)).run();
   await auditContract(c, { action: "contract.renewal.approved", entityType: "contract_renewal", entityId: String(renewal.id), oldValue: renewal });
-  return ok(c, { approved: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(renewal.employee_id), savedSectionKey: "contract" });
+  return ok(c, employeeSetupStatusUpdateResponse({ approved: true }, setupStatusUpdate));
 });
 
 contractRoutes.post("/renewals/:renewalId/activate", requireAnyPermission(RENEWALS_ACTIVATE), async (c) => {
@@ -1191,7 +1198,8 @@ contractRoutes.post("/renewals/:renewalId/activate", requireAnyPermission(RENEWA
   await c.env.DB.prepare("UPDATE employee_contract_renewals SET renewal_status = 'ACTIVATED', activated_by_user_id = ?, activated_at = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, nowIso(), nowIso(), String(renewal.id)).run();
   await syncEmployeeContractStatusSnapshot(c.env.DB, String(renewal.employee_id));
   await auditContract(c, { action: "contract.renewal.activated", entityType: "contract_renewal", entityId: String(renewal.id), oldValue: renewal });
-  return ok(c, { activated: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(renewal.employee_id), savedSectionKey: "contract" });
+  return ok(c, employeeSetupStatusUpdateResponse({ activated: true }, setupStatusUpdate));
 });
 
 contractRoutes.post("/renewals/:renewalId/cancel", requireAnyPermission(RENEWALS_CANCEL), async (c) => {
@@ -1203,7 +1211,8 @@ contractRoutes.post("/renewals/:renewalId/cancel", requireAnyPermission(RENEWALS
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(renewal.employee_id), "contracts", "manage"))) return fail(c, 404, "CONTRACT_SCOPE_DENIED", "Renewal was not found.");
   await c.env.DB.prepare("UPDATE employee_contract_renewals SET renewal_status = 'CANCELLED', cancelled_by_user_id = ?, cancelled_at = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, nowIso(), nowIso(), String(renewal.id)).run();
   await auditContract(c, { action: "contract.renewal.cancelled", entityType: "contract_renewal", entityId: String(renewal.id), oldValue: renewal, reason });
-  return ok(c, { cancelled: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: String(renewal.employee_id), savedSectionKey: "contract" });
+  return ok(c, employeeSetupStatusUpdateResponse({ cancelled: true }, setupStatusUpdate));
 });
 
 contractRoutes.post("/:contractId/mark-not-renewed", requireAnyPermission(CONTRACT_RENEW), async (c) => {
@@ -1214,7 +1223,8 @@ contractRoutes.post("/:contractId/mark-not-renewed", requireAnyPermission(CONTRA
   if (!contract) return fail(c, 404, "CONTRACT_NOT_FOUND", "Contract was not found.");
   await c.env.DB.prepare("UPDATE employee_contracts SET renewal_status = 'NOT_RENEWED', updated_at = ? WHERE id = ?").bind(nowIso(), contract.id).run();
   await auditContract(c, { action: "contract.marked_not_renewed", entityType: "contract", entityId: contract.id, oldValue: contract, reason });
-  return ok(c, { updated: true });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: contract.employee_id, savedSectionKey: "contract" });
+  return ok(c, employeeSetupStatusUpdateResponse({ updated: true }, setupStatusUpdate));
 });
 
 employeeContractRoutes.get("/:employeeId/contracts", requireAnyPermission(CONTRACT_READ), async (c) => {
@@ -1298,7 +1308,8 @@ employeeContractRoutes.post("/:employeeId/contracts", requireAnyPermission(CONTR
   await createContractEvent(c, { id, employee_id: employee.id }, "CREATED", null, "DRAFT", stringOrNull(body.reason), null);
   await auditContract(c, { action: "contract.created", entityType: "contract", entityId: id, newValue: contract, reason: stringOrNull(body.reason) });
   await publishContract(c, "contract.created", "contract", id, "created");
-  return ok(c, { contract: toApiContract(c, contract!) }, 201);
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: employee.id, savedSectionKey: "contract" });
+  return ok(c, employeeSetupStatusUpdateResponse({ contract: toApiContract(c, contract!) }, setupStatusUpdate), 201);
 });
 
 selfServiceContractRoutes.get("/contracts", async (c) => {

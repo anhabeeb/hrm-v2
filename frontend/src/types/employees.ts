@@ -217,3 +217,21 @@ export interface EmployeeSetupReadinessResponse {
   readiness: EmployeeSetupReadiness;
   sections: EmployeeSetupSectionStatusRow[];
 }
+
+export interface EmployeeSetupStatusUpdate {
+  mode: "employee_360_setup";
+  updated_sections: EmployeeSetupSectionStatusRow[];
+  stale_sections: EmployeeSetupSectionStatusRow[];
+  readiness: EmployeeSetupReadiness;
+  warnings: Array<{
+    code: string;
+    message: string;
+    section_key?: string | null;
+    section_label?: string | null;
+    request_id?: string | null;
+  }>;
+}
+
+export type WithEmployeeSetupStatusUpdate<T> = T & {
+  setup_status_update?: EmployeeSetupStatusUpdate | null;
+};
