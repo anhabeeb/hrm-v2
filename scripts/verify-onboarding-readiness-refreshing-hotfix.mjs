@@ -41,7 +41,7 @@ check("package.json: verify:onboarding-readiness-refreshing-hotfix script is reg
 for (const marker of [
   'status: "stale"',
   'status: "failed"',
-  'status: firstFailure ? "blocked" : canActivate ? "ready" : "blocked"',
+  'status: firstFailure ? "failed" : canActivate ? "ready" : "blocked"',
   "last_calculated_at",
   "is_stale",
   "refresh_status",
