@@ -140,9 +140,11 @@
     "verify:onboarding-readiness-stuck-job-hotfix": "node scripts/verify-onboarding-readiness-stuck-job-hotfix.mjs",
     "verify:onboarding-workspace-save-timeout-hotfix": "node scripts/verify-onboarding-workspace-save-timeout-hotfix.mjs",
     "verify:onboarding-save-stale-readiness-hotfix-v2": "node scripts/verify-onboarding-save-stale-readiness-hotfix-v2.mjs",
+    "verify:onboarding-section-status-foundation": "node scripts/verify-onboarding-section-status-foundation.mjs",
     "diagnose:onboarding-readiness-failure": "node scripts/diagnose-onboarding-readiness-failure.mjs",
     "diagnose:onboarding-readiness-stuck-job": "node scripts/diagnose-onboarding-readiness-stuck-job.mjs",
-    "diagnose:onboarding-save-timeout-hotfix": "node scripts/diagnose-onboarding-save-timeout-hotfix.mjs"
+    "diagnose:onboarding-save-timeout-hotfix": "node scripts/diagnose-onboarding-save-timeout-hotfix.mjs",
+    "diagnose:onboarding-section-statuses": "node scripts/diagnose-onboarding-section-statuses.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

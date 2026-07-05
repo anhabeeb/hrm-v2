@@ -1388,6 +1388,47 @@ CREATE INDEX IF NOT EXISTS idx_onboarding_cases_status ON employee_onboarding_ca
 CREATE INDEX IF NOT EXISTS idx_onboarding_cases_employee ON employee_onboarding_cases(employee_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_onboarding_cases_owner_due ON employee_onboarding_cases(assigned_owner_user_id, due_date);
 
+CREATE TABLE IF NOT EXISTS onboarding_setup_section_statuses (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL,
+  employee_id TEXT,
+  company_id TEXT,
+  section_key TEXT NOT NULL,
+  section_label TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('not_started', 'incomplete', 'complete', 'blocked', 'not_required', 'failed', 'stale', 'verified')),
+  is_required INTEGER NOT NULL DEFAULT 1 CHECK (is_required IN (0, 1)),
+  is_complete INTEGER NOT NULL DEFAULT 0 CHECK (is_complete IN (0, 1)),
+  is_verified INTEGER NOT NULL DEFAULT 0 CHECK (is_verified IN (0, 1)),
+  is_stale INTEGER NOT NULL DEFAULT 0 CHECK (is_stale IN (0, 1)),
+  status_reason_code TEXT,
+  status_message TEXT,
+  next_action TEXT,
+  missing_fields_json TEXT,
+  blockers_json TEXT,
+  field_status_json TEXT,
+  source_version TEXT,
+  source_hash TEXT,
+  last_saved_at TEXT,
+  last_evaluated_at TEXT,
+  last_verified_at TEXT,
+  updated_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE (case_id, section_key),
+  FOREIGN KEY (case_id) REFERENCES employee_onboarding_cases(id) ON DELETE CASCADE,
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+  FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_onboarding_setup_section_statuses_case ON onboarding_setup_section_statuses(case_id);
+CREATE INDEX IF NOT EXISTS idx_onboarding_setup_section_statuses_employee ON onboarding_setup_section_statuses(employee_id);
+CREATE INDEX IF NOT EXISTS idx_onboarding_setup_section_statuses_company ON onboarding_setup_section_statuses(company_id);
+CREATE INDEX IF NOT EXISTS idx_onboarding_setup_section_statuses_status ON onboarding_setup_section_statuses(status);
+CREATE INDEX IF NOT EXISTS idx_onboarding_setup_section_statuses_case_status ON onboarding_setup_section_statuses(case_id, status);
+CREATE INDEX IF NOT EXISTS idx_onboarding_setup_section_statuses_case_required_complete ON onboarding_setup_section_statuses(case_id, is_required, is_complete);
+CREATE INDEX IF NOT EXISTS idx_onboarding_setup_section_statuses_case_stale ON onboarding_setup_section_statuses(case_id, is_stale);
+
 CREATE TABLE IF NOT EXISTS onboarding_alerts (
   id TEXT PRIMARY KEY,
   onboarding_case_id TEXT,

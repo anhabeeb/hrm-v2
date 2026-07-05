@@ -7,6 +7,16 @@ import { recordAudit } from "../db/audit";
 import { getActiveOwnerCount, getUserByEmail, getUserById } from "../db/users";
 import { hasValidationErrors, validateAccessScope, validateDateRange, validateDuplicateConflict, validationResponse } from "../lib/moduleValidation";
 import { requireAuth } from "../middleware/auth";
+import {
+  aggregateOnboardingReadinessFromSections,
+  composeOnboardingSectionStatusRows,
+  ensureOnboardingSectionStatusesSchema,
+  getOnboardingSectionDefinitions,
+  getOnboardingSectionStatuses,
+  markOnboardingSectionStale,
+  rebuildOnboardingSectionStatusesForCase,
+  serializeOnboardingSectionStatus
+} from "../onboarding/section-status";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, DbUser, Env, UserStatus } from "../types";
 import { safeEmitAppEvent } from "../utils/app-events";
@@ -1226,6 +1236,24 @@ async function setOnboardingTaskState(c: Context<AppBindings>, caseId: string, t
     )
     .bind(taskStatus, oldTaskStatus(taskStatus), taskStatus, c.get("currentUser").id, taskStatus, now, taskStatus, c.get("currentUser").id, taskStatus, now, reason ?? null, reason ?? null, now, caseId, taskKey)
     .run();
+}
+
+async function markOnboardingShadowSectionsStale(c: Context<AppBindings>, caseId: string, employeeId: string, sectionKeys: string[], message?: string) {
+  try {
+    await markOnboardingSectionStale(c.env.DB, {
+      caseId,
+      employeeId,
+      sectionKeys,
+      updatedByUserId: c.get("currentUser").id,
+      message
+    });
+  } catch (error) {
+    console.warn("Onboarding shadow section stale marking failed", {
+      case_id: caseId,
+      section_keys: sectionKeys,
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
 }
 
 async function ensureLifecycleSelfOnlyScope(db: D1Database, userId: string, actorUserId: string) {
@@ -4086,6 +4114,44 @@ onboardingRoutes.get("/cases/:caseId/workspace", requireAnyPermission(onboarding
   return ok(c, { workspace });
 });
 
+onboardingRoutes.get("/cases/:caseId/section-readiness", requireAnyPermission(["onboarding.activation.view", "onboarding.cases.view", "onboarding.cases.manage", "employees.lifecycle.view", "employees.view"]), async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  const caseId = c.req.param("caseId");
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  await ensureOnboardingSectionStatusesSchema(c.env.DB);
+  if (c.req.query("rebuild") === "1") {
+    if (!hasAny(c, ["onboarding.cases.manage", "onboarding.workspace.update", "employees.lifecycle.manage"])) {
+      return fail(c, 403, "ONBOARDING_SECTION_REBUILD_DENIED", "You do not have permission to rebuild onboarding section status preview.");
+    }
+    const rebuilt = await rebuildOnboardingSectionStatusesForCase(c.env.DB, caseId, c.get("currentUser").id);
+    return ok(c, { mode: "shadow", rebuilt: true, ...rebuilt });
+  }
+  const definitions = await getOnboardingSectionDefinitions(c.env.DB, caseId);
+  const storedRows = await getOnboardingSectionStatuses(c.env.DB, caseId);
+  const previewRows = composeOnboardingSectionStatusRows(definitions, storedRows, caseId);
+  const readiness = aggregateOnboardingReadinessFromSections(definitions, previewRows, caseId);
+  return ok(c, {
+    mode: "shadow",
+    readiness,
+    sections: previewRows.map(serializeOnboardingSectionStatus)
+  });
+});
+
+onboardingRoutes.post("/cases/:caseId/section-statuses/rebuild", requireAnyPermission(["onboarding.cases.manage", "onboarding.workspace.update", "employees.lifecycle.manage"]), async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  const caseId = c.req.param("caseId");
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  const result = await rebuildOnboardingSectionStatusesForCase(c.env.DB, caseId, c.get("currentUser").id);
+  await auditLifecycle(c, "onboarding.section_statuses.rebuilt", "employee_onboarding_case", caseId, null, {
+    rebuilt_count: result.rebuilt_count,
+    failed_count: result.failed_count,
+    shadow_status: result.readiness.status
+  });
+  return ok(c, { mode: "shadow", ...result });
+});
+
 onboardingRoutes.get("/cases/:caseId/save-status", requireAnyPermission([...onboardingWorkspaceViewPermissions, ...onboardingWorkspaceUpdatePermissions]), async (c) => {
   const caseId = c.req.param("caseId");
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
@@ -4153,6 +4219,7 @@ onboardingRoutes.patch("/cases/:caseId/employee-info", requireAnyPermission([...
     await setOnboardingTaskState(c, caseId, "personal_info", "COMPLETED", "Employee information saved from onboarding workspace.");
   });
   await auditLifecycle(c, "onboarding.workspace.employee_info_saved", "employee", String(gate.row.employee_id), gate.employee, body);
+  await markOnboardingShadowSectionsStale(c, caseId, String(gate.row.employee_id), ["employee_info", "documents"], "Employee information changed; related onboarding sections need to be rechecked.");
   return fastOnboardingWorkspaceSave(c, {
     section: "employee_info",
     caseId,
@@ -4205,6 +4272,7 @@ onboardingRoutes.patch("/cases/:caseId/contact-info", requireAnyPermission([...o
   const caseId = c.req.param("caseId");
   await setOnboardingTaskState(c, caseId, "contact_info", "COMPLETED", "Contact information saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.contact_info_saved", "employee", employeeId, null, body);
+  await markOnboardingShadowSectionsStale(c, caseId, employeeId, ["contact_emergency"], "Contact information changed; this section needs to be rechecked.");
   return fastOnboardingWorkspaceSave(c, {
     section: "contact_info",
     caseId,
@@ -4254,6 +4322,7 @@ onboardingRoutes.patch("/cases/:caseId/job-assignment", requireAnyPermission([..
   const caseId = c.req.param("caseId");
   await setOnboardingTaskState(c, caseId, "job_assignment", "COMPLETED", "Job assignment saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.job_assignment_saved", "employee", employeeId, previous, next, optionalText(body.reason));
+  await markOnboardingShadowSectionsStale(c, caseId, employeeId, ["job_assignment", "documents", "attendance_roster"], "Job assignment changed; related onboarding sections need to be rechecked.");
   return fastOnboardingWorkspaceSave(c, {
     section: "job_assignment",
     caseId,
@@ -4389,6 +4458,7 @@ onboardingRoutes.post("/cases/:caseId/documents/uploads/complete", requireAnyPer
       uploaded_count: result.completed_count,
       failed_count: result.failed_count
     });
+    await markOnboardingShadowSectionsStale(c, caseId, String(gate.row.employee_id), ["documents"], "Documents changed; document readiness needs to be rechecked.");
     runLifecycleBackgroundTask(c, (async () => {
       const blockers = await getOnboardingDocumentBlockers(c, caseId);
       await setOnboardingTaskState(c, caseId, "documents", blockers.length ? "IN_PROGRESS" : "COMPLETED", `${result.completed_count} document(s) uploaded from accelerated onboarding workspace flow.`);
@@ -4496,6 +4566,7 @@ onboardingRoutes.post("/cases/:caseId/documents/batch", requireAnyPermission(["o
     uploaded_count: uploaded.length,
     document_ids: uploaded.map((item) => item.documentId)
   });
+  await markOnboardingShadowSectionsStale(c, caseId, employeeId, ["documents"], "Documents changed; document readiness needs to be rechecked.");
   runLifecycleBackgroundTask(c, (async () => {
     const blockers = await getOnboardingDocumentBlockers(c, caseId);
     await setOnboardingTaskState(c, caseId, "documents", blockers.length ? "IN_PROGRESS" : "COMPLETED", `${uploaded.length} document(s) uploaded from onboarding workspace.`);
@@ -4530,6 +4601,7 @@ onboardingRoutes.post("/cases/:caseId/documents", requireAnyPermission(["onboard
     const caseId = c.req.param("caseId");
     await setOnboardingTaskState(c, caseId, "documents", "IN_PROGRESS", "Document uploaded. Updating onboarding readiness in the background.");
     await auditLifecycle(c, "onboarding.workspace.document_uploaded", "employee", String(gate.row.employee_id), null, { case_id: caseId });
+    await markOnboardingShadowSectionsStale(c, caseId, String(gate.row.employee_id), ["documents"], "Documents changed; document readiness needs to be rechecked.");
     runLifecycleBackgroundTask(c, (async () => {
       const blockers = await getOnboardingDocumentBlockers(c, caseId);
       await setOnboardingTaskState(c, caseId, "documents", blockers.length ? "IN_PROGRESS" : "COMPLETED", "Document uploaded from onboarding workspace.");
@@ -4579,6 +4651,7 @@ onboardingRoutes.post("/cases/:caseId/contracts", requireAnyPermission(["onboard
   const status = await getOnboardingContractStatus(c, caseId);
   await setOnboardingTaskState(c, caseId, "contract", status.ready ? "COMPLETED" : "IN_PROGRESS", "Contract draft created from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.contract_created", "employee_contract", contractId, null, body);
+  await markOnboardingShadowSectionsStale(c, caseId, String(gate.row.employee_id), ["contract"], "Contract setup changed; contract readiness needs to be rechecked.");
   return fastOnboardingWorkspaceSave(c, {
     section: "contract",
     caseId,
@@ -4627,6 +4700,7 @@ onboardingRoutes.patch("/cases/:caseId/payroll-profile", requireAnyPermission(["
     await setOnboardingTaskState(c, caseId, "payroll_profile", "COMPLETED", "Payroll profile saved from onboarding workspace.");
   });
   await auditLifecycle(c, "onboarding.workspace.payroll_profile_saved", "employee_payroll_profile", profileId, null, body);
+  await markOnboardingShadowSectionsStale(c, caseId, employeeId, ["payroll_profile"], "Payroll profile changed; payroll readiness needs to be rechecked.");
   return fastOnboardingWorkspaceSave(c, {
     section: "payroll_profile",
     caseId,
@@ -4688,6 +4762,7 @@ onboardingRoutes.post("/cases/:caseId/payment-methods", requireAnyPermission(["o
     await setOnboardingTaskState(c, caseId, "payment_method", "COMPLETED", "Payment method saved from onboarding workspace.");
   });
   await auditLifecycle(c, "onboarding.workspace.payment_method_saved", "employee_payment_method", methodId, null, body);
+  await markOnboardingShadowSectionsStale(c, caseId, employeeId, ["payment_method", "pension"], "Payment method changed; related payroll sections need to be rechecked.");
   return fastOnboardingWorkspaceSave(c, {
     section: "payment_method",
     caseId,
@@ -4745,6 +4820,7 @@ onboardingRoutes.post("/cases/:caseId/pension-profile", requireAnyPermission(["o
     await setOnboardingTaskState(c, caseId, "pension_profile", "COMPLETED", "Pension profile saved from onboarding workspace.");
   });
   await auditLifecycle(c, "onboarding.workspace.pension_profile_saved", "employee_pension_profile", profileId, null, body);
+  await markOnboardingShadowSectionsStale(c, caseId, employeeId, ["pension"], "Pension profile changed; pension readiness needs to be rechecked.");
   return fastOnboardingWorkspaceSave(c, {
     section: "pension_profile",
     caseId,
@@ -4787,6 +4863,7 @@ onboardingRoutes.post("/cases/:caseId/biometric-mapping", requireAnyPermission([
     .bind(mappingId, gate.row.employee_id, optionalText(body.attendance_device_id), biometricUserId, optionalText(body.biometric_user_name), optionalText(body.external_employee_code), optionalText(body.notes), c.get("currentUser").id, c.get("currentUser").id).run();
   await setOnboardingTaskState(c, caseId, "attendance_biometric", "COMPLETED", "Biometric mapping saved from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.biometric_mapping_saved", "employee_biometric_mapping", mappingId, null, body);
+  await markOnboardingShadowSectionsStale(c, caseId, String(gate.row.employee_id), ["attendance_roster"], "Attendance/biometric setup changed; readiness needs to be rechecked.");
   return fastOnboardingWorkspaceSave(c, {
     section: "attendance_biometric",
     caseId,
@@ -4832,6 +4909,7 @@ onboardingRoutes.post("/cases/:caseId/assets-uniforms", requireAnyPermission(["o
   await c.env.DB.prepare("UPDATE asset_items SET status = 'ISSUED', lifecycle_status = 'ASSIGNED', assigned_employee_id = ?, updated_at = ? WHERE id = ?").bind(gate.row.employee_id, nowIso(), assetItemId).run();
   await setOnboardingTaskState(c, caseId, "assets_uniforms", "COMPLETED", "Asset/uniform issued from onboarding workspace.");
   await auditLifecycle(c, "onboarding.workspace.asset_uniform_saved", "employee_asset_assignment", assignmentId, null, body);
+  await markOnboardingShadowSectionsStale(c, caseId, String(gate.row.employee_id), ["assets_uniforms"], "Asset/uniform setup changed; readiness needs to be rechecked.");
   return fastOnboardingWorkspaceSave(c, {
     section: "assets_uniforms",
     caseId,
@@ -4855,6 +4933,7 @@ onboardingRoutes.post("/cases/:caseId/user-account", requireAnyPermission(["onbo
     const caseId = c.req.param("caseId");
     await setOnboardingTaskState(c, caseId, "user_access", action === "not_required" ? "NOT_REQUIRED" : "IN_PROGRESS", reason);
     await auditLifecycle(c, "onboarding.workspace.user_access_saved", "employee", employeeId, null, { action, reason }, reason);
+    await markOnboardingShadowSectionsStale(c, caseId, employeeId, ["user_access"], "User access setup changed; user access readiness needs to be rechecked.");
     return fastOnboardingWorkspaceSave(c, {
       section: "user_access",
       caseId,
@@ -4895,6 +4974,7 @@ onboardingRoutes.post("/cases/:caseId/user-account", requireAnyPermission(["onbo
     const caseId = c.req.param("caseId");
     await setOnboardingTaskState(c, caseId, "user_access", "COMPLETED", "Linked existing user account from onboarding workspace.");
     await auditLifecycle(c, "onboarding.workspace.user_account_linked", "employee", employeeId, { user_id: gate.employee.user_id ?? null }, { user_id: targetUser.id, role_ids: roleIds, access_scope_ids: arrayOfStrings(body.access_scope_ids) }, optionalText(body.reason));
+    await markOnboardingShadowSectionsStale(c, caseId, employeeId, ["user_access"], "User access setup changed; user access readiness needs to be rechecked.");
     return fastOnboardingWorkspaceSave(c, {
       section: "user_access",
       caseId,
@@ -4968,6 +5048,7 @@ onboardingRoutes.post("/cases/:caseId/user-account", requireAnyPermission(["onbo
     const caseId = c.req.param("caseId");
     await setOnboardingTaskState(c, caseId, "user_access", "COMPLETED", "Provisioned linked user account from onboarding workspace.");
     await auditLifecycle(c, "onboarding.workspace.user_account_provisioned", "employee", employeeId, { user_id: gate.employee.user_id ?? null }, { user_id: userId, employee_email_used: employeeEmail.email, account_email_created: email, invite_status: inviteStatus, reset_required: !password || asBool(body.reset_required, Boolean(password)), role_ids: roleIds, access_scope_ids: arrayOfStrings(body.access_scope_ids) }, optionalText(body.reason));
+    await markOnboardingShadowSectionsStale(c, caseId, employeeId, ["user_access"], "User access setup changed; user access readiness needs to be rechecked.");
     return fastOnboardingWorkspaceSave(c, {
       section: "user_access",
       caseId,
@@ -4983,6 +5064,7 @@ onboardingRoutes.post("/cases/:caseId/user-account", requireAnyPermission(["onbo
     const caseId = c.req.param("caseId");
     await setOnboardingTaskState(c, caseId, "user_access", "COMPLETED", "Employee already has a linked user account.");
     await auditLifecycle(c, "onboarding.workspace.user_access_saved", "employee", employeeId, null, { action: "complete_existing", user_id: gate.employee.user_id });
+    await markOnboardingShadowSectionsStale(c, caseId, employeeId, ["user_access"], "User access setup changed; user access readiness needs to be rechecked.");
     return fastOnboardingWorkspaceSave(c, {
       section: "user_access",
       caseId,

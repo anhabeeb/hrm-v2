@@ -1616,6 +1616,101 @@ function isOnboardingSaveTimeoutError(error: unknown): error is ApiError {
   return error instanceof ApiError && error.status === 0 && (error.category === "timeout" || error.code === "REQUEST_ABORTED");
 }
 
+function sectionPreviewStatusLabel(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "Not checked";
+  return title(raw.replace(/_/g, " "));
+}
+
+function sectionPreviewStatusTone(value: unknown): "neutral" | "success" | "warning" | "danger" | "info" {
+  const raw = String(value ?? "").toLowerCase();
+  if (["complete", "verified"].includes(raw)) return "success";
+  if (raw === "not_required") return "neutral";
+  if (raw === "failed") return "danger";
+  if (raw === "blocked" || raw === "stale" || raw === "incomplete") return "warning";
+  return "info";
+}
+
+function OnboardingSectionReadinessPreview({
+  preview,
+  loading,
+  error,
+  rebuilding,
+  onRebuild
+}: {
+  preview: Row | null;
+  loading: boolean;
+  error: string | null;
+  rebuilding: boolean;
+  onRebuild: () => void;
+}) {
+  const readiness = asRow(preview?.readiness);
+  const sections = asRows(preview?.sections);
+  const status = String(readiness.status ?? "not_checked");
+  return (
+    <Panel className="min-w-0 overflow-hidden p-3" data-onboarding-section-readiness-preview data-shadow-readiness-preview>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-slate-950">Section Readiness Preview</h3>
+            <Badge tone="info">Shadow</Badge>
+            <Badge tone="neutral">Preview only</Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Read-only candidate status. Activation still uses the existing server validation.</p>
+        </div>
+        <ActionTextButton intent="refresh" size="sm" disabled={loading || rebuilding} onClick={onRebuild}>
+          <RefreshCw className="h-4 w-4" /> {rebuilding ? "Rebuilding" : "Rebuild"}
+        </ActionTextButton>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Badge tone={sectionPreviewStatusTone(status)}>{sectionPreviewStatusLabel(status)}</Badge>
+        <span className="text-xs text-muted-foreground">Candidate activation remains disabled in Phase 1.</span>
+      </div>
+      {error ? (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {error}
+        </div>
+      ) : null}
+      {loading && !sections.length ? (
+        <div className="mt-3 rounded-md border bg-slate-50 px-3 py-4 text-xs text-muted-foreground">Loading section preview...</div>
+      ) : (
+        <div className="mt-3 overflow-hidden rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Section</TableHead>
+                <TableHead className="w-28">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sections.length ? sections.map((section, index) => {
+                const sectionKey = String(section.section_key ?? section.section_label ?? `section-${index}`);
+                return (
+                  <TableRow key={sectionKey}>
+                    <TableCell>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900" title={displayText(section.section_label)}>{displayText(section.section_label)}</p>
+                        {section.status_message ? <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{String(section.status_message)}</p> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge tone={sectionPreviewStatusTone(section.status)}>{sectionPreviewStatusLabel(section.status)}</Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              }) : (
+                <TableRow>
+                  <TableCell colSpan={2} className="text-sm text-muted-foreground">No section preview rows have been built yet.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReason, queryState }: { workspace: Row; caseId: string; onClose: () => void; reload: () => Promise<void>; run: (action: () => Promise<unknown>) => Promise<void>; askReason: (title: string, submit: (reason: string) => Promise<void>) => void; queryState?: { refreshing: boolean; backgroundError: Error | null; retry: () => Promise<void> } }) {
   const { token, user } = useAuth();
   const alerts = useAlert();
@@ -1627,6 +1722,10 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
   const [readinessRetrying, setReadinessRetrying] = useState(false);
   const [readinessRefreshJob, setReadinessRefreshJob] = useState<ReadinessRefreshTracker | null>(null);
   const [readinessOverride, setReadinessOverride] = useState<Row | null>(null);
+  const [sectionReadinessPreview, setSectionReadinessPreview] = useState<Row | null>(null);
+  const [sectionReadinessLoading, setSectionReadinessLoading] = useState(false);
+  const [sectionReadinessRebuilding, setSectionReadinessRebuilding] = useState(false);
+  const [sectionReadinessError, setSectionReadinessError] = useState<string | null>(null);
   const scope = useMemo(() => workspaceScope(token, user), [token, user]);
   const workspaceMutation = useWorkspaceMutation<OnboardingWorkspaceMutationResult, { action: () => Promise<unknown>; slices: WorkspaceSlice[] }>({
     mutationFn: async (variables) => variables.action() as Promise<OnboardingWorkspaceMutationResult>,
@@ -1656,6 +1755,32 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
     void queryClient.invalidateQueries({ queryKey: queryKeys.onboarding.readiness(scope, caseId) });
     return nextReadiness;
   }
+  const loadSectionReadinessPreview = useCallback(async (rebuild = false) => {
+    if (!token) return;
+    const controller = new AbortController();
+    if (rebuild) setSectionReadinessRebuilding(true);
+    else setSectionReadinessLoading(true);
+    setSectionReadinessError(null);
+    try {
+      const result = rebuild
+        ? await api.rebuildOnboardingSectionStatuses(token, caseId)
+        : await api.getOnboardingSectionReadiness(token, caseId, controller.signal);
+      setSectionReadinessPreview({
+        mode: "shadow",
+        readiness: asRow(result.readiness),
+        sections: asRows(result.sections)
+      });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Section readiness preview could not be loaded.";
+      setSectionReadinessError(message);
+    } finally {
+      setSectionReadinessLoading(false);
+      setSectionReadinessRebuilding(false);
+    }
+  }, [caseId, token]);
+  useEffect(() => {
+    void loadSectionReadinessPreview(false);
+  }, [loadSectionReadinessPreview]);
   async function save(action: () => Promise<unknown>, success: string, slices: WorkspaceSlice[]) {
     if (!token) return;
     try {
@@ -1670,6 +1795,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
         setReadinessQueuedAt(Date.now());
       }
       setReadinessUpdating(queuedReadiness || readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta)));
+      void loadSectionReadinessPreview(false);
       alerts.showSuccess(queuedReadiness ? "Saved. Updating readiness..." : success);
       const warning = typeof result.warning === "string" ? result.warning : null;
       if (warning) alerts.showWarning(warning);
@@ -1692,6 +1818,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               setReadinessQueuedAt(Date.now());
             }
             setReadinessUpdating(queuedReadiness || readinessRefreshIsActive(nextReadiness, asRow(resultWorkspace.workspace_meta)));
+            void loadSectionReadinessPreview(false);
             alerts.showSuccess(queuedReadiness ? "Saved. Updating readiness..." : success);
             const warning = typeof result.warning === "string" ? result.warning : null;
             if (warning) alerts.showWarning(warning);
@@ -1756,6 +1883,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       const tracker = readinessRefreshTrackerFromResult(result as OnboardingWorkspaceMutationResult);
       if (tracker) setReadinessRefreshJob(tracker);
       setReadinessUpdating(Boolean((result as Record<string, unknown>).readiness_updating ?? true));
+      void loadSectionReadinessPreview(false);
       alerts.showSuccess(uploaded === 1 ? "1 document uploaded." : `${uploaded} documents uploaded.`);
       return result;
     } catch (err) {
@@ -2044,6 +2172,7 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       {activeTab === "Documents" ? <DocumentsWorkspaceForm workspace={workspace} caseId={caseId} token={token} onSave={saveDocumentBatch} onAcceleratedResult={(result) => {
         invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: ["documents", "document-checklist", "readiness"] });
         setReadinessUpdating(Boolean(result.readiness_updating || result.recalculation_status === "queued"));
+        void loadSectionReadinessPreview(false);
         alerts.showSuccess(result.completed_count === 1 ? "1 document uploaded. Updating readiness..." : `${result.completed_count} documents uploaded. Updating readiness...`);
       }} /> : null}
       {activeTab === "Contract" ? <ContractWorkspaceForm workspace={workspace} onSave={(input) => save(() => api.createOnboardingWorkspaceContract(token!, caseId, input), "Contract draft created.", ["contract", "readiness"])} /> : null}
@@ -2077,6 +2206,13 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               <OnboardingEmployeeSummaryRow label="Location" value={employee.location_name ?? employee.primary_location_name} />
             </div>
           </Panel>
+          <OnboardingSectionReadinessPreview
+            preview={sectionReadinessPreview}
+            loading={sectionReadinessLoading}
+            error={sectionReadinessError}
+            rebuilding={sectionReadinessRebuilding}
+            onRebuild={() => void loadSectionReadinessPreview(true)}
+          />
         </aside>
       </div>
       </div>

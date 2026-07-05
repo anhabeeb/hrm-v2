@@ -987,6 +987,20 @@ export const api = {
   getOnboardingWorkspace(token: string, caseId: string, signal?: AbortSignal, timeoutMs = 12000) {
     return request<{ workspace: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/workspace`, { signal, timeoutMs, requestLabel: "onboarding.workspace" }, token);
   },
+  getOnboardingSectionReadiness(token: string, caseId: string, signal?: AbortSignal) {
+    return request<{ ok: boolean; mode: "shadow"; readiness: Record<string, unknown>; sections: Record<string, unknown>[] }>(
+      `/api/v1/onboarding/cases/${caseId}/section-readiness`,
+      { signal, timeoutMs: 6000, requestLabel: "onboarding.section-readiness" },
+      token
+    );
+  },
+  rebuildOnboardingSectionStatuses(token: string, caseId: string) {
+    return request<{ request_id: string; rebuilt_count: number; failed_count: number; readiness: Record<string, unknown>; sections: Record<string, unknown>[] }>(
+      `/api/v1/onboarding/cases/${caseId}/section-statuses/rebuild`,
+      { method: "POST", timeoutMs: 8000, requestLabel: "onboarding.section-statuses.rebuild", dedupe: false },
+      token
+    );
+  },
   getOnboardingWorkspaceSaveStatus(token: string, caseId: string, input: { request_id?: string | null; idempotency_key?: string | null }) {
     return request<OnboardingWorkspaceSaveStatusResponse>(
       `/api/v1/onboarding/cases/${caseId}/save-status${query(input)}`,
