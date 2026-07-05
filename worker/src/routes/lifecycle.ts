@@ -24,6 +24,7 @@ import {
 } from "../onboarding/section-readiness-aggregator";
 import {
   buildActivationBlockerResponse,
+  previewOnboardingCaseForActivation,
   verifyOnboardingCaseForActivation,
   type FinalActivationVerificationResult
 } from "../onboarding/final-activation-verifier";
@@ -5627,6 +5628,23 @@ onboardingRoutes.post("/cases/:caseId/final-verification", requireAnyPermission(
   if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
   c.header("Cache-Control", "private, no-store");
   c.header("Vary", "Origin");
+  if (c.req.query("dry_run") === "1") {
+    const requestId = finalVerificationRequestId(c, "final_verification_dry_run");
+    const verification = await previewOnboardingCaseForActivation(c.env.DB, caseId, { requestId });
+    c.header("X-Request-Id", verification.request_id);
+    return ok(c, {
+      dry_run: true,
+      verification,
+      readiness: verification,
+      sections: "sections" in verification ? verification.sections : [],
+      section_status_update: {
+        readiness: verification,
+        sections: "sections" in verification ? verification.sections : []
+      },
+      targeted_workspace_slices: ["readiness", "section-readiness", "activation"],
+      activation_requires_final_verification: verification.activation_requires_final_verification
+    });
+  }
   const verification = await runOnboardingFinalVerificationForRoute(c, caseId, "final-verification-endpoint");
   if (verification.status === "failed") return finalVerificationBlockedResponse(c, verification);
   const sectionPreview = await getOnboardingSectionPreviewPayload(c.env.DB, caseId);

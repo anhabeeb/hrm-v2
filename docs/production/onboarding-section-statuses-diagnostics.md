@@ -1,6 +1,6 @@
 # Onboarding Section Status Diagnostics
 
-Generated at: 2026-07-05T17:38:21.258Z
+Generated at: 2026-07-05T19:14:14.908Z
 
 ## Source Checks
 

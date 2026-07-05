@@ -13,11 +13,18 @@ import {
   upsertOnboardingSectionStatus,
   type OnboardingSectionStatusRow
 } from "./section-status";
-import { onboardingSectionDefinitionByKey } from "./section-status-registry";
+import { getOnboardingSectionRegistry, onboardingSectionDefinitionByKey } from "./section-status-registry";
 import { nowIso } from "../utils/http";
 
 const FINAL_VERIFICATION_SOURCE_VERSION = "section-status-phase4-final-activation-verifier";
 const FINAL_VERIFICATION_TIMEOUT_MS = 7000;
+const SECTION_STATUS_SELECT_COLUMNS = `
+  id, case_id, employee_id, company_id, section_key, section_label, status,
+  is_required, is_complete, is_verified, is_stale, status_reason_code,
+  status_message, next_action, missing_fields_json, blockers_json,
+  field_status_json, source_version, source_hash, last_saved_at,
+  last_evaluated_at, last_verified_at, updated_by_user_id, created_at, updated_at
+`;
 
 type DbOrEnv = D1Database | { DB: D1Database };
 
@@ -108,6 +115,18 @@ async function getActivationCaseSnapshot(db: D1Database, caseId: string) {
     WHERE oc.id = ?
     LIMIT 1
   `).bind(caseId).first<ActivationCaseSnapshot>();
+}
+
+async function getStoredOnboardingSectionStatusesForDryRun(db: D1Database, caseId: string) {
+  const rows = await db.prepare(`
+    SELECT ${SECTION_STATUS_SELECT_COLUMNS}
+      FROM onboarding_setup_section_statuses
+     WHERE case_id = ?
+     ORDER BY section_key
+     LIMIT 50
+  `).bind(caseId).all<OnboardingSectionStatusRow>();
+  const order = new Map(getOnboardingSectionRegistry().map((definition) => [definition.section_key, definition.display_order]));
+  return rows.results.sort((a, b) => (order.get(a.section_key) ?? 999) - (order.get(b.section_key) ?? 999));
 }
 
 function blockerFromRow(row: OnboardingSectionStatusRow, requestId: string): FinalActivationSectionBlocker {
@@ -237,6 +256,65 @@ async function applyFinalActivationHardChecks(db: D1Database, caseId: string, ac
   }
 
   return snapshot;
+}
+
+function hardCheckBlockersFromSnapshot(snapshot: ActivationCaseSnapshot | null, requestId: string): FinalActivationSectionBlocker[] {
+  if (!snapshot) {
+    return [{
+      section_key: "employee_info",
+      section_label: "Employee Info",
+      status: "blocked",
+      message: "This onboarding case could not be found.",
+      next_action: "Refresh the case list and open the onboarding case again.",
+      error_code: "ONBOARDING_CASE_NOT_FOUND",
+      request_id: requestId
+    }];
+  }
+  const blockers: FinalActivationSectionBlocker[] = [];
+  if (!snapshot.employee_id) {
+    blockers.push({
+      section_key: "employee_info",
+      section_label: "Employee Info",
+      status: "blocked",
+      message: "This onboarding case is not attached to an employee.",
+      next_action: "Attach the onboarding case to the correct employee and run final verification again.",
+      error_code: "EMPLOYEE_NOT_ATTACHED",
+      request_id: requestId
+    });
+  }
+  if (snapshot.employee_archived_at) {
+    blockers.push({
+      section_key: "employee_info",
+      section_label: "Employee Info",
+      status: "blocked",
+      message: "This employee record is archived and cannot be activated from onboarding.",
+      next_action: "Restore the employee record or create a new onboarding case if appropriate.",
+      error_code: "EMPLOYEE_ARCHIVED",
+      request_id: requestId
+    });
+  }
+  if (["ACTIVATED", "OVERRIDDEN"].includes(String(snapshot.activation_status ?? "").toUpperCase())) {
+    blockers.push({
+      section_key: "employee_info",
+      section_label: "Employee Info",
+      status: "blocked",
+      message: "This onboarding case has already activated the employee.",
+      next_action: "Refresh the case list. No further activation action is required.",
+      error_code: "ONBOARDING_ALREADY_ACTIVATED",
+      request_id: requestId
+    });
+  } else if (String(snapshot.employee_status_key ?? "").toUpperCase() === "ACTIVE") {
+    blockers.push({
+      section_key: "employee_info",
+      section_label: "Employee Info",
+      status: "blocked",
+      message: "This employee is already active outside this onboarding case.",
+      next_action: "Review the employee status before running activation again.",
+      error_code: "EMPLOYEE_ALREADY_ACTIVE",
+      request_id: requestId
+    });
+  }
+  return blockers;
 }
 
 function classifyRows(rows: OnboardingSectionStatusRow[]) {
@@ -437,6 +515,101 @@ export async function verifyOnboardingCaseForActivation(
       rebuilt_sections: 0,
       section_timings: []
     } satisfies FinalActivationVerificationResult;
+  }
+}
+
+export async function previewOnboardingCaseForActivation(
+  envOrDb: DbOrEnv,
+  caseId: string,
+  options: FinalActivationVerifierOptions = {}
+) {
+  const db = dbFrom(envOrDb);
+  const requestId = options.requestId ?? `final_verification_dry_run_${crypto.randomUUID()}`;
+  const startedAt = Date.now();
+  try {
+    const definitions = await getOnboardingSectionDefinitions(db, caseId);
+    const storedRows = await getStoredOnboardingSectionStatusesForDryRun(db, caseId);
+    const snapshot = await getActivationCaseSnapshot(db, caseId);
+    const hardBlockers = hardCheckBlockersFromSnapshot(snapshot, requestId);
+    const rows = composeOnboardingSectionStatusRows(definitions, storedRows, caseId);
+    const aggregate = aggregateOnboardingReadinessFromSections(definitions, rows, caseId);
+    const { failed, stale, blocking, verified } = classifyRows(rows);
+    const baseStatus: FinalVerificationStatus = failed.length ? "failed" : stale.length ? "stale" : blocking.length || hardBlockers.length ? "blocked" : "verified";
+    const blockerRows = baseStatus === "failed" ? failed : baseStatus === "stale" ? stale : blocking;
+    const blockers = [
+      ...hardBlockers,
+      ...blockerRows.map((row) => blockerFromRow(row, requestId))
+    ];
+    const allSections = rows.map(serializeOnboardingSectionStatus);
+    return {
+      ok: baseStatus !== "failed",
+      dry_run: true,
+      status: baseStatus,
+      can_activate: baseStatus === "verified",
+      activation_requires_final_verification: baseStatus !== "verified",
+      case_id: caseId,
+      employee_id: snapshot?.employee_id ?? storedRows.find((row) => row.employee_id)?.employee_id ?? null,
+      verified_sections: verified.map(serializeOnboardingSectionStatus),
+      blocking_sections: blocking.map(serializeOnboardingSectionStatus),
+      failed_sections: failed.map(serializeOnboardingSectionStatus),
+      stale_sections: stale.map(serializeOnboardingSectionStatus),
+      blockers: blockers.length ? blockers : (Array.isArray(aggregate.blockers) ? aggregate.blockers.map((item) => ({
+        section_key: String((item as Record<string, unknown>).section_key ?? "readiness"),
+        section_label: String((item as Record<string, unknown>).section_label ?? "Readiness"),
+        status: typeof (item as Record<string, unknown>).status === "string" ? String((item as Record<string, unknown>).status) : null,
+        message: safeText((item as Record<string, unknown>).message, "Onboarding setup is not ready for activation."),
+        next_action: safeText((item as Record<string, unknown>).next_action, "Complete the missing setup and run final verification again."),
+        error_code: typeof (item as Record<string, unknown>).type === "string" ? String((item as Record<string, unknown>).type) : null,
+        request_id: requestId
+      })) : []),
+      warnings: [],
+      duration_ms: elapsed(startedAt),
+      request_id: requestId,
+      rebuilt_sections: 0,
+      section_timings: [],
+      sections: allSections
+    } satisfies FinalActivationVerificationResult & { dry_run: boolean; sections: Array<Record<string, unknown>> };
+  } catch (error) {
+    const message = safeText(
+      error instanceof Error ? error.message : String(error ?? ""),
+      "Final verification dry-run could not complete safely."
+    );
+    return {
+      ok: false,
+      dry_run: true,
+      status: "failed",
+      can_activate: false,
+      activation_requires_final_verification: true,
+      case_id: caseId,
+      employee_id: null,
+      verified_sections: [],
+      blocking_sections: [],
+      failed_sections: [],
+      stale_sections: [],
+      blockers: [{
+        section_key: "readiness",
+        section_label: "Readiness",
+        status: "failed",
+        message: "Final verification dry-run failed before activation could be checked.",
+        next_action: "Confirm the production section-status schema exists and retry final verification.",
+        error_code: "FINAL_VERIFICATION_DRY_RUN_FAILED",
+        request_id: requestId
+      }],
+      warnings: [{
+        section_key: "readiness",
+        section_label: "Readiness",
+        status: "failed",
+        message,
+        next_action: "Share the request ID with support if retrying does not resolve the issue.",
+        error_code: "FINAL_VERIFICATION_DRY_RUN_FAILED",
+        request_id: requestId
+      }],
+      duration_ms: elapsed(startedAt),
+      request_id: requestId,
+      rebuilt_sections: 0,
+      section_timings: [],
+      sections: []
+    } satisfies FinalActivationVerificationResult & { dry_run: boolean; sections: Array<Record<string, unknown>> };
   }
 }
 

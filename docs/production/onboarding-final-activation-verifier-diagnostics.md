@@ -1,6 +1,6 @@
 # Onboarding Final Activation Verifier Diagnostics
 
-Generated: 2026-07-05T17:37:49.240Z
+Generated: 2026-07-05T19:14:14.988Z
 Case ID: not provided
 Run rebuild requested: no
 Legacy comparison requested: no

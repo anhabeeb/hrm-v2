@@ -39,6 +39,7 @@ for (const helper of [
   "verifyOnboardingCaseForActivation",
   "rebuildStaleSectionsBeforeFinalVerification",
   "runFinalSectionVerification",
+  "previewOnboardingCaseForActivation",
   "markSectionsVerified",
   "buildActivationBlockerResponse"
 ]) {
@@ -59,6 +60,8 @@ check("final verification endpoint exists", finalVerificationRoute.length > 0);
 check("final verification endpoint has required permissions", ["onboarding.activation.submit", "onboarding.activation.activate", "onboarding.activation.manage", "onboarding.workspace.activate", "onboarding.cases.manage"].every((permission) => finalVerificationRoute.includes(permission)));
 check("final verification endpoint uses no-store and Vary Origin", finalVerificationRoute.includes('Cache-Control", "private, no-store"') && finalVerificationRoute.includes('Vary", "Origin"'));
 check("final verification endpoint runs final verifier and returns sections", finalVerificationRoute.includes("runOnboardingFinalVerificationForRoute") && finalVerificationRoute.includes("section_status_update"));
+check("final verification endpoint supports read-only dry run", finalVerificationRoute.includes('dry_run") === "1"') && finalVerificationRoute.includes("previewOnboardingCaseForActivation") && finalVerificationRoute.includes("dry_run: true"));
+check("final verification dry-run does not record audit/app events", !sliceBetween(finalVerificationRoute, 'dry_run") === "1"', "const verification = await runOnboardingFinalVerificationForRoute").includes("recordOnboardingFinalVerificationAttempt"));
 
 const completeRoute = sliceBetween(lifecycle, 'onboardingRoutes.post("/cases/:caseId/complete"', 'onboardingRoutes.get("/cases/:caseId"');
 const submitRoute = sliceBetween(lifecycle, 'onboardingRoutes.post("/cases/:caseId/submit-activation"', 'onboardingRoutes.post("/cases/:caseId/approve-activation"');
