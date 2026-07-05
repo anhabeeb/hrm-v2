@@ -65,7 +65,8 @@ check(
 check("backend: readiness status endpoint is no-store", statusRoute.includes('Cache-Control", "private, no-store"'));
 check("backend: readiness success emits targeted app event", lifecycle.includes('eventType: "onboarding.readiness.updated"') && lifecycle.includes('queryKeys: ["onboarding.workspace", "onboarding.readiness", "background-jobs"]'));
 check("backend: readiness failure emits safe update event", lifecycle.includes("onboarding.readiness.failed") && lifecycle.includes("Onboarding readiness refresh failed"));
-check("backend: activation remains server-validated", lifecycle.includes("const readiness = await getEmployeeOnboardingReadiness(c, c.req.param(\"caseId\"))") && lifecycle.includes("activateEmployeeFromOnboarding") && lifecycle.includes("if (!readiness?.can_activate)"));
+const activateFunction = sliceBetween(lifecycle, "export async function activateEmployeeFromOnboarding", "export async function activateEmployeeWithOnboardingOverride");
+check("backend: activation remains server-validated", activateFunction.includes("runOnboardingFinalVerificationForRoute") && activateFunction.includes("verification.can_activate") && !activateFunction.includes("can_activate_candidate"));
 
 check("frontend API: readiness-status helper exists", api.includes("getOnboardingReadinessStatus") && api.includes("/readiness-status") && api.includes("OnboardingReadinessStatusResponse"));
 check("frontend: readiness job tracker state exists", lifecyclePage.includes("readinessRefreshJob") && lifecyclePage.includes("ReadinessRefreshTracker"));

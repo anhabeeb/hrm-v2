@@ -89,9 +89,10 @@ assert(
 );
 assert(!refreshRoute.includes("refreshWorkspaceReadiness") && !refreshRoute.includes("loadOnboardingWorkspace") && !refreshRoute.includes("workspaceWithConfirmedReadiness"), "manual readiness refresh still waits for direct readiness/workspace reload");
 const completeRoute = span(lifecycle, 'onboardingRoutes.post("/cases/:caseId/complete"', 'onboardingRoutes.get("/cases/:caseId"');
-assert(completeRoute.includes("getEmployeeOnboardingReadiness") && completeRoute.includes("ONBOARDING_WORKSPACE_NOT_READY"), "activation submission no longer validates server-side readiness");
+assert(completeRoute.includes("runOnboardingFinalVerificationForRoute") && completeRoute.includes("finalVerificationBlockedResponse"), "activation submission no longer validates server-side readiness");
 const activateRoute = span(lifecycle, 'onboardingRoutes.post("/cases/:caseId/activate"', 'onboardingRoutes.post("/cases/:caseId/activate-with-override"');
-assert(activateRoute.includes("activateEmployeeFromOnboarding") && lifecycle.includes("if (!readiness?.can_activate) return { blocked: true, readiness };"), "activation no longer enforces server-side readiness");
+const activateFunction = span(lifecycle, "export async function activateEmployeeFromOnboarding", "export async function activateEmployeeWithOnboardingOverride");
+assert(activateRoute.includes("activateEmployeeFromOnboarding") && activateFunction.includes("verification.can_activate") && activateFunction.includes("runOnboardingFinalVerificationForRoute"), "activation no longer enforces server-side readiness");
 
 assert(lifecycle.includes("methodType === \"BANK_TRANSFER\"") && lifecycle.includes("PAYMENT_INSTITUTIONS_DISABLED_FOR_BANK_TRANSFER"), "Bank Transfer payment institution validation regressed");
 assert(lifecycle.includes("Cash payment method is complete."), "Cash payment readiness completion regressed");

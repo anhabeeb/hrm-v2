@@ -292,6 +292,18 @@ export type OnboardingReadinessStatusResponse = {
   active_refresh_status?: string | null;
 };
 
+export type OnboardingFinalVerificationResponse = {
+  verification: Record<string, unknown>;
+  readiness?: Record<string, unknown>;
+  sections?: Record<string, unknown>[];
+  section_status_update?: {
+    readiness?: Record<string, unknown>;
+    sections?: Record<string, unknown>[];
+  };
+  targeted_workspace_slices?: string[];
+  activation_requires_final_verification?: boolean;
+};
+
 export type OnboardingWorkspaceSaveStatusResponse = {
   committed: boolean;
   retryable: boolean;
@@ -1067,6 +1079,13 @@ export const api = {
   },
   getOnboardingReadinessStatus(token: string, caseId: string, params?: { job_id?: string | null }) {
     return request<OnboardingReadinessStatusResponse>(`/api/v1/onboarding/cases/${caseId}/readiness-status${query(params)}`, { requestLabel: "onboarding.readiness-status", dedupe: false }, token);
+  },
+  finalVerifyOnboardingActivation(token: string, caseId: string) {
+    return request<OnboardingFinalVerificationResponse>(
+      `/api/v1/onboarding/cases/${caseId}/final-verification`,
+      { method: "POST", timeoutMs: 12000, requestLabel: "onboarding.final-verification", dedupe: false },
+      token
+    );
   },
   completeOnboardingWorkspace(token: string, caseId: string) {
     return request<{ workspace?: Record<string, unknown>; submitted?: boolean; approval?: Record<string, unknown> }>(`/api/v1/onboarding/cases/${caseId}/complete`, { method: "POST" }, token);

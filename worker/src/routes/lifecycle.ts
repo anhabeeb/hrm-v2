@@ -22,6 +22,11 @@ import {
   rebuildAndAggregateOnboardingSectionReadiness,
   rebuildStaleOrMissingOnboardingSectionReadiness
 } from "../onboarding/section-readiness-aggregator";
+import {
+  buildActivationBlockerResponse,
+  verifyOnboardingCaseForActivation,
+  type FinalActivationVerificationResult
+} from "../onboarding/final-activation-verifier";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, DbUser, Env, UserStatus } from "../types";
 import { safeEmitAppEvent } from "../utils/app-events";
@@ -2250,6 +2255,72 @@ async function emitOnboardingWorkspaceEvent(c: Context<AppBindings>, input: {
   });
 }
 
+function finalVerificationRequestId(c: Context<AppBindings>, prefix: string) {
+  return c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? `${prefix}_${crypto.randomUUID()}`;
+}
+
+function finalVerificationStatusEvent(status: string) {
+  if (status === "verified") return "onboarding.final_verification.completed";
+  if (status === "failed") return "onboarding.final_verification.failed";
+  return "onboarding.final_verification.blocked";
+}
+
+async function recordOnboardingFinalVerificationAttempt(c: Context<AppBindings>, verification: FinalActivationVerificationResult, source: string) {
+  const status = verification.status;
+  await auditLifecycle(c, "onboarding.final_verification.attempted", "employee_onboarding_case", verification.case_id, null, {
+    source,
+    status,
+    case_id: verification.case_id,
+    employee_id: verification.employee_id,
+    blocker_count: verification.blockers.length,
+    failed_section_count: verification.failed_sections.length,
+    stale_section_count: verification.stale_sections.length,
+    request_id: verification.request_id
+  });
+  await safeEmitAppEvent(c.env.DB, {
+    eventType: finalVerificationStatusEvent(status),
+    moduleKey: "onboarding",
+    entityType: "onboarding_case",
+    entityId: verification.case_id,
+    visibility: "COMPANY",
+    createdByUserId: c.get("currentUser").id,
+    payload: {
+      onboarding_case_id: verification.case_id,
+      employee_id: verification.employee_id,
+      status,
+      can_activate: verification.can_activate,
+      blocker_count: verification.blockers.length,
+      failed_section_count: verification.failed_sections.length,
+      request_id: verification.request_id,
+      safe_label: status === "verified"
+        ? "Onboarding final verification completed"
+        : status === "failed"
+          ? "Onboarding final verification failed"
+          : "Onboarding final verification blocked"
+    },
+    queryKeys: ["onboarding.workspace", "onboarding.readiness", "onboarding.section-readiness", "onboarding.activation"],
+    dedupeKey: `onboarding.final_verification:${verification.case_id}:${status}:${verification.request_id}`
+  });
+}
+
+function finalVerificationBlockedResponse(c: Context<AppBindings>, verification: FinalActivationVerificationResult) {
+  c.header("Cache-Control", "private, no-store");
+  c.header("Vary", "Origin");
+  c.header("X-Request-Id", verification.request_id);
+  const error = buildActivationBlockerResponse(verification);
+  return c.json({
+    ok: false,
+    error
+  }, verification.status === "failed" ? 500 : 409);
+}
+
+async function runOnboardingFinalVerificationForRoute(c: Context<AppBindings>, caseId: string, source: string) {
+  const requestId = finalVerificationRequestId(c, "final_verification");
+  const verification = await verifyOnboardingCaseForActivation(c.env.DB, caseId, c.get("currentUser").id, { requestId });
+  await recordOnboardingFinalVerificationAttempt(c, verification, source);
+  return verification;
+}
+
 async function ensureOnboardingSettings(db: D1Database) {
   await db.prepare("INSERT OR IGNORE INTO onboarding_settings (id, metadata_json) VALUES ('onboarding_settings_default', ?)").bind(JSON.stringify({ seeded_prompt: "19" })).run();
   return db.prepare("SELECT * FROM onboarding_settings WHERE id = 'onboarding_settings_default'").first<Record<string, unknown>>();
@@ -3427,14 +3498,16 @@ export async function getEmployeeOnboardingReadiness(c: Context<AppBindings>, ca
   return readiness;
 }
 
-export async function submitEmployeeActivationForApproval(c: Context<AppBindings>, caseId: string) {
+export async function submitEmployeeActivationForApproval(c: Context<AppBindings>, caseId: string, verified?: FinalActivationVerificationResult) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "manage");
   if (!gate) return null;
+  const verification = verified ?? await runOnboardingFinalVerificationForRoute(c, caseId, "submit-activation");
+  if (!verification.can_activate) return { blocked: true, verification };
   const previous = String(gate.row.activation_status);
   await c.env.DB.prepare("UPDATE employee_onboarding_cases SET onboarding_status = 'PENDING_APPROVAL', activation_status = 'SUBMITTED', updated_by_user_id = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, nowIso(), caseId).run();
   await createLifecycleEvent(c, { employeeId: String(gate.row.employee_id), caseType: "ONBOARDING", caseId, action: "employee.activation.submitted", previousStatus: previous, newStatus: "SUBMITTED" });
   await publishLifecycle(c, String(gate.row.employee_id), "onboarding.activation.submitted");
-  return true;
+  return { submitted: true, verification };
 }
 
 export async function approveEmployeeActivation(c: Context<AppBindings>, caseId: string) {
@@ -3454,11 +3527,11 @@ export async function syncEmployeeStatusAfterOnboarding(c: Context<AppBindings>,
   return true;
 }
 
-export async function activateEmployeeFromOnboarding(c: Context<AppBindings>, caseId: string) {
+export async function activateEmployeeFromOnboarding(c: Context<AppBindings>, caseId: string, verified?: FinalActivationVerificationResult) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "manage");
   if (!gate) return null;
-  const readiness = await getEmployeeOnboardingReadiness(c, caseId);
-  if (!readiness?.can_activate) return { blocked: true, readiness };
+  const verification = verified ?? await runOnboardingFinalVerificationForRoute(c, caseId, "activate");
+  if (!verification.can_activate) return { blocked: true, verification, readiness: verification };
   await syncEmployeeStatusAfterOnboarding(c, String(gate.row.employee_id));
   const now = nowIso();
   await c.env.DB.prepare("UPDATE employee_onboarding_cases SET onboarding_status = 'ACTIVATED', activation_status = 'ACTIVATED', completed_at = ?, activated_by_user_id = ?, activated_at = ?, updated_by_user_id = ?, updated_at = ? WHERE id = ?")
@@ -3466,12 +3539,14 @@ export async function activateEmployeeFromOnboarding(c: Context<AppBindings>, ca
     .run();
   await createLifecycleEvent(c, { employeeId: String(gate.row.employee_id), caseType: "ONBOARDING", caseId, action: "employee.activated", previousStatus: String(gate.row.activation_status), newStatus: "ACTIVATED" });
   await publishLifecycle(c, String(gate.row.employee_id), "employee.activated");
-  return { activated: true, readiness };
+  return { activated: true, verification, readiness: verification };
 }
 
-export async function activateEmployeeWithOnboardingOverride(c: Context<AppBindings>, caseId: string, reason: string) {
+export async function activateEmployeeWithOnboardingOverride(c: Context<AppBindings>, caseId: string, reason: string, verified?: FinalActivationVerificationResult) {
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "manage");
   if (!gate) return null;
+  const verification = verified ?? await runOnboardingFinalVerificationForRoute(c, caseId, "activate-with-override");
+  if (!verification.can_activate) return { blocked: true, verification, readiness: verification };
   await syncEmployeeStatusAfterOnboarding(c, String(gate.row.employee_id));
   const now = nowIso();
   await c.env.DB.prepare("UPDATE employee_onboarding_cases SET onboarding_status = 'ACTIVATED', activation_status = 'OVERRIDDEN', completed_at = ?, activated_by_user_id = ?, activated_at = ?, updated_by_user_id = ?, updated_at = ? WHERE id = ?")
@@ -3479,7 +3554,7 @@ export async function activateEmployeeWithOnboardingOverride(c: Context<AppBindi
     .run();
   await createLifecycleEvent(c, { employeeId: String(gate.row.employee_id), caseType: "ONBOARDING", caseId, action: "employee.activated_with_onboarding_override", previousStatus: String(gate.row.activation_status), newStatus: "OVERRIDDEN", reason });
   await publishLifecycle(c, String(gate.row.employee_id), "employee.activated_with_onboarding_override");
-  return { activated: true, override: true };
+  return { activated: true, override: true, verification, readiness: verification };
 }
 
 export async function createOnboardingApprovalInstance(_c: Context<AppBindings>, caseId: string) {
@@ -5546,10 +5621,46 @@ onboardingRoutes.post("/cases/:caseId/refresh-readiness", requireAnyPermission([
   });
 });
 
+onboardingRoutes.post("/cases/:caseId/final-verification", requireAnyPermission(["onboarding.activation.submit", "onboarding.activation.activate", "onboarding.activation.manage", "onboarding.workspace.activate", "onboarding.cases.manage"]), async (c) => {
+  const caseId = c.req.param("caseId");
+  const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "manage");
+  if (!gate) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  c.header("Cache-Control", "private, no-store");
+  c.header("Vary", "Origin");
+  const verification = await runOnboardingFinalVerificationForRoute(c, caseId, "final-verification-endpoint");
+  if (verification.status === "failed") return finalVerificationBlockedResponse(c, verification);
+  const sectionPreview = await getOnboardingSectionPreviewPayload(c.env.DB, caseId);
+  return ok(c, {
+    verification,
+    readiness: verification,
+    sections: sectionPreview.sections,
+    section_status_update: {
+      readiness: verification,
+      sections: sectionPreview.sections
+    },
+    targeted_workspace_slices: ["readiness", "section-readiness", "activation"],
+    activation_requires_final_verification: verification.activation_requires_final_verification
+  });
+});
+
 onboardingRoutes.post("/cases/:caseId/complete", requireAnyPermission(["onboarding.workspace.complete", "onboarding.activation.submit", "onboarding.activation.manage"]), async (c) => {
-  const readiness = await getEmployeeOnboardingReadiness(c, c.req.param("caseId"));
-  if (!readiness?.can_activate) return fail(c, 409, "ONBOARDING_WORKSPACE_NOT_READY", "Onboarding setup is not ready for activation.");
-  return ok(c, { submitted: await submitEmployeeActivationForApproval(c, c.req.param("caseId")), approval: await createOnboardingApprovalInstance(c, c.req.param("caseId")), workspace: await loadOnboardingWorkspace(c, c.req.param("caseId")) });
+  const caseId = c.req.param("caseId");
+  const verification = await runOnboardingFinalVerificationForRoute(c, caseId, "complete");
+  if (!verification.can_activate) return finalVerificationBlockedResponse(c, verification);
+  const submitted = await submitEmployeeActivationForApproval(c, caseId, verification);
+  if (!submitted) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  if ("blocked" in submitted) return finalVerificationBlockedResponse(c, submitted.verification);
+  const sectionPreview = await getOnboardingSectionPreviewPayload(c.env.DB, caseId);
+  return ok(c, {
+    ...submitted,
+    approval: await createOnboardingApprovalInstance(c, caseId),
+    workspace: await loadOnboardingWorkspace(c, caseId),
+    readiness: verification,
+    section_status_update: {
+      readiness: verification,
+      sections: sectionPreview.sections
+    }
+  });
 });
 
 onboardingRoutes.get("/cases/:caseId", requireAnyPermission(["onboarding.cases.view", "onboarding.cases.manage", "employees.lifecycle.view", "employees.view"]), async (c) => {
@@ -5674,29 +5785,29 @@ onboardingRoutes.get("/cases/:caseId/readiness", requireAnyPermission(["onboardi
   }
   return ok(c, response);
 });
-onboardingRoutes.post("/cases/:caseId/submit-activation", requireAnyPermission(["onboarding.activation.submit", "onboarding.activation.manage"]), async (c) => ok(c, { submitted: await submitEmployeeActivationForApproval(c, c.req.param("caseId")), approval: await createOnboardingApprovalInstance(c, c.req.param("caseId")) }));
+onboardingRoutes.post("/cases/:caseId/submit-activation", requireAnyPermission(["onboarding.activation.submit", "onboarding.activation.manage"]), async (c) => {
+  const caseId = c.req.param("caseId");
+  const result = await submitEmployeeActivationForApproval(c, caseId);
+  if (!result) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  if ("blocked" in result) return finalVerificationBlockedResponse(c, result.verification);
+  return ok(c, { ...result, approval: await createOnboardingApprovalInstance(c, caseId) });
+});
 onboardingRoutes.post("/cases/:caseId/approve-activation", requireAnyPermission(["onboarding.activation.approve", "onboarding.activation.manage"]), async (c) => ok(c, { approved: await approveEmployeeActivation(c, c.req.param("caseId")), approval: await syncOnboardingApprovalStatus(c, c.req.param("caseId")) }));
 onboardingRoutes.post("/cases/:caseId/activate", requireAnyPermission(["onboarding.activation.activate", "onboarding.activation.manage", "onboarding.workspace.activate"]), async (c) => {
   const result = await activateEmployeeFromOnboarding(c, c.req.param("caseId"));
   if (!result) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
   if ("blocked" in result) {
-    return c.json({
-      ok: false,
-      error: {
-        code: "EMPLOYEE_ACTIVATION_NOT_READY",
-        message: "Employee activation is blocked by onboarding requirements.",
-        fields: { activation: "Complete all required onboarding setup before activating this employee." },
-        action_errors: (result.readiness?.blocking_items ?? result.readiness?.blockers ?? []).map((item: unknown) => onboardingActionErrorMessage(item)),
-        readiness: result.readiness
-      }
-    }, 409);
+    return finalVerificationBlockedResponse(c, result.verification);
   }
   return ok(c, result);
 });
 onboardingRoutes.post("/cases/:caseId/activate-with-override", requireAnyPermission(["onboarding.activation.override", "onboarding.activation.manage"]), async (c) => {
   const reason = optionalText((await readBody(c)).reason);
   if (!reason) return fail(c, 400, "ONBOARDING_OVERRIDE_REASON_REQUIRED", "Override reason is required.");
-  return ok(c, await activateEmployeeWithOnboardingOverride(c, c.req.param("caseId"), reason));
+  const result = await activateEmployeeWithOnboardingOverride(c, c.req.param("caseId"), reason);
+  if (!result) return fail(c, 404, "ONBOARDING_CASE_NOT_FOUND", "Onboarding case was not found.");
+  if ("blocked" in result) return finalVerificationBlockedResponse(c, result.verification);
+  return ok(c, result);
 });
 onboardingRoutes.get("/cases/:caseId/events", requireAnyPermission(["lifecycle.events.view", "onboarding.cases.view", "employees.lifecycle.view"]), async (c) => {
   const gate = await getCaseEmployee(c, "ONBOARDING", c.req.param("caseId"), "view");

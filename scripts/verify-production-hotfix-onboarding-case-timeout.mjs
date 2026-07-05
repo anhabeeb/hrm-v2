@@ -37,6 +37,13 @@ function check(message, condition) {
   if (!condition) failures.push(message);
 }
 
+function sliceBetween(text, start, end) {
+  const startIndex = text.indexOf(start);
+  if (startIndex < 0) return "";
+  const endIndex = end ? text.indexOf(end, startIndex + start.length) : -1;
+  return text.slice(startIndex, endIndex > startIndex ? endIndex : undefined);
+}
+
 function includes(file, marker, message) {
   const content = read(file);
   check(`${file}: ${message}`, marker instanceof RegExp ? marker.test(content) : content.includes(marker));
@@ -78,7 +85,8 @@ for (const marker of [
 
 check("worker/src/routes/lifecycle.ts: module status gates must be parallelized", lifecycleRoute.includes("Promise.all(moduleKeys.map") && lifecycleRoute.includes("paymentInstitutionsSettingEnabled"));
 check("worker/src/routes/lifecycle.ts: checklist and readiness must be bounded before returning workspace", lifecycleRoute.includes('key: "checklist"') && lifecycleRoute.includes('key: "readiness"') && lifecycleRoute.includes("timeoutMs: 2200"));
-check("worker/src/routes/lifecycle.ts: activation must still validate fresh readiness server-side", lifecycleRoute.includes("const readiness = await getEmployeeOnboardingReadiness") && lifecycleRoute.includes("ONBOARDING_WORKSPACE_NOT_READY") && lifecycleRoute.includes("activateEmployeeFromOnboarding"));
+const activateFunction = sliceBetween(lifecycleRoute, "export async function activateEmployeeFromOnboarding", "export async function activateEmployeeWithOnboardingOverride");
+check("worker/src/routes/lifecycle.ts: activation must still validate fresh readiness server-side", lifecycleRoute.includes("runOnboardingFinalVerificationForRoute") && activateFunction.includes("verification.can_activate") && lifecycleRoute.includes("activateEmployeeFromOnboarding"));
 const optionalLoaderStart = lifecycleRoute.indexOf("async function loadOptionalOnboardingWorkspaceSection");
 const optionalLoader = optionalLoaderStart >= 0 ? lifecycleRoute.slice(optionalLoaderStart, lifecycleRoute.indexOf("async function ensureOnboardingModuleEnabled")) : "";
 check("worker/src/routes/lifecycle.ts: disabled optional modules must skip queries early", optionalLoader.indexOf("options.moduleKey && options.moduleStatuses[options.moduleKey] === false") >= 0 && optionalLoader.indexOf("options.moduleKey && options.moduleStatuses[options.moduleKey] === false") < optionalLoader.indexOf("runOptionalSectionWithTimeout"));

@@ -216,6 +216,40 @@ async function evaluateJobAssignment(definition: OnboardingSectionDefinition, co
   ].filter(Boolean) as string[];
   const missing = missingEmployeeFields(context.caseEmployee, fields);
   if (missing.length) return blocked(definition, missing, "Required job assignment fields are missing.", Object.fromEntries(missing.map((field) => [field, "missing"])));
+  const departmentId = text(context.caseEmployee.primary_department_id);
+  const locationId = text(context.caseEmployee.primary_location_id);
+  const positionId = text(context.caseEmployee.primary_position_id);
+  const jobLevelId = text(context.caseEmployee.job_level_id);
+  const invalid: string[] = [];
+  if (departmentId) {
+    const department = await context.db.prepare("SELECT id FROM departments WHERE id = ? AND is_active = 1").bind(departmentId).first<{ id: string }>();
+    if (!department) invalid.push("primary_department_id");
+  }
+  if (locationId) {
+    const location = await context.db.prepare("SELECT id FROM locations WHERE id = ? AND is_active = 1").bind(locationId).first<{ id: string }>();
+    if (!location) invalid.push("primary_location_id");
+  }
+  if (jobLevelId) {
+    const level = await context.db.prepare("SELECT id FROM job_levels WHERE id = ? AND is_active = 1").bind(jobLevelId).first<{ id: string }>();
+    if (!level) invalid.push("job_level_id");
+  }
+  if (positionId) {
+    const position = await context.db.prepare("SELECT id, department_id, level_id FROM positions WHERE id = ? AND is_active = 1").bind(positionId).first<{ id: string; department_id: string | null; level_id: string | null }>();
+    if (!position) {
+      invalid.push("primary_position_id");
+    } else {
+      if (departmentId && position.department_id && position.department_id !== departmentId) invalid.push("position_department_mismatch");
+      if (jobLevelId && position.level_id && position.level_id !== jobLevelId) invalid.push("position_job_level_mismatch");
+    }
+  }
+  if (invalid.length) {
+    return blocked(
+      definition,
+      invalid,
+      "Selected job assignment values are inactive, missing, or not a valid department/job level/position combination.",
+      Object.fromEntries(invalid.map((field) => [field, "invalid"]))
+    );
+  }
   return complete(definition, "Job assignment is complete.");
 }
 
@@ -322,7 +356,14 @@ async function evaluatePension(definition: OnboardingSectionDefinition, context:
 async function evaluateUserAccess(definition: OnboardingSectionDefinition, context: EvaluationContext) {
   if (!enabledStatus(definition, context)) return notRequired(definition, "Self-service/user access is disabled.");
   if (!definition.default_required) return notRequired(definition, "User access setup is optional for this onboarding case.");
-  if (text(context.caseEmployee.user_id)) return complete(definition, "Linked user account is available.");
+  const userId = text(context.caseEmployee.user_id);
+  if (userId) {
+    const user = await context.db.prepare("SELECT id, status FROM users WHERE id = ? LIMIT 1").bind(userId).first<{ id: string; status: string }>();
+    if (!user || user.status !== "ACTIVE") return blocked(definition, ["user_id"], "Linked user account must be active.");
+    const roles = await context.db.prepare("SELECT COUNT(*) AS total FROM user_roles WHERE user_id = ?").bind(userId).first<{ total: number }>();
+    if (Number(roles?.total ?? 0) === 0) return blocked(definition, ["user_roles"], "Linked user account must have at least one role.");
+    return complete(definition, "Linked user account is available.");
+  }
   return blocked(definition, ["user_id"], "User account linkage is required.");
 }
 

@@ -1,6 +1,6 @@
 # Onboarding Section Readiness Aggregator Diagnostics
 
-Generated: 2026-07-05T16:48:35.267Z
+Generated: 2026-07-05T17:38:30.772Z
 Case ID: not provided
 Legacy comparison requested: no
 

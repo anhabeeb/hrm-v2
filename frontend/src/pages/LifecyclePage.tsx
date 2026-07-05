@@ -1517,7 +1517,9 @@ function onboardingActivationReadinessStatus(readiness: Row) {
 }
 
 function readinessAllowsActivation(readiness: Row) {
-  return readiness.can_activate === true && !boolValue(readiness.activation_requires_final_verification) && onboardingActivationReadinessStatus(readiness) === "ready" && !boolValue(readiness.is_stale) && !boolValue(readiness.refreshing);
+  const serverVerified = readiness.can_activate === true && !boolValue(readiness.activation_requires_final_verification);
+  const readyForFinalVerification = readiness.can_activate_candidate === true && boolValue(readiness.activation_requires_final_verification);
+  return (serverVerified || readyForFinalVerification) && onboardingActivationReadinessStatus(readiness) === "ready" && !boolValue(readiness.is_stale) && !boolValue(readiness.refreshing);
 }
 
 function readinessRefreshIsActive(readiness: Row, workspaceMeta: Row) {
@@ -1947,6 +1949,43 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       alerts.showApiError(err, "Unable to update onboarding case.");
     }
   }
+  function finalVerificationBlockerMessage(verification: Row) {
+    const blockers = asRows(verification.blockers).slice(0, 5);
+    if (!blockers.length) return "Final verification found onboarding setup that still needs attention. Review the section statuses and run final verification again.";
+    return blockers.map((blocker) => {
+      const label = displayText(blocker.section_label ?? blocker.section_key, "Section");
+      const message = displayText(blocker.message, "This section is not ready.");
+      const next = displayText(blocker.next_action, "Complete this section and run final verification again.");
+      return `${label}: ${message} Next: ${next}`;
+    }).join(" ");
+  }
+  async function runActivationAction(action: () => Promise<unknown>, success: string) {
+    if (!token) return;
+    try {
+      const finalResult = await api.finalVerifyOnboardingActivation(token, caseId);
+      const verification = asRow(finalResult.verification ?? finalResult.readiness);
+      applyReadinessPayload({ readiness: verification });
+      applySectionStatusUpdatePayload(finalResult as Record<string, unknown>);
+      invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: ["readiness"] });
+      if (!boolValue(verification.can_activate)) {
+        alerts.showWarning("Final verification blocked", finalVerificationBlockerMessage(verification));
+        return;
+      }
+      await runWorkspaceAction(action, success);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const verification = asRow(asRow(err.details).verification);
+        if (Object.keys(verification).length) {
+          applyReadinessPayload({ readiness: verification });
+          applySectionStatusUpdatePayload({ section_status_update: { readiness: verification } });
+          const message = err.actionErrors.length ? err.actionErrors.join(" ") : finalVerificationBlockerMessage(verification);
+          alerts.showWarning("Final verification blocked", message);
+          return;
+        }
+      }
+      alerts.showApiError(err, "Final verification failed.");
+    }
+  }
   const rowCase = asRow(workspace.case);
   const employee = asRow(workspace.employee);
   const checklist = asRow(workspace.checklist);
@@ -1995,9 +2034,9 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
       return { label: "Approve activation", intent: "approve" as const, disabled: false, title: "Approve the submitted onboarding activation.", run: () => runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved.") };
     }
     if (approvalRequired && activationStatus !== "APPROVED") {
-      return { label: "Submit activation", intent: "submit" as const, disabled: !canActivate || readinessUpdating || readinessActiveRefresh || readinessNeedsManualRefresh, title: readinessUpdating || readinessActiveRefresh ? "Readiness is updating after the latest save. Refresh readiness before activation." : readinessNeedsManualRefresh ? "Refresh readiness to confirm activation eligibility." : canActivate ? "Submit onboarding activation for approval." : "Complete required onboarding items before submitting activation.", run: () => runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.") };
+      return { label: "Submit activation", intent: "submit" as const, disabled: !canActivate || readinessUpdating || readinessActiveRefresh || readinessNeedsManualRefresh, title: readinessUpdating || readinessActiveRefresh ? "Readiness is updating after the latest save. Refresh readiness before activation." : readinessNeedsManualRefresh ? "Refresh readiness to confirm activation eligibility." : canActivate ? "Run final server verification and submit onboarding activation for approval." : "Complete required onboarding items before submitting activation.", run: () => runActivationAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted.") };
     }
-    return { label: "Activate Employee", intent: "confirm" as const, disabled: !canActivate || readinessUpdating || readinessActiveRefresh || readinessNeedsManualRefresh, title: readinessUpdating || readinessActiveRefresh ? "Readiness is updating after the latest save. Refresh readiness before activation." : readinessNeedsManualRefresh ? "Refresh readiness to confirm activation eligibility." : canActivate ? "Activate employee." : "Complete required onboarding items before activation.", run: () => runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.") };
+    return { label: "Activate Employee", intent: "confirm" as const, disabled: !canActivate || readinessUpdating || readinessActiveRefresh || readinessNeedsManualRefresh, title: readinessUpdating || readinessActiveRefresh ? "Readiness is updating after the latest save. Refresh readiness before activation." : readinessNeedsManualRefresh ? "Refresh readiness to confirm activation eligibility." : canActivate ? "Run final server verification and activate employee." : "Complete required onboarding items before activation.", run: () => runActivationAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.") };
   })();
   const readinessFailureInfo = activationReadinessStatus === "failed"
     ? readinessFailureDetails(readiness, readinessRefreshJob ? {
@@ -2290,9 +2329,9 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
               {moreActionsOpen ? (
                 <div className="absolute bottom-full right-0 z-20 mb-2 w-56 rounded-md border bg-white p-1.5 shadow-lg">
                   <ActionTextButton intent="refresh" size="sm" className="w-full justify-start" disabled={readinessRetrying || Boolean(readinessRefreshJob)} onClick={() => { setMoreActionsOpen(false); void refreshReadiness(false); }}>{readinessRefreshJob ? "Refresh running" : "Refresh readiness"}</ActionTextButton>
-                  <ActionTextButton intent="submit" size="sm" className="w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted."); }}>Submit activation</ActionTextButton>
+                  <ActionTextButton intent="submit" size="sm" className="w-full justify-start" disabled={!canActivate || readinessUpdating || readinessActiveRefresh || readinessNeedsManualRefresh} onClick={() => { setMoreActionsOpen(false); void runActivationAction(() => api.completeOnboardingWorkspace(token!, caseId), "Activation submitted."); }}>Submit activation</ActionTextButton>
                   <ActionTextButton intent="approve" size="sm" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); void runWorkspaceAction(() => api.approveOnboardingActivation(token!, caseId), "Activation approved."); }}>Approve activation</ActionTextButton>
-                  <Button size="sm" variant="danger" className="mt-1 w-full justify-start" onClick={() => { setMoreActionsOpen(false); askReason("Activate with override", (reason) => runWorkspaceAction(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason), "Employee activated with override.")); }}>Override activation</Button>
+                  <Button size="sm" variant="danger" className="mt-1 w-full justify-start" disabled={!canActivate || readinessUpdating || readinessActiveRefresh || readinessNeedsManualRefresh} onClick={() => { setMoreActionsOpen(false); askReason("Activate with override", (reason) => runActivationAction(() => api.activateOnboardingCaseWithOverride(token!, caseId, reason), "Employee activated with override.")); }}>Override activation</Button>
                 </div>
               ) : null}
             </div>

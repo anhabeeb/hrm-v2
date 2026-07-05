@@ -71,7 +71,13 @@ check("readiness route defaults to section-status readiness", readinessRoute.inc
 check("legacy comparison is explicit and diagnostic only", readinessRoute.includes("include_legacy_comparison") && readinessRoute.includes("compareOldAndSectionReadiness") && readinessRoute.includes("diagnostic_only"));
 check("legacy comparison is bounded", readinessRoute.includes("timeoutMs: Math.min") && readinessRoute.includes("onboarding.readiness.legacy_comparison"));
 
-check("activation path remains old final server validation", lifecycle.includes("activateEmployeeFromOnboarding") && lifecycle.includes("const readiness = await getEmployeeOnboardingReadiness(c, caseId)") && lifecycle.includes("if (!readiness?.can_activate)"));
+const activationFunction = sliceBetween(lifecycle, "export async function activateEmployeeFromOnboarding", "export async function activateEmployeeWithOnboardingOverride");
+check(
+  "activation path remains server validated",
+  activationFunction.includes("runOnboardingFinalVerificationForRoute") &&
+    activationFunction.includes("verification.can_activate") &&
+    !activationFunction.includes("can_activate_candidate")
+);
 check("frontend: setup readiness display exists", page.includes("Setup Readiness") && page.includes("data-setup-readiness-display"));
 check("frontend: section-status readiness can update main display", page.includes("applySectionStatusUpdatePayload") && page.includes("applyReadinessPayload({ readiness })"));
 check("frontend: activation does not use section-status candidate directly", page.includes("!boolValue(readiness.activation_requires_final_verification)") && !/canActivate\s*=\s*.*can_activate_candidate/.test(page));

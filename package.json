@@ -143,11 +143,13 @@
     "verify:onboarding-section-status-foundation": "node scripts/verify-onboarding-section-status-foundation.mjs",
     "verify:onboarding-section-status-save-integration": "node scripts/verify-onboarding-section-status-save-integration.mjs",
     "verify:onboarding-section-readiness-aggregator": "node scripts/verify-onboarding-section-readiness-aggregator.mjs",
+    "verify:onboarding-final-activation-verifier": "node scripts/verify-onboarding-final-activation-verifier.mjs",
     "diagnose:onboarding-readiness-failure": "node scripts/diagnose-onboarding-readiness-failure.mjs",
     "diagnose:onboarding-readiness-stuck-job": "node scripts/diagnose-onboarding-readiness-stuck-job.mjs",
     "diagnose:onboarding-save-timeout-hotfix": "node scripts/diagnose-onboarding-save-timeout-hotfix.mjs",
     "diagnose:onboarding-section-statuses": "node scripts/diagnose-onboarding-section-statuses.mjs",
     "diagnose:onboarding-section-readiness-aggregator": "node scripts/diagnose-onboarding-section-readiness-aggregator.mjs",
+    "diagnose:onboarding-final-activation-verifier": "node scripts/diagnose-onboarding-final-activation-verifier.mjs",
     "repair:onboarding-section-statuses-one-case": "node scripts/rebuild-onboarding-section-statuses-one-case.mjs"
   },
   "devDependencies": {
