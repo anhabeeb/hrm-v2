@@ -40,7 +40,7 @@ check(
 
 check("backend: readiness refresh state uses stable job ids", lifecycle.includes("type OnboardingReadinessRefreshState") && lifecycle.includes("jobId: string") && lifecycle.includes("caseId: string"));
 check("backend: readiness refresh is deduped by case id", lifecycle.includes("const onboardingReadinessRefreshInFlight = new Map<string, OnboardingReadinessRefreshState>()") && lifecycle.includes("isActiveOnboardingReadinessRefresh(existing)") && lifecycle.includes('reason: "already_queued"'));
-check("backend: active refreshes cannot remain running indefinitely", lifecycle.includes("ONBOARDING_READINESS_REFRESH_MAX_RUNNING_MS") && lifecycle.includes('state.status = "failed"') && lifecycle.includes("READINESS_REFRESH_TIMEOUT"));
+check("backend: active refreshes cannot remain running indefinitely", lifecycle.includes("ONBOARDING_READINESS_REFRESH_MAX_RUNNING_MS") && lifecycle.includes('state.status = "failed"') && lifecycle.includes("READINESS_SECTION_TIMEOUT"));
 check("backend: refresh uses waitUntil or immediate fallback", lifecycle.includes("executionCtx.waitUntil(safeTask)") && lifecycle.includes("else void safeTask"));
 check("backend: stale workspace refresh shares deduped queue", lifecycle.includes('queueOnboardingReadinessRefresh(c, caseId, "onboarding.workspace.readiness_stale_refresh")') && !lifecycle.includes('runLifecycleBackgroundTask(c, refreshWorkspaceReadiness(c, caseId, undefined, "onboarding.workspace.readiness_stale_refresh")'));
 

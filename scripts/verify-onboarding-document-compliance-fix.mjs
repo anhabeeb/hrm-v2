@@ -54,7 +54,7 @@ must(!schema.includes(missingTable), "schema should not define the missing legac
   "compliance.settings?.document_compliance_enabled === false",
   "required_documents",
   "missing_documents",
-  "warning_items: warningItems"
+  "warning_items: [...warningItems"
 ].forEach((marker) => must(lifecycle.includes(marker), `lifecycle missing ${marker}`));
 
 must(/catch\s*\(error\)[\s\S]*Document compliance checklist could not be loaded/.test(lifecycle), "onboarding document checklist failure must be caught and converted to a warning");

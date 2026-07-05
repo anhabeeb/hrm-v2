@@ -239,6 +239,21 @@ export type OnboardingReadinessStatusResponse = {
     poll_after_ms?: number | null;
     retry_allowed?: boolean;
     message?: string | null;
+    error_code?: string | null;
+    last_error_code?: string | null;
+    last_error_message?: string | null;
+    failed_section?: string | null;
+  } | null;
+  active_refresh?: {
+    job_id?: string | null;
+    status?: "queued" | "running" | "succeeded" | "failed" | string | null;
+    started_at?: string | null;
+    completed_at?: string | null;
+    last_error_code?: string | null;
+    last_error_message?: string | null;
+    failed_section?: string | null;
+    progress_message?: string | null;
+    updated_at?: string | null;
   } | null;
   can_activate?: boolean;
   blockers?: unknown[];

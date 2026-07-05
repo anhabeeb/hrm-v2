@@ -136,8 +136,10 @@
     "verify:onboarding-payroll-readiness-hotfix": "node scripts/verify-onboarding-payroll-readiness-hotfix.mjs",
     "verify:onboarding-readiness-refreshing-hotfix": "node scripts/verify-onboarding-readiness-refreshing-hotfix.mjs",
     "verify:onboarding-readiness-confirmation-hotfix": "node scripts/verify-onboarding-readiness-confirmation-hotfix.mjs",
+    "verify:onboarding-readiness-failed-hotfix": "node scripts/verify-onboarding-readiness-failed-hotfix.mjs",
     "verify:onboarding-workspace-save-timeout-hotfix": "node scripts/verify-onboarding-workspace-save-timeout-hotfix.mjs",
     "verify:onboarding-save-stale-readiness-hotfix-v2": "node scripts/verify-onboarding-save-stale-readiness-hotfix-v2.mjs",
+    "diagnose:onboarding-readiness-failure": "node scripts/diagnose-onboarding-readiness-failure.mjs",
     "diagnose:onboarding-save-timeout-hotfix": "node scripts/diagnose-onboarding-save-timeout-hotfix.mjs"
   },
   "devDependencies": {

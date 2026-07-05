@@ -1514,9 +1514,21 @@ function readinessRefreshMessage(readiness: Row) {
   const status = onboardingActivationReadinessStatus(readiness);
   if (status === "ready") return "Ready for activation.";
   if (status === "stale") return String(readiness.refresh_reason ?? "Using last saved readiness. Refresh readiness to confirm activation.");
-  if (status === "failed") return String(readiness.failed_reason ?? readiness.refresh_reason ?? "Readiness refresh failed. Retry.");
+  if (status === "failed") return String(readiness.failure_message ?? readiness.failed_reason ?? readiness.refresh_reason ?? "Readiness refresh failed. Retry readiness.");
   if (status === "refreshing") return "Refreshing readiness...";
   return "Blocked by onboarding requirements.";
+}
+
+function readinessFailureMessage(readiness: Row, refresh?: Row | null) {
+  const message = String(
+    readiness.failure_message ??
+    readiness.failed_reason ??
+    readiness.refresh_reason ??
+    refresh?.last_error_message ??
+    refresh?.message ??
+    "Readiness refresh failed because the background job runner could not complete. Retry readiness."
+  );
+  return message.replace(/\s+/g, " ").trim();
 }
 
 function saveResponseQueuedReadiness(result: OnboardingWorkspaceMutationResult) {
@@ -1530,17 +1542,22 @@ type ReadinessRefreshTracker = {
   status: string;
   startedAt: string | null;
   pollAfterMs: number;
+  lastErrorMessage?: string | null;
+  failedSection?: string | null;
 };
 
 function readinessRefreshTrackerFromResult(result: OnboardingWorkspaceMutationResult): ReadinessRefreshTracker | null {
   const refresh = asRow(result.readiness_refresh);
-  const status = String(refresh.status ?? "").toLowerCase();
+  const activeRefresh = asRow(result.active_refresh);
+  const status = String(refresh.status ?? activeRefresh.status ?? "").toLowerCase();
   if (!["queued", "already_queued", "running", "refreshing"].includes(status)) return null;
   return {
-    jobId: typeof refresh.job_id === "string" ? refresh.job_id : null,
+    jobId: typeof refresh.job_id === "string" ? refresh.job_id : typeof activeRefresh.job_id === "string" ? activeRefresh.job_id : null,
     status,
-    startedAt: typeof refresh.started_at === "string" ? refresh.started_at : null,
-    pollAfterMs: Math.max(1000, Math.min(5000, Number(refresh.poll_after_ms ?? 1500) || 1500))
+    startedAt: typeof refresh.started_at === "string" ? refresh.started_at : typeof activeRefresh.started_at === "string" ? activeRefresh.started_at : null,
+    pollAfterMs: Math.max(1000, Math.min(5000, Number(refresh.poll_after_ms ?? 1500) || 1500)),
+    lastErrorMessage: typeof activeRefresh.last_error_message === "string" ? activeRefresh.last_error_message : typeof refresh.last_error_message === "string" ? refresh.last_error_message : null,
+    failedSection: typeof activeRefresh.failed_section === "string" ? activeRefresh.failed_section : typeof refresh.failed_section === "string" ? refresh.failed_section : null
   };
 }
 
@@ -1750,6 +1767,8 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
     }
     return { label: "Activate Employee", intent: "confirm" as const, disabled: !canActivate || readinessUpdating || readinessActiveRefresh || readinessNeedsManualRefresh, title: readinessUpdating || readinessActiveRefresh ? "Readiness is updating after the latest save. Refresh readiness before activation." : readinessNeedsManualRefresh ? "Refresh readiness to confirm activation eligibility." : canActivate ? "Activate employee." : "Complete required onboarding items before activation.", run: () => runWorkspaceAction(() => api.activateOnboardingCase(token!, caseId), "Employee activated.") };
   })();
+  const readinessFailureText = activationReadinessStatus === "failed" ? readinessFailureMessage(readiness) : null;
+  const readinessFailureJobId = String(readiness.refresh_job_id ?? readinessRefreshJob?.jobId ?? "").trim();
   useEffect(() => {
     if (readinessRefreshIsActive(readiness, workspaceMeta)) {
       setReadinessUpdating(true);
@@ -1779,17 +1798,22 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
         if (cancelled) return;
         const nextReadiness = applyReadinessPayload(result as OnboardingWorkspaceMutationResult);
         const refresh = asRow(result.readiness_refresh);
-        const refreshStatus = String(refresh.status ?? result.active_refresh_status ?? readinessRefreshJob.status ?? "").toLowerCase();
+        const activeRefresh = asRow(result.active_refresh);
+        const refreshStatus = String(activeRefresh.status ?? refresh.status ?? result.active_refresh_status ?? readinessRefreshJob.status ?? "").toLowerCase();
         const nextStatus = onboardingActivationReadinessStatus(nextReadiness);
-        const refreshActive = ["queued", "already_queued", "running", "refreshing"].includes(refreshStatus) || nextStatus === "refreshing" || Boolean(result.active_refresh_job_id);
+        const displayJobId = typeof activeRefresh.job_id === "string" ? activeRefresh.job_id : typeof refresh.job_id === "string" ? refresh.job_id : readinessRefreshJob.jobId;
+        const activeJobIdForPolling = typeof result.active_refresh_job_id === "string" ? result.active_refresh_job_id : null;
+        const refreshActive = ["queued", "already_queued", "running", "refreshing"].includes(refreshStatus) || nextStatus === "refreshing" || Boolean(activeJobIdForPolling);
         if (refreshActive) {
           setReadinessUpdating(true);
           setReadinessPendingConfirmation(true);
           setReadinessRefreshJob({
-            jobId: typeof refresh.job_id === "string" ? refresh.job_id : readinessRefreshJob.jobId,
+            jobId: displayJobId,
             status: refreshStatus || readinessRefreshJob.status,
-            startedAt: typeof refresh.started_at === "string" ? refresh.started_at : readinessRefreshJob.startedAt,
-            pollAfterMs: Math.max(1000, Math.min(5000, Number(refresh.poll_after_ms ?? readinessRefreshJob.pollAfterMs) || 1500))
+            startedAt: typeof refresh.started_at === "string" ? refresh.started_at : typeof activeRefresh.started_at === "string" ? activeRefresh.started_at : readinessRefreshJob.startedAt,
+            pollAfterMs: Math.max(1000, Math.min(5000, Number(refresh.poll_after_ms ?? readinessRefreshJob.pollAfterMs) || 1500)),
+            lastErrorMessage: typeof activeRefresh.last_error_message === "string" ? activeRefresh.last_error_message : typeof refresh.last_error_message === "string" ? refresh.last_error_message : null,
+            failedSection: typeof activeRefresh.failed_section === "string" ? activeRefresh.failed_section : typeof refresh.failed_section === "string" ? refresh.failed_section : null
           });
           return;
         }
@@ -1799,7 +1823,10 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
         setReadinessRefreshJob(null);
         invalidateOnboardingWorkspaceSlices({ scope, caseId, slices: ["readiness", "document-checklist"] });
         if (nextStatus === "ready") alerts.showSuccess("Readiness confirmed.");
-        else if (nextStatus === "failed") alerts.showWarning("Readiness refresh failed. Retry.");
+        else if (nextStatus === "failed") {
+          const failureMessage = readinessFailureMessage(nextReadiness, activeRefresh);
+          alerts.showWarning("Readiness refresh failed", displayJobId ? `${failureMessage} Job ID: ${displayJobId}` : failureMessage);
+        }
         else if (nextStatus === "blocked") alerts.showInfo("Readiness confirmed", "Some onboarding requirements are still blocking activation.");
       } catch (err) {
         if (cancelled) return;
@@ -1891,6 +1918,20 @@ function OnboardingWorkspace({ workspace, caseId, onClose, reload, run, askReaso
                   <p className="mt-1 break-words text-sm text-sky-800">{readinessRefreshJob ? "The workspace remains available while activation readiness is confirmed." : "Your section save is complete. Activation stays disabled until readiness is confirmed."}</p>
                 </div>
                 <ActionTextButton intent="refresh" size="sm" disabled={readinessRetrying || Boolean(readinessRefreshJob)} onClick={() => void refreshReadiness(false)}>{readinessRefreshJob ? "Refresh running" : "Refresh readiness"}</ActionTextButton>
+              </div>
+            </Panel>
+          ) : null}
+          {readinessFailureText ? (
+            <Panel className="border-red-200 bg-red-50 p-3" data-onboarding-readiness-failure-reason>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-red-950">Readiness refresh failed</p>
+                  <p className="mt-1 break-words text-sm text-red-800">{readinessFailureText}</p>
+                  {readinessFailureJobId ? <p className="mt-1 break-all text-xs text-red-700">Job ID: {readinessFailureJobId}</p> : null}
+                </div>
+                <ActionTextButton intent="refresh" size="sm" disabled={readinessRetrying || Boolean(readinessRefreshJob)} onClick={() => void refreshReadiness(false)}>
+                  {readinessRefreshJob ? "Refresh running" : "Retry readiness"}
+                </ActionTextButton>
               </div>
             </Panel>
           ) : null}
