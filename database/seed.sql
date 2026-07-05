@@ -677,6 +677,9 @@ INSERT OR IGNORE INTO employee_statuses (
   requires_exit_date, requires_exit_reason, requires_final_settlement,
   requires_document_clearance, requires_asset_clearance, sort_order
 ) VALUES
+  ('emp_status_pending_setup', 'PENDING_SETUP', 'Pending Setup', 'Employee record is being completed in Employee 360 before final verification.', 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5),
+  ('emp_status_pending_final_verification', 'PENDING_FINAL_VERIFICATION', 'Pending Final Verification', 'Employee setup is waiting for final server verification before activation.', 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8),
+  ('emp_status_pending_approval', 'PENDING_APPROVAL', 'Pending Approval', 'Employee setup is waiting for approval before activation.', 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9),
   ('emp_status_draft_onboarding', 'DRAFT_ONBOARDING', 'Draft / Onboarding', 'Employee record is being prepared before activation.', 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10),
   ('emp_status_active', 'ACTIVE', 'Active', 'Active employee eligible for normal HR operations.', 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 20),
   ('emp_status_on_leave', 'ON_LEAVE', 'On Leave', 'Employee is active but currently on leave.', 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 30),

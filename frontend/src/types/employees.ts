@@ -154,3 +154,66 @@ export interface OnboardingTask {
   created_at: string;
   updated_at: string;
 }
+
+export type EmployeeSetupSectionStatus =
+  | "not_started"
+  | "incomplete"
+  | "complete"
+  | "blocked"
+  | "not_required"
+  | "failed"
+  | "stale"
+  | "verified";
+
+export interface EmployeeSetupSectionStatusRow {
+  section_key: string;
+  section_label: string;
+  status: EmployeeSetupSectionStatus;
+  is_required: boolean;
+  is_complete: boolean;
+  is_verified: boolean;
+  is_stale: boolean;
+  status_reason_code: string | null;
+  status_message: string | null;
+  next_action: string | null;
+  missing_fields: unknown[];
+  blockers: unknown[];
+  field_status: Record<string, unknown>;
+  source_version: string | null;
+  last_saved_at: string | null;
+  last_evaluated_at: string | null;
+  last_verified_at: string | null;
+  updated_at: string;
+}
+
+export interface EmployeeSetupReadiness {
+  status: "ready" | "blocked" | "failed" | "stale" | string;
+  can_activate_candidate: boolean;
+  activation_requires_final_verification: boolean;
+  shadow_only: boolean;
+  passing_sections: EmployeeSetupSectionStatusRow[];
+  blocking_sections: EmployeeSetupSectionStatusRow[];
+  failed_sections: EmployeeSetupSectionStatusRow[];
+  stale_sections: EmployeeSetupSectionStatusRow[];
+  blockers: Record<string, unknown>[];
+  completion?: {
+    complete: number;
+    total: number;
+    required_blocking: number;
+    failed: number;
+    stale: number;
+  };
+  last_evaluated_at: string;
+}
+
+export interface EmployeeSetupReadinessResponse {
+  mode: "employee_360_setup" | string;
+  employee_id: string;
+  activation_switched: boolean;
+  activation_requires_final_verification: boolean;
+  request_id?: string;
+  rebuilt_count?: number;
+  failed_count?: number;
+  readiness: EmployeeSetupReadiness;
+  sections: EmployeeSetupSectionStatusRow[];
+}

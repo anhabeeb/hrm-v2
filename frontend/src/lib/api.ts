@@ -31,6 +31,7 @@ import type {
   EmployeeContactInput,
   EmployeeInput,
   EmployeeNumberSettings,
+  EmployeeSetupReadinessResponse,
   EmployeeStatusSetting,
   OnboardingStatus,
   OnboardingTask
@@ -936,6 +937,12 @@ export const api = {
   },
   changeEmployeeStatus(token: string, id: string, input: { status_id: string; exit_date?: string | null; exit_reason?: string | null; reason?: string | null }) {
     return request<{ employee: Employee }>(`/api/v1/employees/${id}/status`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  getEmployeeSetupReadiness(token: string, id: string, signal?: AbortSignal) {
+    return request<EmployeeSetupReadinessResponse>(`/api/v1/employees/${id}/setup-readiness`, { signal }, token);
+  },
+  rebuildEmployeeSetupSections(token: string, id: string) {
+    return request<EmployeeSetupReadinessResponse>(`/api/v1/employees/${id}/setup-sections/rebuild`, { method: "POST" }, token);
   },
   getEmployeeOverview(token: string, id: string, signal?: AbortSignal) {
     return request<{ employee: Employee; onboarding: OnboardingTask[]; contacts: EmployeeContact[]; audit: Record<string, unknown>[] }>(`/api/v1/employees/${id}/overview`, { signal }, token);

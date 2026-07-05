@@ -30,7 +30,7 @@ import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
 import { ApiError, api } from "../lib/api";
 import { queryKeys } from "../lib/queryKeys";
 import type { AccessScopeRule, EmployeeUserAccessPreview, EmployeeUserAccount, Role, UserStatus } from "../types/auth";
-import type { Employee, EmployeeContact, EmployeeContactInput, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
+import type { Employee, EmployeeContact, EmployeeContactInput, EmployeeSetupReadinessResponse, EmployeeSetupSectionStatusRow, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
 import type { LifecycleSummary, LifecycleTask } from "../types/lifecycle";
 
 const profileTabs = ["Overview", "Personal Info", "Job Info", "Contracts", "Contacts", "User Access", "Lifecycle", "Payroll", "Final Settlement", "Attendance", "Roster", "Leave", "Documents", "Assets & Uniforms", "Notes", "Audit Log"] as const;
@@ -44,13 +44,21 @@ type EmployeeProfileWorkspacePayload = {
   };
   statuses: EmployeeStatusSetting[];
   lifecycle: LifecycleSummary | null;
+  setup: EmployeeSetupReadinessResponse | null;
 };
 
 function tone(status?: string) {
   if (status === "ACTIVE" || status === "ON_LEAVE") return "success";
-  if (status === "DRAFT_ONBOARDING") return "warning";
+  if (status === "DRAFT_ONBOARDING" || status === "PENDING_SETUP" || status === "PENDING_FINAL_VERIFICATION" || status === "PENDING_APPROVAL") return "warning";
   if (status === "ARCHIVED") return "neutral";
   return "danger";
+}
+
+function setupTone(status?: string) {
+  if (status === "ready" || status === "complete" || status === "verified" || status === "not_required") return "success";
+  if (status === "blocked" || status === "incomplete" || status === "not_started" || status === "stale") return "warning";
+  if (status === "failed") return "danger";
+  return "neutral";
 }
 
 export function EmployeeProfilePage() {
@@ -69,6 +77,7 @@ export function EmployeeProfilePage() {
   const [userAccount, setUserAccount] = useState<EmployeeUserAccount | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [lifecycle, setLifecycle] = useState<LifecycleSummary | null>(null);
+  const [setupReadiness, setSetupReadiness] = useState<EmployeeSetupReadinessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contactModal, setContactModal] = useState<{ mode: "create" | "edit"; contact?: EmployeeContact } | null>(null);
   const [archiveReason, setArchiveReason] = useState("");
@@ -77,6 +86,7 @@ export function EmployeeProfilePage() {
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [statusModalError, setStatusModalError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
+  const [setupRebuilding, setSetupRebuilding] = useState(false);
   const [loadedTabs, setLoadedTabs] = useState<Partial<Record<ProfileTab, boolean>>>({});
   const [tabLoading, setTabLoading] = useState<Partial<Record<ProfileTab, boolean>>>({});
 
@@ -104,6 +114,7 @@ export function EmployeeProfilePage() {
   const canManageUserAccess = permissions.has("employee.user_account.manage") || permissions.has("users.link_employee") || permissions.has("users.update") || permissions.has("self_service.manage_access");
   const canApplyUserAccess = permissions.has("role_mappings.apply");
   const canViewLifecycle = permissions.has("employees.lifecycle.view") || permissions.has("onboarding.cases.view") || permissions.has("offboarding.cases.view");
+  const canRebuildSetup = permissions.has("employees.update") || permissions.has("employees.lifecycle.manage") || permissions.has("onboarding.cases.manage") || permissions.has("onboarding.workspace.update");
   const canUploadPhoto = permissions.has("documents.upload");
   const canClearPhoto = permissions.has("documents.archive");
   const canViewDuringOnboarding = permissions.has("employees.360.view_during_onboarding");
@@ -114,17 +125,19 @@ export function EmployeeProfilePage() {
     enabled: Boolean(id && canView),
     placeholderData: (previousData) => previousData?.overview.employee.id === id ? previousData : undefined,
     queryFn: async ({ token, signal }) => {
-      const [overview, statusesResult, lifecycleResult] = await Promise.all([
+      const [overview, statusesResult, lifecycleResult, setupResult] = await Promise.all([
         api.getEmployeeOverview(token, id!, signal),
         api.listEmployeeStatuses(token, signal),
         canViewLifecycle
           ? api.getEmployeeLifecycleSummary(token, id!, signal).then((result) => result.summary).catch(() => null)
-          : Promise.resolve(null)
+          : Promise.resolve(null),
+        api.getEmployeeSetupReadiness(token, id!, signal).catch(() => null)
       ]);
       return {
         overview,
         statuses: statusesResult.statuses,
-        lifecycle: lifecycleResult
+        lifecycle: lifecycleResult,
+        setup: setupResult
       };
     }
   });
@@ -138,6 +151,7 @@ export function EmployeeProfilePage() {
     setOnboarding(payload.overview.onboarding);
     setAudit(payload.overview.audit);
     setLifecycle(payload.lifecycle);
+    setSetupReadiness(payload.setup);
     setError(null);
   }, [profileWorkspaceQuery.data]);
 
@@ -291,6 +305,19 @@ export function EmployeeProfilePage() {
     }
   }
 
+  async function rebuildSetupReadiness() {
+    if (!token || !employee) return;
+    setSetupRebuilding(true);
+    setError(null);
+    try {
+      setSetupReadiness(await api.rebuildEmployeeSetupSections(token, employee.id));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to rebuild Employee 360 setup readiness.");
+    } finally {
+      setSetupRebuilding(false);
+    }
+  }
+
   if (!canView) {
     return <Panel><EmptyState title="Employee profile unavailable" description="Your account needs employees.view permission." /></Panel>;
   }
@@ -300,7 +327,8 @@ export function EmployeeProfilePage() {
 
   const activeOnboardingCase = lifecycle?.onboarding && lifecycle.onboarding.activation_status !== "ACTIVATED" && lifecycle.onboarding.onboarding_status !== "CANCELLED" ? lifecycle.onboarding : null;
   const preActivationStatus = ["DRAFT", "DRAFT_ONBOARDING", "ONBOARDING", "NOT_ACTIVE"].includes(employee.status_key ?? "");
-  if ((activeOnboardingCase || preActivationStatus) && !canViewDuringOnboarding) {
+  const employee360SetupStatus = ["PENDING_SETUP", "PENDING_FINAL_VERIFICATION", "PENDING_APPROVAL"].includes(employee.status_key ?? "");
+  if ((activeOnboardingCase || preActivationStatus) && !employee360SetupStatus && !canViewDuringOnboarding) {
     return (
       <PageShell>
         <Panel className="p-6">
@@ -382,8 +410,12 @@ export function EmployeeProfilePage() {
               onboarding={onboarding}
               completed={completed}
               audit={audit}
+              setupReadiness={setupReadiness}
+              canRebuildSetup={canRebuildSetup}
+              setupRebuilding={setupRebuilding}
               photoControls={<EmployeeProfilePhotoControls employee={employee} token={token!} canUpload={canUploadPhoto} canClear={canClearPhoto} onChanged={load} compact />}
               onTask={canOnboarding ? updateTask : undefined}
+              onRebuildSetup={() => void rebuildSetupReadiness()}
             />
           ) : null}
           {activeTab === "Personal Info" ? <div className="space-y-4"><DetailGrid rows={[
@@ -460,8 +492,12 @@ function Overview({
   onboarding,
   completed,
   audit,
+  setupReadiness,
+  canRebuildSetup,
+  setupRebuilding,
   photoControls,
-  onTask
+  onTask,
+  onRebuildSetup
 }: {
   employee: Employee;
   token: string;
@@ -469,11 +505,23 @@ function Overview({
   onboarding: OnboardingTask[];
   completed: number;
   audit: Record<string, unknown>[];
+  setupReadiness: EmployeeSetupReadinessResponse | null;
+  canRebuildSetup: boolean;
+  setupRebuilding: boolean;
   photoControls: ReactNode;
   onTask?: (task: OnboardingTask, status: OnboardingStatus) => Promise<void>;
+  onRebuildSetup: () => void;
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-3">
+      <div className="xl:col-span-3">
+        <EmployeeSetupReadinessPanel
+          setup={setupReadiness}
+          canRebuild={canRebuildSetup}
+          rebuilding={setupRebuilding}
+          onRebuild={onRebuildSetup}
+        />
+      </div>
       <div className="rounded-md border">
         <div className="border-b px-3 py-2 text-sm font-semibold">Profile photo</div>
         <div className="flex items-center gap-3 p-3">
@@ -493,6 +541,100 @@ function Overview({
       <div className="xl:col-span-2"><OnboardingTable tasks={onboarding} completed={completed} onTask={onTask} /></div>
       <Placeholder title="Alerts" items={["Missing documents", "Expiring documents", "Attendance issues", "Pending leave", "Asset clearance"]} />
       <div className="xl:col-span-3"><AuditTable audit={audit.slice(0, 6)} /></div>
+    </div>
+  );
+}
+
+function readableStatus(value?: string | null) {
+  if (!value) return "Not checked";
+  return value
+    .split("_")
+    .join(" ")
+    .split("-")
+    .join(" ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function blockingSummary(section: EmployeeSetupSectionStatusRow) {
+  if (section.status_message) return section.status_message;
+  if (section.missing_fields.length) return `Missing: ${section.missing_fields.map(String).join(", ")}`;
+  return section.is_required ? "Required setup has not been completed." : "No blocker.";
+}
+
+function EmployeeSetupReadinessPanel({
+  setup,
+  canRebuild,
+  rebuilding,
+  onRebuild
+}: {
+  setup: EmployeeSetupReadinessResponse | null;
+  canRebuild: boolean;
+  rebuilding: boolean;
+  onRebuild: () => void;
+}) {
+  const sections = setup?.sections ?? [];
+  const readiness = setup?.readiness;
+  const completion = readiness?.completion;
+  const complete = completion?.complete ?? sections.filter((section) => section.is_complete).length;
+  const total = completion?.total ?? sections.length;
+  const blockers = readiness?.blockers ?? [];
+  return (
+    <div className="rounded-md border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">Employee 360 setup readiness</h3>
+            <Badge tone={setupTone(readiness?.status)}>{readableStatus(readiness?.status)}</Badge>
+            <Badge tone="neutral">Preview only</Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {total ? `${complete}/${total} sections complete or not required.` : "No section status has been rebuilt yet."} Final activation still requires server verification.
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" disabled={!canRebuild} loading={rebuilding} loadingLabel="Rebuilding readiness" onClick={onRebuild}>
+            Rebuild readiness
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled>
+            Activation locked
+          </Button>
+        </div>
+      </div>
+      {blockers.length ? (
+        <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
+          {String((blockers[0] as Record<string, unknown>).message ?? "Required setup is still blocking activation.")}
+        </div>
+      ) : null}
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Section</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Required</TableHead>
+              <TableHead>Message</TableHead>
+              <TableHead>Next action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sections.length ? sections.map((section) => (
+              <TableRow key={section.section_key}>
+                <TableCell className="font-medium">{section.section_label}</TableCell>
+                <TableCell><Badge tone={setupTone(section.status)}>{readableStatus(section.status)}</Badge></TableCell>
+                <TableCell>{section.is_required ? "Yes" : "No"}</TableCell>
+                <TableCell className="max-w-[360px] whitespace-normal text-muted-foreground">{blockingSummary(section)}</TableCell>
+                <TableCell className="max-w-[280px] whitespace-normal">{section.next_action ?? "-"}</TableCell>
+              </TableRow>
+            )) : (
+              <TableRow>
+                <TableCell colSpan={5}>
+                  <EmptyState title="Setup readiness not built" description="Rebuild readiness to generate Employee 360 section statuses for this employee." />
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { accessScopeToApi, buildEmployeeScopeWhereClause, canAccessEmployee, typ
 import { hashPassword } from "../auth/password";
 import { recordAudit } from "../db/audit";
 import { getActiveOwnerCount, getUserByEmail, getUserById } from "../db/users";
+import { getEmployeeSetupSectionPreviewPayload, rebuildEmployeeSetupSectionStatuses, sanitizeEmployeeSetupStatusError } from "../employee-setup/section-status";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { hasValidationErrors, validateAccessScope, validateDateField, validateDateRange, validateEnumValue, validateOrganizationCascadeWithScope, validateRequiredFields, validateStringLength, validationResponse } from "../lib/moduleValidation";
@@ -1475,7 +1476,10 @@ employeeRoutes.post("/", requirePermission("employees.create"), async (c) => {
   if (await employeeNumberExists(c.env.DB, employeeNo)) {
     return fail(c, 409, "EMPLOYEE_NO_EXISTS", "Employee number already exists.");
   }
-  const status = input.status_id ? await getStatusById(c.env.DB, input.status_id) : await getStatusByKey(c.env.DB, "DRAFT_ONBOARDING");
+  let status = input.status_id ? await getStatusById(c.env.DB, input.status_id) : await getStatusByKey(c.env.DB, "PENDING_SETUP");
+  if (!status && !input.status_id) {
+    status = await getStatusByKey(c.env.DB, "DRAFT_ONBOARDING");
+  }
   if (!status || status.is_active !== 1) {
     return fail(c, 400, "INVALID_STATUS", "Selected employee status was not found or is inactive.");
   }
@@ -1508,6 +1512,74 @@ employeeRoutes.post("/", requirePermission("employees.create"), async (c) => {
   await auditEmployee(c, { action: "employee.created", entityType: "employee", entityId: id, newValue: employee });
   await publishEmployee(c, "employee.created", id, "created");
   return ok(c, { employee: employee ? toEmployee(employee, true) : null }, 201);
+});
+
+employeeRoutes.get("/:id/setup-readiness", requirePermission("employees.view"), async (c) => {
+  const employeeId = c.req.param("id");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const employee = await getEmployeeById(c.env.DB, employeeId);
+  if (!employee) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  try {
+    const preview = await getEmployeeSetupSectionPreviewPayload(c.env.DB, employeeId);
+    c.header("Cache-Control", "private, no-store");
+    c.header("Vary", "Origin");
+    return ok(c, {
+      mode: "employee_360_setup",
+      employee_id: employeeId,
+      activation_switched: false,
+      activation_requires_final_verification: true,
+      readiness: preview.readiness,
+      sections: preview.sections
+    });
+  } catch (error) {
+    const safe = sanitizeEmployeeSetupStatusError(error);
+    return fail(c, 500, safe.error_code, `${safe.error_message} ${safe.next_action}`);
+  }
+});
+
+employeeRoutes.post("/:id/setup-sections/rebuild", requirePermission("employees.view"), async (c) => {
+  const employeeId = c.req.param("id");
+  if (!hasAnyPermission(c, ["employees.update", "employees.lifecycle.manage", "onboarding.cases.manage", "onboarding.workspace.update"])) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to rebuild Employee 360 setup readiness.");
+  }
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const employee = await getEmployeeById(c.env.DB, employeeId);
+  if (!employee) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  try {
+    const result = await rebuildEmployeeSetupSectionStatuses(c.env.DB, employeeId, c.get("currentUser").id);
+    await auditEmployee(c, {
+      action: "employee.setup_sections.rebuilt",
+      entityType: "employee",
+      entityId: employeeId,
+      oldValue: null,
+      newValue: {
+        mode: "employee_360_setup",
+        readiness_status: result.readiness.status,
+        rebuilt_count: result.rebuilt_count,
+        failed_count: result.failed_count
+      }
+    });
+    c.header("Cache-Control", "private, no-store");
+    c.header("Vary", "Origin");
+    return ok(c, {
+      mode: "employee_360_setup",
+      employee_id: employeeId,
+      activation_switched: false,
+      activation_requires_final_verification: true,
+      ...result
+    });
+  } catch (error) {
+    const safe = sanitizeEmployeeSetupStatusError(error);
+    return fail(c, 500, safe.error_code, `${safe.error_message} ${safe.next_action}`);
+  }
 });
 
 employeeRoutes.get("/:id", requirePermission("employees.view"), async (c) => {
