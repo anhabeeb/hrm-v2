@@ -30,7 +30,7 @@ import { useWorkspaceQuery } from "../hooks/useWorkspaceQuery";
 import { ApiError, api } from "../lib/api";
 import { queryKeys } from "../lib/queryKeys";
 import type { AccessScopeRule, EmployeeUserAccessPreview, EmployeeUserAccount, Role, UserStatus } from "../types/auth";
-import type { Employee, EmployeeContact, EmployeeContactInput, EmployeeSetupReadinessResponse, EmployeeSetupSectionStatusRow, EmployeeSetupStatusUpdate, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
+import type { Employee, Employee360FinalActivationResponse, Employee360FinalVerification, EmployeeContact, EmployeeContactInput, EmployeeSetupReadinessResponse, EmployeeSetupSectionStatusRow, EmployeeSetupStatusUpdate, EmployeeStatusSetting, OnboardingStatus, OnboardingTask } from "../types/employees";
 import type { LifecycleSummary, LifecycleTask } from "../types/lifecycle";
 
 const profileTabs = ["Overview", "Personal Info", "Job Info", "Contracts", "Contacts", "User Access", "Lifecycle", "Payroll", "Final Settlement", "Attendance", "Roster", "Leave", "Documents", "Assets & Uniforms", "Notes", "Audit Log"] as const;
@@ -87,6 +87,8 @@ export function EmployeeProfilePage() {
   const [statusModalError, setStatusModalError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
   const [setupRebuilding, setSetupRebuilding] = useState(false);
+  const [setupActionBusy, setSetupActionBusy] = useState<"final-verification" | "activation" | null>(null);
+  const [lastFinalVerification, setLastFinalVerification] = useState<Employee360FinalVerification | null>(null);
   const [loadedTabs, setLoadedTabs] = useState<Partial<Record<ProfileTab, boolean>>>({});
   const [tabLoading, setTabLoading] = useState<Partial<Record<ProfileTab, boolean>>>({});
 
@@ -252,6 +254,7 @@ export function EmployeeProfilePage() {
   useEffect(() => {
     setLoadedTabs({});
     setTabLoading({});
+    setLastFinalVerification(null);
   }, [id]);
 
   useEffect(() => {
@@ -351,6 +354,53 @@ export function EmployeeProfilePage() {
     }
   }
 
+  function applyFinalActivationResponse(result: Employee360FinalActivationResponse) {
+    setSetupReadiness({
+      mode: result.mode,
+      employee_id: result.employee_id,
+      activation_switched: result.activation_switched,
+      activation_requires_final_verification: result.activation_requires_final_verification,
+      request_id: result.request_id,
+      readiness: result.readiness,
+      sections: result.sections
+    });
+    setLastFinalVerification(result.verification);
+    if (result.employee) setEmployee(result.employee);
+  }
+
+  async function runFinalVerification() {
+    if (!token || !employee) return;
+    setSetupActionBusy("final-verification");
+    setError(null);
+    try {
+      const result = await api.runEmployee360FinalVerification(token, employee.id);
+      applyFinalActivationResponse(result);
+      if (result.verification.status !== "verified") {
+        const firstBlocker = result.verification.blockers[0];
+        setError(firstBlocker ? `${firstBlocker.section_label}: ${firstBlocker.message}` : "Employee 360 final verification found blockers.");
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to run Employee 360 final verification.");
+    } finally {
+      setSetupActionBusy(null);
+    }
+  }
+
+  async function activateFromEmployee360() {
+    if (!token || !employee) return;
+    setSetupActionBusy("activation");
+    setError(null);
+    try {
+      const result = await api.activateEmployeeFromEmployee360(token, employee.id);
+      applyFinalActivationResponse(result);
+      if (result.pending_approval) setError("Activation was submitted and is pending approval.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Unable to activate employee from Employee 360.");
+    } finally {
+      setSetupActionBusy(null);
+    }
+  }
+
   if (!canView) {
     return <Panel><EmptyState title="Employee profile unavailable" description="Your account needs employees.view permission." /></Panel>;
   }
@@ -446,9 +496,13 @@ export function EmployeeProfilePage() {
               setupReadiness={setupReadiness}
               canRebuildSetup={canRebuildSetup}
               setupRebuilding={setupRebuilding}
+              setupActionBusy={setupActionBusy}
+              lastFinalVerification={lastFinalVerification}
               photoControls={<EmployeeProfilePhotoControls employee={employee} token={token!} canUpload={canUploadPhoto} canClear={canClearPhoto} onChanged={load} compact />}
               onTask={canOnboarding ? updateTask : undefined}
               onRebuildSetup={() => void rebuildSetupReadiness()}
+              onRunFinalVerification={() => void runFinalVerification()}
+              onActivateFromEmployee360={() => void activateFromEmployee360()}
             />
           ) : null}
           {activeTab === "Personal Info" ? <div className="space-y-4"><DetailGrid rows={[
@@ -529,9 +583,13 @@ function Overview({
   setupReadiness,
   canRebuildSetup,
   setupRebuilding,
+  setupActionBusy,
+  lastFinalVerification,
   photoControls,
   onTask,
-  onRebuildSetup
+  onRebuildSetup,
+  onRunFinalVerification,
+  onActivateFromEmployee360
 }: {
   employee: Employee;
   token: string;
@@ -542,9 +600,13 @@ function Overview({
   setupReadiness: EmployeeSetupReadinessResponse | null;
   canRebuildSetup: boolean;
   setupRebuilding: boolean;
+  setupActionBusy: "final-verification" | "activation" | null;
+  lastFinalVerification: Employee360FinalVerification | null;
   photoControls: ReactNode;
   onTask?: (task: OnboardingTask, status: OnboardingStatus) => Promise<void>;
   onRebuildSetup: () => void;
+  onRunFinalVerification: () => void;
+  onActivateFromEmployee360: () => void;
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-3">
@@ -553,7 +615,12 @@ function Overview({
           setup={setupReadiness}
           canRebuild={canRebuildSetup}
           rebuilding={setupRebuilding}
+          actionBusy={setupActionBusy}
+          lastVerification={lastFinalVerification}
+          employeeStatus={employee.status_key ?? null}
           onRebuild={onRebuildSetup}
+          onRunFinalVerification={onRunFinalVerification}
+          onActivate={onActivateFromEmployee360}
         />
       </div>
       <div className="rounded-md border">
@@ -599,12 +666,22 @@ function EmployeeSetupReadinessPanel({
   setup,
   canRebuild,
   rebuilding,
-  onRebuild
+  actionBusy,
+  lastVerification,
+  employeeStatus,
+  onRebuild,
+  onRunFinalVerification,
+  onActivate
 }: {
   setup: EmployeeSetupReadinessResponse | null;
   canRebuild: boolean;
   rebuilding: boolean;
+  actionBusy: "final-verification" | "activation" | null;
+  lastVerification: Employee360FinalVerification | null;
+  employeeStatus: string | null;
   onRebuild: () => void;
+  onRunFinalVerification: () => void;
+  onActivate: () => void;
 }) {
   const sections = setup?.sections ?? [];
   const readiness = setup?.readiness;
@@ -612,6 +689,18 @@ function EmployeeSetupReadinessPanel({
   const complete = completion?.complete ?? sections.filter((section) => section.is_complete).length;
   const total = completion?.total ?? sections.length;
   const blockers = readiness?.blockers ?? [];
+  const nonFinalRequiredSections = sections.filter((section) => section.section_key !== "final_verification" && section.is_required);
+  const nonFinalReady = nonFinalRequiredSections.length > 0 && nonFinalRequiredSections.every((section) => section.is_complete && !section.is_stale && section.status !== "failed" && section.status !== "blocked" && section.status !== "incomplete" && section.status !== "not_started");
+  const finalSection = sections.find((section) => section.section_key === "final_verification");
+  const backendVerified = lastVerification?.status === "verified" && lastVerification.can_activate === true || finalSection?.status === "verified";
+  const active = employeeStatus === "ACTIVE";
+  const pendingApproval = employeeStatus === "PENDING_APPROVAL";
+  const activationRequiresApproval = lastVerification?.activation_requires_approval === true || lastVerification?.activation_path === "approval_required";
+  const activateLabel = active ? "Activated" : pendingApproval ? "Pending Approval" : activationRequiresApproval ? "Submit Activation" : "Activate Employee";
+  const candidateLabel = nonFinalReady && !backendVerified ? "Ready for final verification" : backendVerified ? "Backend final verification passed" : "Complete required setup first";
+  const blockerMessage = lastVerification?.blockers?.[0]?.message ?? String((blockers[0] as Record<string, unknown> | undefined)?.message ?? "Required setup is still blocking activation.");
+  const blockerSection = lastVerification?.blockers?.[0]?.section_label;
+  const actionDisabled = !canRebuild || active || pendingApproval;
   return (
     <div className="rounded-md border border-slate-200 bg-white">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3">
@@ -619,24 +708,48 @@ function EmployeeSetupReadinessPanel({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold">Employee 360 setup readiness</h3>
             <Badge tone={setupTone(readiness?.status)}>{readableStatus(readiness?.status)}</Badge>
-            <Badge tone="neutral">Preview only</Badge>
+            <Badge tone={backendVerified ? "success" : nonFinalReady ? "warning" : "neutral"}>{candidateLabel}</Badge>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {total ? `${complete}/${total} sections complete or not required.` : "No section status has been rebuilt yet."} Final activation still requires server verification.
+            {total ? `${complete}/${total} sections complete or not required.` : "No section status has been rebuilt yet."} Employee activation always runs final server verification before status changes.
           </p>
+          {lastVerification?.request_id ? <p className="mt-1 text-xs text-muted-foreground">Last final verification request: {lastVerification.request_id}</p> : null}
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" size="sm" disabled={!canRebuild} loading={rebuilding} loadingLabel="Rebuilding readiness" onClick={onRebuild}>
             Rebuild readiness
           </Button>
-          <Button type="button" variant="outline" size="sm" disabled>
-            Activation locked
+          <Button
+            type="button"
+            variant={nonFinalReady ? "actionCreate" : "outline"}
+            size="sm"
+            disabled={actionDisabled || !nonFinalReady}
+            loading={actionBusy === "final-verification"}
+            loadingLabel="Running final verification"
+            onClick={onRunFinalVerification}
+          >
+            Run Final Verification
+          </Button>
+          <Button
+            type="button"
+            variant={backendVerified && !active && !pendingApproval ? "actionSave" : "outline"}
+            size="sm"
+            disabled={actionDisabled || !backendVerified}
+            loading={actionBusy === "activation"}
+            loadingLabel={activationRequiresApproval ? "Submitting activation" : "Activating employee"}
+            onClick={onActivate}
+          >
+            {activateLabel}
           </Button>
         </div>
       </div>
-      {blockers.length ? (
+      {lastVerification?.status === "failed" ? (
+        <div className="border-b bg-red-50 px-4 py-2 text-xs text-red-900">
+          {blockerSection ? `${blockerSection}: ` : ""}{blockerMessage}
+        </div>
+      ) : blockers.length || lastVerification?.blockers.length ? (
         <div className="border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
-          {String((blockers[0] as Record<string, unknown>).message ?? "Required setup is still blocking activation.")}
+          {blockerSection ? `${blockerSection}: ` : ""}{blockerMessage}
         </div>
       ) : null}
       <div className="overflow-x-auto">

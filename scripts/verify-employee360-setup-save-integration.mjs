@@ -46,6 +46,7 @@ const lifecycleRoute = read("worker/src/routes/lifecycle.ts");
 const api = read("frontend/src/lib/api.ts");
 const employeeTypes = read("frontend/src/types/employees.ts");
 const profilePage = read("frontend/src/pages/EmployeeProfilePage.tsx");
+const finalActivationService = read("worker/src/employee-setup/final-activation-verifier.ts");
 const documentsPanel = read("frontend/src/components/employee/EmployeeDocumentsPanel.tsx");
 const contractsPanel = read("frontend/src/components/employee/EmployeeContractsPanel.tsx");
 const payrollPanel = read("frontend/src/components/payroll/EmployeePayrollPanel.tsx");
@@ -166,8 +167,12 @@ check(profilePage.includes("applySetupStatusUpdate"), "Employee 360 page does no
 check(profilePage.includes("setSetupReadiness") && profilePage.includes("updated_sections") && profilePage.includes("stale_sections"), "Employee 360 preview does not merge updated/stale section rows");
 check(profilePage.includes("onSetupStatusUpdate={applySetupStatusUpdate}"), "Employee 360 child panels are not passed setup update callback");
 check(profilePage.includes("Rebuild readiness"), "manual rebuild button was removed");
-check(profilePage.includes("Activation requires final server verification") || profilePage.includes("Activation locked"), "Employee 360 setup preview is not clearly shadow/final-verification gated");
-check(!profilePage.includes("activateEmployeeFromEmployee360"), "Employee 360 activation was switched in Phase 2");
+check(profilePage.includes("Run Final Verification") || profilePage.includes("Activation locked"), "Employee 360 setup preview is not clearly final-verification gated");
+check(
+  !profilePage.includes("activateEmployeeFromEmployee360") ||
+    (finalActivationService.includes("verifyEmployee360SetupForActivation") && profilePage.includes("backendVerified") && profilePage.includes("lastVerification.can_activate === true")),
+  "Employee 360 activation must remain server-final-verifier gated"
+);
 
 for (const [name, source] of Object.entries({
   "documents panel": documentsPanel,
@@ -184,7 +189,11 @@ check(payrollFoundationPanels.includes("verifyEmployeePaymentMethod") && payroll
 
 check(lifecycleRoute.includes("activateEmployeeFromOnboarding"), "old onboarding activation authority was removed");
 check(read("worker/src/onboarding/section-status.ts").includes("onboarding_setup_section_statuses"), "old onboarding section status system was removed");
-check(!employeesRoute.includes("activation_status = 'ACTIVATED'"), "Employee 360 routes appear to activate employees directly in Phase 2");
+check(
+  !employeesRoute.includes("setup/activate") ||
+    (employeesRoute.includes("verifyEmployee360SetupForActivation") && employeesRoute.indexOf("verifyEmployee360SetupForActivation") < employeesRoute.indexOf("UPDATE employees SET status_id")),
+  "Employee 360 activation route must call final verifier before status updates"
+);
 
 check(packageJson.scripts?.["verify:employee360-setup-save-integration"] === "node scripts/verify-employee360-setup-save-integration.mjs", "package script verify:employee360-setup-save-integration is missing");
 check(packageJson.scripts?.["diagnose:employee-setup-sections"] === "node scripts/diagnose-employee-setup-sections.mjs", "diagnostic script registration is missing");

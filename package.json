@@ -148,6 +148,7 @@
     "verify:employee360-setup-foundation": "node scripts/verify-employee360-setup-foundation.mjs",
     "verify:employee360-setup-save-integration": "node scripts/verify-employee360-setup-save-integration.mjs",
     "verify:document-requirement-decision-gate": "node scripts/verify-document-requirement-decision-gate.mjs",
+    "verify:employee360-final-activation": "node scripts/verify-employee360-final-activation.mjs",
     "diagnose:onboarding-readiness-failure": "node scripts/diagnose-onboarding-readiness-failure.mjs",
     "diagnose:onboarding-readiness-stuck-job": "node scripts/diagnose-onboarding-readiness-stuck-job.mjs",
     "diagnose:onboarding-save-timeout-hotfix": "node scripts/diagnose-onboarding-save-timeout-hotfix.mjs",
@@ -156,6 +157,7 @@
     "diagnose:onboarding-final-activation-verifier": "node scripts/diagnose-onboarding-final-activation-verifier.mjs",
     "diagnose:employee-setup-sections": "node scripts/diagnose-employee-setup-sections.mjs",
     "diagnose:document-requirement-decisions": "node scripts/diagnose-document-requirement-decisions.mjs",
+    "diagnose:employee360-final-activation": "node scripts/diagnose-employee360-final-activation.mjs",
     "repair:onboarding-section-statuses-one-case": "node scripts/rebuild-onboarding-section-statuses-one-case.mjs"
   },
   "devDependencies": {

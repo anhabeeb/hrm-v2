@@ -4,6 +4,11 @@ import { accessScopeToApi, buildEmployeeScopeWhereClause, canAccessEmployee, typ
 import { hashPassword } from "../auth/password";
 import { recordAudit } from "../db/audit";
 import { getActiveOwnerCount, getUserByEmail, getUserById } from "../db/users";
+import {
+  buildEmployeeActivationBlockerResponse,
+  verifyEmployee360SetupForActivation,
+  type Employee360FinalActivationVerificationResult
+} from "../employee-setup/final-activation-verifier";
 import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 import { getEmployeeSetupSectionPreviewPayload, rebuildEmployeeSetupSectionStatuses, sanitizeEmployeeSetupStatusError } from "../employee-setup/section-status";
 import { requireAuth } from "../middleware/auth";
@@ -13,7 +18,8 @@ import { publishAccessEvent } from "../realtime/publisher";
 import { autoCreateOnboardingCaseAfterEmployeeCreate } from "./lifecycle";
 import { applyRoleMappingToEmployee, roleMappingPreviewForEmployee } from "./role-mappings";
 import type { AppBindings, DbUser, UserStatus } from "../types";
-import { fail, getClientIp, ok, okCached } from "../utils/http";
+import { safeEmitAppEvent } from "../utils/app-events";
+import { fail, getClientIp, nowIso, ok, okCached } from "../utils/http";
 import { requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { timeD1, timeStage } from "../utils/performance";
@@ -252,6 +258,25 @@ function employeeUserAccountPermissions(action: EmployeeUserAccountAction) {
   if (action === "deactivate") return ["users.disable", ...baseManage];
   return baseManage;
 }
+
+const EMPLOYEE_SETUP_FINAL_VERIFY_PERMISSIONS = [
+  "employees.activate",
+  "employee.setup.verify",
+  "employee.setup.activate",
+  "onboarding.activation.activate",
+  "onboarding.activation.manage",
+  "employees.lifecycle.manage",
+  "employees.manage"
+];
+
+const EMPLOYEE_SETUP_ACTIVATION_PERMISSIONS = [
+  "employees.activate",
+  "employee.setup.activate",
+  "onboarding.activation.activate",
+  "onboarding.activation.manage",
+  "employees.lifecycle.manage",
+  "employees.manage"
+];
 
 function requireEmployeeUserAccountPermission(c: Context<AppBindings>, action: EmployeeUserAccountAction) {
   if (hasAnyPermission(c, employeeUserAccountPermissions(action))) return null;
@@ -533,6 +558,69 @@ async function publishEmployeeUserAccountChanged(c: Context<AppBindings>, employ
     await publishAccessEvent(c.env, "users.roles.changed", { actor_user_id: actor.id, entity_type: "user", entity_id: userId, employee_id: employeeId, action });
   }
   await publishEmployee(c, "employee.updated", employeeId, action);
+}
+
+function employeeSetupFinalRequestId(c: Context<AppBindings>, prefix: string) {
+  return c.req.header("X-Request-ID") ?? c.req.header("x-request-id") ?? `${prefix}_${crypto.randomUUID()}`;
+}
+
+async function emitEmployeeSetupAppEvent(c: Context<AppBindings>, input: {
+  eventType: string;
+  employeeId: string;
+  status?: string | null;
+  requestId: string;
+}) {
+  await safeEmitAppEvent(c.env.DB, {
+    eventType: input.eventType,
+    moduleKey: "employee_360",
+    entityType: "employee",
+    entityId: input.employeeId,
+    visibility: "COMPANY",
+    createdByUserId: c.get("currentUser").id,
+    payload: {
+      employee_id: input.employeeId,
+      status: input.status ?? null,
+      request_id: input.requestId
+    },
+    queryKeys: [
+      `employee:${input.employeeId}:setup-readiness`,
+      `employee:${input.employeeId}:profile`,
+      "employees:list",
+      "command-center"
+    ],
+    dedupeKey: `${input.eventType}:${input.employeeId}:${input.requestId}`
+  });
+}
+
+function finalVerificationEventType(status: Employee360FinalActivationVerificationResult["status"]) {
+  if (status === "verified") return "employee.setup.final_verification.verified";
+  if (status === "failed") return "employee.setup.final_verification.failed";
+  return "employee.setup.final_verification.blocked";
+}
+
+async function getActiveEmployeeStatusId(db: AppBindings["Bindings"]["DB"], key: string) {
+  return db.prepare("SELECT id FROM employee_statuses WHERE key = ? AND is_active = 1 LIMIT 1").bind(key).first<{ id: string }>();
+}
+
+async function employeeSetupApprovalRequired(db: AppBindings["Bindings"]["DB"]) {
+  const settings = await db.prepare("SELECT use_central_approval_workflow FROM onboarding_settings WHERE id = 'onboarding_settings_default' LIMIT 1").first<Record<string, unknown>>();
+  const value = settings?.use_central_approval_workflow;
+  return value === true || value === 1 || value === "1";
+}
+
+async function buildEmployeeSetupActivationPayload(c: Context<AppBindings>, employeeId: string, verification: Employee360FinalActivationVerificationResult) {
+  const preview = await getEmployeeSetupSectionPreviewPayload(c.env.DB, employeeId);
+  const employee = await getEmployeeById(c.env.DB, employeeId);
+  return {
+    mode: "employee_360_setup",
+    employee_id: employeeId,
+    activation_switched: true,
+    activation_requires_final_verification: verification.status !== "verified",
+    verification,
+    readiness: preview.readiness,
+    sections: preview.sections,
+    employee: employee ? toEmployee(employee, hasPermission(c, "employees.sensitive.view")) : null
+  };
 }
 
 async function getEmployeeUserAccountUser(db: AppBindings["Bindings"]["DB"], userId: string | null) {
@@ -1581,6 +1669,140 @@ employeeRoutes.post("/:id/setup-sections/rebuild", requirePermission("employees.
     const safe = sanitizeEmployeeSetupStatusError(error);
     return fail(c, 500, safe.error_code, `${safe.error_message} ${safe.next_action}`);
   }
+});
+
+employeeRoutes.post("/:id/setup/final-verification", requirePermission("employees.view"), async (c) => {
+  const employeeId = c.req.param("id");
+  if (!hasAnyPermission(c, EMPLOYEE_SETUP_FINAL_VERIFY_PERMISSIONS)) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to run Employee 360 final verification.");
+  }
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const employee = await getEmployeeById(c.env.DB, employeeId);
+  if (!employee) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  const requestId = employeeSetupFinalRequestId(c, "employee360_final_verification");
+  await auditEmployee(c, {
+    action: "employee.setup.final_verification.started",
+    entityType: "employee",
+    entityId: employeeId,
+    oldValue: { status_key: employee.status_key },
+    newValue: { request_id: requestId }
+  });
+  const verification = await verifyEmployee360SetupForActivation(c.env.DB, employeeId, c.get("currentUser").id, { requestId });
+  const eventType = finalVerificationEventType(verification.status);
+  await auditEmployee(c, {
+    action: eventType,
+    entityType: "employee",
+    entityId: employeeId,
+    oldValue: { status_key: employee.status_key },
+    newValue: {
+      status: verification.status,
+      can_activate: verification.can_activate,
+      blocker_count: verification.blockers.length,
+      request_id: requestId
+    }
+  });
+  await emitEmployeeSetupAppEvent(c, { eventType, employeeId, status: verification.status, requestId });
+  await emitEmployeeSetupAppEvent(c, { eventType: "employee.setup.status.updated", employeeId, status: verification.status, requestId });
+  if (employee.status_key === "PENDING_SETUP") {
+    const pendingFinal = await getActiveEmployeeStatusId(c.env.DB, "PENDING_FINAL_VERIFICATION");
+    if (pendingFinal) {
+      await c.env.DB.prepare("UPDATE employees SET status_id = ?, updated_at = ? WHERE id = ?").bind(pendingFinal.id, nowIso(), employeeId).run();
+      await publishEmployee(c, "employee.status_changed", employeeId, "employee.setup.pending_final_verification");
+    }
+  }
+  c.header("Cache-Control", "private, no-store");
+  c.header("Vary", "Origin");
+  const payload = await buildEmployeeSetupActivationPayload(c, employeeId, verification);
+  if (verification.status === "failed") {
+    return c.json({
+      ok: false,
+      error: {
+        code: "FINAL_VERIFICATION_FAILED",
+        message: "Final verification failed while checking Employee 360 setup.",
+        request_id: requestId
+      },
+      verification,
+      data: payload
+    }, 500);
+  }
+  return ok(c, payload);
+});
+
+employeeRoutes.post("/:id/setup/activate", requirePermission("employees.view"), async (c) => {
+  const employeeId = c.req.param("id");
+  if (!hasAnyPermission(c, EMPLOYEE_SETUP_ACTIVATION_PERMISSIONS)) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to activate this employee from Employee 360.");
+  }
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "employees", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const before = await getEmployeeById(c.env.DB, employeeId);
+  if (!before) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  const requestId = employeeSetupFinalRequestId(c, "employee360_activation");
+  await auditEmployee(c, {
+    action: "employee.activation.submitted",
+    entityType: "employee",
+    entityId: employeeId,
+    oldValue: { status_key: before.status_key },
+    newValue: { source: "employee_360_setup", request_id: requestId }
+  });
+  const verification = await verifyEmployee360SetupForActivation(c.env.DB, employeeId, c.get("currentUser").id, { requestId });
+  if (!verification.can_activate || verification.status !== "verified") {
+    const blocker = buildEmployeeActivationBlockerResponse(verification);
+    await auditEmployee(c, {
+      action: verification.status === "failed" ? "employee.setup.final_verification.failed" : "employee.setup.final_verification.blocked",
+      entityType: "employee",
+      entityId: employeeId,
+      oldValue: { status_key: before.status_key },
+      newValue: { status: verification.status, blocker_count: verification.blockers.length, request_id: requestId }
+    });
+    await emitEmployeeSetupAppEvent(c, { eventType: finalVerificationEventType(verification.status), employeeId, status: verification.status, requestId });
+    const statusCode = verification.status === "failed" ? 500 : 409;
+    return c.json({
+      ok: false,
+      error: {
+        code: blocker.code,
+        message: blocker.message,
+        request_id: requestId
+      },
+      blocker,
+      verification
+    }, statusCode);
+  }
+  const current = await getEmployeeById(c.env.DB, employeeId);
+  if (!current) return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  if (current.status_key === "ACTIVE") {
+    const payload = await buildEmployeeSetupActivationPayload(c, employeeId, verification);
+    return ok(c, { ...payload, activated: true, idempotent: true });
+  }
+  const approvalRequired = await employeeSetupApprovalRequired(c.env.DB);
+  const nextStatusKey = approvalRequired ? "PENDING_APPROVAL" : "ACTIVE";
+  const nextStatus = await getActiveEmployeeStatusId(c.env.DB, nextStatusKey);
+  if (!nextStatus) {
+    return fail(c, 500, "EMPLOYEE_STATUS_NOT_CONFIGURED", `${nextStatusKey} employee status is not configured.`);
+  }
+  await c.env.DB.prepare("UPDATE employees SET status_id = ?, updated_at = ? WHERE id = ?").bind(nextStatus.id, nowIso(), employeeId).run();
+  const action = approvalRequired ? "employee.activation.pending_approval" : "employee.activated";
+  await auditEmployee(c, {
+    action,
+    entityType: "employee",
+    entityId: employeeId,
+    oldValue: { status_key: current.status_key },
+    newValue: { status_key: nextStatusKey, source: "employee_360_setup", request_id: requestId }
+  });
+  await publishEmployee(c, "employee.status_changed", employeeId, action);
+  await emitEmployeeSetupAppEvent(c, { eventType: action, employeeId, status: nextStatusKey, requestId });
+  await emitEmployeeSetupAppEvent(c, { eventType: "employee.setup.status.updated", employeeId, status: nextStatusKey, requestId });
+  c.header("Cache-Control", "private, no-store");
+  c.header("Vary", "Origin");
+  const payload = await buildEmployeeSetupActivationPayload(c, employeeId, verification);
+  return ok(c, {
+    ...payload,
+    activated: !approvalRequired,
+    pending_approval: approvalRequired
+  });
 });
 
 employeeRoutes.get("/:id", requirePermission("employees.view"), async (c) => {

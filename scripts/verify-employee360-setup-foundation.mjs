@@ -30,6 +30,7 @@ const seed = read("database/seed.sql");
 const registry = read("worker/src/employee-setup/section-registry.ts");
 const status = read("worker/src/employee-setup/section-status.ts");
 const employeesRoute = read("worker/src/routes/employees.ts");
+const finalActivationService = read("worker/src/employee-setup/final-activation-verifier.ts");
 const lifecycleRoute = read("worker/src/routes/lifecycle.ts");
 const oldOnboardingRegistry = read("worker/src/onboarding/section-status-registry.ts");
 const oldOnboardingStatus = read("worker/src/onboarding/section-status.ts");
@@ -123,13 +124,21 @@ check("frontend response types exist", employeeTypes.includes("EmployeeSetupRead
 check("Employee 360 renders setup readiness panel", profilePage.includes("EmployeeSetupReadinessPanel") && profilePage.includes("Employee 360 setup readiness"));
 check("Employee 360 fetches setup readiness without blocking core profile", profilePage.includes("api.getEmployeeSetupReadiness") && profilePage.includes(".catch(() => null)"));
 check("Employee 360 rebuild action exists", profilePage.includes("api.rebuildEmployeeSetupSections") && profilePage.includes("Rebuild readiness"));
-check("Employee 360 displays activation locked, not activation action", profilePage.includes("Activation locked") && !profilePage.includes("activateEmployeeFromEmployee360"));
+check(
+  "Employee 360 activation remains final-verifier gated",
+  (profilePage.includes("Activation locked") && !profilePage.includes("activateEmployeeFromEmployee360")) ||
+    (finalActivationService.includes("verifyEmployee360SetupForActivation") && profilePage.includes("Run Final Verification") && profilePage.includes("lastVerification.can_activate === true"))
+);
 check("PENDING_SETUP bypasses old 360 onboarding lock", profilePage.includes('"PENDING_SETUP"') && profilePage.includes("employee360SetupStatus"));
 
 check("old onboarding registry remains present", oldOnboardingRegistry.includes("ONBOARDING_SECTION_DEFINITIONS") && oldOnboardingRegistry.includes('section_key: "employee_info"'));
 check("old onboarding status helper remains present", oldOnboardingStatus.includes("rebuildOnboardingSectionStatusesForCase") && oldOnboardingStatus.includes("onboarding_setup_section_statuses"));
 check("old onboarding activation routes remain present", lifecycleRoute.includes('onboardingRoutes.post("/cases/:caseId/final-verification"') && lifecycleRoute.includes("activateEmployeeFromOnboarding"));
-check("Employee 360 setup does not replace onboarding activation authority", !employeesRoute.includes("activateEmployeeFromOnboarding") && !employeesRoute.includes("activation_status = 'ACTIVATED'"));
+check(
+  "Employee 360 setup does not replace onboarding activation authority",
+  !employeesRoute.includes("activateEmployeeFromOnboarding") &&
+    (!employeesRoute.includes("setup/activate") || employeesRoute.includes("verifyEmployee360SetupForActivation"))
+);
 
 check("diagnostic script registered", packageJson.scripts?.["diagnose:employee-setup-sections"] === "node scripts/diagnose-employee-setup-sections.mjs");
 check("verifier script registered", packageJson.scripts?.["verify:employee360-setup-foundation"] === "node scripts/verify-employee360-setup-foundation.mjs");

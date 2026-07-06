@@ -27,6 +27,7 @@ import type {
 } from "../types/organization";
 import type {
   Employee,
+  Employee360FinalActivationResponse,
   EmployeeContact,
   EmployeeContactInput,
   EmployeeInput,
@@ -945,6 +946,12 @@ export const api = {
   },
   rebuildEmployeeSetupSections(token: string, id: string) {
     return request<EmployeeSetupReadinessResponse>(`/api/v1/employees/${id}/setup-sections/rebuild`, { method: "POST" }, token);
+  },
+  runEmployee360FinalVerification(token: string, id: string) {
+    return request<Employee360FinalActivationResponse>(`/api/v1/employees/${id}/setup/final-verification`, { method: "POST", dedupe: false, requestLabel: "employee360.final-verification" }, token);
+  },
+  activateEmployeeFromEmployee360(token: string, id: string) {
+    return request<Employee360FinalActivationResponse>(`/api/v1/employees/${id}/setup/activate`, { method: "POST", dedupe: false, requestLabel: "employee360.activate" }, token);
   },
   getEmployeeOverview(token: string, id: string, signal?: AbortSignal) {
     return request<{ employee: Employee; onboarding: OnboardingTask[]; contacts: EmployeeContact[]; audit: Record<string, unknown>[] }>(`/api/v1/employees/${id}/overview`, { signal }, token);

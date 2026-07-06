@@ -218,6 +218,52 @@ export interface EmployeeSetupReadinessResponse {
   sections: EmployeeSetupSectionStatusRow[];
 }
 
+export interface Employee360FinalVerification {
+  ok: boolean;
+  status: "verified" | "blocked" | "failed" | "stale" | string;
+  can_activate: boolean;
+  activation_requires_final_verification: boolean;
+  activation_requires_approval: boolean;
+  activation_path: "direct_activation" | "approval_required" | "already_active" | "blocked" | string;
+  employee_id: string;
+  verified_sections: Record<string, unknown>[];
+  blocking_sections: Record<string, unknown>[];
+  failed_sections: Record<string, unknown>[];
+  stale_sections: Record<string, unknown>[];
+  blockers: Array<{
+    section_key: string;
+    section_label: string;
+    status?: string | null;
+    message: string;
+    next_action: string;
+    error_code?: string | null;
+    request_id?: string | null;
+  }>;
+  warnings: Array<{
+    section_key: string;
+    section_label: string;
+    status?: string | null;
+    message: string;
+    next_action: string;
+    error_code?: string | null;
+    request_id?: string | null;
+  }>;
+  duration_ms: number;
+  request_id: string;
+  rebuilt_sections: number;
+  section_timings: Record<string, unknown>[];
+  readiness?: Record<string, unknown>;
+  sections?: Record<string, unknown>[];
+}
+
+export interface Employee360FinalActivationResponse extends EmployeeSetupReadinessResponse {
+  verification: Employee360FinalVerification;
+  employee: Employee | null;
+  activated?: boolean;
+  pending_approval?: boolean;
+  idempotent?: boolean;
+}
+
 export interface EmployeeSetupStatusUpdate {
   mode: "employee_360_setup";
   updated_sections: EmployeeSetupSectionStatusRow[];

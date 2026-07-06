@@ -1544,6 +1544,9 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_lifecycle_events_sensitive_view', 'lifecycle.events.sensitive.view', 'lifecycle', 'View sensitive lifecycle events', 0),
   ('perm_employees_lifecycle_view', 'employees.lifecycle.view', 'employees', 'View Employee 360 lifecycle information', 0),
   ('perm_employees_lifecycle_manage', 'employees.lifecycle.manage', 'employees', 'Manage Employee 360 lifecycle actions', 0),
+  ('perm_employee_setup_verify', 'employee.setup.verify', 'employees', 'Run Employee 360 final setup verification', 0),
+  ('perm_employee_setup_activate', 'employee.setup.activate', 'employees', 'Activate or submit activation from Employee 360 after final verification', 0),
+  ('perm_employees_activate', 'employees.activate', 'employees', 'Activate employees after server-side final verification', 0),
   ('perm_employees_360_view_during_onboarding', 'employees.360.view_during_onboarding', 'employees', 'View Employee 360 before onboarding activation for troubleshooting', 1),
   ('perm_reports_onboarding_view', 'reports.onboarding.view', 'reports', 'View onboarding reports', 0),
   ('perm_reports_offboarding_view', 'reports.offboarding.view', 'reports', 'View offboarding reports', 0),
@@ -1557,6 +1560,21 @@ INSERT OR IGNORE INTO onboarding_settings (id, metadata_json) VALUES
 
 INSERT OR IGNORE INTO offboarding_settings (id, metadata_json) VALUES
   ('offboarding_settings_default', '{"seeded_prompt":"19","note":"Default offboarding workflow coordination settings."}');
+
+WITH employee360_activation_role_permissions(role_name, permission_key) AS (
+  VALUES
+  ('HR Manager', 'employee.setup.verify'),
+  ('HR Manager', 'employee.setup.activate'),
+  ('HR Manager', 'employees.activate'),
+  ('HR Head / HR Admin', 'employee.setup.verify'),
+  ('HR Head / HR Admin', 'employee.setup.activate'),
+  ('HR Head / HR Admin', 'employees.activate')
+)
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM employee360_activation_role_permissions rp
+INNER JOIN roles r ON r.name = rp.role_name
+INNER JOIN permissions p ON p.key = rp.permission_key;
 
 INSERT OR IGNORE INTO system_settings (key, value_json, is_protected) VALUES
   ('lifecycle_prompt19_seeded', '{"seeded_prompt":"19","note":"Onboarding and offboarding lifecycle workflow foundation."}', 0);
