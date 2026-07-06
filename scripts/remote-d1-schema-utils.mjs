@@ -116,6 +116,13 @@ export const codeRequiredColumns = {
     issue_date_required: "issue_date_required INTEGER NOT NULL DEFAULT 0 CHECK (issue_date_required IN (0, 1))",
     document_number_required: "document_number_required INTEGER NOT NULL DEFAULT 0 CHECK (document_number_required IN (0, 1))"
   },
+  document_required_rules: {
+    waiver_allowed: "waiver_allowed INTEGER NOT NULL DEFAULT 1 CHECK (waiver_allowed IN (0, 1))",
+    exemption_allowed: "exemption_allowed INTEGER NOT NULL DEFAULT 1 CHECK (exemption_allowed IN (0, 1))",
+    hard_required: "hard_required INTEGER NOT NULL DEFAULT 0 CHECK (hard_required IN (0, 1))",
+    waiver_requires_reason: "waiver_requires_reason INTEGER NOT NULL DEFAULT 1 CHECK (waiver_requires_reason IN (0, 1))",
+    waiver_requires_approval: "waiver_requires_approval INTEGER NOT NULL DEFAULT 0 CHECK (waiver_requires_approval IN (0, 1))"
+  },
   payroll_settings: {
     payslips_enabled: "payslips_enabled INTEGER NOT NULL DEFAULT 1 CHECK (payslips_enabled IN (0, 1))",
     payment_register_enabled: "payment_register_enabled INTEGER NOT NULL DEFAULT 1 CHECK (payment_register_enabled IN (0, 1))",

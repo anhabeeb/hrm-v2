@@ -1,5 +1,6 @@
 import { isOperationalModuleEnabled } from "../utils/module-enforcement";
 import { nowIso } from "../utils/http";
+import { verifyDocumentDecisionForActivation } from "./document-requirement-decisions";
 import {
   EMPLOYEE_SETUP_SECTION_DEFINITIONS,
   employeeSetupSectionDefinitionByKey,
@@ -381,45 +382,29 @@ async function evaluateJobAssignment(definition: EmployeeSetupSectionDefinition,
 async function evaluateDocuments(definition: EmployeeSetupSectionDefinition, context: EvaluationContext) {
   if (!enabledStatus(definition, context)) return notRequired(definition, "Documents or Document Compliance is disabled.");
   if (!definition.default_required) return notRequired(definition, "Required document checks are optional for this employee setup.");
-  const employee = context.employee;
-  const rules = await context.db.prepare(`
-    SELECT rr.id, rr.document_type_id, dt.name AS document_type_name, dt.code AS document_type_code
-      FROM document_required_rules rr
-      INNER JOIN document_types dt ON dt.id = rr.document_type_id
-     WHERE rr.is_active = 1
-       AND rr.is_required = 1
-       AND dt.is_active = 1
-       AND (rr.employee_type IS NULL OR rr.employee_type = ?)
-       AND (rr.employment_type IS NULL OR rr.employment_type = ?)
-       AND (rr.department_id IS NULL OR rr.department_id = ?)
-       AND (rr.position_id IS NULL OR rr.position_id = ?)
-       AND (rr.location_id IS NULL OR rr.location_id = ?)
-     ORDER BY rr.rule_priority, dt.name
-     LIMIT 100
-  `).bind(
-    text(employee.employee_type) || null,
-    text(employee.employment_type) || null,
-    text(employee.primary_department_id) || null,
-    text(employee.primary_position_id) || null,
-    text(employee.primary_location_id) || null
-  ).all<Record<string, unknown>>();
-  if (!rules.results.length) return notRequired(definition, "No active required document rules match this employee.");
-  const typeIds = Array.from(new Set(rules.results.map((row) => text(row.document_type_id)).filter(Boolean)));
-  const placeholders = typeIds.map(() => "?").join(", ");
-  const docs = placeholders
-    ? await context.db.prepare(`SELECT document_type_id FROM employee_documents WHERE employee_id = ? AND status = 'ACTIVE' AND document_type_id IN (${placeholders})`).bind(context.employeeId, ...typeIds).all<{ document_type_id: string }>()
-    : { results: [] };
-  const uploaded = new Set(docs.results.map((row) => row.document_type_id));
-  const missingRules = rules.results.filter((row) => !uploaded.has(text(row.document_type_id)));
-  if (missingRules.length) {
+  const verification = await verifyDocumentDecisionForActivation(context.db, context.employeeId);
+  if (verification.total === 0) return notRequired(definition, "No active document requirement rules or uploaded documents apply to this employee.");
+  if (!verification.ok) {
     return blocked(
       definition,
-      missingRules.map((row) => `document:${text(row.document_type_code) || text(row.document_type_id)}`),
+      verification.blockers.map((row) => `document:${text(row.document_type_name) || text(row.document_type_id)}`),
       "Required employee documents are missing.",
-      { missing_document_count: missingRules.length, required_document_count: rules.results.length }
+      {
+        missing_document_count: verification.blockers.length,
+        required_document_count: verification.total,
+        document_required_rules: "decision_gate",
+        employee_type: text(context.employee.employee_type),
+        document_type_code: "decision_gate"
+      }
     );
   }
-  return complete(definition, "All matching required document rules are satisfied.", { required_document_count: rules.results.length });
+  return complete(definition, "All matching required document rules are satisfied by uploads, not-required decisions, waivers, or exemptions.", {
+    required_document_count: verification.total,
+    decision_gate_complete_count: verification.complete,
+    document_required_rules: "decision_gate",
+    employee_type: text(context.employee.employee_type),
+    document_type_code: "decision_gate"
+  });
 }
 
 async function evaluateContract(definition: EmployeeSetupSectionDefinition, context: EvaluationContext) {

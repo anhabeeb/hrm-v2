@@ -131,10 +131,62 @@ export interface DocumentRequiredRule {
   location_name?: string | null;
   custom_condition_json: string | null;
   is_required: boolean | number;
+  waiver_allowed?: boolean | number;
+  exemption_allowed?: boolean | number;
+  hard_required?: boolean | number;
+  waiver_requires_reason?: boolean | number;
+  waiver_requires_approval?: boolean | number;
   rule_priority: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export type DocumentRequirementDecisionStatus = "required" | "uploaded" | "missing" | "expired" | "not_required" | "waived" | "exempted" | "revoked";
+
+export interface EmployeeDocumentRequirementDecision {
+  employee_id: string;
+  document_type_id: string;
+  document_type_code: string | null;
+  document_type_name: string;
+  category_name: string | null;
+  required_rule_id: string | null;
+  status: DocumentRequirementDecisionStatus;
+  status_label: string;
+  is_required: boolean;
+  is_complete: boolean;
+  activation_blocking: boolean;
+  can_upload: boolean;
+  can_mark_not_required: boolean;
+  can_waive: boolean;
+  can_exempt: boolean;
+  can_revoke: boolean;
+  waiver_allowed: boolean;
+  exemption_allowed: boolean;
+  hard_required: boolean;
+  reason: string | null;
+  next_action: string | null;
+  decision?: Record<string, unknown> | null;
+  document?: {
+    id: string;
+    expiry_date?: string | null;
+    status?: string | null;
+  } | null;
+}
+
+export interface EmployeeDocumentRequirementDecisionResponse {
+  employee?: Record<string, unknown> | null;
+  decisions: EmployeeDocumentRequirementDecision[];
+  summary: {
+    total: number;
+    complete: number;
+    blocking: number;
+    missing: number;
+    expired: number;
+    waived: number;
+    not_required: number;
+  };
+  activation_blockers: Array<Record<string, unknown>>;
 }
 
 export interface DocumentDashboard {
@@ -172,6 +224,11 @@ export interface DocumentRequiredRuleInput {
   location_id?: string | null;
   custom_condition_json?: string | null;
   is_required?: boolean;
+  waiver_allowed?: boolean;
+  exemption_allowed?: boolean;
+  hard_required?: boolean;
+  waiver_requires_reason?: boolean;
+  waiver_requires_approval?: boolean;
   rule_priority?: number;
 }
 

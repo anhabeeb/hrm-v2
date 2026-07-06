@@ -80,6 +80,7 @@ import type {
   DocumentRequirementWaiver,
   DocumentType,
   DocumentTypeInput,
+  EmployeeDocumentRequirementDecisionResponse,
   EmployeeDocumentCompliance,
   EmployeeDocument,
   EmployeeDocumentVersion,
@@ -1256,6 +1257,30 @@ export const api = {
   },
   listEmployeeDocuments(token: string, employeeId: string) {
     return request<{ documents: EmployeeDocument[]; missing: MissingDocument[] }>(`/api/v1/employees/${employeeId}/documents`, {}, token);
+  },
+  listEmployeeDocumentRequirementDecisions(token: string, employeeId: string) {
+    return request<EmployeeDocumentRequirementDecisionResponse>(`/api/v1/employees/${employeeId}/document-requirements`, {}, token);
+  },
+  markEmployeeDocumentRequirementNotRequired(token: string, employeeId: string, documentTypeId: string, input: { reason: string; notes?: string | null }) {
+    return request<WithEmployeeSetupStatusUpdate<EmployeeDocumentRequirementDecisionResponse>>(
+      `/api/v1/employees/${employeeId}/document-requirements/${documentTypeId}/not-required`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    );
+  },
+  waiveEmployeeDocumentRequirement(token: string, employeeId: string, documentTypeId: string, input: { decision?: "waived" | "exempted"; reason: string; notes?: string | null }) {
+    return request<WithEmployeeSetupStatusUpdate<EmployeeDocumentRequirementDecisionResponse>>(
+      `/api/v1/employees/${employeeId}/document-requirements/${documentTypeId}/waive`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    );
+  },
+  revokeEmployeeDocumentRequirementDecision(token: string, employeeId: string, documentTypeId: string, input: { reason: string }) {
+    return request<WithEmployeeSetupStatusUpdate<EmployeeDocumentRequirementDecisionResponse>>(
+      `/api/v1/employees/${employeeId}/document-requirements/${documentTypeId}/revoke`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    );
   },
   uploadEmployeeDocument(token: string, employeeId: string, form: FormData) {
     return multipartRequest<WithEmployeeSetupStatusUpdate<{ document: EmployeeDocument }>>(`/api/v1/employees/${employeeId}/documents/upload`, form, token);

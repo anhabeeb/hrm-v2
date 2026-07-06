@@ -2069,6 +2069,11 @@ CREATE TABLE IF NOT EXISTS document_required_rules (
   location_id TEXT,
   custom_condition_json TEXT,
   is_required INTEGER NOT NULL DEFAULT 1 CHECK (is_required IN (0, 1)),
+  waiver_allowed INTEGER NOT NULL DEFAULT 1 CHECK (waiver_allowed IN (0, 1)),
+  exemption_allowed INTEGER NOT NULL DEFAULT 1 CHECK (exemption_allowed IN (0, 1)),
+  hard_required INTEGER NOT NULL DEFAULT 0 CHECK (hard_required IN (0, 1)),
+  waiver_requires_reason INTEGER NOT NULL DEFAULT 1 CHECK (waiver_requires_reason IN (0, 1)),
+  waiver_requires_approval INTEGER NOT NULL DEFAULT 0 CHECK (waiver_requires_approval IN (0, 1)),
   rule_priority INTEGER NOT NULL DEFAULT 100,
   is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -2081,6 +2086,38 @@ CREATE TABLE IF NOT EXISTS document_required_rules (
 
 CREATE INDEX IF NOT EXISTS idx_document_required_rules_type ON document_required_rules(document_type_id);
 CREATE INDEX IF NOT EXISTS idx_document_required_rules_active ON document_required_rules(is_active, rule_priority);
+
+CREATE TABLE IF NOT EXISTS employee_document_requirement_decisions (
+  id TEXT PRIMARY KEY,
+  employee_id TEXT NOT NULL,
+  document_type_id TEXT NOT NULL,
+  required_rule_id TEXT,
+  decision_status TEXT NOT NULL CHECK (decision_status IN ('required', 'uploaded', 'missing', 'expired', 'not_required', 'waived', 'exempted', 'revoked')),
+  decision_source TEXT NOT NULL DEFAULT 'manual' CHECK (decision_source IN ('system', 'manual', 'upload_sync', 'activation_verifier')),
+  reason TEXT,
+  notes TEXT,
+  supporting_document_id TEXT,
+  is_system_decision INTEGER NOT NULL DEFAULT 0 CHECK (is_system_decision IN (0, 1)),
+  approval_status TEXT NOT NULL DEFAULT 'APPROVED' CHECK (approval_status IN ('NOT_REQUIRED', 'PENDING', 'APPROVED', 'REJECTED', 'REVOKED')),
+  decided_by_user_id TEXT,
+  decided_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  revoked_by_user_id TEXT,
+  revoked_at TEXT,
+  revoke_reason TEXT,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (document_type_id) REFERENCES document_types(id) ON DELETE CASCADE,
+  FOREIGN KEY (required_rule_id) REFERENCES document_required_rules(id) ON DELETE SET NULL,
+  FOREIGN KEY (supporting_document_id) REFERENCES employee_documents(id) ON DELETE SET NULL,
+  FOREIGN KEY (decided_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (revoked_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_employee_document_requirement_decisions_employee ON employee_document_requirement_decisions(employee_id, document_type_id, decided_at DESC);
+CREATE INDEX IF NOT EXISTS idx_employee_document_requirement_decisions_status ON employee_document_requirement_decisions(employee_id, decision_status, approval_status);
+CREATE INDEX IF NOT EXISTS idx_employee_document_requirement_decisions_rule ON employee_document_requirement_decisions(required_rule_id);
 
 CREATE TABLE IF NOT EXISTS document_retention_rules (
   id TEXT PRIMARY KEY,

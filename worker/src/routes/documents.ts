@@ -16,6 +16,14 @@ import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { createDirectR2PresignedPutUrl, createSecureDocumentObjectKey, getConfiguredDocumentUploadMode, getDirectUploadMaxBytes, getDirectUploadTtlSeconds, isDirectR2UploadConfigured, resolveDocumentUploadMode } from "../utils/r2-direct-upload";
 import { readJsonBody, readString } from "../utils/validation";
 import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
+import {
+  buildDocumentRequirementDecisionList,
+  decideDocumentNotRequired,
+  revokeDocumentDecision,
+  sanitizeDocumentDecisionError,
+  syncDocumentDecisionAfterUpload,
+  waiveDocumentRequirement
+} from "../employee-setup/document-requirement-decisions";
 
 type BindValue = string | number | null;
 type StoredStatus = "ACTIVE" | "ARCHIVED" | "SOFT_DELETED";
@@ -32,6 +40,8 @@ const DOCUMENT_TYPE_LIST_COLUMNS = `
 const DOCUMENT_REQUIRED_RULE_LIST_COLUMNS = `
   rr.id, rr.document_type_id, rr.employee_type, rr.employment_type, rr.department_id,
   rr.position_id, rr.location_id, rr.custom_condition_json, rr.is_required,
+  rr.waiver_allowed, rr.exemption_allowed, rr.hard_required,
+  rr.waiver_requires_reason, rr.waiver_requires_approval,
   rr.rule_priority, rr.is_active, rr.created_at, rr.updated_at,
   dt.name AS document_type_name, dc.name AS category_name,
   d.name AS department_name, p.title AS position_title, l.name AS location_name
@@ -793,6 +803,11 @@ function readRuleBody(body: Record<string, unknown>) {
     location_id: optionalString(body.location_id),
     custom_condition_json: optionalString(body.custom_condition_json),
     is_required: typeof body.is_required === "boolean" ? body.is_required : true,
+    waiver_allowed: typeof body.waiver_allowed === "boolean" ? body.waiver_allowed : true,
+    exemption_allowed: typeof body.exemption_allowed === "boolean" ? body.exemption_allowed : true,
+    hard_required: typeof body.hard_required === "boolean" ? body.hard_required : false,
+    waiver_requires_reason: typeof body.waiver_requires_reason === "boolean" ? body.waiver_requires_reason : true,
+    waiver_requires_approval: typeof body.waiver_requires_approval === "boolean" ? body.waiver_requires_approval : false,
     rule_priority: numeric(body.rule_priority, 100)
   };
 }
@@ -826,9 +841,11 @@ documentRoutes.post("/required-rules", requirePermission("documents.required_rul
   const id = crypto.randomUUID();
   await c.env.DB.prepare(
     `INSERT INTO document_required_rules
-     (id, document_type_id, employee_type, employment_type, department_id, position_id, location_id, custom_condition_json, is_required, rule_priority)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(id, rule.document_type_id, rule.employee_type, rule.employment_type, rule.department_id, rule.position_id, rule.location_id, rule.custom_condition_json, rule.is_required ? 1 : 0, rule.rule_priority).run();
+     (id, document_type_id, employee_type, employment_type, department_id, position_id, location_id,
+      custom_condition_json, is_required, waiver_allowed, exemption_allowed, hard_required,
+      waiver_requires_reason, waiver_requires_approval, rule_priority)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(id, rule.document_type_id, rule.employee_type, rule.employment_type, rule.department_id, rule.position_id, rule.location_id, rule.custom_condition_json, rule.is_required ? 1 : 0, rule.waiver_allowed ? 1 : 0, rule.exemption_allowed ? 1 : 0, rule.hard_required ? 1 : 0, rule.waiver_requires_reason ? 1 : 0, rule.waiver_requires_approval ? 1 : 0, rule.rule_priority).run();
   await auditDocument(c, { action: "document.required_rule.created", entityType: "document_required_rule", entityId: id, newValue: rule });
   await publishAccessEvent(c.env, "document.required_missing_changed", { actor_user_id: c.get("currentUser").id, entity_type: "document_required_rule", entity_id: id, action: "created" });
   const created = { id, ...rule, is_active: true };
@@ -844,8 +861,10 @@ documentRoutes.patch("/required-rules/:id", requirePermission("documents.require
   if (invalid) return invalid;
   await c.env.DB.prepare(
     `UPDATE document_required_rules SET document_type_id = ?, employee_type = ?, employment_type = ?, department_id = ?,
-      position_id = ?, location_id = ?, custom_condition_json = ?, is_required = ?, rule_priority = ?, updated_at = ? WHERE id = ?`
-  ).bind(rule.document_type_id, rule.employee_type, rule.employment_type, rule.department_id, rule.position_id, rule.location_id, rule.custom_condition_json, rule.is_required ? 1 : 0, rule.rule_priority, new Date().toISOString(), id).run();
+      position_id = ?, location_id = ?, custom_condition_json = ?, is_required = ?, waiver_allowed = ?,
+      exemption_allowed = ?, hard_required = ?, waiver_requires_reason = ?, waiver_requires_approval = ?,
+      rule_priority = ?, updated_at = ? WHERE id = ?`
+  ).bind(rule.document_type_id, rule.employee_type, rule.employment_type, rule.department_id, rule.position_id, rule.location_id, rule.custom_condition_json, rule.is_required ? 1 : 0, rule.waiver_allowed ? 1 : 0, rule.exemption_allowed ? 1 : 0, rule.hard_required ? 1 : 0, rule.waiver_requires_reason ? 1 : 0, rule.waiver_requires_approval ? 1 : 0, rule.rule_priority, new Date().toISOString(), id).run();
   await auditDocument(c, { action: "document.required_rule.updated", entityType: "document_required_rule", entityId: id, oldValue: old, newValue: rule });
   const updated = { id, ...rule };
   return ok(c, { rule: updated, required_rule: updated });
@@ -1108,6 +1127,107 @@ employeeDocumentRoutes.get("/:employeeId/documents", requirePermission("document
   const docs = (await listRegistry(c)).filter((doc) => doc.employee_id === employeeId);
   const missing = (await missingRows(c)).filter((row) => (row as { employee_id?: string }).employee_id === employeeId);
   return ok(c, { documents: docs, missing });
+});
+
+employeeDocumentRoutes.get("/:employeeId/document-requirements", async (c) => {
+  const employeeId = routeParam(c, "employeeId");
+  if (!requireAnyPermission(c, ["documents.requirement_decision.view", "documents.view", "employees.view"])) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to view document requirement decisions.");
+  }
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "view"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const result = await buildDocumentRequirementDecisionList(c.env.DB, employeeId);
+  return ok(c, {
+    employee: result.employee,
+    decisions: result.decisions,
+    summary: result.summary,
+    activation_blockers: result.activation_blockers
+  });
+});
+
+async function documentRequirementDecisionResponse(c: Context<AppBindings>, employeeId: string, action: string, reason: string | null, bodyAction: () => Promise<Awaited<ReturnType<typeof buildDocumentRequirementDecisionList>>>) {
+  try {
+    const result = await bodyAction();
+    await auditDocument(c, {
+      action,
+      entityType: "employee_document_requirement_decision",
+      entityId: `${employeeId}:${routeParam(c, "documentTypeId")}`,
+      newValue: { document_type_id: routeParam(c, "documentTypeId"), summary: result.summary },
+      reason
+    });
+    const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, {
+      employeeId,
+      savedSectionKey: "documents",
+      staleSectionKeys: ["final_verification"]
+    });
+    return ok(c, employeeSetupStatusUpdateResponse({
+      decisions: result.decisions,
+      summary: result.summary,
+      activation_blockers: result.activation_blockers
+    }, setupStatusUpdate));
+  } catch (error) {
+    const safe = sanitizeDocumentDecisionError(error);
+    console.warn(JSON.stringify({ level: "warn", message: safe.safe_log_message, action, employee_id: employeeId, document_type_id: routeParam(c, "documentTypeId") }));
+    return fail(c, safe.code === "DOCUMENT_DECISION_REASON_REQUIRED" ? 400 : 409, safe.code, `${safe.message} ${safe.next_action}`);
+  }
+}
+
+employeeDocumentRoutes.post("/:employeeId/document-requirements/:documentTypeId/not-required", async (c) => {
+  const employeeId = routeParam(c, "employeeId");
+  if (!requireAnyPermission(c, ["documents.requirement_decision.manage", "documents.waivers.manage"])) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to mark document requirements as not required.");
+  }
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const body = await readJsonBody(c.req.raw);
+  const reason = readString(body.reason);
+  return documentRequirementDecisionResponse(c, employeeId, "document.requirement.not_required", reason, () => decideDocumentNotRequired(c.env.DB, {
+    employeeId,
+    documentTypeId: routeParam(c, "documentTypeId"),
+    reason,
+    notes: readString(body.notes),
+    actorUserId: c.get("currentUser").id
+  }));
+});
+
+employeeDocumentRoutes.post("/:employeeId/document-requirements/:documentTypeId/waive", async (c) => {
+  const employeeId = routeParam(c, "employeeId");
+  if (!requireAnyPermission(c, ["documents.requirement_waiver.approve", "documents.waivers.manage"])) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to approve document requirement waivers.");
+  }
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const body = await readJsonBody(c.req.raw);
+  const reason = readString(body.reason);
+  return documentRequirementDecisionResponse(c, employeeId, "document.requirement.waived", reason, () => waiveDocumentRequirement(c.env.DB, {
+    employeeId,
+    documentTypeId: routeParam(c, "documentTypeId"),
+    decision: readString(body.decision) === "exempted" ? "exempted" : "waived",
+    reason,
+    notes: readString(body.notes),
+    actorUserId: c.get("currentUser").id
+  }));
+});
+
+employeeDocumentRoutes.post("/:employeeId/document-requirements/:documentTypeId/revoke", async (c) => {
+  const employeeId = routeParam(c, "employeeId");
+  if (!requireAnyPermission(c, ["documents.requirement_waiver.revoke", "documents.waivers.manage"])) {
+    return fail(c, 403, "FORBIDDEN", "You do not have permission to revoke document requirement decisions.");
+  }
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), employeeId, "documents", "manage"))) {
+    return fail(c, 404, "NOT_FOUND", "Employee was not found.");
+  }
+  const body = await readJsonBody(c.req.raw);
+  const reason = readString(body.reason);
+  return documentRequirementDecisionResponse(c, employeeId, "document.requirement.revoked", reason, () => revokeDocumentDecision(c.env.DB, {
+    employeeId,
+    documentTypeId: routeParam(c, "documentTypeId"),
+    reason,
+    actorUserId: c.get("currentUser").id
+  }));
 });
 
 async function createDocumentVersion(c: Context<AppBindings>, input: { employeeId: string; documentId: string; file: File; versionNo: number; reason?: string | null }) {
@@ -1551,6 +1671,12 @@ async function commitUploadedDocumentSession(c: Context<AppBindings>, session: P
     const doc = await getDocument(c.env.DB, session.document_id, session.employee_id);
     await auditDocument(c, { action: "document.uploaded", entityType: "document", entityId: session.document_id, oldValue: null, newValue: doc, reason: session.reason_for_replacement });
     await publishDocument(c, "document.uploaded", session.document_id, "uploaded");
+    await syncDocumentDecisionAfterUpload(c.env.DB, {
+      employeeId: session.employee_id,
+      documentTypeId: session.document_type_id,
+      actorUserId: c.get("currentUser").id,
+      documentId: session.document_id
+    });
     await c.env.DB.prepare("UPDATE document_upload_sessions SET status = 'COMPLETED', completed_document_id = ?, completed_version_id = ?, completed_at = ?, updated_at = ? WHERE id = ?")
       .bind(session.document_id, versionId, nowIso(), nowIso(), session.id)
       .run();
@@ -1631,7 +1757,8 @@ export async function completeDocumentUploadSessions(c: Context<AppBindings>, up
   const setupStatusUpdate = completedCount > 0 && completedEmployeeIds.size === 1
     ? await updateEmployeeSetupSectionStatusAfterSave(c, {
       employeeId: [...completedEmployeeIds][0],
-      savedSectionKey: "documents"
+      savedSectionKey: "documents",
+      staleSectionKeys: ["final_verification"]
     })
     : null;
   return {
@@ -1762,6 +1889,12 @@ export async function savePreparedEmployeeDocumentUpload(c: Context<AppBindings>
     await auditDocument(c, { action: replacing ? "document.replaced" : "document.uploaded", entityType: "document", entityId: documentId, oldValue: prepared.oldDocument, newValue: doc, reason: prepared.reason });
     await publishDocument(c, replacing ? "document.replaced" : "document.uploaded", documentId, replacing ? "replaced" : "uploaded");
     await refreshDocumentComplianceQuietly(c, prepared.employeeId, documentId);
+    await syncDocumentDecisionAfterUpload(c.env.DB, {
+      employeeId: prepared.employeeId,
+      documentTypeId: prepared.type.id,
+      actorUserId: c.get("currentUser").id,
+      documentId
+    });
     return {
       document: doc ? maskDocument(doc, hasPermission(c, "documents.sensitive.view")) : null,
       documentId,
@@ -1815,7 +1948,7 @@ export async function uploadEmployeeDocument(c: Context<AppBindings>, replaceDoc
   });
   if (prepared.response || !prepared.prepared) return prepared.response ?? fail(c, 400, "INVALID_DOCUMENT_UPLOAD", "Document upload could not be prepared.");
   const saved = await savePreparedEmployeeDocumentUpload(c, prepared.prepared);
-  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId, savedSectionKey: "documents" });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId, savedSectionKey: "documents", staleSectionKeys: ["final_verification"] });
   return ok(c, employeeSetupStatusUpdateResponse({ document: saved.document }, setupStatusUpdate), replaceDocumentId ? 200 : 201);
 }
 
@@ -1838,7 +1971,13 @@ employeeDocumentRoutes.patch("/:employeeId/documents/:documentId", requirePermis
   const updated = await getDocument(c.env.DB, doc.id, doc.employee_id);
   await auditDocument(c, { action: "document.metadata_updated", entityType: "document", entityId: doc.id, oldValue: doc, newValue: updated });
   await refreshDocumentComplianceQuietly(c, doc.employee_id, doc.id);
-  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: doc.employee_id, savedSectionKey: "documents" });
+  await syncDocumentDecisionAfterUpload(c.env.DB, {
+    employeeId: doc.employee_id,
+    documentTypeId: doc.document_type_id,
+    actorUserId: c.get("currentUser").id,
+    documentId: doc.id
+  });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: doc.employee_id, savedSectionKey: "documents", staleSectionKeys: ["final_verification"] });
   return ok(c, employeeSetupStatusUpdateResponse({ document: updated ? maskDocument(updated, hasPermission(c, "documents.sensitive.view")) : null }, setupStatusUpdate));
 });
 
@@ -1865,7 +2004,13 @@ async function documentStatusAction(c: Context<AppBindings>, status: StoredStatu
   await auditDocument(c, { action: `document.${action}`, entityType: "document", entityId: doc.id, oldValue: doc, newValue: updated, reason: reasonResult.reason });
   await publishDocument(c, action === "archived" ? "document.archived" : action === "restored" ? "document.restored" : "document.soft_deleted", doc.id, action);
   await refreshDocumentComplianceQuietly(c, doc.employee_id, doc.id);
-  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: doc.employee_id, savedSectionKey: "documents" });
+  await syncDocumentDecisionAfterUpload(c.env.DB, {
+    employeeId: doc.employee_id,
+    documentTypeId: doc.document_type_id,
+    actorUserId: c.get("currentUser").id,
+    documentId: updated?.status === "ACTIVE" ? doc.id : null
+  });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: doc.employee_id, savedSectionKey: "documents", staleSectionKeys: ["final_verification"] });
   return ok(c, employeeSetupStatusUpdateResponse({ document: updated ? maskDocument(updated, hasPermission(c, "documents.sensitive.view")) : null }, setupStatusUpdate));
 }
 
@@ -1891,7 +2036,13 @@ employeeDocumentRoutes.delete("/:employeeId/documents/:documentId/permanent-dele
   await c.env.DB.prepare("DELETE FROM employee_documents WHERE id = ?").bind(doc.id).run();
   await publishDocument(c, "document.permanently_deleted", doc.id, "permanently_deleted");
   await refreshDocumentComplianceQuietly(c, doc.employee_id, doc.id);
-  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: doc.employee_id, savedSectionKey: "documents" });
+  await syncDocumentDecisionAfterUpload(c.env.DB, {
+    employeeId: doc.employee_id,
+    documentTypeId: doc.document_type_id,
+    actorUserId: c.get("currentUser").id,
+    documentId: null
+  });
+  const setupStatusUpdate = await updateEmployeeSetupSectionStatusAfterSave(c, { employeeId: doc.employee_id, savedSectionKey: "documents", staleSectionKeys: ["final_verification"] });
   return ok(c, employeeSetupStatusUpdateResponse({ deleted: true }, setupStatusUpdate));
 });
 

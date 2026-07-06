@@ -1,8 +1,8 @@
-import { Archive, Download, Eye, FileUp, ImageUp, RotateCcw, Trash2, UploadCloud } from "lucide-react";
+import { Archive, Ban, CheckCircle2, Download, Eye, FileUp, ImageUp, RotateCcw, ShieldCheck, Trash2, UploadCloud, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../../lib/api";
 import { focusFirstInvalidField, normalizeValidationIssues, useFormValidation, validateDateRange, validateRequiredField, type ValidationIssue } from "../../lib/form-validation";
-import type { DocumentType, EmployeeDocument, EmployeeDocumentVersion, MissingDocument } from "../../types/documents";
+import type { DocumentType, EmployeeDocument, EmployeeDocumentRequirementDecision, EmployeeDocumentVersion, MissingDocument } from "../../types/documents";
 import type { Employee, EmployeeSetupStatusUpdate } from "../../types/employees";
 import { useAlert } from "../alerts/useAlert";
 import { FormErrorSummary } from "../forms/FormErrorSummary";
@@ -20,6 +20,13 @@ function statusTone(status: string) {
   if (status === "EXPIRING_SOON") return "warning";
   if (status === "ARCHIVED" || status === "SOFT_DELETED") return "neutral";
   return "danger";
+}
+
+function decisionTone(status: string) {
+  if (["uploaded", "not_required", "waived", "exempted"].includes(status)) return "success";
+  if (status === "expired") return "warning";
+  if (["missing", "required"].includes(status)) return "danger";
+  return "neutral";
 }
 
 function saveBlob(blob: Blob, filename: string) {
@@ -59,15 +66,21 @@ function validateDocumentUploadForm(input: {
 export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged, onSetupStatusUpdate }: { employee: Employee; token: string; permissions: Set<string>; onChanged?: () => Promise<void>; onSetupStatusUpdate?: (update?: EmployeeSetupStatusUpdate | null) => void }) {
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [missing, setMissing] = useState<MissingDocument[]>([]);
+  const [decisions, setDecisions] = useState<EmployeeDocumentRequirementDecision[]>([]);
   const [types, setTypes] = useState<DocumentType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [uploadModal, setUploadModal] = useState<{ mode: "upload" | "replace" | "photo"; document?: EmployeeDocument } | null>(null);
+  const [uploadModal, setUploadModal] = useState<{ mode: "upload" | "replace" | "photo"; document?: EmployeeDocument; documentTypeId?: string } | null>(null);
   const [versions, setVersions] = useState<{ document: EmployeeDocument; rows: EmployeeDocumentVersion[] } | null>(null);
   const [documentAction, setDocumentAction] = useState<{ document: EmployeeDocument; name: "archive" | "restore" | "soft-delete" | "permanent-delete"; reason: string } | null>(null);
+  const [decisionAction, setDecisionAction] = useState<{ row: EmployeeDocumentRequirementDecision; action: "not_required" | "waived" | "exempted" | "revoke"; reason: string } | null>(null);
   const alerts = useAlert();
 
   const canUpload = permissions.has("documents.upload");
+  const canViewDecisions = permissions.has("documents.requirement_decision.view") || permissions.has("documents.view");
+  const canManageDecisions = permissions.has("documents.requirement_decision.manage") || permissions.has("documents.waivers.manage");
+  const canApproveWaivers = permissions.has("documents.requirement_waiver.approve") || permissions.has("documents.waivers.manage");
+  const canRevokeDecisions = permissions.has("documents.requirement_waiver.revoke") || permissions.has("documents.waivers.manage");
   const canDownload = permissions.has("documents.download") || permissions.has("documents.sensitive.download");
   const canArchive = permissions.has("documents.archive");
   const canDelete = permissions.has("documents.delete");
@@ -77,10 +90,15 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
     setLoading(true);
     setError(null);
     try {
-      const [docsResult, typesResult] = await Promise.all([api.listEmployeeDocuments(token, employee.id), api.listDocumentTypes(token)]);
+      const [docsResult, typesResult, decisionsResult] = await Promise.all([
+        api.listEmployeeDocuments(token, employee.id),
+        api.listDocumentTypes(token),
+        canViewDecisions ? api.listEmployeeDocumentRequirementDecisions(token, employee.id).catch(() => null) : Promise.resolve(null)
+      ]);
       setDocuments(docsResult.documents);
       setMissing(docsResult.missing);
       setTypes(typesResult.document_types);
+      setDecisions(decisionsResult?.decisions ?? []);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load employee documents.");
     } finally {
@@ -143,6 +161,30 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
     }
   }
 
+  async function saveDecision(action: NonNullable<typeof decisionAction>) {
+    const issues = validateDocumentActionReason(action.reason);
+    if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Document decision needs a reason");
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    try {
+      const input = { reason: action.reason.trim() };
+      const result = action.action === "not_required"
+        ? await api.markEmployeeDocumentRequirementNotRequired(token, employee.id, action.row.document_type_id, input)
+        : action.action === "revoke"
+          ? await api.revokeEmployeeDocumentRequirementDecision(token, employee.id, action.row.document_type_id, input)
+          : await api.waiveEmployeeDocumentRequirement(token, employee.id, action.row.document_type_id, { ...input, decision: action.action });
+      setDecisions(result.decisions);
+      setDecisionAction(null);
+      await afterChange(result.setup_status_update);
+      alerts.showSuccess("Requirement decision saved", `${action.row.document_type_name} was updated.`);
+    } catch (err) {
+      alerts.showApiError(err, "Document decision failed");
+      setError(err instanceof ApiError ? err.message : "Unable to save document requirement decision.");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -157,6 +199,70 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
       </div>
 
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+
+      {canViewDecisions ? (
+        <div className="rounded-md border bg-white">
+          <div className="flex flex-col gap-1 border-b px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold">Document requirement decisions</div>
+              <div className="text-xs text-muted-foreground">Activation checks use uploaded documents, approved waivers, exemptions, and not-required decisions.</div>
+            </div>
+            <Badge tone={decisions.some((row) => row.activation_blocking) ? "warning" : "success"}>
+              {decisions.filter((row) => row.is_complete).length}/{decisions.length} ready
+            </Badge>
+          </div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Document</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Rule</TableHead>
+                  <TableHead>Reason / next action</TableHead>
+                  <TableHead className="text-right">Decision</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {decisions.map((row) => (
+                  <TableRow key={row.document_type_id}>
+                    <TableCell className="font-medium">
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate">{row.document_type_name}</span>
+                        <span className="text-xs text-muted-foreground">{row.category_name ?? "Uncategorized"}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge tone={decisionTone(row.status)}>{row.status_label}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {row.hard_required ? <Badge tone="danger">Hard required</Badge> : row.is_required ? <Badge tone="warning">Required</Badge> : <Badge tone="neutral">Optional</Badge>}
+                        {row.waiver_allowed ? <Badge tone="neutral">Waiver allowed</Badge> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-[320px]">
+                      <div className="min-w-0 text-xs text-muted-foreground">
+                        <div className="truncate" title={row.reason ?? row.next_action ?? undefined}>{row.reason ?? row.next_action ?? "-"}</div>
+                        {row.activation_blocking && row.next_action ? <div className="mt-1 truncate text-amber-700" title={row.next_action}>{row.next_action}</div> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {canUpload && row.can_upload ? <RowActionButton intent="upload" title="Upload" onClick={() => setUploadModal({ mode: "upload", documentTypeId: row.document_type_id })}><UploadCloud className="h-4 w-4" /></RowActionButton> : null}
+                        {canManageDecisions && row.can_mark_not_required ? <RowActionButton intent="neutral" title="Employee does not require" onClick={() => setDecisionAction({ row, action: "not_required", reason: "" })}><Ban className="h-4 w-4" /></RowActionButton> : null}
+                        {canApproveWaivers && row.can_waive ? <RowActionButton intent="approve" title="Waive" onClick={() => setDecisionAction({ row, action: "waived", reason: "" })}><ShieldCheck className="h-4 w-4" /></RowActionButton> : null}
+                        {canApproveWaivers && row.can_exempt ? <RowActionButton intent="approve" title="Exempt" onClick={() => setDecisionAction({ row, action: "exempted", reason: "" })}><CheckCircle2 className="h-4 w-4" /></RowActionButton> : null}
+                        {canRevokeDecisions && row.can_revoke ? <RowActionButton intent="delete" title="Revoke decision" onClick={() => setDecisionAction({ row, action: "revoke", reason: "" })}><XCircle className="h-4 w-4" /></RowActionButton> : null}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          {!loading && decisions.length === 0 ? <EmptyState title="No document requirement decisions" description="Required document rules and uploaded employee documents will appear here." /> : null}
+        </div>
+      ) : null}
 
       <EmployeeDocumentCompliancePanel employee={employee} token={token} permissions={permissions} />
 
@@ -221,6 +327,14 @@ export function EmployeeDocumentsPanel({ employee, token, permissions, onChanged
 
       {uploadModal ? <DocumentUploadModal employee={employee} token={token} types={types} state={uploadModal} onClose={() => setUploadModal(null)} onSaved={afterChange} /> : null}
       {versions ? <VersionsModal versions={versions} onClose={() => setVersions(null)} /> : null}
+      {decisionAction ? (
+        <DocumentDecisionModal
+          action={decisionAction}
+          onChange={(reason) => setDecisionAction({ ...decisionAction, reason })}
+          onClose={() => setDecisionAction(null)}
+          onConfirm={() => void saveDecision(decisionAction)}
+        />
+      ) : null}
       {documentAction ? (
         <DocumentActionModal
           action={documentAction}
@@ -262,10 +376,46 @@ function DocumentActionModal({ action, onChange, onClose, onConfirm }: { action:
   );
 }
 
-function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }: { employee: Employee; token: string; types: DocumentType[]; state: { mode: "upload" | "replace" | "photo"; document?: EmployeeDocument }; onClose: () => void; onSaved: (setupStatusUpdate?: EmployeeSetupStatusUpdate | null) => Promise<void> }) {
+function DocumentDecisionModal({ action, onChange, onClose, onConfirm }: { action: { row: EmployeeDocumentRequirementDecision; action: "not_required" | "waived" | "exempted" | "revoke"; reason: string }; onChange: (reason: string) => void; onClose: () => void; onConfirm: () => void }) {
+  const validation = useFormValidation();
+  const alerts = useAlert();
+  const title = action.action === "not_required"
+    ? "Employee does not require document"
+    : action.action === "revoke"
+      ? "Revoke document decision"
+      : action.action === "exempted"
+        ? "Exempt document requirement"
+        : "Waive document requirement";
+  function handleConfirm() {
+    const issues = validateDocumentActionReason(action.reason);
+    validation.setIssues(issues);
+    if (issues.some((issue) => issue.severity === "error")) {
+      alerts.showValidationError(issues, "Document decision needs a reason");
+      setTimeout(() => focusFirstInvalidField(issues), 0);
+      return;
+    }
+    onConfirm();
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+      <div className="w-full max-w-md rounded-lg border bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{action.row.document_type_name}. This decision is audit logged and will update Employee 360 setup readiness.</p>
+        <div className="mt-3"><FormErrorSummary issues={validation.issues} /></div>
+        <ValidatedReasonField required value={action.reason} issues={validation.issues} onChange={onChange} />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={handleConfirm}>{action.action === "revoke" ? "Revoke" : "Save decision"}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocumentUploadModal({ employee, token, types, state, onClose, onSaved }: { employee: Employee; token: string; types: DocumentType[]; state: { mode: "upload" | "replace" | "photo"; document?: EmployeeDocument; documentTypeId?: string }; onClose: () => void; onSaved: (setupStatusUpdate?: EmployeeSetupStatusUpdate | null) => Promise<void> }) {
   const activeTypes = useMemo(() => types.filter((type) => type.is_active), [types]);
   const profilePhotoType = activeTypes.find((type) => type.code === "PROFILE_PHOTO");
-  const [documentTypeId, setDocumentTypeId] = useState(state.document?.document_type_id ?? (state.mode === "photo" ? profilePhotoType?.id : activeTypes[0]?.id) ?? "");
+  const [documentTypeId, setDocumentTypeId] = useState(state.document?.document_type_id ?? state.documentTypeId ?? (state.mode === "photo" ? profilePhotoType?.id : activeTypes[0]?.id) ?? "");
   const selectedType = state.mode === "photo" ? profilePhotoType : activeTypes.find((type) => type.id === documentTypeId);
   const [file, setFile] = useState<File | null>(null);
   const [documentNumber, setDocumentNumber] = useState(state.document?.document_number ?? "");
