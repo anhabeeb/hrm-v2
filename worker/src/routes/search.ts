@@ -119,7 +119,7 @@ export function getSearchableModuleRegistry(): SearchRegistryEntry[] {
     { module: "Contracts", moduleKey: "contracts", permissions: ["contracts.view", "employees.contracts.view"], route: "/contracts", type: "contract" },
     { module: "Assets", moduleKey: "assets_uniforms", permissions: ["assets.view"], route: "/assets", type: "asset" },
     { module: "Approvals", moduleKey: "approvals", permissions: ["approvals.view", "approvals.inbox.view"], route: "/approvals", type: "approval" },
-    { module: "Lifecycle", moduleKey: "onboarding", permissions: ["onboarding.cases.view", "employees.lifecycle.view"], route: "/onboarding/cases", type: "onboarding" },
+    { module: "Employee Setup", moduleKey: "employees", permissions: ["employees.view", "employees.lifecycle.view", "onboarding.cases.view"], route: "/employees/setup", type: "onboarding" },
     { module: "Lifecycle", moduleKey: "offboarding", permissions: ["offboarding.cases.view", "employees.lifecycle.view"], route: "/offboarding/cases", type: "offboarding" },
     { module: "Reports", moduleKey: "reports", permissions: ["reports.view"], route: "/reports", type: "report" },
     { module: "Settings", moduleKey: "settings", permissions: ["settings.view", "admin.settings_hub.view"], route: "/settings", type: "settings" },
@@ -461,7 +461,7 @@ async function searchLifecycleForUser(db: Env["DB"], user: AuthUser, q: string, 
       user,
       "onboarding",
       "view",
-      `SELECT oc.id, oc.case_number, oc.onboarding_status, e.employee_no, e.full_name
+      `SELECT oc.id, oc.case_number, oc.onboarding_status, e.id AS employee_id, e.employee_no, e.full_name
        FROM employee_onboarding_cases oc
        JOIN employees e ON e.id = oc.employee_id
        WHERE /*SCOPE*/ AND (lower(COALESCE(e.full_name, '')) LIKE ? OR lower(COALESCE(e.employee_no, '')) LIKE ? OR lower(COALESCE(oc.case_number, '')) LIKE ? OR lower(COALESCE(oc.onboarding_status, '')) LIKE ?)
@@ -469,7 +469,7 @@ async function searchLifecycleForUser(db: Env["DB"], user: AuthUser, q: string, 
       "e",
       [like, like, like, like, limit]
     );
-    items.push(...rows.results.map((row) => ({ id: String(row.id), type: "onboarding", module: "Lifecycle", title: `Onboarding ${row.case_number}`, subtitle: `${row.full_name} - ${row.employee_no ?? ""}`, status: String(row.onboarding_status ?? ""), route: "/onboarding/cases", icon_key: "check-circle" })));
+    items.push(...rows.results.map((row) => ({ id: String(row.id), type: "onboarding", module: "Employee Setup", title: `Employee setup ${row.case_number}`, subtitle: `${row.full_name} - ${row.employee_no ?? ""}`, status: String(row.onboarding_status ?? ""), route: `/employees/${row.employee_id}?setup=1`, icon_key: "check-circle" })));
   }
   const offboardingEntry = registry.find((item) => item.type === "offboarding")!;
   if (await moduleAllowed(db, user, offboardingEntry)) {

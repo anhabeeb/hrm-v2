@@ -60,8 +60,8 @@ type CaseKind = "onboarding" | "offboarding";
 type Row = Record<string, unknown>;
 
 const nav = [
-  { label: "Onboarding Dashboard", mode: "onboarding-dashboard", to: "/onboarding" },
-  { label: "Onboarding Cases", mode: "onboarding-cases", to: "/onboarding/cases" },
+  { label: "Employee Setup", mode: "onboarding-dashboard", to: "/employees/setup" },
+  { label: "Onboarding History", mode: "onboarding-cases", to: "/onboarding/history" },
   { label: "Onboarding Alerts", mode: "onboarding-alerts", to: "/onboarding/alerts" },
   { label: "Offboarding Dashboard", mode: "offboarding-dashboard", to: "/offboarding" },
   { label: "Offboarding Cases", mode: "offboarding-cases", to: "/offboarding/cases" },

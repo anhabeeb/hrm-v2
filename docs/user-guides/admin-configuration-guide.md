@@ -1,5 +1,9 @@
 # Admin Configuration Guide
 
+## Employee 360 Setup Rollout Controls
+
+Employee 360 setup is the primary activation path. Admins can run `npm run migrate:onboarding-to-employee360-setup` as a dry run, then enable write mode only with `HRM_MIGRATE_ONBOARDING_TO_EMPLOYEE360=true` and `HRM_MIGRATE_CONFIRM=YES`. Do not activate employees from migration scripts; activation remains controlled by Employee 360 final verification.
+
 ## Recommended Initial Configuration Order
 
 1. Login and Super Admin access: confirm at least one protected Owner or Super Admin can sign in. Do not share Super Admin accounts.
@@ -44,4 +48,3 @@
 - Salary payment date: 10th of next month
 - Local employee documents: ID Card, Employment Contract, Medical if configured
 - Foreign employee documents: Passport, Visa, Work Permit, Employment Contract
-

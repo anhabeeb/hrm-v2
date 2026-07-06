@@ -923,6 +923,9 @@ export const api = {
   listEmployees(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
     return request<{ employees: Employee[]; pagination?: Record<string, unknown> }>(`/api/v1/employees${query(filters)}`, { signal }, token);
   },
+  listEmployeeSetupQueue(token: string, filters?: Record<string, string | number | boolean | null | undefined>, signal?: AbortSignal) {
+    return request<{ mode: string; setup_employees: Employee[]; employees: Employee[]; pagination?: Record<string, unknown> }>(`/api/v1/employees/setup${query(filters)}`, { signal }, token);
+  },
   getEmployeeAssignmentOptions(token: string) {
     return request<{ departments: OrganizationDepartment[]; locations: OrganizationLocation[]; positions: OrganizationPosition[]; job_levels: OrganizationJobLevel[]; reporting_managers: Employee[] }>("/api/v1/employees/assignment-options", {}, token);
   },

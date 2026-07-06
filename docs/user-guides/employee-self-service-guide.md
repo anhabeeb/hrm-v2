@@ -1,5 +1,9 @@
 # Employee Self-Service Guide
 
+## Employee 360 Setup Awareness
+
+Employees may see self-service access only after HR completes Employee 360 setup, final verification, and activation. Legacy onboarding history can remain attached to the employee record, but active setup and activation decisions are handled through Employee 360 setup.
+
 ## Login
 
 Sign in with the user account linked to your active employee profile. If your account is not linked or your employee status is inactive, contact HR.
@@ -31,4 +35,3 @@ You can view assets/uniforms, payslips, payment info, contracts, onboarding, off
 ## Missing Access
 
 If a section is missing, the module may be disabled, your account may lack permission, or your employee record may not be active.
-

@@ -22,6 +22,8 @@ Use this checklist for final browser-based production scenario review. It comple
 - Search/filter/date controls use compact standardized controls.
 - Large lists remain paginated or virtualized.
 - Assets & Uniforms disabled does not block core employee access.
+- Employee 360 Setup queue opens pending setup, pending final verification, and pending approval employees in `/employees/:id?setup=1`.
+- Legacy onboarding navigation redirects to Employee 360 setup rather than the old editable onboarding workspace.
 
 ## Onboarding Popup
 

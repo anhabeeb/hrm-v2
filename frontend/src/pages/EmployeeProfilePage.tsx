@@ -1,6 +1,6 @@
 import { Archive, ArrowLeft, CheckCircle2, Pencil } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
 import { EmployeeAttendancePanel } from "../components/attendance/EmployeeAttendancePanel";
 import { EmployeeAuditPanel } from "../components/audit/EmployeeAuditPanel";
@@ -65,6 +65,7 @@ export function EmployeeProfilePage() {
   const { id } = useParams();
   const { token, user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<ProfileTab>("Overview");
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [statuses, setStatuses] = useState<EmployeeStatusSetting[]>([]);
@@ -250,6 +251,10 @@ export function EmployeeProfilePage() {
   useEffect(() => {
     if (!visibleProfileTabs.includes(activeTab)) setActiveTab("Overview");
   }, [activeTab, visibleProfileTabs]);
+
+  useEffect(() => {
+    if (searchParams.get("setup") === "1") setActiveTab("Overview");
+  }, [searchParams]);
 
   useEffect(() => {
     setLoadedTabs({});

@@ -10,7 +10,7 @@ import {
   type Employee360FinalActivationVerificationResult
 } from "../employee-setup/final-activation-verifier";
 import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
-import { getEmployeeSetupSectionPreviewPayload, rebuildEmployeeSetupSectionStatuses, sanitizeEmployeeSetupStatusError } from "../employee-setup/section-status";
+import { ensureEmployeeSetupSectionStatusesSchema, getEmployeeSetupSectionPreviewPayload, rebuildEmployeeSetupSectionStatuses, sanitizeEmployeeSetupStatusError } from "../employee-setup/section-status";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/permissions";
 import { hasValidationErrors, validateAccessScope, validateDateField, validateDateRange, validateEnumValue, validateOrganizationCascadeWithScope, validateRequiredFields, validateStringLength, validationResponse } from "../lib/moduleValidation";
@@ -1527,6 +1527,113 @@ employeeRoutes.get("/", requirePermission("employees.view"), async (c) => {
     .all<EmployeeRow>(), "employees.list.lightweight");
   return ok(c, {
     employees: await timeStage(c, "serialization", async () => rows.results.map((row) => toEmployee(row, hasPermission(c, "employees.sensitive.view")))),
+    pagination: paginationMeta(pagination, rows.results.length)
+  });
+});
+
+employeeRoutes.get("/setup", requirePermission("employees.view"), async (c) => {
+  const conditions: string[] = [];
+  const params: BindValue[] = [];
+  const pagination = parsePaginationParams(c, { defaultLimit: 25, maxLimit: 100 });
+  const scope = await timeStage(c, "permission", () => buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "employees", "view", "e"));
+  conditions.push(scope.sql);
+  params.push(...scope.params);
+  conditions.push("e.archived_at IS NULL");
+  const setupStatusKeys = ["PENDING_SETUP", "PENDING_FINAL_VERIFICATION", "PENDING_APPROVAL", "DRAFT_ONBOARDING", "ONBOARDING", "NOT_ACTIVE"];
+  conditions.push(`s.key IN (${setupStatusKeys.map(() => "?").join(", ")})`);
+  params.push(...setupStatusKeys);
+  const search = readString(c.req.query("search"));
+  if (search) {
+    conditions.push("(e.employee_no LIKE ? OR e.full_name LIKE ? OR e.display_name LIKE ? OR oc.case_number LIKE ?)");
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  const statusKey = readString(c.req.query("status_key"));
+  if (statusKey && setupStatusKeys.includes(statusKey)) {
+    conditions.push("s.key = ?");
+    params.push(statusKey);
+  }
+  const departmentId = readString(c.req.query("department_id"));
+  if (departmentId) {
+    conditions.push("e.primary_department_id = ?");
+    params.push(departmentId);
+  }
+  const locationId = readString(c.req.query("location_id"));
+  if (locationId) {
+    conditions.push("e.primary_location_id = ?");
+    params.push(locationId);
+  }
+  await ensureEmployeeSetupSectionStatusesSchema(c.env.DB);
+  const rows = await timeD1(c, () => c.env.DB
+    .prepare(
+      `SELECT
+        e.id, e.employee_no, e.profile_photo_document_id, e.full_name, e.display_name,
+        e.gender, e.date_of_birth, e.nationality, e.employee_type, e.employment_type,
+        e.status_id, e.primary_department_id, e.primary_position_id, e.primary_location_id,
+        e.job_level_id, e.joining_date, e.confirmation_date, e.contract_start_date,
+        e.contract_end_date, e.probation_end_date, e.reporting_manager_employee_id,
+        e.payroll_included, e.roster_eligible, e.user_id, e.exit_date, e.exit_reason,
+        e.notes_summary, e.created_at, e.updated_at, e.archived_at,
+        s.key AS status_key, s.name AS status_name,
+        d.name AS department_name, p.title AS position_title, l.name AS location_name, l.code AS location_code,
+        jl.name AS job_level_name, m.full_name AS reporting_manager_name,
+        oc.id AS active_onboarding_case_id, oc.case_number AS active_onboarding_case_number,
+        oc.onboarding_status AS active_onboarding_status, oc.activation_status AS active_activation_status,
+        COALESCE(ss.source_case_id, oc.id) AS source_case_id,
+        ss.section_count, ss.required_count, ss.complete_required_count, ss.blocked_count,
+        ss.failed_count, ss.stale_count, ss.verified_count, ss.last_evaluated_at
+       FROM employees e
+       INNER JOIN employee_statuses s ON s.id = e.status_id
+       LEFT JOIN departments d ON d.id = e.primary_department_id
+       LEFT JOIN positions p ON p.id = e.primary_position_id
+       LEFT JOIN locations l ON l.id = e.primary_location_id
+       LEFT JOIN job_levels jl ON jl.id = e.job_level_id
+       LEFT JOIN employees m ON m.id = e.reporting_manager_employee_id
+       LEFT JOIN employee_onboarding_cases oc ON oc.employee_id = e.id AND oc.onboarding_status != 'CANCELLED' AND oc.activation_status != 'ACTIVATED'
+       LEFT JOIN (
+         SELECT
+           employee_id,
+           MAX(source_case_id) AS source_case_id,
+           COUNT(*) AS section_count,
+           SUM(CASE WHEN is_required = 1 THEN 1 ELSE 0 END) AS required_count,
+           SUM(CASE WHEN is_required = 1 AND is_complete = 1 THEN 1 ELSE 0 END) AS complete_required_count,
+           SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
+           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
+           SUM(CASE WHEN is_stale = 1 THEN 1 ELSE 0 END) AS stale_count,
+           SUM(CASE WHEN is_verified = 1 THEN 1 ELSE 0 END) AS verified_count,
+           MAX(last_evaluated_at) AS last_evaluated_at
+          FROM employee_setup_section_statuses
+         GROUP BY employee_id
+       ) ss ON ss.employee_id = e.id
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY CASE s.key
+          WHEN 'PENDING_SETUP' THEN 1
+          WHEN 'PENDING_FINAL_VERIFICATION' THEN 2
+          WHEN 'PENDING_APPROVAL' THEN 3
+          ELSE 4
+        END, e.created_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .bind(...params, pagination.limit, pagination.offset)
+    .all<EmployeeRow & Record<string, unknown>>(), "employees.setup.queue");
+  const employees = await timeStage(c, "serialization", async () => rows.results.map((row) => ({
+    ...toEmployee(row, hasPermission(c, "employees.sensitive.view")),
+    setup_summary: {
+      mode: "employee_360_setup",
+      source_case_id: row.source_case_id ?? null,
+      section_count: Number(row.section_count ?? 0),
+      required_count: Number(row.required_count ?? 0),
+      complete_required_count: Number(row.complete_required_count ?? 0),
+      blocked_count: Number(row.blocked_count ?? 0),
+      failed_count: Number(row.failed_count ?? 0),
+      stale_count: Number(row.stale_count ?? 0),
+      verified_count: Number(row.verified_count ?? 0),
+      last_evaluated_at: row.last_evaluated_at ?? null
+    }
+  })));
+  return ok(c, {
+    mode: "employee_360_setup",
+    setup_employees: employees,
+    employees,
     pagination: paginationMeta(pagination, rows.results.length)
   });
 });

@@ -72,7 +72,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Lifecycle",
     items: [
-      { label: "Onboarding", to: "/onboarding", icon: CheckCircle2, permissionAny: ["onboarding.dashboard.view", "onboarding.cases.view", "employees.lifecycle.view"], moduleKey: "onboarding", preloadKey: "onboarding-case" },
+      { label: "Employee Setup", to: "/employees/setup", icon: CheckCircle2, permissionAny: ["employees.view", "employees.lifecycle.view", "onboarding.cases.view"], moduleKey: "onboarding", preloadKey: "employee-setup" },
       { label: "Offboarding", to: "/offboarding", icon: Archive, permissionAny: ["offboarding.dashboard.view", "offboarding.cases.view", "employees.lifecycle.view"], moduleKey: "offboarding", preloadKey: "onboarding-case" },
       { label: "Approvals", to: "/approvals", icon: GitBranch, permissionAny: ["approvals.view", "approvals.inbox.view", "approvals.instances.view"], moduleKey: "approvals", preloadKey: "approvals" }
     ]

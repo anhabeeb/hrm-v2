@@ -4,6 +4,10 @@
 
 Onboarding starts from employee creation, auto-created onboarding cases where enabled, or manual case creation for older employees. Duplicate active onboarding cases are prevented.
 
+## Employee 360 Setup Rollout
+
+New and migrated onboarding work is completed from Employee 360 setup. Open **Employees > Employee Setup** to complete pending setup sections, rebuild readiness, run final verification, and submit activation. Legacy onboarding cases remain as history, but normal HR setup work should open the employee profile at `/employees/:id?setup=1`.
+
 ## Onboarding Popup Layout
 
 The popup uses an employee info right panel and setup navigation. Checklist and Approval Timeline are not visible as popup setup sections after accepted cleanup.

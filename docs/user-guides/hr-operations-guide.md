@@ -1,5 +1,9 @@
 # HR Operations Guide
 
+## Employee 360 Setup
+
+Use **Employees > Employee Setup** as the operational queue for pending employee setup, pending final verification, and pending activation approval. Employee 360 setup replaces the old editable onboarding workspace for normal HR operations while preserving old onboarding cases as read-only history/fallback records.
+
 ## Employee List, Search, and Filter
 
 Use Employees to search, filter, and open employee records. Visibility follows role permissions and access scopes.
@@ -39,4 +43,3 @@ Review leave requests, approval timelines, attendance corrections, payroll profi
 ## Disabled Module Behavior
 
 Disabled modules are hidden from operational UI and do not block onboarding/offboarding if marked Not Required by settings.
-

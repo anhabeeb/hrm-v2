@@ -117,7 +117,7 @@ export function getNotificationRouteForEntity(input: { module_key?: string | nul
   if (type === "employee" && id) return `/employees/${id}`;
   if (type === "payroll_run" && id) return `/payroll/runs/${id}`;
   if (type === "approval") return "/approvals";
-  if (type === "onboarding_case") return "/onboarding/cases";
+  if (type === "onboarding_case") return id ? `/employees/setup?legacy_case=${encodeURIComponent(id)}` : "/employees/setup";
   if (type === "offboarding_case") return "/offboarding/cases";
   if (type === "document") return "/documents/registry";
   if (type === "contract") return "/contracts";

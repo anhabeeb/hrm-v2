@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ComponentType, type ReactElement } from "react";
-import { Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppLoader, PageLoader } from "../components/loading";
 import { Button } from "../components/ui/button";
 import { ModuleDisabledState } from "../components/ui/page-shell";
@@ -51,6 +51,7 @@ const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPag
 const DocumentSettingsPage = lazyPage(() => import("../pages/DocumentSettingsPage"), "DocumentSettingsPage");
 const EmployeeNotesSettingsPage = lazyPage(() => import("../pages/EmployeeNotesSettingsPage"), "EmployeeNotesSettingsPage");
 const EmployeeProfilePage = lazyPage(() => import("../pages/EmployeeProfilePage"), "EmployeeProfilePage");
+const EmployeeSetupListPage = lazyPage(() => import("../pages/EmployeeSetupListPage"), "EmployeeSetupListPage");
 const EmployeeSettingsPage = lazyPage(() => import("../pages/EmployeeSettingsPage"), "EmployeeSettingsPage");
 const EmployeesPage = lazyPage(() => import("../pages/EmployeesPage"), "EmployeesPage");
 const FinalSettlementPage = lazyPage(() => import("../pages/FinalSettlementPage"), "FinalSettlementPage");
@@ -96,6 +97,7 @@ const SetupPage = lazyPage(() => import("../pages/SetupPage"), "SetupPage");
 const UsersAccessPage = lazyPage(() => import("../pages/UsersAccessPage"), "UsersAccessPage");
 
 registerRoutePreloader("employee-profile", () => EmployeeProfilePage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("employee-setup", () => EmployeeSetupListPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("employees", () => EmployeesPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("dashboard", () => DashboardPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("onboarding-case", () => LifecyclePage.preload?.() ?? Promise.resolve());
@@ -166,6 +168,13 @@ function defaultLandingPath(user: { permissions: string[]; employee_id?: string 
   return "/";
 }
 
+function LegacyOnboardingRedirect() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const caseId = params.get("case_id") ?? params.get("legacy_case");
+  return <Navigate to={caseId ? `/employees/setup?legacy_case=${encodeURIComponent(caseId)}` : "/employees/setup"} replace />;
+}
+
 function moduleEnabled(moduleVisibility: Record<string, boolean> | undefined, moduleKey: string | string[], match: "any" | "all" = "any") {
   const keys = Array.isArray(moduleKey) ? moduleKey : [moduleKey];
   const enabled = (key: string) => moduleVisibility?.[key] !== false;
@@ -226,11 +235,13 @@ export function AppRoutes() {
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
             <Route path="employees" element={<EmployeesPage />} />
+            <Route path="employees/setup" element={<EmployeeSetupListPage />} />
             <Route path="employees/kyc-requests" element={<KycRequestsPage />} />
             <Route path="employees/settings" element={<EmployeeSettingsPage />} />
             <Route path="employees/:id" element={<EmployeeProfilePage />} />
-            <Route path="onboarding" element={operational("onboarding", "Onboarding", <LifecyclePage mode="onboarding-dashboard" />)} />
-            <Route path="onboarding/cases" element={operational("onboarding", "Onboarding", <LifecyclePage mode="onboarding-cases" />)} />
+            <Route path="onboarding" element={<LegacyOnboardingRedirect />} />
+            <Route path="onboarding/cases" element={<LegacyOnboardingRedirect />} />
+            <Route path="onboarding/history" element={operational("onboarding", "Onboarding history", <LifecyclePage mode="onboarding-cases" />)} />
             <Route path="onboarding/alerts" element={operational("onboarding", "Onboarding", <LifecyclePage mode="onboarding-alerts" />)} />
             <Route path="onboarding/settings" element={<LifecyclePage mode="onboarding-settings" />} />
             <Route path="offboarding" element={operational("offboarding", "Offboarding", <LifecyclePage mode="offboarding-dashboard" />)} />

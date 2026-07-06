@@ -1,5 +1,9 @@
 # Production Operations Runbook
 
+## Employee 360 Setup Migration
+
+For Phase 5 onboarding-to-Employee 360 rollout, run `npm run migrate:onboarding-to-employee360-setup` first in dry-run mode and review `docs/production/onboarding-to-employee360-migration-report.md`. Write mode requires `HRM_MIGRATE_ONBOARDING_TO_EMPLOYEE360=true` and `HRM_MIGRATE_CONFIRM=YES`. Verify with `npm run verify:employee360-setup-rollout`, `npm run verify:one-case-onboarding-to-employee360`, and, when live env credentials are available, `npm run verify:live-employee360-setup-rollout`.
+
 ## Deployment Checklist
 
 1. Run typecheck, build, verifiers, smoke checks, local schema apply, and local seed apply.

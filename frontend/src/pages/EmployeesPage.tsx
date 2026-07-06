@@ -70,16 +70,15 @@ const emptyEmployee: EmployeeInput = {
 
 function statusTone(key?: string) {
   if (key === "ACTIVE" || key === "ON_LEAVE") return "success";
-  if (key === "DRAFT_ONBOARDING") return "warning";
+  if (["DRAFT_ONBOARDING", "PENDING_SETUP", "PENDING_FINAL_VERIFICATION", "PENDING_APPROVAL", "ONBOARDING", "NOT_ACTIVE"].includes(key ?? "")) return "warning";
   if (key === "ARCHIVED") return "neutral";
   return "danger";
 }
 
 function employeePrimaryRoute(employee: Employee) {
   const hasActiveOnboarding = Boolean(employee.active_onboarding_case_id && employee.active_activation_status !== "ACTIVATED" && employee.active_onboarding_status !== "CANCELLED");
-  const isPreActivation = ["DRAFT", "DRAFT_ONBOARDING", "ONBOARDING", "NOT_ACTIVE"].includes(employee.status_key ?? "");
-  if (hasActiveOnboarding) return `/onboarding/cases?case_id=${employee.active_onboarding_case_id}`;
-  if (isPreActivation) return "/onboarding/cases";
+  const isPreActivation = ["DRAFT", "DRAFT_ONBOARDING", "ONBOARDING", "NOT_ACTIVE", "PENDING_SETUP", "PENDING_FINAL_VERIFICATION", "PENDING_APPROVAL"].includes(employee.status_key ?? "");
+  if (hasActiveOnboarding || isPreActivation) return `/employees/${employee.id}?setup=1`;
   return `/employees/${employee.id}`;
 }
 

@@ -1,0 +1,26 @@
+{
+  "status": "PASS",
+  "mode": "employee_360_setup",
+  "generated_at": "2026-07-06T08:44:35.628Z",
+  "dry_run": true,
+  "write_confirmed": false,
+  "target_count": 0,
+  "migrated_count": 0,
+  "failed_count": 0,
+  "required_sections": [
+    "profile_information",
+    "contact_emergency",
+    "job_assignment",
+    "documents",
+    "contract",
+    "payroll_profile",
+    "payment_method",
+    "pension",
+    "user_access",
+    "attendance_roster",
+    "assets_uniforms",
+    "approval_tasks",
+    "final_verification"
+  ],
+  "migrated": []
+}

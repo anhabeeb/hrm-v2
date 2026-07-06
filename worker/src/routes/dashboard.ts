@@ -357,19 +357,28 @@ async function buildCommandCenterSummary(c: Context<AppBindings>) {
       const canViewOnboardingPriority = enabledModules.onboarding && hasAny(c, ["onboarding.cases.view", "onboarding.dashboard.view", "employees.lifecycle.view"]);
       const canViewOffboardingPriority = enabledModules.offboarding && hasAny(c, ["offboarding.cases.view", "offboarding.dashboard.view", "employees.lifecycle.view"]);
       const onboardingCount = canViewOnboardingPriority
-        ? await count(db, `SELECT COUNT(*) AS value FROM employee_onboarding_cases oc JOIN employees e ON e.id = oc.employee_id WHERE ${employeeScope.sql} AND oc.activation_status != 'ACTIVATED' AND oc.onboarding_status != 'CANCELLED'`, ...employeeScope.params)
+        ? await count(db, `SELECT COUNT(DISTINCT e.id) AS value
+             FROM employees e
+             JOIN employee_statuses s ON s.id = e.status_id
+             LEFT JOIN employee_onboarding_cases oc
+               ON oc.employee_id = e.id
+              AND oc.activation_status != 'ACTIVATED'
+              AND oc.onboarding_status != 'CANCELLED'
+            WHERE ${employeeScope.sql}
+              AND e.archived_at IS NULL
+              AND (s.key IN ('PENDING_SETUP', 'PENDING_FINAL_VERIFICATION', 'PENDING_APPROVAL', 'DRAFT_ONBOARDING', 'ONBOARDING', 'NOT_ACTIVE') OR oc.id IS NOT NULL)`, ...employeeScope.params)
         : 0;
       const offboardingCount = canViewOffboardingPriority
         ? await count(db, `SELECT COUNT(*) AS value FROM employee_offboarding_cases oc JOIN employees e ON e.id = oc.employee_id WHERE ${employeeScope.sql} AND oc.finalization_status != 'FINALIZED' AND oc.offboarding_status != 'CANCELLED'`, ...employeeScope.params)
         : 0;
       const exitingThisMonth = await count(db, `SELECT COUNT(*) AS value FROM employees e WHERE ${employeeScope.sql} AND e.exit_date >= ? AND e.exit_date < ?`, ...employeeScope.params, monthStart, nextMonthStart);
-      if (canViewOnboardingPriority) priorityActions.push(priority("complete-onboarding", "Complete onboarding cases", "Open employees waiting for activation readiness.", onboardingCount, "warning", "check-circle", "/onboarding/cases?status=active"));
+      if (canViewOnboardingPriority) priorityActions.push(priority("complete-onboarding", "Complete Employee 360 setup", "Open employees waiting for setup or activation readiness.", onboardingCount, "warning", "check-circle", "/employees/setup"));
       if (canViewOffboardingPriority) priorityActions.push(priority("complete-offboarding", "Complete offboarding cases", "Open exit cases that still need clearance or finalization.", offboardingCount, "warning", "archive", "/offboarding/cases?status=active"));
       const cards = [
         kpi("total-employees", "Total Employees", await count(db, `SELECT COUNT(*) AS value FROM employees e WHERE ${employeeScope.sql} AND e.archived_at IS NULL`, ...employeeScope.params), "Employees visible inside your access scope.", "info", "users", "/employees"),
         kpi("active-employees", "Active Employees", await count(db, `SELECT COUNT(*) AS value FROM employees e JOIN employee_statuses s ON s.id = e.status_id WHERE ${employeeScope.sql} AND s.key = 'ACTIVE' AND e.archived_at IS NULL`, ...employeeScope.params), "Currently active employee records.", "success", "user-check", "/employees?status=ACTIVE")
       ];
-      if (enabledModules.onboarding) cards.push(kpi("onboarding-employees", "Onboarding Employees", onboardingCount, "Active onboarding setup cases.", onboardingCount > 0 ? "warning" : "neutral", "check-circle", "/onboarding/cases?status=active"));
+      if (enabledModules.onboarding) cards.push(kpi("onboarding-employees", "Employee Setup", onboardingCount, "Employees waiting for setup, final verification, or approval.", onboardingCount > 0 ? "warning" : "neutral", "check-circle", "/employees/setup"));
       if (enabledModules.offboarding) cards.push(kpi("offboarding-employees", "Offboarding Employees", offboardingCount, "Active exit and clearance cases.", offboardingCount > 0 ? "warning" : "neutral", "archive", "/offboarding/cases?status=active"));
       cards.push(kpi("new-joiners-month", "New Joiners This Month", await count(db, `SELECT COUNT(*) AS value FROM employees e WHERE ${employeeScope.sql} AND e.joining_date >= ? AND e.joining_date < ?`, ...employeeScope.params, monthStart, nextMonthStart), "Employees with joining dates this month.", "info", "user-plus", `/employees?joined_from=${monthStart}&joined_to=${nextMonthStart}`));
       cards.push(kpi("exiting-month", "Employees Exiting This Month", exitingThisMonth, "Employees with exit dates this month.", exitingThisMonth > 0 ? "warning" : "neutral", "log-out", `/employees?exit_from=${monthStart}&exit_to=${nextMonthStart}`));
