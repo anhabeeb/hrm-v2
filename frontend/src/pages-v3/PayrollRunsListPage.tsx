@@ -10,22 +10,8 @@ import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 import { humanizeTechnicalLabel } from "../lib/displayLabels";
+import { PAYROLL_NAV_ITEMS } from "./payrollNav";
 import type { PayrollPeriod, PayrollRun } from "../types/payroll";
-
-const PAYROLL_NAV_ITEMS = [
-  { key: "runs", label: "Runs", to: "/v3-preview/payroll/runs" },
-  { key: "periods", label: "Periods", to: "/payroll/periods" },
-  { key: "payslips", label: "Payslips", to: "/payroll/payslips" },
-  { key: "payment-register", label: "Payment register", to: "/payroll/payment-register" },
-  { key: "advances", label: "Advances", to: "/payroll/advances" },
-  { key: "deductions", label: "Deductions", to: "/payroll/deductions" },
-  { key: "adjustments", label: "Adjustments", to: "/payroll/adjustments" },
-  { key: "institutions", label: "Institutions", to: "/payroll/institutions" },
-  { key: "bank-loans", label: "Bank loans", to: "/payroll/bank-loans" },
-  { key: "pension", label: "Pension", to: "/payroll/pension" },
-  { key: "final-settlement", label: "Final settlement", to: "/payroll/exit-payroll" },
-  { key: "reports", label: "Reports", to: "/payroll/reports" }
-];
 
 function statusTone(status: string) {
   if (status === "PAID" || status === "FINALIZED") return { bg: "#EAF3DE", text: "#27500A" };

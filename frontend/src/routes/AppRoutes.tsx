@@ -53,6 +53,17 @@ const AttendanceListPageV3 = lazyPage(() => import("../pages-v3/AttendanceListPa
 const AttendanceEmployeeCalendarPageV3 = lazyPage(() => import("../pages-v3/AttendanceEmployeeCalendarPage"), "AttendanceEmployeeCalendarPage");
 const PayrollRunsListPageV3 = lazyPage(() => import("../pages-v3/PayrollRunsListPage"), "PayrollRunsListPage");
 const PayrollRunDetailPageV3 = lazyPage(() => import("../pages-v3/PayrollRunDetailPage"), "PayrollRunDetailPage");
+const PayrollPeriodsPageV3 = lazyPage(() => import("../pages-v3/PayrollPeriodsPage"), "PayrollPeriodsPage");
+const PayrollPayslipsPageV3 = lazyPage(() => import("../pages-v3/PayrollPayslipsPage"), "PayrollPayslipsPage");
+const PayrollPaymentRegisterPageV3 = lazyPage(() => import("../pages-v3/PayrollPaymentRegisterPage"), "PayrollPaymentRegisterPage");
+const PayrollAdvancesPageV3 = lazyPage(() => import("../pages-v3/PayrollAdvancesPage"), "PayrollAdvancesPage");
+const PayrollDeductionsPageV3 = lazyPage(() => import("../pages-v3/PayrollDeductionsPage"), "PayrollDeductionsPage");
+const PayrollAdjustmentsPageV3 = lazyPage(() => import("../pages-v3/PayrollAdjustmentsPage"), "PayrollAdjustmentsPage");
+const PayrollInstitutionsPageV3 = lazyPage(() => import("../pages-v3/PayrollInstitutionsPage"), "PayrollInstitutionsPage");
+const PayrollBankLoansPageV3 = lazyPage(() => import("../pages-v3/PayrollBankLoansPage"), "PayrollBankLoansPage");
+const PayrollPensionPageV3 = lazyPage(() => import("../pages-v3/PayrollPensionPage"), "PayrollPensionPage");
+const PayrollFinalSettlementPageV3 = lazyPage(() => import("../pages-v3/PayrollFinalSettlementPage"), "PayrollFinalSettlementPage");
+const PayrollReportsPageV3 = lazyPage(() => import("../pages-v3/PayrollReportsPage"), "PayrollReportsPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -246,6 +257,17 @@ export function AppRoutes() {
             <Route path="v3-preview/attendance/:employeeId" element={<AttendanceEmployeeCalendarPageV3 />} />
             <Route path="v3-preview/payroll/runs" element={<PayrollRunsListPageV3 />} />
             <Route path="v3-preview/payroll/runs/:runId" element={<PayrollRunDetailPageV3 />} />
+            <Route path="v3-preview/payroll/periods" element={<PayrollPeriodsPageV3 />} />
+            <Route path="v3-preview/payroll/payslips" element={<PayrollPayslipsPageV3 />} />
+            <Route path="v3-preview/payroll/payment-register" element={<PayrollPaymentRegisterPageV3 />} />
+            <Route path="v3-preview/payroll/advances" element={<PayrollAdvancesPageV3 />} />
+            <Route path="v3-preview/payroll/deductions" element={<PayrollDeductionsPageV3 />} />
+            <Route path="v3-preview/payroll/adjustments" element={<PayrollAdjustmentsPageV3 />} />
+            <Route path="v3-preview/payroll/institutions" element={<PayrollInstitutionsPageV3 />} />
+            <Route path="v3-preview/payroll/bank-loans" element={<PayrollBankLoansPageV3 />} />
+            <Route path="v3-preview/payroll/pension" element={<PayrollPensionPageV3 />} />
+            <Route path="v3-preview/payroll/final-settlement" element={<PayrollFinalSettlementPageV3 />} />
+            <Route path="v3-preview/payroll/reports" element={<PayrollReportsPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
