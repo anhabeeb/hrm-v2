@@ -313,7 +313,7 @@ export function EmployeeProfilePage() {
       </div>
 
       <DocumentsPopup open={popup === "documents"} onClose={() => setPopup(null)} employeeName={employee.full_name} documents={documents} />
-      <LeavePopup open={popup === "leave"} onClose={() => setPopup(null)} employeeName={employee.full_name} balances={leaveBalances} requests={leaveRequests} onRequestLeave={() => navigate("/leave/requests")} />
+      <LeavePopup open={popup === "leave"} onClose={() => setPopup(null)} employeeName={employee.full_name} balances={leaveBalances} requests={leaveRequests} onRequestLeave={() => navigate("/v3-preview/leave/requests")} />
       <EmergencyContactsPopup
         open={popup === "emergency"}
         onClose={() => setPopup(null)}

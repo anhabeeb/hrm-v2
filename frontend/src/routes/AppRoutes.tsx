@@ -64,6 +64,13 @@ const PayrollBankLoansPageV3 = lazyPage(() => import("../pages-v3/PayrollBankLoa
 const PayrollPensionPageV3 = lazyPage(() => import("../pages-v3/PayrollPensionPage"), "PayrollPensionPage");
 const PayrollFinalSettlementPageV3 = lazyPage(() => import("../pages-v3/PayrollFinalSettlementPage"), "PayrollFinalSettlementPage");
 const PayrollReportsPageV3 = lazyPage(() => import("../pages-v3/PayrollReportsPage"), "PayrollReportsPage");
+const LeaveRequestsPageV3 = lazyPage(() => import("../pages-v3/LeaveRequestsPage"), "LeaveRequestsPage");
+const LeaveCalendarPageV3 = lazyPage(() => import("../pages-v3/LeaveCalendarPage"), "LeaveCalendarPage");
+const LeaveBalancesPageV3 = lazyPage(() => import("../pages-v3/LeaveBalancesPage"), "LeaveBalancesPage");
+const LeaveTypesPoliciesPageV3 = lazyPage(() => import("../pages-v3/LeaveTypesPoliciesPage"), "LeaveTypesPoliciesPage");
+const LeaveWorkflowsPageV3 = lazyPage(() => import("../pages-v3/LeaveWorkflowsPage"), "LeaveWorkflowsPage");
+const LeaveDocumentRulesPageV3 = lazyPage(() => import("../pages-v3/LeaveDocumentRulesPage"), "LeaveDocumentRulesPage");
+const LeaveDeductionRulesPageV3 = lazyPage(() => import("../pages-v3/LeaveDeductionRulesPage"), "LeaveDeductionRulesPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -268,6 +275,13 @@ export function AppRoutes() {
             <Route path="v3-preview/payroll/pension" element={<PayrollPensionPageV3 />} />
             <Route path="v3-preview/payroll/final-settlement" element={<PayrollFinalSettlementPageV3 />} />
             <Route path="v3-preview/payroll/reports" element={<PayrollReportsPageV3 />} />
+            <Route path="v3-preview/leave/requests" element={<LeaveRequestsPageV3 />} />
+            <Route path="v3-preview/leave/calendar" element={<LeaveCalendarPageV3 />} />
+            <Route path="v3-preview/leave/balances" element={<LeaveBalancesPageV3 />} />
+            <Route path="v3-preview/leave/types-policies" element={<LeaveTypesPoliciesPageV3 />} />
+            <Route path="v3-preview/leave/workflows" element={<LeaveWorkflowsPageV3 />} />
+            <Route path="v3-preview/leave/document-rules" element={<LeaveDocumentRulesPageV3 />} />
+            <Route path="v3-preview/leave/deduction-rules" element={<LeaveDeductionRulesPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
