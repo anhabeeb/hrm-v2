@@ -10,7 +10,6 @@ import { EmptyState } from "../components/ui/empty-state";
 import { TableSkeleton } from "../components/loading";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
@@ -161,13 +160,40 @@ export function AttendanceDevicesPage() {
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Code</TableHead><TableHead>Vendor</TableHead><TableHead>Mode</TableHead><TableHead>Type</TableHead><TableHead>Location</TableHead><TableHead>Status</TableHead><TableHead>Health</TableHead><TableHead>Last sync</TableHead><TableHead>Network</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{filtered.map((device) => <TableRow key={device.id}><TableCell><div className="font-medium">{device.name}</div><div className="text-xs text-muted-foreground">{device.notes ?? "-"}</div></TableCell><TableCell className="font-mono text-xs">{device.device_code}</TableCell><TableCell>{device.vendor ?? "ZKTECO"}</TableCell><TableCell>{device.device_mode ?? "CSV_IMPORT"}</TableCell><TableCell>{device.type}</TableCell><TableCell>{device.location_name ?? "-"}</TableCell><TableCell><Badge tone={device.status === "ACTIVE" ? "success" : device.status === "ARCHIVED" ? "danger" : "neutral"}>{device.status}</Badge></TableCell><TableCell><Badge tone={device.health_status === "ERROR" ? "danger" : device.health_status === "WARNING" ? "warning" : "neutral"}>{device.health_status ?? "UNKNOWN"}</Badge></TableCell><TableCell>{device.last_sync_at ? new Date(device.last_sync_at).toLocaleString() : "-"}</TableCell><TableCell>{device.ip_address ? `${device.ip_address}${device.port ? `:${device.port}` : ""}` : device.serial_number ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canTechnical ? <RowActionButton intent="hold" title="Test placeholder" onClick={() => void testDevice(device)}><Wrench className="h-4 w-4" /></RowActionButton> : null}{canManage ? <RowActionButton intent="edit" title="Edit" onClick={() => setEditing(device)}><Edit className="h-4 w-4" /></RowActionButton> : null}{canManage && device.status === "ACTIVE" ? <RowActionButton intent="disable" title="Disable" onClick={() => void action(device, "disable")}><PowerOff className="h-4 w-4 text-red-600" /></RowActionButton> : null}{canManage && device.status !== "ACTIVE" && device.status !== "ARCHIVED" ? <RowActionButton intent="enable" title="Enable" onClick={() => void action(device, "enable")}><Power className="h-4 w-4" /></RowActionButton> : null}{canArchive && device.status !== "ARCHIVED" ? <RowActionButton intent="archive" title="Archive" onClick={() => void archiveDevice(device)}><Archive className="h-4 w-4 text-red-600" /></RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
-          </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={7} label="Loading attendance devices" /> : filtered.length === 0 ? <EmptyState title="No devices found" description="Add a device or adjust the search." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={7} label="Loading attendance devices" /> : filtered.length === 0 ? <EmptyState title="No devices found" description="Add a device or adjust the search." /> : (
+          <div className="flex flex-col gap-2 p-3">
+            {filtered.map((device) => (
+              <div key={device.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-900">{device.name}</div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                    <span className="font-mono">{device.device_code}</span>
+                    <span>&middot;</span>
+                    <span>{device.vendor ?? "ZKTECO"}</span>
+                    <span>&middot;</span>
+                    <span>{device.device_mode ?? "CSV_IMPORT"}</span>
+                    <span>&middot;</span>
+                    <span>{device.type}</span>
+                    {device.location_name ? <><span>&middot;</span><span>{device.location_name}</span></> : null}
+                    <span>&middot;</span>
+                    <span>{device.ip_address ? `${device.ip_address}${device.port ? `:${device.port}` : ""}` : device.serial_number ?? "No network info"}</span>
+                    {device.last_sync_at ? <><span>&middot;</span><span>Synced {new Date(device.last_sync_at).toLocaleString()}</span></> : null}
+                    {device.notes ? <><span>&middot;</span><span className="max-w-64 truncate">{device.notes}</span></> : null}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Badge tone={device.status === "ACTIVE" ? "success" : device.status === "ARCHIVED" ? "danger" : "neutral"}>{device.status}</Badge>
+                  <Badge tone={device.health_status === "ERROR" ? "danger" : device.health_status === "WARNING" ? "warning" : "neutral"}>{device.health_status ?? "UNKNOWN"}</Badge>
+                  {canTechnical ? <RowActionButton intent="hold" title="Test placeholder" onClick={() => void testDevice(device)}><Wrench className="h-4 w-4" /></RowActionButton> : null}
+                  {canManage ? <RowActionButton intent="edit" title="Edit" onClick={() => setEditing(device)}><Edit className="h-4 w-4" /></RowActionButton> : null}
+                  {canManage && device.status === "ACTIVE" ? <RowActionButton intent="disable" title="Disable" onClick={() => void action(device, "disable")}><PowerOff className="h-4 w-4 text-red-600" /></RowActionButton> : null}
+                  {canManage && device.status !== "ACTIVE" && device.status !== "ARCHIVED" ? <RowActionButton intent="enable" title="Enable" onClick={() => void action(device, "enable")}><Power className="h-4 w-4" /></RowActionButton> : null}
+                  {canArchive && device.status !== "ARCHIVED" ? <RowActionButton intent="archive" title="Archive" onClick={() => void archiveDevice(device)}><Archive className="h-4 w-4 text-red-600" /></RowActionButton> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
       {editing !== undefined && token ? <AttendanceDeviceModal token={token} locations={locations} device={editing} onClose={() => setEditing(undefined)} onSaved={load} /> : null}
     </PageShell>

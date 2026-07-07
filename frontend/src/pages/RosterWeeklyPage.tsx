@@ -333,43 +333,47 @@ export function RosterWeeklyPage() {
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
         <div className="overflow-x-auto">
-          <Table className="min-w-[1180px]">
+          <Table className="min-w-[1180px] border-separate border-spacing-y-2">
             <TableHeader>
-              <TableRow>
-                <TableHead className="sticky left-0 z-10 bg-muted/70">Employee</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="sticky left-0 z-10 bg-transparent">Employee</TableHead>
                 {(weekly?.days ?? []).map((day) => <TableHead key={day.date}>{day.label}<div className="font-normal normal-case text-muted-foreground">{day.date.slice(5)}</div></TableHead>)}
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody className="divide-y-0 bg-transparent">
               {visibleEmployees.map((employee) => (
-                <TableRow key={employee.employee_id}>
-                  <TableCell className="sticky left-0 z-10 min-w-60 bg-white">
-                    <EmployeeIdentityCell employeeId={employee.employee_id} employeeName={employee.full_name} employeeNumber={employee.employee_no} departmentName={employee.department_name} locationName={employee.location_name} size="sm" />
+                <TableRow key={employee.employee_id} className="hover:bg-transparent">
+                  <TableCell className="sticky left-0 z-10 min-w-60 bg-[var(--v3-surface-0)] align-top">
+                    <div style={{ padding: "0.6rem 0.75rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                      <EmployeeIdentityCell employeeId={employee.employee_id} employeeName={employee.full_name} employeeNumber={employee.employee_no} departmentName={employee.department_name} locationName={employee.location_name} size="sm" />
+                    </div>
                   </TableCell>
                   {(weekly?.days ?? []).map((day) => {
                     const assignment = draft[cellKey(employee.employee_id, day.date)] ?? { status: "UNASSIGNED" };
                     const value = assignment.shift_template_id && isShiftStatus(assignment.status) ? `shift:${assignment.shift_template_id}` : assignment.status ?? "UNASSIGNED";
                     const status = String(assignment.status ?? "UNASSIGNED");
                     return (
-                      <TableCell key={day.date} className="min-w-40">
-                        <div className="flex items-center gap-1">
-                          <SelectField disabled={!canManage} className="h-8 w-full rounded-md border bg-white px-2 text-xs" value={value} onChange={(event) => updateCell(employee, day.date, event.target.value)}>
-                            {statuses.filter((item) => !["SCHEDULED"].includes(item)).map((item) => <option key={item} value={item}>{item}</option>)}
-                            {(weekly?.shift_templates ?? []).map((template) => <option key={template.id} value={`shift:${template.id}`}>{template.code}</option>)}
-                          </SelectField>
-                          {canManage ? <RowActionButton intent="edit" title="Edit assignment details" onClick={() => openEdit(employee, day.date)}><Edit className="h-4 w-4" /></RowActionButton> : null}
+                      <TableCell key={day.date} className="min-w-40 align-top">
+                        <div style={{ padding: "0.6rem 0.6rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                          <div className="flex items-center gap-1">
+                            <SelectField disabled={!canManage} className="h-8 w-full rounded-md border bg-white px-2 text-xs" value={value} onChange={(event) => updateCell(employee, day.date, event.target.value)}>
+                              {statuses.filter((item) => !["SCHEDULED"].includes(item)).map((item) => <option key={item} value={item}>{item}</option>)}
+                              {(weekly?.shift_templates ?? []).map((template) => <option key={template.id} value={`shift:${template.id}`}>{template.code}</option>)}
+                            </SelectField>
+                            {canManage ? <RowActionButton intent="edit" title="Edit assignment details" onClick={() => openEdit(employee, day.date)}><Edit className="h-4 w-4" /></RowActionButton> : null}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <Badge tone={statusTone(status)}>{status === "OFF" ? "DAY_OFF" : status}</Badge>
+                            {assignment.shift_code ? <Badge tone="neutral">{assignment.shift_code}</Badge> : null}
+                            {assignment.custom_start_time || assignment.shift_start_time ? <Badge tone="neutral">{assignment.custom_start_time ?? assignment.shift_start_time}-{assignment.custom_end_time ?? assignment.shift_end_time}</Badge> : null}
+                            {Number(assignment.changed_after_publish ?? 0) === 1 || status === "CHANGED_AFTER_PUBLISH" ? <Badge tone="warning">Changed</Badge> : null}
+                            {assignment.conflict_status || status === "CONFLICT" ? <Badge tone="warning">Conflict</Badge> : null}
+                            {status === "CANCELLED" ? <Badge tone="neutral">Cancelled</Badge> : null}
+                            {assignment.notes ? <Badge tone="info">Notes</Badge> : null}
+                          </div>
+                          {assignment.leave_indicator ? <Badge tone="warning" className="mt-1">{assignment.leave_indicator}</Badge> : null}
+                          {assignment.attendance_indicator ? <Badge tone="info" className="mt-1">{assignment.attendance_indicator}</Badge> : null}
                         </div>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          <Badge tone={statusTone(status)}>{status === "OFF" ? "DAY_OFF" : status}</Badge>
-                          {assignment.shift_code ? <Badge tone="neutral">{assignment.shift_code}</Badge> : null}
-                          {assignment.custom_start_time || assignment.shift_start_time ? <Badge tone="neutral">{assignment.custom_start_time ?? assignment.shift_start_time}-{assignment.custom_end_time ?? assignment.shift_end_time}</Badge> : null}
-                          {Number(assignment.changed_after_publish ?? 0) === 1 || status === "CHANGED_AFTER_PUBLISH" ? <Badge tone="warning">Changed</Badge> : null}
-                          {assignment.conflict_status || status === "CONFLICT" ? <Badge tone="warning">Conflict</Badge> : null}
-                          {status === "CANCELLED" ? <Badge tone="neutral">Cancelled</Badge> : null}
-                          {assignment.notes ? <Badge tone="info">Notes</Badge> : null}
-                        </div>
-                        {assignment.leave_indicator ? <Badge tone="warning" className="mt-1">{assignment.leave_indicator}</Badge> : null}
-                        {assignment.attendance_indicator ? <Badge tone="info" className="mt-1">{assignment.attendance_indicator}</Badge> : null}
                       </TableCell>
                     );
                   })}

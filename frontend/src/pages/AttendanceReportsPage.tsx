@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { AttendanceNav } from "../components/attendance/AttendanceNav";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput } from "../components/filters";
+import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { TableSkeleton } from "../components/loading";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { downloadBlob } from "../lib/export-utils";
@@ -138,13 +138,30 @@ export function AttendanceReportsPage() {
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Present</TableHead><TableHead>Absent</TableHead><TableHead>Late</TableHead><TableHead>Missed punch</TableHead><TableHead>Work minutes</TableHead></TableRow></TableHeader>
-            <TableBody>{reports.map((row, index) => <TableRow key={String(row.employee_id ?? index)}><TableCell><div className="font-medium">{String(row.employee_name ?? "-")}</div><div className="font-mono text-xs text-muted-foreground">{String(row.employee_no ?? "")}</div></TableCell><TableCell>{String(row.department_name ?? "-")}</TableCell><TableCell>{String(row.location_name ?? "-")}</TableCell><TableCell>{String(row.present_days ?? 0)}</TableCell><TableCell>{String(row.absent_days ?? 0)}</TableCell><TableCell>{String(row.late_days ?? 0)}</TableCell><TableCell>{String(row.missed_punch_days ?? 0)}</TableCell><TableCell>{String(row.total_work_minutes ?? 0)}</TableCell></TableRow>)}</TableBody>
-          </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={6} label="Loading attendance reports" /> : reports.length === 0 ? <EmptyState title="No report rows found" description="Create attendance records or adjust filters." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={6} label="Loading attendance reports" /> : reports.length === 0 ? <EmptyState title="No report rows found" description="Create attendance records or adjust filters." /> : (
+          <div className="flex flex-col gap-2 p-3">
+            {reports.map((row, index) => (
+              <div key={String(row.employee_id ?? index)} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-900">{String(row.employee_name ?? "-")}</div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                    <span className="font-mono">{String(row.employee_no ?? "")}</span>
+                    {row.department_name ? <><span>&middot;</span><span>{String(row.department_name)}</span></> : null}
+                    {row.location_name ? <><span>&middot;</span><span>{String(row.location_name)}</span></> : null}
+                    <span>&middot;</span>
+                    <span>{String(row.total_work_minutes ?? 0)} min worked</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Badge tone="success">Present {String(row.present_days ?? 0)}</Badge>
+                  <Badge tone="danger">Absent {String(row.absent_days ?? 0)}</Badge>
+                  <Badge tone="warning">Late {String(row.late_days ?? 0)}</Badge>
+                  <Badge tone="neutral">Missed {String(row.missed_punch_days ?? 0)}</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
     </PageShell>
   );

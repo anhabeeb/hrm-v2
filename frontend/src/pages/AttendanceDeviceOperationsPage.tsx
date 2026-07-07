@@ -14,7 +14,6 @@ import { FormSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
@@ -436,11 +435,43 @@ function VendorModal({ token, onClose, onSaved }: { token: string; onClose: () =
   return <Modal title="Add vendor integration placeholder" onClose={onClose}><form onSubmit={(event) => void submit(event)} className="space-y-3"><Field label="Name"><Input required value={name} onChange={(event) => setName(event.target.value)} /></Field><Field label="Vendor"><Input value={vendor} onChange={(event) => setVendor(event.target.value)} /></Field><Field label="Integration type"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={integrationType} onChange={(event) => setIntegrationType(event.target.value)}>{["CSV_IMPORT", "LOCAL_BRIDGE", "PUSH_ADMS", "API_PLACEHOLDER"].map((item) => <option key={item}>{item}</option>)}</SelectField></Field><div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><ActionTextButton intent="save" type="submit">Save placeholder</ActionTextButton></div></form></Modal>;
 }
 
+const STATUS_TOKENS = ["ACTIVE", "INACTIVE", "DISABLED", "ARCHIVED", "OPEN", "RESOLVED", "IGNORED", "MATCHED", "UNMATCHED", "NORMALIZED", "ERROR", "LOCKED_WARNING", "COMPLETED", "COMPLETED_WITH_ERRORS"];
+
+function isStatusToken(value: unknown) {
+  return typeof value === "string" && STATUS_TOKENS.includes(value);
+}
+
 function DataTable<T extends object>({ rows, columns, action }: { rows: T[]; columns: string[]; action?: (row: T) => ReactNode }) {
-  return <><div className="flex justify-end border-b px-3 py-2"><ExportMenu moduleName="Attendance device operations" rows={rows as unknown as Record<string, unknown>[]} columns={columns} /></div><div className="overflow-x-auto"><Table><TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}{action ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader><TableBody>{rows.map((row, index) => {
-    const record = row as Record<string, unknown>;
-    return <TableRow key={String(record.id ?? index)}>{columns.map((column) => <TableCell key={column}>{renderValue(record[column])}</TableCell>)}{action ? <TableCell><div className="flex justify-end">{action(row)}</div></TableCell> : null}</TableRow>;
-  })}</TableBody></Table></div></>;
+  return (
+    <>
+      <div className="flex justify-end border-b px-3 py-2"><ExportMenu moduleName="Attendance device operations" rows={rows as unknown as Record<string, unknown>[]} columns={columns} /></div>
+      <div className="flex flex-col gap-2 p-3">
+        {rows.map((row, index) => {
+          const record = row as Record<string, unknown>;
+          const statusColumn = columns.find((column) => isStatusToken(record[column]));
+          const metaColumns = columns.filter((column) => column !== statusColumn);
+          return (
+            <div key={String(record.id ?? index)} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                  {metaColumns.map((column, columnIndex) => (
+                    <span key={column} className={columnIndex === 0 ? "font-medium text-slate-900" : "text-xs text-muted-foreground"}>
+                      {columnIndex > 0 ? <span className="mr-2 text-slate-300">&middot;</span> : null}
+                      {renderValue(record[column])}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                {statusColumn ? renderValue(record[statusColumn]) : null}
+                {action ? action(row) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
 }
 
 function renderValue(value: unknown) {
@@ -449,7 +480,7 @@ function renderValue(value: unknown) {
   if (typeof value === "number") return String(value);
   const text = String(value);
   if (/^\d{4}-\d{2}-\d{2}T/.test(text)) return new Date(text).toLocaleString();
-  if (["ACTIVE", "INACTIVE", "DISABLED", "ARCHIVED", "OPEN", "RESOLVED", "IGNORED", "MATCHED", "UNMATCHED", "NORMALIZED", "ERROR", "LOCKED_WARNING", "COMPLETED", "COMPLETED_WITH_ERRORS"].includes(text)) return <Badge tone={tone(text)}>{text}</Badge>;
+  if (isStatusToken(text)) return <Badge tone={tone(text)}>{text}</Badge>;
   return text;
 }
 

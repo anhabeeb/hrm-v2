@@ -1,12 +1,11 @@
 import { Archive, Eye, Pencil, Plus, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Badge } from "../components/ui/badge";
 import { useAlert } from "../components/alerts/useAlert";
 import { ActionTextButton } from "../components/ui/action-button";
 import { Button, RowActionButton } from "../components/ui/button";
 import { ChangeEmployeeStatusModal } from "../components/employee/ChangeEmployeeStatusModal";
-import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { EmployeeCardRow } from "../components/employee/EmployeeCardRow";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { FieldError } from "../components/forms/FieldError";
 import { FormErrorSummary } from "../components/forms/FormErrorSummary";
@@ -30,8 +29,6 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { AlertBanner, CheckboxField, PageHeader, PageShell, SelectField, SelectField as UiSelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { StatusBadge } from "../components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { useDebouncedTableFilters } from "../hooks/useDebouncedTableFilters";
 import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
@@ -67,13 +64,6 @@ const emptyEmployee: EmployeeInput = {
   roster_eligible: true,
   notes_summary: ""
 };
-
-function statusTone(key?: string) {
-  if (key === "ACTIVE" || key === "ON_LEAVE") return "success";
-  if (["DRAFT_ONBOARDING", "PENDING_SETUP", "PENDING_FINAL_VERIFICATION", "PENDING_APPROVAL", "ONBOARDING", "NOT_ACTIVE"].includes(key ?? "")) return "warning";
-  if (key === "ARCHIVED") return "neutral";
-  return "danger";
-}
 
 function employeePrimaryRoute(employee: Employee) {
   const hasActiveOnboarding = Boolean(employee.active_onboarding_case_id && employee.active_activation_status !== "ACTIVATED" && employee.active_onboarding_status !== "CANCELLED");
@@ -326,59 +316,34 @@ export function EmployeesPage() {
           <StandardSelectFilter value={levelId === "all" ? "" : levelId} onValueChange={(value) => { setLevelId(value || "all"); setPositionId("all"); }} allLabel="All job levels" width="jobLevel" options={filteredJobLevels.map((level) => ({ value: level.id, label: level.name }))} />
         </StandardFilterBar>
         <ActiveFilterChips chips={activeChips} />
-        <PerformanceDataTable loading={tableLoading} refreshing={tableRefreshing} error={tableError} empty={filtered.length === 0} rowCount={filtered.length} emptyTitle="No employees found" emptyDescription="Create a draft employee or adjust filters.">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="sticky left-0 z-10 min-w-[280px] bg-white">Employee</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Position</TableHead>
-                  <TableHead>Outlet/Location</TableHead>
-                  <TableHead>Job Level</TableHead>
-                  <TableHead>Employee Type</TableHead>
-                  <TableHead>Employment Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Joining Date</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((employee) => (
-                  <TableRow key={employee.id}>
-                    <TableCell className="sticky left-0 z-10 bg-white">
-                      <EmployeeIdentityCell
-                        employee={employee}
-                        token={token}
-                        employeeName={employee.full_name}
-                        employeeNumber={employee.employee_no}
-                        departmentName={employee.department_name}
-                        locationName={employee.location_name}
-                        status={employee.status_name ?? employee.status_key}
-                        to={employeePrimaryRoute(employee)}
-                      />
-                    </TableCell>
-                    <TableCell>{employee.department_name ?? "-"}</TableCell>
-                    <TableCell>{employee.position_title ?? "-"}</TableCell>
-                    <TableCell>{employee.location_name ?? "-"}</TableCell>
-                    <TableCell>{employee.job_level_name ?? "-"}</TableCell>
-                    <TableCell>{employee.employee_type}</TableCell>
-                    <TableCell>{employee.employment_type}</TableCell>
-                    <TableCell><StatusBadge value={employee.status_name ?? employee.status_key ?? "-"} /></TableCell>
-                    <TableCell>{employee.joining_date ?? "-"}</TableCell>
-                    <TableCell><Badge tone={employee.user_linked ? "success" : "neutral"}>{employee.user_linked ? "Linked" : "Not linked"}</Badge></TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        <RowActionButton intent="view" title={employee.active_onboarding_case_id ? "Open onboarding case" : "View"} onClick={() => navigate(employeePrimaryRoute(employee))}><Eye className="h-4 w-4" /></RowActionButton>
-                        {canUpdate ? <RowActionButton intent="edit" title="Edit" onClick={() => setModal({ mode: "edit", employee })}><Pencil className="h-4 w-4" /></RowActionButton> : null}
-                        {canStatus ? <RowActionButton intent="neutral" title="Change status" onClick={() => { setStatusModalError(null); setStatusModalEmployee(employee); }}><Settings2 className="h-4 w-4" /></RowActionButton> : null}
-                        {canArchive ? <RowActionButton intent="archive" title="Archive" onClick={() => setArchiveTarget(employee)}><Archive className="h-4 w-4" /></RowActionButton> : null}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        <PerformanceDataTable
+          loading={tableLoading}
+          refreshing={tableRefreshing}
+          error={tableError}
+          empty={filtered.length === 0}
+          rowCount={filtered.length}
+          emptyTitle="No employees found"
+          emptyDescription="Create a draft employee or adjust filters."
+          className="border-0 bg-transparent p-0 shadow-none"
+        >
+          <div className="flex flex-col gap-2">
+            {filtered.map((employee) => (
+              <EmployeeCardRow
+                key={employee.id}
+                employee={employee}
+                token={token}
+                to={employeePrimaryRoute(employee)}
+                actions={
+                  <div className="flex gap-1">
+                    <RowActionButton intent="view" title={employee.active_onboarding_case_id ? "Open onboarding case" : "View"} onClick={() => navigate(employeePrimaryRoute(employee))}><Eye className="h-4 w-4" /></RowActionButton>
+                    {canUpdate ? <RowActionButton intent="edit" title="Edit" onClick={() => setModal({ mode: "edit", employee })}><Pencil className="h-4 w-4" /></RowActionButton> : null}
+                    {canStatus ? <RowActionButton intent="neutral" title="Change status" onClick={() => { setStatusModalError(null); setStatusModalEmployee(employee); }}><Settings2 className="h-4 w-4" /></RowActionButton> : null}
+                    {canArchive ? <RowActionButton intent="archive" title="Archive" onClick={() => setArchiveTarget(employee)}><Archive className="h-4 w-4" /></RowActionButton> : null}
+                  </div>
+                }
+              />
+            ))}
+          </div>
         </PerformanceDataTable>
         <TablePaginationBar
           page={employeePage}

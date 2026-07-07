@@ -1,6 +1,7 @@
 import { FileUp } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { ActionTextButton } from "../components/ui/action-button";
@@ -8,12 +9,11 @@ import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
 import { TablePaginationBar } from "../components/table/TablePaginationBar";
-import { TableSkeleton } from "../components/loading";
+import { CardSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { useDebouncedTableFilters } from "../hooks/useDebouncedTableFilters";
 import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
@@ -141,16 +141,74 @@ export function MissingDocumentsPage() {
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <PerformanceDataTable loading={loading || missingQuery.isInitialLoading} refreshing={missingQuery.isRefreshing || isDebouncing} error={error ?? missingQuery.error?.message ?? null} empty={rows.length === 0} rowCount={rows.length} emptyTitle="No missing documents" emptyDescription="Required documents are currently satisfied for the loaded rules." skeleton={<TableSkeleton rows={5} columns={10} label="Loading missing documents" />}>
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Position</TableHead><TableHead>Location</TableHead><TableHead>Employee type</TableHead><TableHead>Employment type</TableHead><TableHead>Required document</TableHead><TableHead>Category</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{rows.map((row) => <TableRow key={`${row.employee_id}-${row.document_type_id}`}><TableCell><span className="font-medium">{row.employee_name}</span><div className="font-mono text-xs text-muted-foreground">{row.employee_no}</div></TableCell><TableCell>{row.department_name ?? "-"}</TableCell><TableCell>{row.position_title ?? "-"}</TableCell><TableCell>{row.location_name ?? "-"}</TableCell><TableCell>{row.employee_type}</TableCell><TableCell>{row.employment_type}</TableCell><TableCell>{row.document_type_name}</TableCell><TableCell>{row.category_name ?? "-"}</TableCell><TableCell>{row.reason ?? "Required rule"}</TableCell><TableCell><div className="flex justify-end gap-1"><Link to={`/employees/${row.employee_id}`}><RowActionButton intent="view" size="sm" title="Open 360">Open 360</RowActionButton></Link>{canUpload ? <RowActionButton intent="upload" size="sm" title="Upload missing document" onClick={() => setUploadRow(row)}><FileUp className="h-4 w-4" /> Upload</RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
-          </Table>
+        <PerformanceDataTable loading={loading || missingQuery.isInitialLoading} refreshing={missingQuery.isRefreshing || isDebouncing} error={error ?? missingQuery.error?.message ?? null} empty={rows.length === 0} rowCount={rows.length} emptyTitle="No missing documents" emptyDescription="Required documents are currently satisfied for the loaded rules." skeleton={<CardSkeleton cards={5} label="Loading missing documents" />} className="border-0 bg-transparent p-0 shadow-none">
+          <div className="flex flex-col gap-2">
+            {rows.map((row) => (
+              <MissingDocumentCardRow
+                key={`${row.employee_id}-${row.document_type_id}`}
+                row={row}
+                actions={
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Link to={`/employees/${row.employee_id}`}><RowActionButton intent="view" size="sm" title="Open 360">Open 360</RowActionButton></Link>
+                    {canUpload ? <RowActionButton intent="upload" size="sm" title="Upload missing document" onClick={() => setUploadRow(row)}><FileUp className="h-4 w-4" /> Upload</RowActionButton> : null}
+                  </div>
+                }
+              />
+            ))}
+          </div>
         </PerformanceDataTable>
         <TablePaginationBar page={page} pageSize={pageSize} rowCount={rows.length} hasMore={Boolean(pagination?.has_more)} onPageChange={setPage} onPageSizeChange={setPageSize} />
       </Panel>
       {uploadRow && token ? <MissingUploadModal token={token} row={uploadRow} type={types.find((item) => item.id === uploadRow.document_type_id)} onClose={() => setUploadRow(null)} onSaved={async () => { await load(); await missingQuery.refetch(); }} /> : null}
     </PageShell>
+  );
+}
+
+function MetaChip({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return <span style={{ fontSize: 12, color: "var(--v3-text-secondary)" }}>{children}</span>;
+}
+
+function Dot() {
+  return <span style={{ color: "var(--v3-border-strong)" }}>&middot;</span>;
+}
+
+function MissingDocumentCardRow({ row, actions }: { row: MissingDocument; actions?: ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "0.9rem 1.1rem",
+        background: "var(--v3-surface-2)",
+        border: "0.5px solid var(--v3-border)",
+        borderRadius: "var(--v3-radius-card)"
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <EmployeeIdentityCell
+          employeeId={row.employee_id}
+          employeeName={row.employee_name}
+          employeeNumber={row.employee_no}
+          size="md"
+          showMetadata={false}
+          to={`/employees/${row.employee_id}`}
+        />
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[52px]">
+          <MetaChip>{row.employee_no}</MetaChip>
+          {row.department_name ? <><Dot /><MetaChip>{row.department_name}</MetaChip></> : null}
+          {row.position_title ? <><Dot /><MetaChip>{row.position_title}</MetaChip></> : null}
+          {row.location_name ? <><Dot /><MetaChip>{row.location_name}</MetaChip></> : null}
+          <Dot /><MetaChip>{row.employee_type}</MetaChip>
+          <Dot /><MetaChip>{row.employment_type}</MetaChip>
+          <Dot /><MetaChip>{row.document_type_name}</MetaChip>
+          {row.category_name ? <><Dot /><MetaChip>{row.category_name}</MetaChip></> : null}
+          <Dot /><MetaChip>{row.reason ?? "Required rule"}</MetaChip>
+        </div>
+      </div>
+      {actions}
+    </div>
   );
 }
 

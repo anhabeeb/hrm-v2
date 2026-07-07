@@ -9,8 +9,8 @@ import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { MobileListCard, PageHeader, PageShell, QuickActionCard, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
+import { ProgressRing } from "../components/ui/progress-ring";
 import { StatusBadge } from "../components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -312,34 +312,33 @@ function LifecycleSelfServiceSection({ data, kind }: { data: Record<string, unkn
           <EmptyState title={`No ${kind} case`} description="There is no active lifecycle case for your employee profile." />
         )}
       </Panel>
-      <Panel className="overflow-x-auto">
-        <Table>
-          <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Group</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead></TableRow></TableHeader>
-          <TableBody>
-            {tasks.map((task) => (
-              <TableRow key={String(task.id)}>
-                <TableCell>{text(task.task_name ?? task.title ?? task.task_key)}</TableCell>
-                <TableCell>{text(task.task_group)}</TableCell>
-                <TableCell><StatusBadge value={task.task_status ?? task.status} /></TableCell>
-                <TableCell>{text(task.due_date)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <Panel className="overflow-hidden shadow-none">
+        <div className="border-b px-3 py-2"><h3 className="text-sm font-semibold">Checklist tasks</h3></div>
+        <div className="flex flex-col gap-2 p-3">
+          {tasks.length === 0 ? <EmptyState title="No tasks yet" description="Checklist tasks will appear here." /> : tasks.map((task) => (
+            <div key={String(task.id)} className="flex items-center justify-between gap-3 rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{text(task.task_name ?? task.title ?? task.task_key)}</p>
+                <p className="text-xs text-muted-foreground">{text(task.task_group)}{task.due_date ? ` · Due ${text(task.due_date)}` : ""}</p>
+              </div>
+              <StatusBadge value={task.task_status ?? task.status} />
+            </div>
+          ))}
+        </div>
       </Panel>
-      <Panel className="overflow-x-auto">
-        <Table>
-          <TableHeader><TableRow><TableHead>Recent lifecycle event</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead></TableRow></TableHeader>
-          <TableBody>
-            {events.slice(0, 10).map((event) => (
-              <TableRow key={String(event.id)}>
-                <TableCell>{text(event.action)}</TableCell>
-                <TableCell>{text(event.new_status)}</TableCell>
-                <TableCell>{text(event.created_at)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <Panel className="overflow-hidden shadow-none">
+        <div className="border-b px-3 py-2"><h3 className="text-sm font-semibold">Recent lifecycle events</h3></div>
+        <div className="flex flex-col gap-2 p-3">
+          {events.length === 0 ? <EmptyState title="No events yet" description="Lifecycle events will appear here." /> : events.slice(0, 10).map((event) => (
+            <div key={String(event.id)} className="flex items-center justify-between gap-3 rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{text(event.action)}</p>
+                <p className="text-xs text-muted-foreground">{text(event.created_at)}</p>
+              </div>
+              <span className="text-xs text-muted-foreground">{text(event.new_status)}</span>
+            </div>
+          ))}
+        </div>
       </Panel>
     </div>
   );
@@ -572,6 +571,32 @@ function DeviceSelfServiceSummary({ data }: { data: Record<string, unknown> | nu
   );
 }
 
+const RING_COLORS = ["var(--v3-ring-annual)", "var(--v3-ring-sick)", "var(--v3-ring-casual)", "var(--v3-ring-other)"];
+
+function LeaveBalanceRings({ cycles }: { cycles: Row[] }) {
+  if (!cycles.length) return null;
+  return (
+    <Panel className="overflow-hidden shadow-none">
+      <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">Leave balances</h2></div>
+      <div className="flex flex-wrap justify-center gap-6 p-4 sm:justify-start">
+        {cycles.map((cycle, index) => {
+          const taken = Number(cycle.used_days ?? 0);
+          const max = Number(cycle.opening_balance ?? 0) + Number(cycle.accrued_days ?? 0) || taken || 1;
+          return (
+            <ProgressRing
+              key={String(cycle.id ?? index)}
+              value={taken}
+              max={Math.round(max)}
+              color={RING_COLORS[index % RING_COLORS.length]}
+              label={text(cycle.leave_type_name)}
+            />
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
 function LeaveSection({ data, token, reload }: { data: Record<string, unknown> | null; token: string | null; reload: () => Promise<void> }) {
   const [leaveTypes, setLeaveTypes] = useState<Array<{ id: string; name: string }>>([]);
   const [open, setOpen] = useState(false);
@@ -623,6 +648,7 @@ function LeaveSection({ data, token, reload }: { data: Record<string, unknown> |
           <Button type="submit">Submit</Button>
         </form>
       ) : null}
+      <LeaveBalanceRings cycles={rows(data, "balance_cycles")} />
       <SimpleTable title="Leave balance cycles" rows={rows(data, "balance_cycles")} columns={["cycle_year", "leave_type_name", "opening_balance", "accrued_days", "used_days", "pending_days", "closing_balance"]} />
       <SimpleTable title="Leave ledger recent" rows={rows(data, "ledger_recent")} columns={["created_at", "leave_type_name", "entry_type", "days", "reason"]} />
       <SimpleTable title="Leave balances (compatibility)" rows={rows(data, "balances")} columns={["period_year", "opening_balance", "earned_days", "used_days", "pending_days", "closing_balance"]} />
@@ -668,33 +694,21 @@ function RosterSelfServiceSection({ data, token }: { data: Record<string, unknow
           <h2 className="text-sm font-semibold">My weekly roster</h2>
           <span className="text-xs text-muted-foreground">{text(weekData?.week_start_date)} to {text(weekData?.week_end_date)}</span>
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Shift</TableHead>
-                <TableHead>Time</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Notes</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {assignments.map((assignment) => (
-                <TableRow key={String(assignment.id ?? assignment.roster_date)}>
-                  <TableCell>{text(assignment.roster_date)}</TableCell>
-                  <TableCell><StatusBadge value={assignment.status} /></TableCell>
-                  <TableCell>{text(assignment.shift_code ?? assignment.shift_name)}</TableCell>
-                  <TableCell>{text(assignment.custom_start_time ?? assignment.shift_start_time)} - {text(assignment.custom_end_time ?? assignment.shift_end_time)}</TableCell>
-                  <TableCell>{text(assignment.location_name)}</TableCell>
-                  <TableCell>{Number(assignment.changed_after_publish ?? 0) === 1 || assignment.status === "CHANGED_AFTER_PUBLISH" ? <Badge tone="warning">Changed after publish</Badge> : text(assignment.notes)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="flex flex-col gap-2 p-3">
+          {assignments.length === 0 ? <EmptyState title="No published roster for this week" description="Published roster assignments will appear here." /> : assignments.map((assignment) => (
+            <div key={String(assignment.id ?? assignment.roster_date)} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{text(assignment.roster_date)} · {text(assignment.shift_code ?? assignment.shift_name)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {text(assignment.custom_start_time ?? assignment.shift_start_time)} - {text(assignment.custom_end_time ?? assignment.shift_end_time)}
+                  {assignment.location_name ? ` · ${text(assignment.location_name)}` : ""}
+                </p>
+                {Number(assignment.changed_after_publish ?? 0) === 1 || assignment.status === "CHANGED_AFTER_PUBLISH" ? <Badge tone="warning" className="mt-1">Changed after publish</Badge> : assignment.notes ? <p className="mt-1 text-xs text-muted-foreground">{text(assignment.notes)}</p> : null}
+              </div>
+              <StatusBadge value={assignment.status} />
+            </div>
+          ))}
         </div>
-        {assignments.length === 0 ? <EmptyState title="No published roster for this week" description="Published roster assignments will appear here." /> : null}
       </Panel>
     </div>
   );
@@ -787,38 +801,22 @@ function PayrollSection({ data, token }: { data: Record<string, unknown> | null;
           <h2 className="text-sm font-semibold">Payslips</h2>
           <span className="text-xs text-muted-foreground">Self-service payslips are limited to your linked employee profile.</span>
         </div>
-        <DataTableFrame empty={!payslips.length}>
-          <Table>
-            <TableHeader className="sticky top-0">
-              <TableRow>
-                <TableHead>Period</TableHead>
-                <TableHead>Payslip</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Version</TableHead>
-                <TableHead>Generated</TableHead>
-                <TableHead>Net salary</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {payslips.map((row) => (
-                <TableRow key={String(row.id)}>
-                  <TableCell>{text(row.period_month)}/{text(row.period_year)}</TableCell>
-                  <TableCell className="font-mono text-xs">{text(row.payslip_number)}</TableCell>
-                  <TableCell><StatusBadge value={row.status} /></TableCell>
-                  <TableCell>{text(row.version_number)}</TableCell>
-                  <TableCell>{text(row.generated_at)}</TableCell>
-                  <TableCell>{text(row.net_salary)}</TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <RowActionButton intent="view" title="View payslip" onClick={() => void viewPayslip(row)}><Eye className="h-4 w-4" /></RowActionButton>
-                      {canDownload ? <RowActionButton intent="download" title="Download payslip" onClick={() => void downloadPayslip(row)}><Download className="h-4 w-4" /></RowActionButton> : null}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <DataTableFrame empty={!payslips.length} className="border-0">
+          <div className="flex flex-col gap-2 p-3">
+            {payslips.map((row) => (
+              <div key={String(row.id)} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{text(row.period_month)}/{text(row.period_year)} <span className="font-mono text-xs text-muted-foreground">{text(row.payslip_number)}</span></p>
+                  <p className="text-xs text-muted-foreground">v{text(row.version_number)} · Generated {text(row.generated_at)} · Net {text(row.net_salary)}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge value={row.status} />
+                  <RowActionButton intent="view" title="View payslip" onClick={() => void viewPayslip(row)}><Eye className="h-4 w-4" /></RowActionButton>
+                  {canDownload ? <RowActionButton intent="download" title="Download payslip" onClick={() => void downloadPayslip(row)}><Download className="h-4 w-4" /></RowActionButton> : null}
+                </div>
+              </div>
+            ))}
+          </div>
         </DataTableFrame>
       </Panel> : null}
       <SimpleTable title="Payroll run history" rows={rows(data, "runs")} columns={["period", "status", "basic_salary", "total_earnings", "total_deductions", "net_salary"]} />
@@ -916,21 +914,21 @@ function NotificationsSection({ data, token, reload }: { data: Record<string, un
       {message ? <div className="rounded-md border bg-muted px-3 py-2 text-sm">{message}</div> : null}
       <Panel className="overflow-hidden shadow-none">
         <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">My notifications</h2></div>
-        <DataTableFrame empty={!notifications.length}>
-          <Table>
-            <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Title</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {notifications.map((row) => (
-                <TableRow key={String(row.id)}>
-                  <TableCell>{text(row.type)}</TableCell>
-                  <TableCell>{text(row.title)}</TableCell>
-                  <TableCell><StatusBadge value={row.severity} /></TableCell>
-                  <TableCell>{text(row.created_at)}</TableCell>
-                  <TableCell className="text-right"><RowActionButton intent="approve" size="sm" title="Mark read" onClick={() => void markRead(row)}>Mark read</RowActionButton></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <DataTableFrame empty={!notifications.length} className="border-0">
+          <div className="flex flex-col gap-2 p-3">
+            {notifications.map((row) => (
+              <div key={String(row.id)} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{text(row.title)}</p>
+                  <p className="text-xs text-muted-foreground">{text(row.type)} · {text(row.created_at)}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge value={row.severity} />
+                  <RowActionButton intent="approve" size="sm" title="Mark read" onClick={() => void markRead(row)}>Mark read</RowActionButton>
+                </div>
+              </div>
+            ))}
+          </div>
         </DataTableFrame>
       </Panel>
     </div>
@@ -986,29 +984,29 @@ function SimpleTable({ title, rows, columns }: { title: string; rows: Row[]; col
       <div className="border-b px-3 py-2">
         <h2 className="text-sm font-semibold">{title}</h2>
       </div>
-      <DataTableFrame empty={!rows.length}>
-        <Table>
-          <TableHeader className="sticky top-0">
-            <TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}</TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={String(row.id ?? index)}>
+      <DataTableFrame empty={!rows.length} className="border-0">
+        <div className="flex flex-col gap-2 p-3">
+          {rows.map((row, index) => (
+            <div key={String(row.id ?? index)} className="rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {columns.map((column) => (
-                  <TableCell key={column} className="whitespace-nowrap">
-                    {column === "status" || column === "display_status" || column === "document_status" ? (
-                      <StatusBadge value={row[column]} />
-                    ) : column === "is_sensitive" && row[column] ? (
-                      <Badge tone="warning">Sensitive</Badge>
-                    ) : (
-                      text(row[column])
-                    )}
-                  </TableCell>
+                  <div key={column} className="min-w-0">
+                    <p className="text-xs capitalize text-muted-foreground">{column.replace(/_/g, " ")}</p>
+                    <p className="mt-0.5 truncate text-sm font-medium">
+                      {column === "status" || column === "display_status" || column === "document_status" ? (
+                        <StatusBadge value={row[column]} />
+                      ) : column === "is_sensitive" && row[column] ? (
+                        <Badge tone="warning">Sensitive</Badge>
+                      ) : (
+                        text(row[column])
+                      )}
+                    </p>
+                  </div>
                 ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+              </div>
+            </div>
+          ))}
+        </div>
       </DataTableFrame>
     </Panel>
   );

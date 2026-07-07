@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { KeyValueCardRow } from "../components/table/KeyValueCardRow";
 import { APP_BRANDING } from "../config/branding";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
@@ -89,25 +89,15 @@ export function ImportMigrationPage() {
           <h2 className="text-sm font-semibold">Prepared import placeholders</h2>
           <p className="text-xs text-muted-foreground">These are foundations for future CSV validation, not active import jobs.</p>
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Area</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Behavior</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(status?.supported_placeholders ?? ["employees", "organization", "documents_metadata", "payroll_opening_balances", "leave_balances"]).map((key) => (
-                <TableRow key={key}>
-                  <TableCell className="font-medium">{labels[key] ?? key}</TableCell>
-                  <TableCell><Badge tone="warning">Validation only</Badge></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">No data is imported or modified.</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="flex flex-col gap-2 p-2">
+          {(status?.supported_placeholders ?? ["employees", "organization", "documents_metadata", "payroll_opening_balances", "leave_balances"]).map((key) => (
+            <KeyValueCardRow
+              key={key}
+              title={labels[key] ?? key}
+              badge={<Badge tone="warning">Validation only</Badge>}
+              fields={[{ label: "Behavior", value: "No data is imported or modified." }]}
+            />
+          ))}
         </div>
       </Panel>
 

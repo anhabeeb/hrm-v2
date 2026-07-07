@@ -8,7 +8,7 @@ import { Input } from "../components/ui/input";
 import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Switch } from "../components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { KeyValueCardRow } from "../components/table/KeyValueCardRow";
 import { Tooltip } from "../components/ui/tooltip";
 import { useAlert } from "../components/alerts/useAlert";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
@@ -431,27 +431,15 @@ export function SettingsPage() {
           </div>
           <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Key</TableHead>
-                <TableHead>Scope</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {settingsRows.map((row) => (
-                <TableRow key={row.key}>
-                  <TableCell className="font-mono text-xs">{row.key}</TableCell>
-                  <TableCell>{row.scope}</TableCell>
-                  <TableCell>
-                    <Badge tone={row.status === "Required" ? "warning" : "neutral"}>{row.status}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="flex flex-col gap-2 p-2">
+          {settingsRows.map((row) => (
+            <KeyValueCardRow
+              key={row.key}
+              title={row.key}
+              badge={<Badge tone={row.status === "Required" ? "warning" : "neutral"}>{row.status}</Badge>}
+              fields={[{ label: "Scope", value: row.scope }]}
+            />
+          ))}
         </div>
       </Panel>
 

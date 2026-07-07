@@ -9,7 +9,6 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -136,16 +135,101 @@ function tabLabel(tab: Tab) {
   return "Approval Workflows";
 }
 
+function CardRow({ title, meta, statusActive, actions }: { title: ReactNode; meta: ReactNode[]; statusActive?: boolean; actions?: ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-slate-900">{title}</div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+          {meta.filter(Boolean).map((item, index) => (
+            <span key={index} className="flex items-center gap-1.5">{index > 0 ? <span>&middot;</span> : null}{item}</span>
+          ))}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        {statusActive !== undefined ? <Badge tone={statusActive ? "success" : "neutral"}>{statusActive ? "Active" : "Inactive"}</Badge> : null}
+        {actions}
+      </div>
+    </div>
+  );
+}
+
 function TypesTable({ types, canManage, loading, onNew, onEdit, onAction }: { types: LeaveType[]; canManage: boolean; loading: boolean; onNew: () => void; onEdit: (row: LeaveType) => void; onAction: (row: LeaveType) => void }) {
-  return <SectionToolbar canManage={canManage} label="Create type" onNew={onNew}><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Paid default</TableHead><TableHead>Statutory</TableHead><TableHead>Status</TableHead><TableHead>Sort</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{types.map((row) => <TableRow key={row.id}><TableCell className="font-mono text-xs">{row.code}</TableCell><TableCell className="font-medium">{row.name}</TableCell><TableCell>{boolText(row.is_paid_default)}</TableCell><TableCell>{boolText(row.is_statutory)}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell>{row.sort_order}</TableCell><TableCell><Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={Boolean(row.is_active)} /></TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={7} label="Loading leave types" /> : null}</SectionToolbar>;
+  return (
+    <SectionToolbar canManage={canManage} label="Create type" onNew={onNew}>
+      <div className="flex flex-col gap-2 p-3">
+        {types.map((row) => (
+          <CardRow
+            key={row.id}
+            title={<>{row.name} <span className="ml-1 font-mono text-xs text-muted-foreground">{row.code}</span></>}
+            meta={[`Paid default: ${boolText(row.is_paid_default)}`, `Statutory: ${boolText(row.is_statutory)}`, `Sort ${row.sort_order}`]}
+            statusActive={Boolean(row.is_active)}
+            actions={<Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={Boolean(row.is_active)} />}
+          />
+        ))}
+      </div>
+      {loading ? <TableSkeleton rows={5} columns={7} label="Loading leave types" /> : null}
+    </SectionToolbar>
+  );
 }
 
 function PoliciesTable({ policies, canManage, loading, onNew, onEdit, onAction }: { policies: LeavePolicy[]; canManage: boolean; loading: boolean; onNew: () => void; onEdit: (row: LeavePolicy) => void; onAction: (row: LeavePolicy) => void }) {
-  return <SectionToolbar canManage={canManage} label="Create policy" onNew={onNew}><Table><TableHeader><TableRow><TableHead>Policy</TableHead><TableHead>Leave type</TableHead><TableHead>Employee type</TableHead><TableHead>Employment</TableHead><TableHead>Department</TableHead><TableHead>Position</TableHead><TableHead>Location</TableHead><TableHead>Entitlement</TableHead><TableHead>Docs</TableHead><TableHead>Deduction</TableHead><TableHead>Holidays</TableHead><TableHead>Weekly off</TableHead><TableHead>Priority</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{policies.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.name}</TableCell><TableCell>{row.leave_type_name}</TableCell><TableCell>{row.applies_to_employee_type ?? "Any"}</TableCell><TableCell>{row.applies_to_employment_type ?? "Any"}</TableCell><TableCell>{row.department_name ?? "Any"}</TableCell><TableCell>{row.position_title ?? "Any"}</TableCell><TableCell>{row.location_name ?? "Any"}</TableCell><TableCell>{row.annual_entitlement_days ?? "-"}</TableCell><TableCell>{row.requires_document ? "Required" : "Optional"}</TableCell><TableCell>{row.salary_deduction_mode}</TableCell><TableCell>{boolText(row.include_public_holidays)}</TableCell><TableCell>{boolText(row.include_weekly_off_days)}</TableCell><TableCell>{row.priority}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell><Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={Boolean(row.is_active)} /></TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={15} label="Loading leave policies" /> : null}</SectionToolbar>;
+  return (
+    <SectionToolbar canManage={canManage} label="Create policy" onNew={onNew}>
+      <div className="flex flex-col gap-2 p-3">
+        {policies.map((row) => (
+          <CardRow
+            key={row.id}
+            title={row.name}
+            meta={[
+              row.leave_type_name,
+              `Employee: ${row.applies_to_employee_type ?? "Any"}`,
+              `Employment: ${row.applies_to_employment_type ?? "Any"}`,
+              row.department_name ?? "Any department",
+              row.position_title ?? "Any position",
+              row.location_name ?? "Any location",
+              `Entitlement: ${row.annual_entitlement_days ?? "-"}`,
+              row.requires_document ? "Docs required" : "Docs optional",
+              `Deduction: ${row.salary_deduction_mode}`,
+              `Holidays: ${boolText(row.include_public_holidays)}`,
+              `Weekly off: ${boolText(row.include_weekly_off_days)}`,
+              `Priority ${row.priority}`
+            ]}
+            statusActive={Boolean(row.is_active)}
+            actions={<Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={Boolean(row.is_active)} />}
+          />
+        ))}
+      </div>
+      {loading ? <TableSkeleton rows={5} columns={15} label="Loading leave policies" /> : null}
+    </SectionToolbar>
+  );
 }
 
 function WorkflowsTable({ workflows, canManage, loading, onNew, onEdit, onSteps, onAction }: { workflows: LeaveWorkflow[]; canManage: boolean; loading: boolean; onNew: () => void; onEdit: (row: LeaveWorkflow) => void; onSteps: (row: LeaveWorkflow) => void; onAction: (row: LeaveWorkflow) => void }) {
-  return <SectionToolbar canManage={canManage} label="Create workflow" onNew={onNew}><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Leave type</TableHead><TableHead>Employee type</TableHead><TableHead>Employment</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Default</TableHead><TableHead>Priority</TableHead><TableHead>Steps</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{workflows.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.name}</TableCell><TableCell>{row.leave_type_name ?? "Any"}</TableCell><TableCell>{row.applies_to_employee_type ?? "Any"}</TableCell><TableCell>{row.applies_to_employment_type ?? "Any"}</TableCell><TableCell>{row.department_name ?? "Any"}</TableCell><TableCell>{row.location_name ?? "Any"}</TableCell><TableCell>{row.is_default ? <Badge tone="info">Default</Badge> : "-"}</TableCell><TableCell>{row.priority}</TableCell><TableCell>{row.steps_count ?? 0}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell><div className="flex justify-end gap-1"><RowActionButton intent="edit" size="sm" title="Steps" onClick={() => onSteps(row)}>Steps</RowActionButton><Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={Boolean(row.is_active)} /></div></TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={11} label="Loading workflows" /> : null}</SectionToolbar>;
+  return (
+    <SectionToolbar canManage={canManage} label="Create workflow" onNew={onNew}>
+      <div className="flex flex-col gap-2 p-3">
+        {workflows.map((row) => (
+          <CardRow
+            key={row.id}
+            title={<>{row.name} {row.is_default ? <Badge tone="info" className="ml-1">Default</Badge> : null}</>}
+            meta={[
+              row.leave_type_name ?? "Any leave type",
+              `Employee: ${row.applies_to_employee_type ?? "Any"}`,
+              `Employment: ${row.applies_to_employment_type ?? "Any"}`,
+              row.department_name ?? "Any department",
+              row.location_name ?? "Any location",
+              `Priority ${row.priority}`,
+              `${row.steps_count ?? 0} step(s)`
+            ]}
+            statusActive={Boolean(row.is_active)}
+            actions={<div className="flex items-center gap-1"><RowActionButton intent="edit" size="sm" title="Steps" onClick={() => onSteps(row)}>Steps</RowActionButton><Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={Boolean(row.is_active)} /></div>}
+          />
+        ))}
+      </div>
+      {loading ? <TableSkeleton rows={5} columns={11} label="Loading workflows" /> : null}
+    </SectionToolbar>
+  );
 }
 
 function PolicyDocumentRulesTable({ token, policies, documentTypes, canManage }: { token: string; policies: LeavePolicy[]; documentTypes: DocumentType[]; canManage: boolean }) {
@@ -156,7 +240,24 @@ function PolicyDocumentRulesTable({ token, policies, documentTypes, canManage }:
   async function load() { if (policyId) setRules((await api.listLeavePolicyDocumentRules(token, policyId)).document_rules); }
   useEffect(() => { void load(); }, [policyId]);
   async function toggle(row: Record<string, unknown>) { await api.leavePolicyDocumentRuleAction(token, policyId, String(row.id), row.is_active ? "disable" : "enable"); await load(); }
-  return <div><RulesToolbar policies={policies} policyId={policyId} setPolicyId={setPolicyId} canManage={canManage} label="Create document rule" onNew={() => setModal("new")} /><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Document type</TableHead><TableHead>Required</TableHead><TableHead>After consecutive days</TableHead><TableHead>After used days</TableHead><TableHead>Notes</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rules.map((row) => <TableRow key={String(row.id)}><TableCell>{String(row.document_type_name ?? "Generic supporting document")}</TableCell><TableCell>{boolText(Boolean(row.requires_document))}</TableCell><TableCell>{String(row.required_after_consecutive_days ?? "-")}</TableCell><TableCell>{String(row.required_after_used_days ?? "-")}</TableCell><TableCell className="max-w-[280px] truncate">{String(row.notes ?? "-")}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><RowActionButton intent="edit" title="Edit" onClick={() => setModal(row)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable" : "Enable"} onClick={() => void toggle(row)}><Power className="h-4 w-4" /></RowActionButton></> : <span className="text-xs text-muted-foreground">Read only</span>}</div></TableCell></TableRow>)}</TableBody></Table>{!rules.length ? <EmptyState title="No document rules" description="Create policy-specific document thresholds or use the policy defaults." /> : null}</div>{modal ? <DocumentRuleModal token={token} policyId={policyId} rule={modal === "new" ? undefined : modal} documentTypes={documentTypes} onClose={() => setModal(null)} onSaved={load} /> : null}</div>;
+  return (
+    <div>
+      <RulesToolbar policies={policies} policyId={policyId} setPolicyId={setPolicyId} canManage={canManage} label="Create document rule" onNew={() => setModal("new")} />
+      <div className="flex flex-col gap-2 p-3">
+        {rules.map((row) => (
+          <CardRow
+            key={String(row.id)}
+            title={String(row.document_type_name ?? "Generic supporting document")}
+            meta={[`Required: ${boolText(Boolean(row.requires_document))}`, `After consecutive days: ${String(row.required_after_consecutive_days ?? "-")}`, `After used days: ${String(row.required_after_used_days ?? "-")}`, row.notes ? String(row.notes) : ""]}
+            statusActive={Boolean(row.is_active)}
+            actions={canManage ? <><RowActionButton intent="edit" title="Edit" onClick={() => setModal(row)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable" : "Enable"} onClick={() => void toggle(row)}><Power className="h-4 w-4" /></RowActionButton></> : <span className="text-xs text-muted-foreground">Read only</span>}
+          />
+        ))}
+      </div>
+      {!rules.length ? <EmptyState title="No document rules" description="Create policy-specific document thresholds or use the policy defaults." /> : null}
+      {modal ? <DocumentRuleModal token={token} policyId={policyId} rule={modal === "new" ? undefined : modal} documentTypes={documentTypes} onClose={() => setModal(null)} onSaved={load} /> : null}
+    </div>
+  );
 }
 
 function PolicyDeductionRulesTable({ token, policies, canManage }: { token: string; policies: LeavePolicy[]; canManage: boolean }) {
@@ -167,11 +268,28 @@ function PolicyDeductionRulesTable({ token, policies, canManage }: { token: stri
   async function load() { if (policyId) setRules((await api.listLeavePolicyDeductionRules(token, policyId)).deduction_rules); }
   useEffect(() => { void load(); }, [policyId]);
   async function toggle(row: Record<string, unknown>) { await api.leavePolicyDeductionRuleAction(token, policyId, String(row.id), row.is_active ? "disable" : "enable"); await load(); }
-  return <div><RulesToolbar policies={policies} policyId={policyId} setPolicyId={setPolicyId} canManage={canManage} label="Create deduction rule" onNew={() => setModal("new")} /><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Mode</TableHead><TableHead>Pay component</TableHead><TableHead>After days</TableHead><TableHead>Long leave threshold</TableHead><TableHead>Custom rule</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rules.map((row) => <TableRow key={String(row.id)}><TableCell className="font-mono text-xs">{String(row.deduction_mode ?? "NONE")}</TableCell><TableCell>{String(row.deduction_pay_component ?? "-")}</TableCell><TableCell>{String(row.deduction_after_days ?? "-")}</TableCell><TableCell>{String(row.long_leave_threshold_days ?? "-")}</TableCell><TableCell className="max-w-[280px] truncate">{String(row.custom_rule_json ?? "-")}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><RowActionButton intent="edit" title="Edit" onClick={() => setModal(row)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable" : "Enable"} onClick={() => void toggle(row)}><Power className="h-4 w-4" /></RowActionButton></> : <span className="text-xs text-muted-foreground">Read only</span>}</div></TableCell></TableRow>)}</TableBody></Table>{!rules.length ? <EmptyState title="No deduction rules" description="Create payroll-impact rules for future payroll integration." /> : null}</div>{modal ? <DeductionRuleModal token={token} policyId={policyId} rule={modal === "new" ? undefined : modal} onClose={() => setModal(null)} onSaved={load} /> : null}</div>;
+  return (
+    <div>
+      <RulesToolbar policies={policies} policyId={policyId} setPolicyId={setPolicyId} canManage={canManage} label="Create deduction rule" onNew={() => setModal("new")} />
+      <div className="flex flex-col gap-2 p-3">
+        {rules.map((row) => (
+          <CardRow
+            key={String(row.id)}
+            title={String(row.deduction_mode ?? "NONE")}
+            meta={[`Pay component: ${String(row.deduction_pay_component ?? "-")}`, `After days: ${String(row.deduction_after_days ?? "-")}`, `Long leave threshold: ${String(row.long_leave_threshold_days ?? "-")}`, row.custom_rule_json ? String(row.custom_rule_json) : ""]}
+            statusActive={Boolean(row.is_active)}
+            actions={canManage ? <><RowActionButton intent="edit" title="Edit" onClick={() => setModal(row)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable" : "Enable"} onClick={() => void toggle(row)}><Power className="h-4 w-4" /></RowActionButton></> : <span className="text-xs text-muted-foreground">Read only</span>}
+          />
+        ))}
+      </div>
+      {!rules.length ? <EmptyState title="No deduction rules" description="Create payroll-impact rules for future payroll integration." /> : null}
+      {modal ? <DeductionRuleModal token={token} policyId={policyId} rule={modal === "new" ? undefined : modal} onClose={() => setModal(null)} onSaved={load} /> : null}
+    </div>
+  );
 }
 
 function SectionToolbar({ canManage, label, onNew, children }: { canManage: boolean; label: string; onNew: () => void; children: ReactNode }) {
-  return <div><div className="flex justify-end border-b p-3">{canManage ? <Button size="sm" onClick={onNew}><Plus className="h-4 w-4" /> {label}</Button> : null}</div><div className="overflow-x-auto">{children}</div></div>;
+  return <div><div className="flex justify-end border-b p-3">{canManage ? <Button size="sm" onClick={onNew}><Plus className="h-4 w-4" /> {label}</Button> : null}</div>{children}</div>;
 }
 
 function Actions({ canManage, onEdit, onAction, active }: { canManage: boolean; onEdit: () => void; onAction: () => void; active: boolean }) {
@@ -253,16 +371,6 @@ function WorkflowModal({ token, workflow, types, departments, locations, onClose
   return <Modal title={workflow ? "Edit workflow" : "Create workflow"} onClose={onClose} onSave={async () => { const input = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v === "" ? null : v])); if (workflow) await api.updateLeaveWorkflow(token, workflow.id, input); else await api.createLeaveWorkflow(token, input); await onSaved(); onClose(); }}><Field label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} /><Field label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} /><Select label="Leave type" value={form.applies_to_leave_type_id} onChange={(v) => setForm({ ...form, applies_to_leave_type_id: v })} options={types.map((t) => ({ value: t.id, label: t.name }))} /><SimpleSelect label="Employee type" value={form.applies_to_employee_type} onChange={(v) => setForm({ ...form, applies_to_employee_type: v })} options={["", "LOCAL", "FOREIGN", "OTHER"]} /><SimpleSelect label="Employment type" value={form.applies_to_employment_type} onChange={(v) => setForm({ ...form, applies_to_employment_type: v })} options={["", "FULL_TIME", "PART_TIME", "INTERN", "TEMPORARY", "CONTRACT"]} /><div className="md:col-span-3"><OrganizationCascadeSelector value={{ locationId: form.location_id, departmentId: form.department_id }} onChange={(next) => setForm({ ...form, location_id: next.locationId ?? "", department_id: next.departmentId ?? "" })} departments={departments} locations={locations} jobLevels={[]} positions={[]} includeLocation includeJobLevel={false} includePosition={false} mode="approval-routing" labels={{ locationId: "Location", departmentId: "Department" }} className="grid gap-3 md:grid-cols-2" /></div><Field label="Priority" type="number" value={form.priority} onChange={(v) => setForm({ ...form, priority: v })} /><Check label="Default workflow" checked={form.is_default} onChange={(v) => setForm({ ...form, is_default: v })} /></Modal>;
 }
 
-function StepsModal({ token, workflow, roles, users, onClose }: { token: string; workflow: LeaveWorkflow; roles: Role[]; users: AccessUser[]; onClose: () => void }) {
-  const [steps, setSteps] = useState<LeaveWorkflowStep[]>([]);
-  const [form, setForm] = useState({ step_order: "1", step_name: "", approver_type: "PERMISSION", role_id: "", user_id: "", permission_key: "leave.approve", is_required: true, skip_if_no_approver: true, allow_self_approval: false });
-  async function load() { setSteps((await api.listLeaveWorkflowSteps(token, workflow.id)).steps); }
-  useEffect(() => { void load(); }, [workflow.id]);
-  async function add() { await api.createLeaveWorkflowStep(token, workflow.id, { ...form, approver_type: form.approver_type as LeaveWorkflowStepForm["approver_type"], step_order: Number(form.step_order) }); setForm({ ...form, step_name: "", step_order: String(Number(form.step_order) + 1) }); await load(); }
-  async function remove(step: LeaveWorkflowStep) { await api.deleteLeaveWorkflowStep(token, workflow.id, step.id); await load(); }
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-5xl rounded-lg border bg-white shadow-xl"><div className="flex items-center justify-between border-b px-4 py-3"><h2 className="text-sm font-semibold">Workflow steps · {workflow.name}</h2><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="grid gap-3 border-b p-4 md:grid-cols-4"><Field label="Order" type="number" value={form.step_order} onChange={(v) => setForm({ ...form, step_order: v })} /><Field label="Step name" value={form.step_name} onChange={(v) => setForm({ ...form, step_name: v })} /><SimpleSelect label="Approver type" value={form.approver_type} onChange={(v) => setForm({ ...form, approver_type: v })} options={["ROLE","USER","REPORTING_MANAGER","DEPARTMENT_MANAGER","DEPARTMENT_SENIOR","DIRECTOR","HR_ROLE","PERMISSION"]} /><Select label="Role" value={form.role_id} onChange={(v) => setForm({ ...form, role_id: v })} options={roles.map((r) => ({ value: r.id, label: r.name }))} /><Select label="User" value={form.user_id} onChange={(v) => setForm({ ...form, user_id: v })} options={users.map((u) => ({ value: u.id, label: u.name }))} /><Field label="Permission key" value={form.permission_key} onChange={(v) => setForm({ ...form, permission_key: v })} /><Check label="Required" checked={form.is_required} onChange={(v) => setForm({ ...form, is_required: v })} /><Check label="Skip if no approver" checked={form.skip_if_no_approver} onChange={(v) => setForm({ ...form, skip_if_no_approver: v })} /><Check label="Allow self approval" checked={form.allow_self_approval} onChange={(v) => setForm({ ...form, allow_self_approval: v })} /><Button size="sm" onClick={() => void add()}><Plus className="h-4 w-4" /> Add step</Button></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Name</TableHead><TableHead>Approver type</TableHead><TableHead>Role/User/Permission</TableHead><TableHead>Required</TableHead><TableHead>Skip</TableHead><TableHead>Self approval</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{steps.map((step) => <TableRow key={step.id}><TableCell>{step.step_order}</TableCell><TableCell>{step.step_name}</TableCell><TableCell>{step.approver_type}</TableCell><TableCell>{step.role_name ?? step.user_name ?? step.permission_key ?? "-"}</TableCell><TableCell>{boolText(step.is_required)}</TableCell><TableCell>{boolText(step.skip_if_no_approver)}</TableCell><TableCell>{boolText(step.allow_self_approval)}</TableCell><TableCell className="text-right"><RowActionButton intent="delete" title="Delete" onClick={() => void remove(step)}><Trash2 className="h-4 w-4" /></RowActionButton></TableCell></TableRow>)}</TableBody></Table></div></div></div>;
-}
-
 function EditableStepsModal({ token, workflow, roles, users, onClose }: { token: string; workflow: LeaveWorkflow; roles: Role[]; users: AccessUser[]; onClose: () => void }) {
   const blankForm = { step_order: "1", step_name: "", approver_type: "PERMISSION", role_id: "", user_id: "", permission_key: "leave.approve", is_required: true, skip_if_no_approver: true, allow_self_approval: false };
   const [steps, setSteps] = useState<LeaveWorkflowStep[]>([]);
@@ -283,7 +391,38 @@ function EditableStepsModal({ token, workflow, roles, users, onClose }: { token:
     await load();
   }
   async function remove(step: LeaveWorkflowStep) { await api.deleteLeaveWorkflowStep(token, workflow.id, step.id); await load(); }
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4"><div className="w-full max-w-5xl rounded-lg border bg-white shadow-xl"><div className="flex items-center justify-between border-b px-4 py-3"><div><h2 className="text-sm font-semibold">Workflow steps - {workflow.name}</h2><p className="text-xs text-muted-foreground">Department manager, senior, and director steps follow the configured skip/block rule until hierarchy resolution is complete.</p></div><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div><div className="grid gap-3 border-b p-4 md:grid-cols-4"><Field label="Order" type="number" value={form.step_order} onChange={(v) => setForm({ ...form, step_order: v })} /><Field label="Step name" value={form.step_name} onChange={(v) => setForm({ ...form, step_name: v })} /><SimpleSelect label="Approver type" value={form.approver_type} onChange={(v) => setForm({ ...form, approver_type: v })} options={["ROLE","USER","REPORTING_MANAGER","DEPARTMENT_MANAGER","DEPARTMENT_SENIOR","DIRECTOR","HR_ROLE","PERMISSION"]} /><Select label="Role" value={form.role_id} onChange={(v) => setForm({ ...form, role_id: v })} options={roles.map((r) => ({ value: r.id, label: r.name }))} /><Select label="User" value={form.user_id} onChange={(v) => setForm({ ...form, user_id: v })} options={users.map((u) => ({ value: u.id, label: u.name }))} /><Field label="Permission key" value={form.permission_key} onChange={(v) => setForm({ ...form, permission_key: v })} /><Check label="Required" checked={form.is_required} onChange={(v) => setForm({ ...form, is_required: v })} /><Check label="Skip if no approver" checked={form.skip_if_no_approver} onChange={(v) => setForm({ ...form, skip_if_no_approver: v })} /><Check label="Allow self approval" checked={form.allow_self_approval} onChange={(v) => setForm({ ...form, allow_self_approval: v })} /><div className="flex items-end gap-2"><Button size="sm" onClick={() => void save()}><Plus className="h-4 w-4" /> {editing ? "Save step" : "Add step"}</Button>{editing ? <Button variant="outline" size="sm" onClick={() => reset()}>Cancel edit</Button> : null}</div></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Name</TableHead><TableHead>Approver type</TableHead><TableHead>Role/User/Permission</TableHead><TableHead>Required</TableHead><TableHead>Skip</TableHead><TableHead>Self approval</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{steps.map((step) => <TableRow key={step.id}><TableCell>{step.step_order}</TableCell><TableCell>{step.step_name}</TableCell><TableCell>{step.approver_type}</TableCell><TableCell>{step.role_name ?? step.user_name ?? step.permission_key ?? "-"}</TableCell><TableCell>{boolText(step.is_required)}</TableCell><TableCell>{boolText(step.skip_if_no_approver)}</TableCell><TableCell>{boolText(step.allow_self_approval)}</TableCell><TableCell className="text-right"><div className="flex justify-end gap-1"><RowActionButton intent="edit" title="Edit" onClick={() => edit(step)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent="delete" title="Delete" onClick={() => void remove(step)}><Trash2 className="h-4 w-4" /></RowActionButton></div></TableCell></TableRow>)}</TableBody></Table></div></div></div>;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
+      <div className="w-full max-w-5xl rounded-lg border bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div><h2 className="text-sm font-semibold">Workflow steps - {workflow.name}</h2><p className="text-xs text-muted-foreground">Department manager, senior, and director steps follow the configured skip/block rule until hierarchy resolution is complete.</p></div>
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+        </div>
+        <div className="grid gap-3 border-b p-4 md:grid-cols-4">
+          <Field label="Order" type="number" value={form.step_order} onChange={(v) => setForm({ ...form, step_order: v })} />
+          <Field label="Step name" value={form.step_name} onChange={(v) => setForm({ ...form, step_name: v })} />
+          <SimpleSelect label="Approver type" value={form.approver_type} onChange={(v) => setForm({ ...form, approver_type: v })} options={["ROLE","USER","REPORTING_MANAGER","DEPARTMENT_MANAGER","DEPARTMENT_SENIOR","DIRECTOR","HR_ROLE","PERMISSION"]} />
+          <Select label="Role" value={form.role_id} onChange={(v) => setForm({ ...form, role_id: v })} options={roles.map((r) => ({ value: r.id, label: r.name }))} />
+          <Select label="User" value={form.user_id} onChange={(v) => setForm({ ...form, user_id: v })} options={users.map((u) => ({ value: u.id, label: u.name }))} />
+          <Field label="Permission key" value={form.permission_key} onChange={(v) => setForm({ ...form, permission_key: v })} />
+          <Check label="Required" checked={form.is_required} onChange={(v) => setForm({ ...form, is_required: v })} />
+          <Check label="Skip if no approver" checked={form.skip_if_no_approver} onChange={(v) => setForm({ ...form, skip_if_no_approver: v })} />
+          <Check label="Allow self approval" checked={form.allow_self_approval} onChange={(v) => setForm({ ...form, allow_self_approval: v })} />
+          <div className="flex items-end gap-2"><Button size="sm" onClick={() => void save()}><Plus className="h-4 w-4" /> {editing ? "Save step" : "Add step"}</Button>{editing ? <Button variant="outline" size="sm" onClick={() => reset()}>Cancel edit</Button> : null}</div>
+        </div>
+        <div className="flex flex-col gap-2 p-4">
+          {steps.map((step) => (
+            <CardRow
+              key={step.id}
+              title={`${step.step_order}. ${step.step_name}`}
+              meta={[step.approver_type, step.role_name ?? step.user_name ?? step.permission_key ?? "-", `Required: ${boolText(step.is_required)}`, `Skip: ${boolText(step.skip_if_no_approver)}`, `Self approval: ${boolText(step.allow_self_approval)}`]}
+              actions={<><RowActionButton intent="edit" title="Edit" onClick={() => edit(step)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent="delete" title="Delete" onClick={() => void remove(step)}><Trash2 className="h-4 w-4" /></RowActionButton></>}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Modal({ title, children, onClose, onSave }: { title: string; children: ReactNode; onClose: () => void; onSave: () => Promise<void> | void }) {

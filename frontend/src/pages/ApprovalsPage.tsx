@@ -22,6 +22,7 @@ import {
 import { SubNavigationBar, SubNavigationItem } from "../components/ui/navigation-tabs";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { CardRowList, KeyValueCardRow } from "../components/table/KeyValueCardRow";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
@@ -300,7 +301,7 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
         </>
       ) : null}
 
-      <Panel className="overflow-hidden">
+      <Panel className={["inbox", "submitted", "overdue", "escalated", "delegated", "history", "self-service"].includes(mode) ? "border-0 bg-transparent p-0 shadow-none" : "overflow-hidden"}>
         {error ? <div className="m-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
         {["inbox", "submitted", "overdue", "escalated", "delegated", "history", "self-service"].includes(mode) ? <ApprovalTable rows={approvals} loading={loading} onOpen={openInstance} /> : null}
         {mode === "workflows" ? <WorkflowBuilder rows={workflows} loading={loading} form={workflowForm} setForm={setWorkflowForm} onSave={saveWorkflow} onOpen={openWorkflow} canManage={canManage} /> : null}
@@ -319,11 +320,87 @@ export function ApprovalsPage({ mode = "inbox" }: { mode?: Mode }) {
 }
 
 function ApprovalTable({ rows, loading, onOpen }: { rows: ApprovalInstance[]; loading: boolean; onOpen: (row: ApprovalInstance) => void }) {
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Request</TableHead><TableHead>Module</TableHead><TableHead>Entity</TableHead><TableHead>Status</TableHead><TableHead>Current step</TableHead><TableHead>Submitted</TableHead><TableHead>Fallback</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.request_title}<div className="font-mono text-xs text-muted-foreground">{row.workflow_name_snapshot ?? "Module fallback available"}</div></TableCell><TableCell>{row.module_key}<div className="text-xs text-muted-foreground">{row.action_key}</div></TableCell><TableCell>{row.entity_type}<div className="font-mono text-xs text-muted-foreground">{row.entity_id}</div></TableCell><TableCell><Badge tone={statusTone(row.status)}>{row.status}</Badge></TableCell><TableCell>{row.current_step_number ?? "-"}</TableCell><TableCell>{row.submitted_at}</TableCell><TableCell>{row.fallback_used ? "Yes" : "No"}</TableCell><TableCell className="text-right"><RowActionButton intent="view" size="sm" title="View" onClick={() => void onOpen(row)}><Eye className="h-4 w-4" /> View</RowActionButton></TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={6} columns={8} label="Loading approvals" /> : rows.length === 0 ? <EmptyState title="No approvals" description="Approval requests will appear here." /> : null}</div>;
+  if (loading) return <TableSkeleton rows={6} columns={8} label="Loading approvals" />;
+  if (rows.length === 0) return <EmptyState title="No approvals" description="Approval requests will appear here." />;
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {rows.map((row) => (
+        <div
+          key={row.id}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            padding: "0.9rem 1.1rem",
+            background: "var(--v3-surface-2)",
+            border: "0.5px solid var(--v3-border)",
+            borderRadius: "var(--v3-radius-card)"
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-slate-900">{row.request_title}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+              <span className="font-mono">{row.workflow_name_snapshot ?? "Module fallback available"}</span>
+              <span className="text-[var(--v3-border-strong)]">&middot;</span>
+              <span>{row.module_key} / {row.action_key}</span>
+              <span className="text-[var(--v3-border-strong)]">&middot;</span>
+              <span className="font-mono">{row.entity_type} {row.entity_id}</span>
+              <span className="text-[var(--v3-border-strong)]">&middot;</span>
+              <span>Step {row.current_step_number ?? "-"}</span>
+              <span className="text-[var(--v3-border-strong)]">&middot;</span>
+              <span>Submitted {row.submitted_at}</span>
+              <span className="text-[var(--v3-border-strong)]">&middot;</span>
+              <span>Fallback {row.fallback_used ? "yes" : "no"}</span>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge tone={statusTone(row.status)}>{row.status}</Badge>
+            <RowActionButton intent="view" size="sm" title="View" onClick={() => void onOpen(row)}><Eye className="h-4 w-4" /> View</RowActionButton>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function WorkflowBuilder({ rows, loading, form, setForm, onSave, onOpen, canManage }: { rows: ApprovalWorkflow[]; loading: boolean; form: Record<string, string>; setForm: (form: any) => void; onSave: () => void; onOpen: (row: ApprovalWorkflow) => void; canManage: boolean }) {
-  return <div className="space-y-3 p-3">{canManage ? <div className="grid gap-2 rounded-md border p-3 md:grid-cols-7"><Field label="Code" value={form.workflow_code} onChange={(value) => setForm({ ...form, workflow_code: value })} /><Field label="Name" value={form.workflow_name} onChange={(value) => setForm({ ...form, workflow_name: value })} /><Field label="Module" value={form.module_key} onChange={(value) => setForm({ ...form, module_key: value })} /><Field label="Action" value={form.action_key} onChange={(value) => setForm({ ...form, action_key: value })} /><Field label="Entity" value={form.applies_to_entity_type} onChange={(value) => setForm({ ...form, applies_to_entity_type: value })} /><Field label="Priority" value={form.priority_number} onChange={(value) => setForm({ ...form, priority_number: value })} /><div className="flex items-end"><Button size="sm" onClick={() => void onSave()}><GitBranch className="h-4 w-4" /> Create</Button></div></div> : null}<div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Workflow</TableHead><TableHead>Module</TableHead><TableHead>Priority</TableHead><TableHead>Status</TableHead><TableHead>Enabled</TableHead><TableHead>Fallback</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.workflow_name}<div className="font-mono text-xs text-muted-foreground">{row.workflow_code}</div></TableCell><TableCell>{row.module_key}<div className="text-xs text-muted-foreground">{row.action_key}</div></TableCell><TableCell>{row.priority_number}</TableCell><TableCell><Badge tone={statusTone(row.status)}>{row.status}</Badge></TableCell><TableCell>{row.is_enabled ? "Yes" : "No"}</TableCell><TableCell>{row.fallback_behavior}</TableCell><TableCell className="text-right"><RowActionButton intent="edit" size="sm" title="Configure" onClick={() => void onOpen(row)}>Configure</RowActionButton></TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={7} label="Loading workflows" /> : rows.length === 0 ? <EmptyState title="No workflows" description="Create a workflow to route future central approvals." /> : null}</div></div>;
+  return (
+    <div className="space-y-3 p-3">
+      {canManage ? (
+        <div className="grid gap-2 rounded-md border p-3 md:grid-cols-7">
+          <Field label="Code" value={form.workflow_code} onChange={(value) => setForm({ ...form, workflow_code: value })} />
+          <Field label="Name" value={form.workflow_name} onChange={(value) => setForm({ ...form, workflow_name: value })} />
+          <Field label="Module" value={form.module_key} onChange={(value) => setForm({ ...form, module_key: value })} />
+          <Field label="Action" value={form.action_key} onChange={(value) => setForm({ ...form, action_key: value })} />
+          <Field label="Entity" value={form.applies_to_entity_type} onChange={(value) => setForm({ ...form, applies_to_entity_type: value })} />
+          <Field label="Priority" value={form.priority_number} onChange={(value) => setForm({ ...form, priority_number: value })} />
+          <div className="flex items-end"><Button size="sm" onClick={() => void onSave()}><GitBranch className="h-4 w-4" /> Create</Button></div>
+        </div>
+      ) : null}
+      {loading ? (
+        <TableSkeleton rows={5} columns={7} label="Loading workflows" />
+      ) : (
+        <CardRowList empty={rows.length === 0} emptyTitle="No workflows" emptyDescription="Create a workflow to route future central approvals.">
+          {rows.map((row) => (
+            <KeyValueCardRow
+              key={row.id}
+              title={row.workflow_name}
+              subtitle={row.workflow_code}
+              badge={<Badge tone={statusTone(row.status)}>{row.status}</Badge>}
+              actions={<RowActionButton intent="edit" size="sm" title="Configure" onClick={() => void onOpen(row)}>Configure</RowActionButton>}
+              fields={[
+                { label: "module", value: `${row.module_key} / ${row.action_key}` },
+                { label: "priority", value: row.priority_number },
+                { label: "enabled", value: row.is_enabled ? "Yes" : "No" },
+                { label: "fallback", value: row.fallback_behavior }
+              ]}
+            />
+          ))}
+        </CardRowList>
+      )}
+    </div>
+  );
 }
 
 function SettingsPanel({ settings, token, canManage, onSaved, onError }: { settings: ApprovalWorkflowSettings; token: string; canManage: boolean; onSaved: () => Promise<void>; onError: (message: string | null) => void }) {
@@ -363,16 +440,80 @@ function SettingsPanel({ settings, token, canManage, onSaved, onError }: { setti
 }
 
 function Delegations({ rows, loading, form, setForm, onSave }: { rows: ApprovalDelegationRule[]; loading: boolean; form: Record<string, string>; setForm: (form: any) => void; onSave: () => void }) {
-  return <div className="space-y-3 p-3"><div className="grid gap-2 rounded-md border p-3 md:grid-cols-6"><Field label="Delegate user ID" value={form.delegate_user_id} onChange={(value) => setForm({ ...form, delegate_user_id: value })} /><Field label="Start" value={form.start_at} onChange={(value) => setForm({ ...form, start_at: value })} /><Field label="End" value={form.end_at} onChange={(value) => setForm({ ...form, end_at: value })} /><Field label="Module" value={form.module_key} onChange={(value) => setForm({ ...form, module_key: value })} /><Field label="Reason" value={form.reason} onChange={(value) => setForm({ ...form, reason: value })} /><div className="flex items-end"><Button size="sm" onClick={() => void onSave()}><UserCheck className="h-4 w-4" /> Create</Button></div></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Delegator</TableHead><TableHead>Delegate</TableHead><TableHead>Module</TableHead><TableHead>Dates</TableHead><TableHead>Status</TableHead><TableHead>Reason</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell>{row.delegator_name ?? row.delegator_user_id}</TableCell><TableCell>{row.delegate_name ?? row.delegate_user_id}</TableCell><TableCell>{row.module_key ?? "All"} / {row.action_key ?? "All"}</TableCell><TableCell>{row.start_at} to {row.end_at}</TableCell><TableCell><Badge tone={statusTone(row.status)}>{row.status}</Badge></TableCell><TableCell>{row.reason}</TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={6} label="Loading delegations" /> : rows.length === 0 ? <EmptyState title="No delegations" description="Time-bound delegations will appear here." /> : null}</div></div>;
+  return (
+    <div className="space-y-3 p-3">
+      <div className="grid gap-2 rounded-md border p-3 md:grid-cols-6">
+        <Field label="Delegate user ID" value={form.delegate_user_id} onChange={(value) => setForm({ ...form, delegate_user_id: value })} />
+        <Field label="Start" value={form.start_at} onChange={(value) => setForm({ ...form, start_at: value })} />
+        <Field label="End" value={form.end_at} onChange={(value) => setForm({ ...form, end_at: value })} />
+        <Field label="Module" value={form.module_key} onChange={(value) => setForm({ ...form, module_key: value })} />
+        <Field label="Reason" value={form.reason} onChange={(value) => setForm({ ...form, reason: value })} />
+        <div className="flex items-end"><Button size="sm" onClick={() => void onSave()}><UserCheck className="h-4 w-4" /> Create</Button></div>
+      </div>
+      {loading ? (
+        <TableSkeleton rows={5} columns={6} label="Loading delegations" />
+      ) : (
+        <CardRowList empty={rows.length === 0} emptyTitle="No delegations" emptyDescription="Time-bound delegations will appear here.">
+          {rows.map((row) => (
+            <KeyValueCardRow
+              key={row.id}
+              title={row.delegator_name ?? row.delegator_user_id}
+              subtitle={`Delegate: ${row.delegate_name ?? row.delegate_user_id}`}
+              badge={<Badge tone={statusTone(row.status)}>{row.status}</Badge>}
+              fields={[
+                { label: "module", value: `${row.module_key ?? "All"} / ${row.action_key ?? "All"}` },
+                { label: "dates", value: `${row.start_at} to ${row.end_at}` },
+                { label: "reason", value: row.reason }
+              ]}
+            />
+          ))}
+        </CardRowList>
+      )}
+    </div>
+  );
 }
 
 function Templates({ rows, loading, onEdit }: { rows: ApprovalNotificationTemplate[]; loading: boolean; onEdit: (row: ApprovalNotificationTemplate) => void }) {
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Template</TableHead><TableHead>Event</TableHead><TableHead>Channel</TableHead><TableHead>Subject</TableHead><TableHead>Enabled</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.template_name}<div className="font-mono text-xs text-muted-foreground">{row.template_code}</div></TableCell><TableCell>{row.event_type}</TableCell><TableCell>{row.channel}</TableCell><TableCell>{row.subject_template ?? "-"}</TableCell><TableCell>{row.is_enabled ? "Yes" : "No"}</TableCell><TableCell className="text-right"><RowActionButton intent="edit" size="sm" title="Edit" onClick={() => onEdit(row)}>Edit</RowActionButton></TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={6} label="Loading approval templates" /> : rows.length === 0 ? <EmptyState title="No templates" description="Approval notification templates are seeded by default." /> : null}</div>;
+  if (loading) return <TableSkeleton rows={5} columns={6} label="Loading approval templates" />;
+  return (
+    <div className="p-3">
+      <CardRowList empty={rows.length === 0} emptyTitle="No templates" emptyDescription="Approval notification templates are seeded by default.">
+        {rows.map((row) => (
+          <KeyValueCardRow
+            key={row.id}
+            title={row.template_name}
+            subtitle={row.template_code}
+            badge={<Badge tone={row.is_enabled ? "success" : "neutral"}>{row.is_enabled ? "Enabled" : "Disabled"}</Badge>}
+            actions={<RowActionButton intent="edit" size="sm" title="Edit" onClick={() => onEdit(row)}>Edit</RowActionButton>}
+            fields={[
+              { label: "event", value: row.event_type },
+              { label: "channel", value: row.channel },
+              { label: "subject", value: row.subject_template ?? "-" }
+            ]}
+          />
+        ))}
+      </CardRowList>
+    </div>
+  );
 }
 
 function ReportTable({ rows, loading }: { rows: Record<string, unknown>[]; loading: boolean }) {
   const columns = Object.keys(rows[0] ?? { request_title: "", module_key: "", action_key: "", status: "", submitted_at: "" });
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((row, index) => <TableRow key={String(row.id ?? index)}>{columns.map((column) => <TableCell key={column}>{String(row[column] ?? "-")}</TableCell>)}</TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={Math.max(columns.length, 5)} label="Loading approval report" /> : rows.length === 0 ? <EmptyState title="No report rows" description="Approval report rows will appear after approvals are submitted." /> : null}</div>;
+  const [titleColumn, ...restColumns] = columns;
+  if (loading) return <TableSkeleton rows={5} columns={Math.max(columns.length, 5)} label="Loading approval report" />;
+  return (
+    <div className="p-3">
+      <CardRowList empty={rows.length === 0} emptyTitle="No report rows" emptyDescription="Approval report rows will appear after approvals are submitted.">
+        {rows.map((row, index) => (
+          <KeyValueCardRow
+            key={String(row.id ?? index)}
+            title={String(row[titleColumn] ?? "-")}
+            fields={restColumns.map((column) => ({ label: column.replace(/_/g, " "), value: String(row[column] ?? "-") }))}
+          />
+        ))}
+      </CardRowList>
+    </div>
+  );
 }
 
 function ApprovalDetail({ detail, permissions, onClose, onDecision }: { detail: { instance: ApprovalInstance; steps: ApprovalInstanceStep[]; assignees: ApprovalStepAssignee[]; timeline: ApprovalAction[] }; permissions: Set<string>; onClose: () => void; onDecision: (action: "approve" | "reject" | "send-back" | "cancel", required: boolean) => void }) {

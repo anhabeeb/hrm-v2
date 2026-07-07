@@ -1,12 +1,12 @@
 import { Archive, Download, Eye, History, RotateCcw, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
-import { TableSkeleton } from "../components/loading";
+import { CardSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
@@ -20,6 +20,7 @@ import {
   StandardSelectFilter,
   type StandardDateRange
 } from "../components/filters";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -241,43 +242,35 @@ export function DocumentRegistryPage() {
       </StandardFilterBar>
       <ActiveFilterChips chips={activeChips} />
 
-      <Panel className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Position</TableHead><TableHead>Location</TableHead><TableHead>Document</TableHead><TableHead>Category</TableHead><TableHead>Display</TableHead><TableHead>Stored</TableHead><TableHead>Document No</TableHead><TableHead>Issue</TableHead><TableHead>Expiry</TableHead><TableHead>Version</TableHead><TableHead>Uploaded</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {documents.map((doc) => (
-                <TableRow key={doc.id}>
-                  <TableCell><EmployeeIdentityCell employeeId={doc.employee_id} employeeName={doc.employee_name} employeeNumber={doc.employee_no} departmentName={doc.department_name} locationName={doc.location_name} size="sm" to={`/employees/${doc.employee_id}`} /></TableCell>
-                  <TableCell>{doc.department_name ?? "-"}</TableCell>
-                  <TableCell>{doc.position_title ?? "-"}</TableCell>
-                  <TableCell>{doc.location_name ?? "-"}</TableCell>
-                  <TableCell>{doc.document_type_name}{doc.is_sensitive ? <Badge className="ml-2" tone="warning">Sensitive</Badge> : null}</TableCell>
-                  <TableCell>{doc.category_name ?? "-"}</TableCell>
-                  <TableCell><Badge tone={tone(doc.display_status)}>{doc.display_status}</Badge></TableCell>
-                  <TableCell>{doc.status}</TableCell>
-                  <TableCell>{doc.document_number ?? "-"}</TableCell>
-                  <TableCell>{doc.issue_date ?? "-"}</TableCell>
-                  <TableCell>{doc.expiry_date ?? "-"}</TableCell>
-                  <TableCell>{doc.version_no ? `v${doc.version_no}` : "-"}</TableCell>
-                  <TableCell>{doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : "-"}</TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Link to={`/employees/${doc.employee_id}`}><RowActionButton intent="view" title="Open Employee 360"><Eye className="h-4 w-4" /></RowActionButton></Link>
-                      <RowActionButton intent="download" title="Version history" onClick={() => void showVersions(doc)}><History className="h-4 w-4" /></RowActionButton>
-                      {canDownload ? <RowActionButton intent="download" title="Download" onClick={() => void download(doc)}><Download className="h-4 w-4" /></RowActionButton> : null}
-                      {canArchive && doc.status === "ACTIVE" ? <RowActionButton intent="archive" title="Archive" onClick={() => setDocumentAction({ document: doc, name: "archive", reason: "" })}><Archive className="h-4 w-4" /></RowActionButton> : null}
-                      {canArchive && doc.status === "ARCHIVED" ? <RowActionButton intent="restore" title="Restore" onClick={() => setDocumentAction({ document: doc, name: "restore", reason: "" })}><RotateCcw className="h-4 w-4" /></RowActionButton> : null}
-                      {canDelete && doc.status !== "SOFT_DELETED" ? <RowActionButton intent="delete" title="Soft delete" onClick={() => setDocumentAction({ document: doc, name: "soft-delete", reason: "" })}><Trash2 className="h-4 w-4" /></RowActionButton> : null}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      <PerformanceDataTable
+        loading={loading}
+        error={null}
+        empty={documents.length === 0}
+        rowCount={documents.length}
+        emptyTitle="No documents found"
+        emptyDescription="Upload employee documents from Employee 360 or adjust filters."
+        skeleton={<CardSkeleton cards={6} label="Loading document registry" />}
+        className="border-0 bg-transparent p-0 shadow-none"
+      >
+        <div className="flex flex-col gap-2">
+          {documents.map((doc) => (
+            <DocumentCardRow
+              key={doc.id}
+              doc={doc}
+              actions={
+                <div className="flex shrink-0 items-center gap-1">
+                  <Link to={`/employees/${doc.employee_id}`}><RowActionButton intent="view" title="Open Employee 360"><Eye className="h-4 w-4" /></RowActionButton></Link>
+                  <RowActionButton intent="download" title="Version history" onClick={() => void showVersions(doc)}><History className="h-4 w-4" /></RowActionButton>
+                  {canDownload ? <RowActionButton intent="download" title="Download" onClick={() => void download(doc)}><Download className="h-4 w-4" /></RowActionButton> : null}
+                  {canArchive && doc.status === "ACTIVE" ? <RowActionButton intent="archive" title="Archive" onClick={() => setDocumentAction({ document: doc, name: "archive", reason: "" })}><Archive className="h-4 w-4" /></RowActionButton> : null}
+                  {canArchive && doc.status === "ARCHIVED" ? <RowActionButton intent="restore" title="Restore" onClick={() => setDocumentAction({ document: doc, name: "restore", reason: "" })}><RotateCcw className="h-4 w-4" /></RowActionButton> : null}
+                  {canDelete && doc.status !== "SOFT_DELETED" ? <RowActionButton intent="delete" title="Soft delete" onClick={() => setDocumentAction({ document: doc, name: "soft-delete", reason: "" })}><Trash2 className="h-4 w-4" /></RowActionButton> : null}
+                </div>
+              }
+            />
+          ))}
         </div>
-        {loading ? <TableSkeleton rows={6} columns={9} label="Loading document registry" /> : documents.length === 0 ? <EmptyState title="No documents found" description="Upload employee documents from Employee 360 or adjust filters." /> : null}
-      </Panel>
+      </PerformanceDataTable>
       {versions ? <VersionsModal versions={versions} onClose={() => setVersions(null)} /> : null}
       {documentAction ? (
         <DocumentActionModal
@@ -288,6 +281,67 @@ export function DocumentRegistryPage() {
         />
       ) : null}
     </PageShell>
+  );
+}
+
+function MetaChip({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return <span style={{ fontSize: 12, color: "var(--v3-text-secondary)" }}>{children}</span>;
+}
+
+function Dot() {
+  return <span style={{ color: "var(--v3-border-strong)" }}>&middot;</span>;
+}
+
+function DocumentCardRow({ doc, actions }: { doc: EmployeeDocument; actions?: ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "0.9rem 1.1rem",
+        background: "var(--v3-surface-2)",
+        border: "0.5px solid var(--v3-border)",
+        borderRadius: "var(--v3-radius-card)"
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <EmployeeIdentityCell
+          employeeId={doc.employee_id}
+          employeeName={doc.employee_name}
+          employeeNumber={doc.employee_no}
+          departmentName={doc.department_name}
+          locationName={doc.location_name}
+          size="md"
+          showMetadata={false}
+          to={`/employees/${doc.employee_id}`}
+        />
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[52px]">
+          <MetaChip>{doc.employee_no}</MetaChip>
+          {doc.department_name ? <><Dot /><MetaChip>{doc.department_name}</MetaChip></> : null}
+          {doc.position_title ? <><Dot /><MetaChip>{doc.position_title}</MetaChip></> : null}
+          {doc.location_name ? <><Dot /><MetaChip>{doc.location_name}</MetaChip></> : null}
+          <Dot />
+          <MetaChip>
+            {doc.document_type_name}
+            {doc.is_sensitive ? <Badge className="ml-1.5" tone="warning">Sensitive</Badge> : null}
+          </MetaChip>
+          {doc.category_name ? <><Dot /><MetaChip>{doc.category_name}</MetaChip></> : null}
+          {doc.document_number ? <><Dot /><MetaChip>Doc# {doc.document_number}</MetaChip></> : null}
+          {doc.issue_date ? <><Dot /><MetaChip>Issued {doc.issue_date}</MetaChip></> : null}
+          {doc.expiry_date ? <><Dot /><MetaChip>Expires {doc.expiry_date}</MetaChip></> : null}
+          {doc.version_no ? <><Dot /><MetaChip>v{doc.version_no}</MetaChip></> : null}
+          {doc.uploaded_at ? <><Dot /><MetaChip>Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}</MetaChip></> : null}
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        <Badge tone={tone(doc.display_status)}>{doc.display_status}</Badge>
+        <Badge tone="neutral">{doc.status}</Badge>
+        {actions}
+      </div>
+    </div>
   );
 }
 

@@ -24,7 +24,7 @@ import { EmptyState } from "../components/ui/empty-state";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput } from "../components/filters";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { CardRowList, KeyValueCardRow } from "../components/table/KeyValueCardRow";
 import { APP_BRANDING } from "../config/branding";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
@@ -109,27 +109,23 @@ function SummaryGrid({ items }: { items: Array<{ label: string; value: unknown; 
 }
 
 function RowsTable({ rows, columns, empty }: { rows: Row[]; columns: string[]; empty: string }) {
+  const [titleColumn, ...restColumns] = columns;
+  const isBadgeColumn = (column: string) => ["status", "severity", "result"].includes(column);
   return (
-    <Panel className="overflow-hidden p-0">
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}</TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={String(row.id ?? row.check_key ?? row.module_key ?? row.finding_key ?? index)}>
-                {columns.map((column) => (
-                  <TableCell key={column} className="max-w-[360px] truncate">
-                    {["status", "severity", "result"].includes(column) ? <Badge tone={statusTone(row[column])}>{text(row[column])}</Badge> : text(row[column])}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {!rows.length ? <EmptyState title={empty} description="Run the checker or adjust filters to see records." /> : null}
-      </div>
+    <Panel className="overflow-hidden p-2">
+      <CardRowList empty={!rows.length} emptyTitle={empty} emptyDescription="Run the checker or adjust filters to see records.">
+        {rows.map((row, index) => (
+          <KeyValueCardRow
+            key={String(row.id ?? row.check_key ?? row.module_key ?? row.finding_key ?? index)}
+            title={text(row[titleColumn])}
+            badge={isBadgeColumn(titleColumn) ? <Badge tone={statusTone(row[titleColumn])}>{text(row[titleColumn])}</Badge> : undefined}
+            fields={restColumns.map((column) => ({
+              label: column.replace(/_/g, " "),
+              value: isBadgeColumn(column) ? <Badge tone={statusTone(row[column])}>{text(row[column])}</Badge> : text(row[column])
+            }))}
+          />
+        ))}
+      </CardRowList>
     </Panel>
   );
 }
@@ -424,13 +420,33 @@ export function AdminSettingsPage() {
               </div>
             </Panel>
           ) : null}
-          <Panel className="overflow-hidden p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader><TableRow><TableHead>Module</TableHead><TableHead>Status</TableHead><TableHead>Enabled</TableHead><TableHead>Required</TableHead><TableHead>Dependencies</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-                <TableBody>{modules.map((module) => <TableRow key={String(module.module_key)}><TableCell>{text(module.module_name)}<div className="text-xs text-muted-foreground">{text(module.module_key)}</div></TableCell><TableCell><Badge tone={statusTone(module.status)}>{text(module.status)}</Badge></TableCell><TableCell>{boolInput(module.is_enabled) ? "Yes" : "No"}</TableCell><TableCell>{boolInput(module.is_required) ? "Yes" : "No"}</TableCell><TableCell className="max-w-[360px] truncate">{text(module.dependency_keys)}</TableCell><TableCell><RowActionButton intent={boolInput(module.is_enabled) ? "disable" : "enable"} size="sm" title={boolInput(module.is_enabled) ? "Disable module" : "Enable module"} disabled={boolInput(module.is_required) && boolInput(module.is_enabled)} onClick={() => void requestModuleToggle(module)}>{boolInput(module.is_enabled) ? "Disable" : "Enable"}</RowActionButton></TableCell></TableRow>)}</TableBody>
-              </Table>
-            </div>
+          <Panel className="overflow-hidden p-2">
+            <CardRowList empty={!modules.length} emptyTitle="No modules found">
+              {modules.map((module) => (
+                <KeyValueCardRow
+                  key={String(module.module_key)}
+                  title={text(module.module_name)}
+                  subtitle={text(module.module_key)}
+                  badge={<Badge tone={statusTone(module.status)}>{text(module.status)}</Badge>}
+                  actions={
+                    <RowActionButton
+                      intent={boolInput(module.is_enabled) ? "disable" : "enable"}
+                      size="sm"
+                      title={boolInput(module.is_enabled) ? "Disable module" : "Enable module"}
+                      disabled={boolInput(module.is_required) && boolInput(module.is_enabled)}
+                      onClick={() => void requestModuleToggle(module)}
+                    >
+                      {boolInput(module.is_enabled) ? "Disable" : "Enable"}
+                    </RowActionButton>
+                  }
+                  fields={[
+                    { label: "Enabled", value: boolInput(module.is_enabled) ? "Yes" : "No" },
+                    { label: "Required", value: boolInput(module.is_required) ? "Yes" : "No" },
+                    { label: "Dependencies", value: text(module.dependency_keys) }
+                  ]}
+                />
+              ))}
+            </CardRowList>
           </Panel>
         </div>
       ) : null}

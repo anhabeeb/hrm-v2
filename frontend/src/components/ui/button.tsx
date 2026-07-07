@@ -35,6 +35,10 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loadingLabel?: string;
 }
 
+// V3 palette only defines accent (violet) + success/warning/danger pastels, so
+// export/import intentionally reuse the accent family (soft outline) instead of
+// introducing an unrelated blue, and save/warning/destructive reuse the exact
+// V3 status hex values instead of Tailwind's default emerald/amber/red.
 const variantClasses: Record<ButtonVariant, string> = {
   primary: "bg-primary text-primary-foreground hover:bg-primary/90",
   secondary: "bg-muted text-foreground hover:bg-muted/80",
@@ -42,22 +46,22 @@ const variantClasses: Record<ButtonVariant, string> = {
   outline: "border bg-background text-foreground hover:bg-muted",
   danger: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
   actionCreate: "bg-primary text-primary-foreground hover:bg-primary/90",
-  actionSave: "bg-emerald-600 text-white hover:bg-emerald-700",
+  actionSave: "bg-[#5D8F2E] text-white hover:bg-[#3B6D11]",
   actionNeutral: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
-  actionExport: "bg-sky-600 text-white hover:bg-sky-700",
-  actionImport: "bg-sky-600 text-white hover:bg-sky-700",
-  actionWarning: "border border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200",
+  actionExport: "border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10",
+  actionImport: "border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10",
+  actionWarning: "border border-[#FAC775] bg-[#FAEEDA] text-[#854F0B] hover:bg-[#F7DFB0]",
   actionDestructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
   actionDisabled: "border border-slate-200 bg-slate-100 text-slate-400 hover:bg-slate-100",
   rowActionNeutral: "border border-transparent bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900",
   rowActionView: "border border-transparent bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900",
   rowActionEdit: "border border-transparent bg-transparent text-primary hover:bg-primary/10 hover:text-primary",
   rowActionCreate: "border border-transparent bg-transparent text-primary hover:bg-primary/10 hover:text-primary",
-  rowActionSave: "border border-transparent bg-transparent text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800",
-  rowActionWarning: "border border-transparent bg-transparent text-amber-700 hover:bg-amber-50 hover:text-amber-800",
-  rowActionDestructive: "border border-transparent bg-transparent text-red-600 hover:bg-red-50 hover:text-red-700",
-  rowActionExport: "border border-transparent bg-transparent text-sky-700 hover:bg-sky-50 hover:text-sky-800",
-  rowActionImport: "border border-transparent bg-transparent text-sky-700 hover:bg-sky-50 hover:text-sky-800",
+  rowActionSave: "border border-transparent bg-transparent text-[#3B6D11] hover:bg-[#EAF3DE] hover:text-[#3B6D11]",
+  rowActionWarning: "border border-transparent bg-transparent text-[#854F0B] hover:bg-[#FAEEDA] hover:text-[#854F0B]",
+  rowActionDestructive: "border border-transparent bg-transparent text-[#A32D2D] hover:bg-[#FCEBEB] hover:text-[#A32D2D]",
+  rowActionExport: "border border-transparent bg-transparent text-primary hover:bg-primary/10 hover:text-primary",
+  rowActionImport: "border border-transparent bg-transparent text-primary hover:bg-primary/10 hover:text-primary",
   rowActionDisabled: "border border-transparent bg-transparent text-slate-400 hover:bg-transparent"
 };
 

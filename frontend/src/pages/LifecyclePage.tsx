@@ -13,6 +13,7 @@ import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { EmptyState } from "../components/ui/empty-state";
+import { KeyValueCardRow } from "../components/table/KeyValueCardRow";
 import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
 import { TablePaginationBar } from "../components/table/TablePaginationBar";
 import { Input } from "../components/ui/input";
@@ -21,7 +22,6 @@ import { SubNavigationBar, SubNavigationItem } from "../components/ui/navigation
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Timeline } from "../components/ui/timeline";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
@@ -531,20 +531,21 @@ function DashboardSection({ kind, data, loading, error, onSelect }: { kind: Case
           </Panel>
         ))}
       </div>
-      <DataTableFrame loading={loading} error={error} empty={!loading && rows.length === 0}>
-        <Table>
-          <TableHeader><TableRow><TableHead>Case</TableHead><TableHead>Employee</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead></TableRow></TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={String(row.id)}>
-                <TableCell>{text(row.case_number)}</TableCell>
-                <TableCell><EmployeeIdentityCell employeeId={text(row.employee_id)} employeeName={text(row.employee_name ?? row.employee_name_snapshot)} employeeNumber={text(row.employee_no ?? row.employee_number_snapshot)} departmentName={text(row.department_name)} locationName={text(row.location_name ?? row.worksite_name)} size="sm" /></TableCell>
-                <TableCell><StatusBadge value={row.onboarding_status ?? row.offboarding_status} /></TableCell>
-                <TableCell>{text(row.due_date)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <DataTableFrame loading={loading} error={error} empty={!loading && rows.length === 0} className="border-0 bg-transparent p-0 shadow-none">
+        <div className="flex flex-col gap-2">
+          {rows.map((row) => (
+            <div key={String(row.id)} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+              <div className="min-w-0 flex-1">
+                <EmployeeIdentityCell employeeId={text(row.employee_id)} employeeName={text(row.employee_name ?? row.employee_name_snapshot)} employeeNumber={text(row.employee_no ?? row.employee_number_snapshot)} departmentName={text(row.department_name)} locationName={text(row.location_name ?? row.worksite_name)} size="sm" />
+                <p className="mt-1 pl-[44px] text-xs text-muted-foreground">{text(row.case_number)}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <StatusBadge value={row.onboarding_status ?? row.offboarding_status} />
+                <span className="text-xs text-muted-foreground">Due {text(row.due_date)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       </DataTableFrame>
     </div>
   );
@@ -752,28 +753,26 @@ function CasesSection({
       <div className="flex justify-end">
         <ActionTextButton intent="create" size="sm" onClick={onCreate}>Create {kind} case</ActionTextButton>
       </div>
-      <PerformanceDataTable loading={loading} refreshing={pagination?.refreshing} error={error} empty={!loading && cases.length === 0} rowCount={cases.length} emptyTitle="No lifecycle cases found" emptyDescription="Create a case or adjust filters.">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Case</TableHead><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Worksite</TableHead><TableHead>Status</TableHead><TableHead>Readiness</TableHead><TableHead>Due</TableHead><TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {cases.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell className="font-medium">{row.case_number}</TableCell>
-                <TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name ?? row.employee_name_snapshot ?? "-"} employeeNumber={row.employee_no ?? row.employee_number_snapshot} departmentName={row.department_name} locationName={row.location_name} size="sm" /></TableCell>
-                <TableCell>{row.department_name ?? "-"}</TableCell>
-                <TableCell>{row.location_name ?? "-"}</TableCell>
-                <TableCell><StatusBadge value={"onboarding_status" in row ? row.onboarding_status : row.offboarding_status} /></TableCell>
-                <TableCell><StatusBadge value={"activation_status" in row ? row.activation_status : row.finalization_status} /></TableCell>
-                <TableCell>{row.due_date ?? "-"}</TableCell>
-                <TableCell><RowActionButton intent="view" size="sm" title="View lifecycle case" onClick={() => onSelect(row.id)}>View</RowActionButton></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <PerformanceDataTable loading={loading} refreshing={pagination?.refreshing} error={error} empty={!loading && cases.length === 0} rowCount={cases.length} emptyTitle="No lifecycle cases found" emptyDescription="Create a case or adjust filters." className="border-0 bg-transparent p-0 shadow-none">
+        <div className="flex flex-col gap-2">
+          {cases.map((row) => (
+            <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+              <div className="min-w-0 flex-1">
+                <EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name ?? row.employee_name_snapshot ?? "-"} employeeNumber={row.employee_no ?? row.employee_number_snapshot} departmentName={row.department_name} locationName={row.location_name} size="sm" />
+                <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[44px] text-xs text-muted-foreground">
+                  <span>{row.case_number}</span>
+                  <span>&middot;</span>
+                  <span>Due {row.due_date ?? "-"}</span>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <StatusBadge value={"onboarding_status" in row ? row.onboarding_status : row.offboarding_status} />
+                <StatusBadge value={"activation_status" in row ? row.activation_status : row.finalization_status} />
+                <RowActionButton intent="view" size="sm" title="View lifecycle case" onClick={() => onSelect(row.id)}>View</RowActionButton>
+              </div>
+            </div>
+          ))}
+        </div>
       </PerformanceDataTable>
       {pagination ? <TablePaginationBar page={pagination.page} pageSize={pagination.pageSize} rowCount={cases.length} hasMore={pagination.hasMore} onPageChange={pagination.onPageChange} onPageSizeChange={pagination.onPageSizeChange} /> : null}
     </div>
@@ -782,38 +781,37 @@ function CasesSection({
 
 function OnboardingCaseTable({ rows, loading, refreshing, error, onSelect }: { rows: Row[]; loading: boolean; refreshing?: boolean; error: string | null; onSelect: (id: string) => void }) {
   return (
-    <PerformanceDataTable loading={loading} refreshing={refreshing} error={error} empty={!loading && rows.length === 0} rowCount={rows.length} emptyTitle="No onboarding cases found" emptyDescription="Create an onboarding case or adjust filters.">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Case</TableHead><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Job level</TableHead><TableHead>Position</TableHead><TableHead>Status</TableHead><TableHead>Readiness</TableHead><TableHead>Due</TableHead><TableHead>Setup</TableHead><TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={String(row.id)}>
-                <TableCell className="font-medium">{text(row.case_number)}</TableCell>
-                <TableCell><EmployeeIdentityCell employeeId={text(row.employee_id)} employeeName={text(row.employee_name ?? row.employee_name_snapshot)} employeeNumber={text(row.employee_no ?? row.employee_number_snapshot)} departmentName={text(row.department_name)} locationName={text(row.location_name)} size="sm" /></TableCell>
-                <TableCell>{text(row.department_name)}</TableCell>
-                <TableCell>{text(row.job_level_name)}</TableCell>
-                <TableCell>{text(row.position_name)}</TableCell>
-                <TableCell><StatusBadge value={row.onboarding_status} /></TableCell>
-                <TableCell><StatusBadge value={row.activation_status} /></TableCell>
-                <TableCell>{text(row.due_date)}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {["documents", "contract", "payroll", "user_account"].map((key) => {
-                      const value = rowSetupStatus(row, key);
-                      if (!value) return null;
-                      return <Badge key={key} tone={value === "COMPLETE" ? "success" : value === "NOT_REQUIRED" ? "neutral" : value === "BLOCKED" ? "danger" : "warning"}>{title(key)}: {title(value)}</Badge>;
-                    })}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right"><RowActionButton intent="view" size="sm" title="View onboarding case" onClick={() => onSelect(String(row.id))}>View</RowActionButton></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+    <PerformanceDataTable loading={loading} refreshing={refreshing} error={error} empty={!loading && rows.length === 0} rowCount={rows.length} emptyTitle="No onboarding cases found" emptyDescription="Create an onboarding case or adjust filters." className="border-0 bg-transparent p-0 shadow-none">
+      <div className="flex flex-col gap-2">
+        {rows.map((row) => (
+          <div key={String(row.id)} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+            <div className="min-w-0 flex-1">
+              <EmployeeIdentityCell employeeId={text(row.employee_id)} employeeName={text(row.employee_name ?? row.employee_name_snapshot)} employeeNumber={text(row.employee_no ?? row.employee_number_snapshot)} departmentName={text(row.department_name)} locationName={text(row.location_name)} size="sm" />
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[44px] text-xs text-muted-foreground">
+                <span>{text(row.case_number)}</span>
+                <span>&middot;</span>
+                <span>{text(row.job_level_name)}</span>
+                <span>&middot;</span>
+                <span>{text(row.position_name)}</span>
+                <span>&middot;</span>
+                <span>Due {text(row.due_date)}</span>
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1 pl-[44px]">
+                {["documents", "contract", "payroll", "user_account"].map((key) => {
+                  const value = rowSetupStatus(row, key);
+                  if (!value) return null;
+                  return <Badge key={key} tone={value === "COMPLETE" ? "success" : value === "NOT_REQUIRED" ? "neutral" : value === "BLOCKED" ? "danger" : "warning"}>{title(key)}: {title(value)}</Badge>;
+                })}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <StatusBadge value={row.onboarding_status} />
+              <StatusBadge value={row.activation_status} />
+              <RowActionButton intent="view" size="sm" title="View onboarding case" onClick={() => onSelect(String(row.id))}>View</RowActionButton>
+            </div>
+          </div>
+        ))}
+      </div>
     </PerformanceDataTable>
   );
 }
@@ -853,11 +851,25 @@ function AlertsSection({ alerts, loading, error, onRefresh }: { alerts: Row[]; l
   return (
     <div className="space-y-3">
       <div className="flex justify-end"><ActionTextButton intent="refresh" size="sm" onClick={onRefresh}><ShieldAlert className="h-4 w-4" /> Refresh alerts</ActionTextButton></div>
-      <DataTableFrame loading={loading} error={error} empty={!loading && alerts.length === 0}>
-        <Table>
-          <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Type</TableHead><TableHead>Severity</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead></TableRow></TableHeader>
-          <TableBody>{alerts.map((row) => <TableRow key={String(row.id)}><TableCell><EmployeeIdentityCell employeeId={text(row.employee_id)} employeeName={text(row.employee_name)} employeeNumber={text(row.employee_no ?? row.employee_number_snapshot)} size="sm" /></TableCell><TableCell>{text(row.alert_type)}</TableCell><TableCell><Badge tone="warning">{text(row.severity)}</Badge></TableCell><TableCell><StatusBadge value={row.status} /></TableCell><TableCell>{text(row.created_at)}</TableCell></TableRow>)}</TableBody>
-        </Table>
+      <DataTableFrame loading={loading} error={error} empty={!loading && alerts.length === 0} className="border-0 bg-transparent p-0 shadow-none">
+        <div className="flex flex-col gap-2">
+          {alerts.map((row) => (
+            <div key={String(row.id)} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+              <div className="min-w-0 flex-1">
+                <EmployeeIdentityCell employeeId={text(row.employee_id)} employeeName={text(row.employee_name)} employeeNumber={text(row.employee_no ?? row.employee_number_snapshot)} size="sm" />
+                <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[44px] text-xs text-muted-foreground">
+                  <span>{text(row.alert_type)}</span>
+                  <span>&middot;</span>
+                  <span>{text(row.created_at)}</span>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge tone="warning">{text(row.severity)}</Badge>
+                <StatusBadge value={row.status} />
+              </div>
+            </div>
+          ))}
+        </div>
       </DataTableFrame>
     </div>
   );
@@ -876,11 +888,23 @@ function ReportsSection({ reportKey, setReportKey, rows, loading, error, onExpor
         </div>
         <ActionTextButton intent="export" size="sm" onClick={onExport}><FileDown className="h-4 w-4" /> Export CSV</ActionTextButton>
       </Panel>
-      <DataTableFrame loading={loading} error={error} empty={!loading && rows.length === 0}>
-        <Table>
-          <TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{title(column)}</TableHead>)}</TableRow></TableHeader>
-          <TableBody>{rows.map((row, index) => <TableRow key={String(row.id ?? index)}>{columns.map((column) => <TableCell key={column}>{text(row[column])}</TableCell>)}</TableRow>)}</TableBody>
-        </Table>
+      <DataTableFrame loading={loading} error={error} empty={!loading && rows.length === 0} className="border-0 bg-transparent p-0 shadow-none">
+        <div className="flex flex-col gap-2">
+          {rows.map((row, index) => (
+            <div key={String(row.id ?? index)} className="rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {columns.map((column) => (
+                  <div key={column} className="min-w-0">
+                    <p className="text-xs capitalize text-muted-foreground">{title(column)}</p>
+                    <p className="mt-0.5 truncate text-sm font-medium">
+                      {column.toLowerCase().includes("status") ? <StatusBadge value={row[column]} /> : text(row[column])}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </DataTableFrame>
     </div>
   );
@@ -1066,26 +1090,29 @@ function CaseDetailModal({ kind, caseId, onClose, onChanged, askReason }: { kind
               </>
             )}
           </div>
-          <DataTableFrame empty={tasks.length === 0}>
-            <Table>
-              <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Group</TableHead><TableHead>Status</TableHead><TableHead>Required</TableHead><TableHead>Due</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {tasks.map((task) => (
-                  <TableRow key={task.id}>
-                    <TableCell>{task.task_name ?? task.title ?? task.task_key}</TableCell>
-                    <TableCell>{task.task_group}</TableCell>
-                    <TableCell><StatusBadge value={task.task_status ?? task.status} /></TableCell>
-                    <TableCell>{task.is_required || task.required ? "Yes" : "No"}</TableCell>
-                    <TableCell>{task.due_date ?? "-"}</TableCell>
-                    <TableCell className="space-x-2">
-                      <ActionTextButton intent="complete" size="sm" onClick={() => void run(() => kind === "onboarding" ? api.completeOnboardingTask(token!, task.id) : api.completeOffboardingTask(token!, task.id))}>Complete</ActionTextButton>
-                      <ActionTextButton intent="waive" size="sm" onClick={() => askReason("Waive task", (reason) => run(() => kind === "onboarding" ? api.waiveOnboardingTask(token!, task.id, reason) : api.waiveOffboardingTask(token!, task.id, reason)))}>Waive</ActionTextButton>
-                      <RowActionButton intent="warning" size="sm" title="Reopen" onClick={() => void run(() => kind === "onboarding" ? api.reopenOnboardingTask(token!, task.id) : api.reopenOffboardingTask(token!, task.id))}>Reopen</RowActionButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <DataTableFrame empty={tasks.length === 0} className="border-0 bg-transparent p-0 shadow-none">
+            <div className="flex flex-col gap-2">
+              {tasks.map((task) => (
+                <div key={task.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{task.task_name ?? task.title ?? task.task_key}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                      <span>{task.task_group}</span>
+                      <span>&middot;</span>
+                      <span>{task.is_required || task.required ? "Required" : "Optional"}</span>
+                      <span>&middot;</span>
+                      <span>Due {task.due_date ?? "-"}</span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <StatusBadge value={task.task_status ?? task.status} />
+                    <ActionTextButton intent="complete" size="sm" onClick={() => void run(() => kind === "onboarding" ? api.completeOnboardingTask(token!, task.id) : api.completeOffboardingTask(token!, task.id))}>Complete</ActionTextButton>
+                    <ActionTextButton intent="waive" size="sm" onClick={() => askReason("Waive task", (reason) => run(() => kind === "onboarding" ? api.waiveOnboardingTask(token!, task.id, reason) : api.waiveOffboardingTask(token!, task.id, reason)))}>Waive</ActionTextButton>
+                    <RowActionButton intent="warning" size="sm" title="Reopen" onClick={() => void run(() => kind === "onboarding" ? api.reopenOnboardingTask(token!, task.id) : api.reopenOffboardingTask(token!, task.id))}>Reopen</RowActionButton>
+                  </div>
+                </div>
+              ))}
+            </div>
           </DataTableFrame>
         </div>
         )
@@ -1693,37 +1720,21 @@ function OnboardingSectionReadinessPreview({
       {loading && !sections.length ? (
         <div className="mt-3 rounded-md border bg-slate-50 px-3 py-4 text-xs text-muted-foreground">Loading section preview...</div>
       ) : (
-        <div className="mt-3 overflow-hidden rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Section</TableHead>
-                <TableHead className="w-28">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sections.length ? sections.map((section, index) => {
-                const sectionKey = String(section.section_key ?? section.section_label ?? `section-${index}`);
-                return (
-                  <TableRow key={sectionKey}>
-                    <TableCell>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-900" title={displayText(section.section_label)}>{displayText(section.section_label)}</p>
-                        {section.status_message ? <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{String(section.status_message)}</p> : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge tone={sectionPreviewStatusTone(section.status)}>{sectionPreviewStatusLabel(section.status)}</Badge>
-                    </TableCell>
-                  </TableRow>
-                );
-              }) : (
-                <TableRow>
-                  <TableCell colSpan={2} className="text-sm text-muted-foreground">No section preview rows have been built yet.</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+        <div className="mt-3 flex flex-col gap-2">
+          {sections.length ? sections.map((section, index) => {
+            const sectionKey = String(section.section_key ?? section.section_label ?? `section-${index}`);
+            return (
+              <KeyValueCardRow
+                key={sectionKey}
+                title={<span title={displayText(section.section_label)}>{displayText(section.section_label)}</span>}
+                subtitle={section.status_message ? String(section.status_message) : undefined}
+                fields={[]}
+                badge={<Badge tone={sectionPreviewStatusTone(section.status)}>{sectionPreviewStatusLabel(section.status)}</Badge>}
+              />
+            );
+          }) : (
+            <p className="rounded-[var(--v3-radius-card)] border border-slate-200 bg-white p-3 text-sm text-muted-foreground">No section preview rows have been built yet.</p>
+          )}
         </div>
       )}
     </Panel>
@@ -2426,12 +2437,25 @@ function ContactWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (
   const contacts = asRows(asRow(workspace.sections).contacts);
   const addresses = asRows(asRow(workspace.sections).addresses);
   const findContact = (type: string) => contacts.find((contact) => contact.contact_type === type);
+  const contactValue = (type: string, field: "value" | "relationship" = "value") => {
+    const value = text(findContact(type)?.[field]);
+    return value === "-" ? "" : value;
+  };
   const currentAddress = addresses.find((address) => address.address_type === "CURRENT");
   const [form, setForm] = useState({
-    phone: text(findContact("PERSONAL_PHONE")?.value) === "-" ? "" : text(findContact("PERSONAL_PHONE")?.value),
-    personal_email: text(findContact("PERSONAL_EMAIL")?.value) === "-" ? "" : text(findContact("PERSONAL_EMAIL")?.value),
-    emergency_contact_value: text(findContact("EMERGENCY")?.value) === "-" ? "" : text(findContact("EMERGENCY")?.value),
-    emergency_relationship: text(findContact("EMERGENCY")?.relationship) === "-" ? "" : text(findContact("EMERGENCY")?.relationship),
+    phone: contactValue("PERSONAL_PHONE"),
+    personal_email: contactValue("PERSONAL_EMAIL"),
+    work_email: contactValue("WORK_EMAIL"),
+    emergency_contact_value: contactValue("EMERGENCY"),
+    emergency_relationship: contactValue("EMERGENCY", "relationship"),
+    guardian_contact_value: contactValue("GUARDIAN"),
+    guardian_relationship: contactValue("GUARDIAN", "relationship"),
+    spouse_contact_value: contactValue("SPOUSE"),
+    spouse_relationship: contactValue("SPOUSE", "relationship"),
+    parent_contact_value: contactValue("PARENT"),
+    parent_relationship: contactValue("PARENT", "relationship"),
+    other_contact_value: contactValue("OTHER"),
+    other_relationship: contactValue("OTHER", "relationship"),
     address_line: text(currentAddress?.address_line) === "-" ? "" : text(currentAddress?.address_line),
     island_city: text(currentAddress?.island_city) === "-" ? "" : text(currentAddress?.island_city),
     country: text(currentAddress?.country) === "-" ? "" : text(currentAddress?.country)
@@ -2442,11 +2466,41 @@ function ContactWorkspaceForm({ workspace, onSave }: { workspace: Row; onSave: (
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         <Field label="Phone"><Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></Field>
         <Field label="Personal email"><Input type="email" value={form.personal_email} onChange={(event) => setForm({ ...form, personal_email: event.target.value })} /></Field>
-        <Field label="Emergency contact"><Input value={form.emergency_contact_value} onChange={(event) => setForm({ ...form, emergency_contact_value: event.target.value })} /></Field>
-        <Field label="Emergency relationship"><Input value={form.emergency_relationship} onChange={(event) => setForm({ ...form, emergency_relationship: event.target.value })} /></Field>
+        <Field label="Office (work) email"><Input type="email" value={form.work_email} onChange={(event) => setForm({ ...form, work_email: event.target.value })} /></Field>
         <Field label="Address"><Input value={form.address_line} onChange={(event) => setForm({ ...form, address_line: event.target.value })} /></Field>
         <Field label="Island / city"><Input value={form.island_city} onChange={(event) => setForm({ ...form, island_city: event.target.value })} /></Field>
         <Field label="Country"><Input value={form.country} onChange={(event) => setForm({ ...form, country: event.target.value })} /></Field>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">Office email is used to create this employee's login account. Personal email is for reference only.</p>
+
+      <h3 className="mt-5 text-sm font-semibold">Emergency contacts</h3>
+      <p className="mt-1 text-xs text-muted-foreground">Add each contact that applies — priority order is Emergency &rarr; Guardian &rarr; Spouse &rarr; Parent &rarr; Other.</p>
+      <div className="mt-3 grid gap-3">
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Emergency contact"><Input value={form.emergency_contact_value} onChange={(event) => setForm({ ...form, emergency_contact_value: event.target.value })} /></Field>
+          <Field label="Relationship"><Input value={form.emergency_relationship} onChange={(event) => setForm({ ...form, emergency_relationship: event.target.value })} /></Field>
+          <div className="flex items-end text-xs text-muted-foreground">Priority 1</div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Guardian"><Input value={form.guardian_contact_value} onChange={(event) => setForm({ ...form, guardian_contact_value: event.target.value })} /></Field>
+          <Field label="Relationship"><Input value={form.guardian_relationship} onChange={(event) => setForm({ ...form, guardian_relationship: event.target.value })} /></Field>
+          <div className="flex items-end text-xs text-muted-foreground">Priority 2</div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Spouse"><Input value={form.spouse_contact_value} onChange={(event) => setForm({ ...form, spouse_contact_value: event.target.value })} /></Field>
+          <Field label="Relationship"><Input value={form.spouse_relationship} onChange={(event) => setForm({ ...form, spouse_relationship: event.target.value })} /></Field>
+          <div className="flex items-end text-xs text-muted-foreground">Priority 3</div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Parent"><Input value={form.parent_contact_value} onChange={(event) => setForm({ ...form, parent_contact_value: event.target.value })} /></Field>
+          <Field label="Relationship"><Input value={form.parent_relationship} onChange={(event) => setForm({ ...form, parent_relationship: event.target.value })} /></Field>
+          <div className="flex items-end text-xs text-muted-foreground">Priority 4</div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Other"><Input value={form.other_contact_value} onChange={(event) => setForm({ ...form, other_contact_value: event.target.value })} /></Field>
+          <Field label="Relationship"><Input value={form.other_relationship} onChange={(event) => setForm({ ...form, other_relationship: event.target.value })} /></Field>
+          <div className="flex items-end text-xs text-muted-foreground">Priority 5</div>
+        </div>
       </div>
       <div className="mt-4 flex justify-end"><ActionTextButton intent="save" size="sm" onClick={() => onSave(form)}>Save contacts</ActionTextButton></div>
     </Panel>
@@ -2870,12 +2924,21 @@ function DocumentsWorkspaceForm({ workspace, caseId, token, onSave, onAccelerate
             description="Add document rules in Document Settings when this employee should have mandatory onboarding documents."
           />
         ) : (
-          <DataTableFrame className="mt-3">
-            <Table>
-              <TableHeader><TableRow><TableHead>Document</TableHead><TableHead>Status</TableHead><TableHead>Uploaded</TableHead><TableHead>Expiry</TableHead><TableHead>Rule</TableHead><TableHead>Matched scope</TableHead></TableRow></TableHeader>
-              <TableBody>{checklistRows.map((row) => <TableRow key={String(row.document_type_id ?? row.id)}><TableCell>{text(row.document_type_name)}</TableCell><TableCell><StatusBadge value={row.requirement_status ?? row.compliance_status} /></TableCell><TableCell>{row.missing ? "Missing" : "Uploaded"}</TableCell><TableCell>{text(asRow(row.document).expiry_date ?? row.expiry_date)}</TableCell><TableCell>{displayText(row.matched_employee_type_label, "Any")}</TableCell><TableCell className="max-w-80 whitespace-normal break-words text-xs text-muted-foreground">{matchedScopeLabel(row)}</TableCell></TableRow>)}</TableBody>
-            </Table>
-          </DataTableFrame>
+          <div className="mt-3 flex flex-col gap-2">
+            {checklistRows.map((row) => (
+              <KeyValueCardRow
+                key={String(row.document_type_id ?? row.id)}
+                title={text(row.document_type_name)}
+                badge={<StatusBadge value={row.requirement_status ?? row.compliance_status} />}
+                fields={[
+                  { label: "Uploaded", value: row.missing ? "Missing" : "Uploaded" },
+                  { label: "Expiry", value: text(asRow(row.document).expiry_date ?? row.expiry_date) },
+                  { label: "Rule", value: displayText(row.matched_employee_type_label, "Any") },
+                  { label: "Matched scope", value: matchedScopeLabel(row) }
+                ]}
+              />
+            ))}
+          </div>
         )}
       </Panel>
     </div>

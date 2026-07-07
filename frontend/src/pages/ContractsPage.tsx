@@ -1,6 +1,5 @@
 import { FileText, Plus, RefreshCw, Settings, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { ModuleSettingsBody } from "../components/settings/ModuleToggleHeader";
@@ -8,6 +7,7 @@ import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -22,7 +22,7 @@ import {
 } from "../components/filters";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { CardRowList, KeyValueCardRow } from "../components/table/KeyValueCardRow";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
 import { useOrganizationReferences } from "../hooks/useOrganizationReferences";
@@ -246,8 +246,8 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
             <StandardSelectFilter value={filters.contract_type_id} onValueChange={(value) => setFilters((current) => ({ ...current, contract_type_id: value }))} allLabel="All contract types" width="documentType" options={activeTypes.map((type) => ({ value: String(type.id), label: text(type.name) }))} />
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} />
-          <Panel className="space-y-3 p-3">
-          <DataTableFrame loading={loading} error={error} empty={!loading && contracts.length === 0}>
+          <Panel className="space-y-3 border-0 bg-transparent p-0 shadow-none">
+          <DataTableFrame loading={loading} error={error} empty={!loading && contracts.length === 0} className="border-0 bg-transparent shadow-none">
             <ContractTable rows={contracts} canManage={canManage} onAction={setActionTarget} />
           </DataTableFrame>
           </Panel>
@@ -255,20 +255,20 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
       ) : null}
 
       {tab === "types" ? (
-        <Panel className="space-y-3 p-3">
+        <div className="space-y-3">
           <div className="flex justify-end">{canTypeManage ? <Button size="sm" onClick={() => setTypeModal({})}><Plus className="h-4 w-4" /> Create type</Button> : null}</div>
           <SimpleTable rows={types} columns={["code", "name", "category", "default_duration_months", "default_probation_months", "requires_end_date", "requires_probation", "allows_renewal", "status"]} />
-        </Panel>
+        </div>
       ) : null}
 
       {tab === "settings" ? <ContractSettingsPanel settings={settings} canEdit={canSettings} onSave={(next) => void saveSettings(next)} /> : null}
-      {tab === "probation" ? <Panel className="p-3"><SimpleTable rows={probation} columns={["employee_number_snapshot", "employee_name_snapshot", "contract_number", "probation_status", "probation_end_date", "confirmation_due_date", "status"]} /></Panel> : null}
-      {tab === "renewals" ? <Panel className="p-3"><SimpleTable rows={renewals} columns={["employee_no", "full_name", "original_contract_number", "renewal_contract_number", "renewal_status", "previous_end_date", "proposed_start_date", "proposed_end_date"]} /></Panel> : null}
+      {tab === "probation" ? <SimpleTable rows={probation} columns={["employee_number_snapshot", "employee_name_snapshot", "contract_number", "probation_status", "probation_end_date", "confirmation_due_date", "status"]} /> : null}
+      {tab === "renewals" ? <SimpleTable rows={renewals} columns={["employee_no", "full_name", "original_contract_number", "renewal_contract_number", "renewal_status", "previous_end_date", "proposed_start_date", "proposed_end_date"]} /> : null}
       {tab === "alerts" ? (
-        <Panel className="space-y-3 p-3">
+        <div className="space-y-3">
           {canManage ? <Button size="sm" onClick={() => void refreshAlerts()}><ShieldCheck className="h-4 w-4" /> Refresh alerts</Button> : null}
           <SimpleTable rows={alerts} columns={["alert_type", "severity", "status", "employee_no", "full_name", "contract_number", "due_date", "notes"]} />
-        </Panel>
+        </div>
       ) : null}
 
       {contractModal ? <ContractForm employees={employees} organizationRefs={organizationRefs} types={activeTypes} onClose={() => setContractModal(false)} onSave={async (employeeId, input) => { if (!token) return; await api.createEmployeeContract(token, employeeId, input); setContractModal(false); alertApi.showSuccess("Contract saved", "Employee contract draft was saved."); await load(); }} /> : null}
@@ -288,40 +288,58 @@ export function ContractsPage({ mode = "contracts" }: { mode?: Tab }) {
 
 function ContractTable({ rows, canManage, onAction }: { rows: Row[]; canManage: boolean; onAction: (target: { row: Row; action: string; title: string; reasonRequired?: boolean }) => void }) {
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {["Employee", "Contract", "Type", "Status", "Approval", "Start", "End", "Probation", "Renewal", "Document", "Actions"].map((column) => <TableHead key={column}>{column}</TableHead>)}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={String(row.id)}>
-              <TableCell><Link className="font-medium text-primary" to={`/employees/${row.employee_id}`}>{text(row.employee_name_snapshot ?? row.full_name)}</Link><div className="text-xs text-muted-foreground">{text(row.employee_number_snapshot ?? row.employee_no)}</div></TableCell>
-              <TableCell>{text(row.contract_number)}<div className="text-xs text-muted-foreground">{text(row.contract_title)}</div></TableCell>
-              <TableCell>{text(row.contract_type_display_name ?? row.contract_type_name_snapshot ?? "Not selected")}</TableCell>
-              <TableCell><StatusBadge value={String(row.status)} /></TableCell>
-              <TableCell><Badge tone={row.approval_status === "APPROVED" ? "success" : row.approval_status === "PENDING" ? "warning" : "neutral"}>{text(row.approval_status)}</Badge></TableCell>
-              <TableCell>{text(row.contract_start_date)}</TableCell>
-              <TableCell>{text(row.contract_end_date)}</TableCell>
-              <TableCell>{text(row.probation_status)}<div className="text-xs text-muted-foreground">{text(row.confirmation_due_date)}</div></TableCell>
-              <TableCell>{text(row.renewal_status)}</TableCell>
-              <TableCell>{row.document_id ? "Linked" : "Missing"}</TableCell>
-              <TableCell>
-                {canManage ? (
-                  <div className="flex flex-wrap gap-1">
-                    <ActionTextButton intent="submit" size="sm" onClick={() => onAction({ row, action: "submit-for-approval", title: "Submit for approval" })}>Submit</ActionTextButton>
-                    <ActionTextButton intent="approve" size="sm" onClick={() => onAction({ row, action: "approve", title: "Approve" })}>Approve</ActionTextButton>
-                    <ActionTextButton intent="confirm" size="sm" onClick={() => onAction({ row, action: "activate", title: "Activate" })}>Activate</ActionTextButton>
-                    <Button variant="danger" size="sm" onClick={() => onAction({ row, action: "cancel", title: "Cancel", reasonRequired: true })}>Cancel</Button>
-                  </div>
-                ) : "-"}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="flex flex-col gap-2">
+      {rows.map((row) => (
+        <div
+          key={String(row.id)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            padding: "0.9rem 1.1rem",
+            background: "var(--v3-surface-2)",
+            border: "0.5px solid var(--v3-border)",
+            borderRadius: "var(--v3-radius-card)"
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <EmployeeIdentityCell
+              employeeName={text(row.employee_name_snapshot ?? row.full_name)}
+              employeeNumber={text(row.employee_number_snapshot ?? row.employee_no)}
+              showMetadata={false}
+              to={`/employees/${row.employee_id}`}
+            />
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[52px] text-xs text-muted-foreground">
+              <span>{text(row.contract_number)}</span>
+              {row.contract_title ? <><span className="text-[var(--v3-border-strong)]">&middot;</span><span>{text(row.contract_title)}</span></> : null}
+              <span className="text-[var(--v3-border-strong)]">&middot;</span>
+              <span>{text(row.contract_type_display_name ?? row.contract_type_name_snapshot ?? "Not selected")}</span>
+              <span className="text-[var(--v3-border-strong)]">&middot;</span>
+              <span>{text(row.contract_start_date)} to {text(row.contract_end_date)}</span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[52px] text-xs text-muted-foreground">
+              <span>Probation {text(row.probation_status)} ({text(row.confirmation_due_date)})</span>
+              <span className="text-[var(--v3-border-strong)]">&middot;</span>
+              <span>Renewal {text(row.renewal_status)}</span>
+              <span className="text-[var(--v3-border-strong)]">&middot;</span>
+              <span>Document {row.document_id ? "linked" : "missing"}</span>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge tone={row.approval_status === "APPROVED" ? "success" : row.approval_status === "PENDING" ? "warning" : "neutral"}>{text(row.approval_status)}</Badge>
+            <StatusBadge value={String(row.status)} />
+            {canManage ? (
+              <div className="flex flex-wrap gap-1">
+                <ActionTextButton intent="submit" size="sm" onClick={() => onAction({ row, action: "submit-for-approval", title: "Submit for approval" })}>Submit</ActionTextButton>
+                <ActionTextButton intent="approve" size="sm" onClick={() => onAction({ row, action: "approve", title: "Approve" })}>Approve</ActionTextButton>
+                <ActionTextButton intent="confirm" size="sm" onClick={() => onAction({ row, action: "activate", title: "Activate" })}>Activate</ActionTextButton>
+                <Button variant="danger" size="sm" onClick={() => onAction({ row, action: "cancel", title: "Cancel", reasonRequired: true })}>Cancel</Button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -491,18 +509,20 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function SimpleTable({ rows, columns }: { rows: Row[]; columns: string[] }) {
+  const [titleColumn, ...restColumns] = columns;
+  const fieldValue = (row: Row, column: string) => (column === "status" ? <StatusBadge value={row[column]} /> : typeof row[column] === "boolean" ? (row[column] ? "Yes" : "No") : text(row[column]));
   return (
-    <DataTableFrame loading={false} empty={rows.length === 0}>
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column.split("_").join(" ")}</TableHead>)}</TableRow></TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={String(row.id ?? index)}>{columns.map((column) => <TableCell key={column}>{typeof row[column] === "boolean" ? (row[column] ? "Yes" : "No") : text(row[column])}</TableCell>)}</TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </DataTableFrame>
+    <Panel className="overflow-hidden p-2">
+      <CardRowList empty={rows.length === 0} emptyTitle="No rows found" emptyDescription="Try adjusting filters or check back after records are added.">
+        {rows.map((row, index) => (
+          <KeyValueCardRow
+            key={String(row.id ?? index)}
+            title={text(row[titleColumn])}
+            badge={titleColumn === "status" ? <StatusBadge value={row[titleColumn]} /> : undefined}
+            fields={restColumns.map((column) => ({ label: column.split("_").join(" "), value: fieldValue(row, column) }))}
+          />
+        ))}
+      </CardRowList>
+    </Panel>
   );
 }

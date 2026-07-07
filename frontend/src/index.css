@@ -3,20 +3,52 @@
 @tailwind utilities;
 
 :root {
-  --background: 210 20% 98%;
-  --foreground: 222 47% 11%;
-  --muted: 210 24% 93%;
-  --muted-foreground: 215 16% 45%;
-  --accent: 184 42% 92%;
-  --accent-foreground: 190 70% 22%;
-  --primary: 188 92% 28%;
+  /* V3 design system base tokens (replaces the old teal shadcn theme). Every
+     bg-primary/text-accent-foreground/border-border/etc class across the app
+     resolves through these, so this block is the single re-theme switch. */
+  --background: 240 33% 98%;
+  --foreground: 235 37% 12%;
+  --muted: 240 30% 95%;
+  --muted-foreground: 231 11% 47%;
+  --accent: 244 90% 96%;
+  --accent-foreground: 245 43% 50%;
+  --primary: 245 78% 61%;
   --primary-foreground: 0 0% 100%;
-  --destructive: 0 72% 48%;
+  --destructive: 0 57% 41%;
   --destructive-foreground: 0 0% 100%;
-  --border: 214 22% 84%;
-  --input: 214 22% 84%;
-  --ring: 188 92% 28%;
+  --border: 240 26% 93%;
+  --input: 240 26% 93%;
+  --ring: 245 78% 61%;
   --frontend-asset-version: "pages-mime-hardening-2026-06-29";
+
+  /* V3 design tokens — namespaced so they never collide with the shadcn
+     tokens above (which every existing page still relies on via Tailwind's
+     bg-accent/border-border/etc). Only components explicitly opted into the
+     V3 look (e.g. the Employees card list) read these. */
+  --v3-surface-0: #F7F7FB;
+  --v3-surface-2: #FFFFFF;
+  --v3-text-primary: #14162B;
+  --v3-text-secondary: #6B6F86;
+  --v3-text-muted: #9A9DB0;
+  --v3-border: #E7E7F1;
+  --v3-border-strong: #D3D3E3;
+  --v3-accent: #7F77DD;
+  --v3-accent-strong: #5B4FE9;
+  --v3-bg-accent: #EEEDFE;
+  --v3-text-accent: #534AB7;
+  --v3-bg-success: #EAF3DE;
+  --v3-text-success: #3B6D11;
+  --v3-bg-warning: #FAEEDA;
+  --v3-text-warning: #854F0B;
+  --v3-bg-danger: #FCEBEB;
+  --v3-text-danger: #A32D2D;
+  --v3-radius-card: 12px;
+
+  /* Leave-type ring colors — soft, distinguishable, not primary-saturated */
+  --v3-ring-annual: #AFA9EC;
+  --v3-ring-sick: #F0997B;
+  --v3-ring-casual: #5DCAA5;
+  --v3-ring-other: #F0C96B;
 }
 
 * {

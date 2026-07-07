@@ -12,7 +12,6 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { CheckboxField, PageHeader, PageShell, TextareaField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { ShiftTemplate } from "../types/roster";
@@ -119,27 +118,39 @@ export function RosterShiftTemplatesPage() {
           />
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Time</TableHead><TableHead>Break</TableHead><TableHead>Minutes</TableHead><TableHead>Color</TableHead><TableHead>Status</TableHead><TableHead>Sort</TableHead>{canManage ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader>
-            <TableBody>
-              {filtered.map((template) => (
-                <TableRow key={template.id}>
-                  <TableCell className="font-mono text-xs">{template.code}</TableCell>
-                  <TableCell><div className="font-medium">{template.name}</div><div className="text-xs text-muted-foreground">{template.description ?? "-"}</div></TableCell>
-                  <TableCell>{template.start_time} - {template.end_time}{template.is_overnight ? <Badge tone="info" className="ml-1">Overnight</Badge> : null}</TableCell>
-                  <TableCell>{template.break_minutes}</TableCell>
-                  <TableCell>{template.total_work_minutes ?? "-"}</TableCell>
-                  <TableCell><span className="inline-flex h-5 w-12 rounded border" style={{ background: template.color_label ?? "#e2e8f0" }} /></TableCell>
-                  <TableCell><Badge tone={template.is_active ? "success" : "neutral"}>{template.is_active ? "Active" : "Inactive"}</Badge></TableCell>
-                  <TableCell>{template.sort_order}</TableCell>
-                  {canManage || canArchive || canRestore ? <TableCell><div className="flex justify-end gap-1"><RowActionButton intent="edit" title="Edit" onClick={() => setEditing(template)} disabled={!canManage}><Edit className="h-4 w-4" /></RowActionButton>{template.is_active ? <RowActionButton intent="archive" size="sm" title="Archive" disabled={!canArchive} onClick={() => void action(template, "archive")}>Archive</RowActionButton> : <RowActionButton intent="restore" size="sm" title="Restore" disabled={!canRestore} onClick={() => void action(template, "restore")}>Restore</RowActionButton>}</div></TableCell> : null}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={8} label="Loading shift templates" /> : filtered.length === 0 ? <EmptyState title="No shift templates found" description="Add a shift template or adjust search." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={8} label="Loading shift templates" /> : filtered.length === 0 ? <EmptyState title="No shift templates found" description="Add a shift template or adjust search." /> : (
+          <div className="flex flex-col gap-2 p-3">
+            {filtered.map((template) => (
+              <div key={template.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                <span className="inline-flex h-9 w-9 shrink-0 rounded-md border" style={{ background: template.color_label ?? "#e2e8f0" }} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                    <span className="font-mono text-xs text-muted-foreground">{template.code}</span>
+                    <span>{template.name}</span>
+                    {template.is_overnight ? <Badge tone="info">Overnight</Badge> : null}
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                    <span>{template.start_time} - {template.end_time}</span>
+                    <span>&middot;</span>
+                    <span>Break {template.break_minutes} min</span>
+                    <span>&middot;</span>
+                    <span>{template.total_work_minutes ?? "-"} min total</span>
+                    <span>&middot;</span>
+                    <span>Sort {template.sort_order}</span>
+                    {template.description ? <><span>&middot;</span><span>{template.description}</span></> : null}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Badge tone={template.is_active ? "success" : "neutral"}>{template.is_active ? "Active" : "Inactive"}</Badge>
+                  {canManage || canArchive || canRestore ? <>
+                    <RowActionButton intent="edit" title="Edit" onClick={() => setEditing(template)} disabled={!canManage}><Edit className="h-4 w-4" /></RowActionButton>
+                    {template.is_active ? <RowActionButton intent="archive" size="sm" title="Archive" disabled={!canArchive} onClick={() => void action(template, "archive")}>Archive</RowActionButton> : <RowActionButton intent="restore" size="sm" title="Restore" disabled={!canRestore} onClick={() => void action(template, "restore")}>Restore</RowActionButton>}
+                  </> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
       {editing !== undefined ? <ShiftTemplateModal template={editing ?? undefined} onClose={() => setEditing(undefined)} onSave={(input) => void save(input)} /> : null}
     </PageShell>

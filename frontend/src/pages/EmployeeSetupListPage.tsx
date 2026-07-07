@@ -12,7 +12,6 @@ import { EmptyState } from "../components/ui/empty-state";
 import { AlertBanner, PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { useDebouncedTableFilters } from "../hooks/useDebouncedTableFilters";
 import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
@@ -115,61 +114,59 @@ export function EmployeeSetupListPage() {
         rowCount={rows.length}
         emptyTitle="No pending setup employees"
         emptyDescription="Employees waiting for setup or final verification will appear here."
+        className="border-0 bg-transparent p-0 shadow-none"
       >
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="sticky left-0 z-10 min-w-[280px] bg-white">Employee</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Position</TableHead>
-              <TableHead>Setup Progress</TableHead>
-              <TableHead>Blockers</TableHead>
-              <TableHead>Source Case</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((employee) => {
-              const summary = employee.setup_summary;
-              const to = `/employees/${employee.id}?setup=1`;
-              return (
-                <TableRow key={employee.id}>
-                  <TableCell className="sticky left-0 z-10 bg-white">
-                    <EmployeeIdentityCell
-                      employee={employee}
-                      token={token}
-                      employeeName={employee.full_name}
-                      employeeNumber={employee.employee_no}
-                      departmentName={employee.department_name}
-                      locationName={employee.location_name}
-                      status={employee.status_name ?? employee.status_key}
-                      to={to}
-                    />
-                  </TableCell>
-                  <TableCell><StatusBadge value={employee.status_name ?? employee.status_key ?? "-"} /></TableCell>
-                  <TableCell>{employee.department_name ?? "-"}</TableCell>
-                  <TableCell>{employee.position_title ?? "-"}</TableCell>
-                  <TableCell><Badge tone={setupTone(summary)}>{completionLabel(summary)}</Badge></TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {Number(summary?.blocked_count ?? 0) ? <Badge tone="warning">{summary?.blocked_count} blocked</Badge> : null}
-                      {Number(summary?.failed_count ?? 0) ? <Badge tone="danger">{summary?.failed_count} failed</Badge> : null}
-                      {Number(summary?.stale_count ?? 0) ? <Badge tone="warning">{summary?.stale_count} stale</Badge> : null}
-                      {!Number(summary?.blocked_count ?? 0) && !Number(summary?.failed_count ?? 0) && !Number(summary?.stale_count ?? 0) ? <Badge tone="neutral">None</Badge> : null}
-                    </div>
-                  </TableCell>
-                  <TableCell>{employee.active_onboarding_case_number ?? summary?.source_case_id ?? "-"}</TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <RowActionButton intent="view" title="Open Employee 360 setup" onClick={() => navigate(to)}><CheckCircle2 className="h-4 w-4" /></RowActionButton>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+        <div className="flex flex-col gap-2">
+          {rows.map((employee) => {
+            const summary = employee.setup_summary;
+            const to = `/employees/${employee.id}?setup=1`;
+            return (
+              <div
+                key={employee.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  padding: "0.9rem 1.1rem",
+                  background: "var(--v3-surface-2)",
+                  border: "0.5px solid var(--v3-border)",
+                  borderRadius: "var(--v3-radius-card)"
+                }}
+              >
+                <div className="min-w-0 flex-1">
+                  <EmployeeIdentityCell
+                    employee={employee}
+                    token={token}
+                    size="md"
+                    showMetadata={false}
+                    employeeName={employee.full_name}
+                    employeeNumber={employee.employee_no}
+                    to={to}
+                  />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[52px] text-xs text-muted-foreground">
+                    <span>{employee.employee_no}</span>
+                    {employee.department_name ? <><span className="text-[var(--v3-border-strong)]">&middot;</span><span>{employee.department_name}</span></> : null}
+                    {employee.position_title ? <><span className="text-[var(--v3-border-strong)]">&middot;</span><span>{employee.position_title}</span></> : null}
+                    <span className="text-[var(--v3-border-strong)]">&middot;</span>
+                    <span>Source case {employee.active_onboarding_case_number ?? summary?.source_case_id ?? "-"}</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1 pl-[52px]">
+                    {Number(summary?.blocked_count ?? 0) ? <Badge tone="warning">{summary?.blocked_count} blocked</Badge> : null}
+                    {Number(summary?.failed_count ?? 0) ? <Badge tone="danger">{summary?.failed_count} failed</Badge> : null}
+                    {Number(summary?.stale_count ?? 0) ? <Badge tone="warning">{summary?.stale_count} stale</Badge> : null}
+                    {!Number(summary?.blocked_count ?? 0) && !Number(summary?.failed_count ?? 0) && !Number(summary?.stale_count ?? 0) ? <Badge tone="neutral">No blockers</Badge> : null}
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  <Badge tone={setupTone(summary)}>{completionLabel(summary)}</Badge>
+                  <StatusBadge value={employee.status_name ?? employee.status_key ?? "-"} />
+                  <RowActionButton intent="view" title="Open Employee 360 setup" onClick={() => navigate(to)}><CheckCircle2 className="h-4 w-4" /></RowActionButton>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </PerformanceDataTable>
       <TablePaginationBar
         page={page}

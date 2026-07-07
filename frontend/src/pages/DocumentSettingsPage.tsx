@@ -5,11 +5,10 @@ import { Link } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
-import { TableSkeleton } from "../components/loading";
+import { CardSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
@@ -183,16 +182,113 @@ export function DocumentSettingsPage() {
   );
 }
 
+function MetaChip({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return <span style={{ fontSize: 12, color: "var(--v3-text-secondary)" }}>{children}</span>;
+}
+
+function Dot() {
+  return <span style={{ color: "var(--v3-border-strong)" }}>&middot;</span>;
+}
+
+function SettingsRowCard({ title, badges, meta, actions }: { title: ReactNode; badges?: ReactNode; meta: ReactNode; actions?: ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "0.9rem 1.1rem",
+        background: "var(--v3-surface-2)",
+        border: "0.5px solid var(--v3-border)",
+        borderRadius: "var(--v3-radius-card)"
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-sm font-medium text-slate-900">{title}{badges}</div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">{meta}</div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">{actions}</div>
+    </div>
+  );
+}
+
 function Categories({ categories, canManage, onNew, onEdit, onAction, loading }: { categories: DocumentCategory[]; canManage: boolean; onNew: () => void; onEdit: (row: DocumentCategory) => void; onAction: (row: DocumentCategory) => void; loading: boolean }) {
-  return <div><Toolbar canManage={canManage} label="Create category" onNew={onNew} /><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Description</TableHead><TableHead>Sort</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{categories.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.name}</TableCell><TableCell>{row.description ?? "-"}</TableCell><TableCell>{row.sort_order}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell><Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={row.is_active} /></TableCell></TableRow>)}</TableBody></Table></div>{loading ? <TableSkeleton rows={5} columns={5} label="Loading document categories" /> : categories.length === 0 ? <EmptyState title="No categories" description="Create categories for document grouping." /> : null}</div>;
+  return (
+    <div>
+      <Toolbar canManage={canManage} label="Create category" onNew={onNew} />
+      <div className="flex flex-col gap-2 p-3">
+        {categories.map((row) => (
+          <SettingsRowCard
+            key={row.id}
+            title={row.name}
+            badges={<Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge>}
+            meta={<><MetaChip>{row.description ?? "No description"}</MetaChip><Dot /><MetaChip>Sort {row.sort_order}</MetaChip></>}
+            actions={<Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={row.is_active} />}
+          />
+        ))}
+      </div>
+      {loading ? <CardSkeleton cards={5} label="Loading document categories" /> : categories.length === 0 ? <EmptyState title="No categories" description="Create categories for document grouping." /> : null}
+    </div>
+  );
 }
 
 function Types({ types, canManage, onNew, onEdit, onAction, loading }: { types: DocumentType[]; canManage: boolean; onNew: () => void; onEdit: (row: DocumentType) => void; onAction: (row: DocumentType) => void; loading: boolean }) {
-  return <div><Toolbar canManage={canManage} label="Create type" onNew={onNew} /><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Category</TableHead><TableHead>Rules</TableHead><TableHead>File limits</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{types.map((row) => <TableRow key={row.id}><TableCell className="font-mono text-xs">{row.code}</TableCell><TableCell className="font-medium">{row.name}{row.is_sensitive ? <Badge className="ml-2" tone="warning">Sensitive</Badge> : null}</TableCell><TableCell>{row.category_name ?? "-"}</TableCell><TableCell className="text-xs">{[row.requires_document_number ? "No" : null, row.requires_issue_date ? "Issue" : null, row.requires_expiry_date ? "Expiry" : null].filter(Boolean).join(", ") || "-"}</TableCell><TableCell>{row.max_file_size_mb} MB</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell><Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={row.is_active} /></TableCell></TableRow>)}</TableBody></Table></div>{loading ? <TableSkeleton rows={5} columns={7} label="Loading document types" /> : types.length === 0 ? <EmptyState title="No document types" description="Create predefined document types." /> : null}</div>;
+  return (
+    <div>
+      <Toolbar canManage={canManage} label="Create type" onNew={onNew} />
+      <div className="flex flex-col gap-2 p-3">
+        {types.map((row) => (
+          <SettingsRowCard
+            key={row.id}
+            title={<>{row.name}<span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{row.code}</span></>}
+            badges={<>
+              {row.is_sensitive ? <Badge tone="warning">Sensitive</Badge> : null}
+              <Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge>
+            </>}
+            meta={<>
+              <MetaChip>{row.category_name ?? "No category"}</MetaChip>
+              <Dot /><MetaChip>{[row.requires_document_number ? "No" : null, row.requires_issue_date ? "Issue" : null, row.requires_expiry_date ? "Expiry" : null].filter(Boolean).join(", ") || "No extra rules"}</MetaChip>
+              <Dot /><MetaChip>{row.max_file_size_mb} MB max</MetaChip>
+            </>}
+            actions={<Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={row.is_active} />}
+          />
+        ))}
+      </div>
+      {loading ? <CardSkeleton cards={5} label="Loading document types" /> : types.length === 0 ? <EmptyState title="No document types" description="Create predefined document types." /> : null}
+    </div>
+  );
 }
 
 function Rules({ rules, canManage, onNew, onEdit, onAction, loading }: { rules: DocumentRequiredRule[]; canManage: boolean; onNew: () => void; onEdit: (row: DocumentRequiredRule) => void; onAction: (row: DocumentRequiredRule) => void; loading: boolean }) {
-  return <div><Toolbar canManage={canManage} label="Create required rule" onNew={onNew} /><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Document type</TableHead><TableHead>Employee type</TableHead><TableHead>Employment type</TableHead><TableHead>Department</TableHead><TableHead>Position</TableHead><TableHead>Location</TableHead><TableHead>Required</TableHead><TableHead>Priority</TableHead><TableHead>Custom condition</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rules.map((row) => <TableRow key={row.id}><TableCell className="font-medium">{row.document_type_name ?? row.document_type_id}</TableCell><TableCell>{row.employee_type ?? "Any"}</TableCell><TableCell>{row.employment_type ?? "Any"}</TableCell><TableCell>{row.department_name ?? "Any"}</TableCell><TableCell>{row.position_title ?? "Any"}</TableCell><TableCell>{row.location_name ?? "Any"}</TableCell><TableCell>{row.is_required ? "Yes" : "No"}</TableCell><TableCell>{row.rule_priority}</TableCell><TableCell className="max-w-56 truncate font-mono text-xs">{row.custom_condition_json ?? "-"}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell><Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={row.is_active} /></TableCell></TableRow>)}</TableBody></Table></div>{loading ? <TableSkeleton rows={5} columns={11} label="Loading document required rules" /> : rules.length === 0 ? <EmptyState title="No required rules" description="Create rules to track missing documents." /> : null}</div>;
+  return (
+    <div>
+      <Toolbar canManage={canManage} label="Create required rule" onNew={onNew} />
+      <div className="flex flex-col gap-2 p-3">
+        {rules.map((row) => (
+          <SettingsRowCard
+            key={row.id}
+            title={row.document_type_name ?? row.document_type_id}
+            badges={<>
+              <Badge tone={row.is_required ? "warning" : "neutral"}>{row.is_required ? "Required" : "Optional"}</Badge>
+              <Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge>
+            </>}
+            meta={<>
+              <MetaChip>Employee {row.employee_type ?? "Any"}</MetaChip>
+              <Dot /><MetaChip>Employment {row.employment_type ?? "Any"}</MetaChip>
+              <Dot /><MetaChip>{row.department_name ?? "Any department"}</MetaChip>
+              <Dot /><MetaChip>{row.position_title ?? "Any position"}</MetaChip>
+              <Dot /><MetaChip>{row.location_name ?? "Any location"}</MetaChip>
+              <Dot /><MetaChip>Priority {row.rule_priority}</MetaChip>
+              {row.custom_condition_json ? <><Dot /><MetaChip><span className="max-w-56 truncate font-mono">{row.custom_condition_json}</span></MetaChip></> : null}
+            </>}
+            actions={<Actions canManage={canManage} onEdit={() => onEdit(row)} onAction={() => onAction(row)} active={row.is_active} />}
+          />
+        ))}
+      </div>
+      {loading ? <CardSkeleton cards={5} label="Loading document required rules" /> : rules.length === 0 ? <EmptyState title="No required rules" description="Create rules to track missing documents." /> : null}
+    </div>
+  );
 }
 
 function Toolbar({ canManage, label, onNew }: { canManage: boolean; label: string; onNew: () => void }) {

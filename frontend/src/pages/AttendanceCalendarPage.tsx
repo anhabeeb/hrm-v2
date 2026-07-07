@@ -8,7 +8,6 @@ import { TableSkeleton } from "../components/loading";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { AttendanceRecord } from "../types/attendance";
@@ -134,13 +133,28 @@ export function AttendanceCalendarPage() {
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Status</TableHead><TableHead>Clock in/out</TableHead><TableHead>Work minutes</TableHead><TableHead>Flags</TableHead></TableRow></TableHeader>
-            <TableBody>{records.map((record) => <TableRow key={record.id}><TableCell>{record.attendance_date}</TableCell><TableCell><EmployeeIdentityCell employeeId={record.employee_id} employeeName={record.employee_name ?? "-"} employeeNumber={record.employee_no ?? ""} departmentName={record.department_name} locationName={record.location_name} size="sm" /></TableCell><TableCell>{record.department_name ?? "-"}</TableCell><TableCell>{record.location_name ?? "-"}</TableCell><TableCell><Badge tone={tone(record.status)}>{record.status}</Badge></TableCell><TableCell>{record.first_clock_in ? new Date(record.first_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {record.last_clock_out ? new Date(record.last_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</TableCell><TableCell>{record.total_work_minutes ?? 0}</TableCell><TableCell>{record.missed_punch ? <Badge tone="warning">Missed punch</Badge> : "-"}</TableCell></TableRow>)}</TableBody>
-          </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={8} label="Loading attendance calendar" /> : records.length === 0 ? <EmptyState title="No calendar records found" description="Create attendance records or adjust filters." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={8} label="Loading attendance calendar" /> : records.length === 0 ? <EmptyState title="No calendar records found" description="Create attendance records or adjust filters." /> : (
+          <div className="flex flex-col gap-2 p-3">
+            {records.map((record) => (
+              <div key={record.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                <div className="min-w-0 flex-1">
+                  <EmployeeIdentityCell employeeId={record.employee_id} employeeName={record.employee_name ?? "-"} employeeNumber={record.employee_no ?? ""} departmentName={record.department_name} locationName={record.location_name} size="sm" />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[44px] text-xs text-muted-foreground">
+                    <span>{record.attendance_date}</span>
+                    <span>&middot;</span>
+                    <span>{record.first_clock_in ? new Date(record.first_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {record.last_clock_out ? new Date(record.last_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</span>
+                    <span>&middot;</span>
+                    <span>{record.total_work_minutes ?? 0} min</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Badge tone={tone(record.status)}>{record.status}</Badge>
+                  {record.missed_punch ? <Badge tone="warning">Missed punch</Badge> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
     </PageShell>
   );

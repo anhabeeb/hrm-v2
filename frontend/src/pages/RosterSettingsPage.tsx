@@ -10,7 +10,6 @@ import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
@@ -175,23 +174,27 @@ export function RosterSettingsPage() {
           </div>
           {canManage ? <Button size="sm" disabled={!moduleEnabled} onClick={() => setEditingRule(null)}><Plus className="h-4 w-4" /> Add rule</Button> : null}
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Location</TableHead><TableHead>Department</TableHead><TableHead>Day of week</TableHead><TableHead>Status</TableHead>{canManage ? <TableHead className="text-right">Actions</TableHead> : null}</TableRow></TableHeader>
-            <TableBody>
-              {rules.map((rule) => (
-                <TableRow key={rule.id}>
-                  <TableCell>{rule.location_name ?? "All locations"}</TableCell>
-                  <TableCell>{rule.department_name ?? "All departments"}</TableCell>
-                  <TableCell>{rule.day_of_week}</TableCell>
-                  <TableCell><Badge tone={rule.is_active ? "success" : "neutral"}>{rule.is_active ? "Active" : "Inactive"}</Badge></TableCell>
-                  {canManage ? <TableCell><div className="flex justify-end gap-1"><RowActionButton intent="edit" title="Edit rule" disabled={!moduleEnabled} onClick={() => setEditingRule(rule)}><Edit className="h-4 w-4" /></RowActionButton><RowActionButton intent={rule.is_active ? "disable" : "enable"} size="sm" title={rule.is_active ? "Disable" : "Enable"} disabled={!moduleEnabled} onClick={() => void ruleAction(rule, rule.is_active ? "disable" : "enable")}>{rule.is_active ? "Disable" : "Enable"}</RowActionButton></div></TableCell> : null}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-        {!loading && rules.length === 0 ? <EmptyState title="No weekly off rules" description="Create a simple weekly off rule for location or department foundations." /> : null}
+        {!loading && rules.length === 0 ? <EmptyState title="No weekly off rules" description="Create a simple weekly off rule for location or department foundations." /> : (
+          <div className="flex flex-col gap-2 p-3">
+            {rules.map((rule) => (
+              <div key={rule.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-900">{rule.day_of_week}</div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                    <span>{rule.location_name ?? "All locations"}</span>
+                    <span>&middot;</span>
+                    <span>{rule.department_name ?? "All departments"}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Badge tone={rule.is_active ? "success" : "neutral"}>{rule.is_active ? "Active" : "Inactive"}</Badge>
+                  {canManage ? <RowActionButton intent="edit" title="Edit rule" disabled={!moduleEnabled} onClick={() => setEditingRule(rule)}><Edit className="h-4 w-4" /></RowActionButton> : null}
+                  {canManage ? <RowActionButton intent={rule.is_active ? "disable" : "enable"} size="sm" title={rule.is_active ? "Disable" : "Enable"} disabled={!moduleEnabled} onClick={() => void ruleAction(rule, rule.is_active ? "disable" : "enable")}>{rule.is_active ? "Disable" : "Enable"}</RowActionButton> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
       {editingRule !== undefined ? <WeeklyOffRuleModal rule={editingRule ?? undefined} locations={locations} departments={departments} onClose={() => setEditingRule(undefined)} onSave={(input) => void saveRule(input)} /> : null}
     </PageShell>

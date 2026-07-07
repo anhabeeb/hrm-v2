@@ -3,12 +3,13 @@ import { cn } from "../../lib/utils";
 
 type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
 
+// V3 pastel-tint palette: light background, saturated text/border for contrast.
 const toneClasses: Record<BadgeTone, string> = {
   neutral: "border-slate-200 bg-slate-50 text-slate-700",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  warning: "border-amber-200 bg-amber-50 text-amber-700",
-  danger: "border-red-200 bg-red-50 text-red-700",
-  info: "border-cyan-200 bg-cyan-50 text-cyan-700"
+  success: "border-[#C0DD97] bg-[#EAF3DE] text-[#3B6D11]",
+  warning: "border-[#FAC775] bg-[#FAEEDA] text-[#854F0B]",
+  danger: "border-[#F09595] bg-[#FCEBEB] text-[#A32D2D]",
+  info: "border-[#A9C6EE] bg-[#E6EDFB] text-[#2F5FA8]"
 };
 
 interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {

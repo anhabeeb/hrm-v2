@@ -6,8 +6,8 @@ import { OrganizationCascadeSelector } from "../components/organization/Organiza
 import { RosterNav } from "../components/roster/RosterNav";
 import { EmptyState } from "../components/ui/empty-state";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
+import { Badge } from "../components/ui/badge";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { downloadBlob } from "../lib/export-utils";
@@ -148,13 +148,30 @@ export function RosterReportsPage() {
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Scheduled</TableHead><TableHead>Off</TableHead><TableHead>Leave</TableHead><TableHead>Unassigned</TableHead><TableHead>Scheduled minutes</TableHead></TableRow></TableHeader>
-            <TableBody>{filtered.map((row, index) => <TableRow key={String(row.employee_id ?? index)}><TableCell><div className="font-medium">{String(row.employee_name ?? "-")}</div><div className="font-mono text-xs text-muted-foreground">{String(row.employee_no ?? "")}</div></TableCell><TableCell>{String(row.department_name ?? "-")}</TableCell><TableCell>{String(row.location_name ?? "-")}</TableCell><TableCell>{String(row.scheduled_days ?? 0)}</TableCell><TableCell>{String(row.off_days ?? 0)}</TableCell><TableCell>{String(row.leave_days ?? 0)}</TableCell><TableCell>{String(row.unassigned_days ?? 0)}</TableCell><TableCell>{String(row.scheduled_minutes ?? 0)}</TableCell></TableRow>)}</TableBody>
-          </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={9} label="Loading roster reports" /> : filtered.length === 0 ? <EmptyState title="No roster report rows" description="Create assignments or adjust filters." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={9} label="Loading roster reports" /> : filtered.length === 0 ? <EmptyState title="No roster report rows" description="Create assignments or adjust filters." /> : (
+          <div className="flex flex-col gap-2 p-3">
+            {filtered.map((row, index) => (
+              <div key={String(row.employee_id ?? index)} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-900">{String(row.employee_name ?? "-")}</div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                    <span className="font-mono">{String(row.employee_no ?? "")}</span>
+                    {row.department_name ? <><span>&middot;</span><span>{String(row.department_name)}</span></> : null}
+                    {row.location_name ? <><span>&middot;</span><span>{String(row.location_name)}</span></> : null}
+                    <span>&middot;</span>
+                    <span>{String(row.scheduled_minutes ?? 0)} scheduled minutes</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Badge tone="success">Scheduled {String(row.scheduled_days ?? 0)}</Badge>
+                  <Badge tone="neutral">Off {String(row.off_days ?? 0)}</Badge>
+                  <Badge tone="info">Leave {String(row.leave_days ?? 0)}</Badge>
+                  <Badge tone="warning">Unassigned {String(row.unassigned_days ?? 0)}</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
     </PageShell>
   );

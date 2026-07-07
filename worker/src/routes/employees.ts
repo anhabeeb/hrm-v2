@@ -336,18 +336,25 @@ async function getEmployeeEmailSuggestion(db: AppBindings["Bindings"]["DB"], emp
     )
     .bind(employee.id)
     .all<{ value: string; contact_type: string; is_primary: number }>();
-  const raw = contacts.results.map((contact) => contact.value).find(Boolean) ?? null;
+  const resolved = contacts.results.find((contact) => Boolean(contact.value)) ?? null;
+  const raw = resolved?.value ?? null;
+  // Office (WORK_EMAIL) is always preferred above; expose which type was actually
+  // used so the UI can say so explicitly instead of showing one ambiguous email.
+  const emailType = resolved?.contact_type ?? null;
   const normalized = raw ? normalizeEmail(raw) : "";
   const valid = Boolean(normalized && isEmail(normalized));
   const matchingUser = valid ? await getUserByEmail(db, normalized) : null;
   return {
     email: valid ? normalized : null,
     raw_email: raw,
+    email_type: emailType,
     is_valid: valid,
     source: raw ? "employee_contact" : "manual_required",
     message: raw
       ? valid
-        ? "Using employee email from profile."
+        ? emailType === "WORK_EMAIL"
+          ? "Using office (work) email from profile."
+          : "No office email on file — using personal email. Add a work email in Contacts for the account login."
         : "Employee email is invalid. Update employee email or enter a valid account email."
       : "Employee has no email on file. Enter an account email to continue.",
     matching_user: matchingUser ? {

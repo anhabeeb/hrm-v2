@@ -61,6 +61,40 @@ function money(value: unknown) {
   return Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** V3 card-row primitives shared by the employee-centric payroll list pages (Advances, Deductions, Adjustments). */
+const cardRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 16,
+  padding: "0.9rem 1.1rem",
+  background: "var(--v3-surface-2)",
+  border: "0.5px solid var(--v3-border)",
+  borderRadius: "var(--v3-radius-card)"
+};
+
+function CardRowMetaChip({ children }: { children?: React.ReactNode }) {
+  if (!children && children !== 0) return null;
+  return <span style={{ fontSize: 12, color: "var(--v3-text-secondary)" }}>{children}</span>;
+}
+
+function CardRowDot() {
+  return <span style={{ color: "var(--v3-border-strong)" }}>&middot;</span>;
+}
+
+function CardRowMeta({ items }: { items: React.ReactNode[] }) {
+  const visible = items.filter((item) => item !== null && item !== undefined);
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[52px]">
+      {visible.map((item, index) => (
+        <span key={index} className="flex items-center gap-1.5">
+          {index > 0 ? <CardRowDot /> : null}
+          <CardRowMetaChip>{item}</CardRowMetaChip>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function ErrorMessage({ error }: { error: string | null }) {
   return error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null;
 }
@@ -158,7 +192,7 @@ function PeriodSelect({ periods, value, onChange }: { periods: PayrollPeriod[]; 
 }
 
 function PayrollTablePageLayout({ title, description, error, loading, empty, emptyTitle, filters, onReset, action, chips = [], exportRows, exportColumns, children }: { title: string; description: string; error: string | null; loading: boolean; empty: boolean; emptyTitle: string; filters: React.ReactNode; onReset?: () => void; action?: React.ReactNode; chips?: ActiveFilterChip[]; exportRows?: Record<string, unknown>[]; exportColumns?: string[]; children: React.ReactNode }) {
-  return <div className="space-y-4"><PayrollPageHeader title={title} description={description}>{exportRows && exportColumns ? <ExportMenu moduleName={title} rows={exportRows} columns={exportColumns} filterSummary={chips.map((chip) => `${chip.label}: ${chip.value}`)} /> : null}{action}</PayrollPageHeader><ErrorMessage error={error} /><Panel className="overflow-hidden"><div className="border-b p-3"><StandardFilterBar className="border-0 shadow-none">{filters}{onReset ? <FilterResetButton onReset={onReset} /> : null}</StandardFilterBar><ActiveFilterChips chips={chips} className="mt-2" /></div><div className="overflow-x-auto"><Table>{children}</Table></div>{loading ? <TableSkeleton rows={6} columns={8} label={`Loading ${title.toLowerCase()}`} /> : empty ? <EmptyState title={emptyTitle} description="Use the available actions or adjust filters." /> : null}</Panel></div>;
+  return <div className="space-y-4"><PayrollPageHeader title={title} description={description}>{exportRows && exportColumns ? <ExportMenu moduleName={title} rows={exportRows} columns={exportColumns} filterSummary={chips.map((chip) => `${chip.label}: ${chip.value}`)} /> : null}{action}</PayrollPageHeader><ErrorMessage error={error} /><Panel className="overflow-hidden"><div className="border-b p-3"><StandardFilterBar className="border-0 shadow-none">{filters}{onReset ? <FilterResetButton onReset={onReset} /> : null}</StandardFilterBar><ActiveFilterChips chips={chips} className="mt-2" /></div><div>{children}</div>{loading ? <TableSkeleton rows={6} columns={8} label={`Loading ${title.toLowerCase()}`} /> : empty ? <EmptyState title={emptyTitle} description="Use the available actions or adjust filters." /> : null}</Panel></div>;
 }
 
 async function loadReferenceData(token: string) {
@@ -212,6 +246,25 @@ function PayrollOrgFilter({ departments, locations, jobLevels, positions, depart
         labels={{ departmentId: "Department filter", jobLevelId: "Job level filter", positionId: "Position filter", locationId: "Location filter" }}
         className="grid gap-2 md:grid-cols-2 xl:grid-cols-4"
       />
+    </div>
+  );
+}
+
+function AdvanceCardRow({ row, canManage, canApprove, canCancel, onEdit, onApprove, onCancel }: { row: PayrollAdvance; canManage: boolean; canApprove: boolean; canCancel: boolean; onEdit: () => void; onApprove: () => void; onCancel: () => void }) {
+  return (
+    <div style={cardRowStyle}>
+      <div className="min-w-0 flex-1">
+        <EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} departmentName={row.department_name} locationName={row.location_name} size="sm" showMetadata={false} />
+        <CardRowMeta items={[row.employee_no, row.department_name, row.location_name, money(row.amount), row.payment_date ? `Paid ${row.payment_date}` : null, row.repayment_period_label, row.notes]} />
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <StatusBadge value={row.status === "PAID" ? "APPROVED" : row.status} />
+        <div className="flex gap-1">
+          {canManage ? <RowActionButton intent="edit" title="Edit advance" onClick={onEdit}><Edit className="h-4 w-4" /></RowActionButton> : null}
+          {canApprove ? <RowActionButton intent="approve" size="sm" title="Approve" onClick={onApprove}>Approve</RowActionButton> : null}
+          {canCancel ? <RowActionButton intent="delete" size="sm" title="Cancel advance" onClick={onCancel}>Cancel</RowActionButton> : null}
+        </div>
+      </div>
     </div>
   );
 }
@@ -290,8 +343,7 @@ export function PayrollAdvancesPage() {
   ], [departmentId, departments, from, jobLevelId, jobLevels, locationId, locations, paymentDateRange, positionId, positions, search, status, to]);
   if (!canView) return <Panel><EmptyState title="Advances unavailable" description="Your account needs payroll advance permission." /></Panel>;
   return <PayrollTablePageLayout title="Payroll Advances" description="Track employee advances by department, location, status, and payment date." error={error} loading={loading} empty={rows.length === 0} emptyTitle="No advances" chips={chips} onReset={() => { setSearch(""); setDepartmentId(""); setLocationId(""); setJobLevelId(""); setPositionId(""); setStatus(""); setFrom(""); setTo(""); }} filters={<><SearchInput value={search} onChange={setSearch} /><StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["REQUESTED", "APPROVED", "DEDUCTED", "CANCELLED"].map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} /><StandardDateRangeFilter value={paymentDateRange} onChange={(range) => { setFrom(range.from ?? ""); setTo(range.to ?? ""); }} label="Payment Date Range" /><MoreFiltersSheet title="Advance filters" onReset={() => { setDepartmentId(""); setLocationId(""); setJobLevelId(""); setPositionId(""); }}><FilterSection title="Organization"><PayrollOrgFilter departments={departments} locations={locations} jobLevels={jobLevels} positions={positions} departmentId={departmentId} locationId={locationId} jobLevelId={jobLevelId} positionId={positionId} onChange={(next) => { setDepartmentId(next.departmentId); setLocationId(next.locationId); setJobLevelId(next.jobLevelId); setPositionId(next.positionId); }} /></FilterSection></MoreFiltersSheet></>} exportRows={rows as unknown as Record<string, unknown>[]} exportColumns={["employee_no", "employee_name", "department_name", "location_name", "amount", "payment_date", "repayment_period_label", "status", "notes"]} action={canManage ? <Button size="sm" onClick={() => setEditing({ status: "REQUESTED", payment_date: new Date().toISOString().slice(0, 10) })}><Plus className="h-4 w-4" /> Create advance</Button> : null}>
-    <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Amount</TableHead><TableHead>Payment date</TableHead><TableHead>Repayment period</TableHead><TableHead>Status</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-    <TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} departmentName={row.department_name} locationName={row.location_name} size="sm" /></TableCell><TableCell>{row.department_name ?? "-"}</TableCell><TableCell>{row.location_name ?? "-"}</TableCell><TableCell>{money(row.amount)}</TableCell><TableCell>{row.payment_date}</TableCell><TableCell>{row.repayment_period_label ?? "-"}</TableCell><TableCell><StatusBadge value={row.status === "PAID" ? "APPROVED" : row.status} /></TableCell><TableCell>{row.notes ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <RowActionButton intent="edit" title="Edit advance" onClick={() => setEditing(row)}><Edit className="h-4 w-4" /></RowActionButton> : null}{canApprove ? <RowActionButton intent="approve" size="sm" title="Approve" onClick={() => setRowAction({ row, name: "approve" })}>Approve</RowActionButton> : null}{canCancel ? <RowActionButton intent="delete" size="sm" title="Cancel advance" onClick={() => { setActionReason(""); setRowAction({ row, name: "cancel" }); }}>Cancel</RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
+    <div className="flex flex-col gap-2 p-3">{rows.map((row) => <AdvanceCardRow key={row.id} row={row} canManage={canManage} canApprove={canApprove} canCancel={canCancel} onEdit={() => setEditing(row)} onApprove={() => setRowAction({ row, name: "approve" })} onCancel={() => { setActionReason(""); setRowAction({ row, name: "cancel" }); }} />)}</div>
     {editing ? <AdvanceModal value={editing} employees={employees} departments={departments} locations={locations} jobLevels={jobLevels} positions={positions} periods={periods} onChange={setEditing} onClose={() => setEditing(null)} onSave={() => void save()} /> : null}
     {rowAction ? <ActionModal title={rowAction.name === "approve" ? "Approve advance" : "Cancel advance"} description={rowAction.name === "approve" ? "Approve this advance for later deduction." : "Cancelling an advance requires a reason."} reason={actionReason} reasonRequired={rowAction.name === "cancel"} onReason={rowAction.name === "cancel" ? setActionReason : undefined} onClose={() => { setRowAction(null); setActionReason(""); }} onConfirm={() => void confirmAction()} /> : null}
   </PayrollTablePageLayout>;
@@ -330,14 +382,37 @@ export function PayrollComponentsPage() {
   const chips = useMemo<ActiveFilterChip[]>(() => search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : [], [search]);
   if (!canView) return <Panel><EmptyState title="Payroll components unavailable" description="Your account needs payroll permission." /></Panel>;
   return <PayrollTablePageLayout title="Payroll Components" description="Manage Payroll Core earning and deduction components used in result line items." error={error} loading={loading} empty={filtered.length === 0} emptyTitle="No components" chips={chips} onReset={() => setSearch("")} filters={<SearchInput value={search} onChange={setSearch} placeholder="Search code/name/category" />} exportRows={filtered as unknown as Record<string, unknown>[]} exportColumns={["code", "name", "type", "category", "calculation_type", "default_amount", "default_percentage", "is_taxable", "is_active"]} action={canManage ? <Button size="sm" onClick={() => setEditing({ type: "ALLOWANCE", calculation_type: "FIXED_AMOUNT", is_active: true, sort_order: 100 })}><Plus className="h-4 w-4" /> Create component</Button> : null}>
-    <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Category</TableHead><TableHead>Calculation</TableHead><TableHead>Default</TableHead><TableHead>Taxable</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-    <TableBody>{filtered.map((row) => <TableRow key={row.id}><TableCell className="font-mono text-xs">{row.code}</TableCell><TableCell className="font-medium">{row.name}</TableCell><TableCell>{row.type}</TableCell><TableCell>{row.category ?? "-"}</TableCell><TableCell>{row.calculation_type}</TableCell><TableCell>{row.default_percentage ? `${row.default_percentage}%` : money(row.default_amount)}</TableCell><TableCell>{Boolean(row.is_taxable) ? "Yes" : "No"}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><RowActionButton intent="edit" title="Edit component" onClick={() => setEditing(row)}><Edit className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.is_active ? "disable" : "enable"} size="sm" title={row.is_active ? "Disable" : "Enable"} onClick={() => void toggle(row)}>{row.is_active ? "Disable" : "Enable"}</RowActionButton></> : null}</div></TableCell></TableRow>)}</TableBody>
+    <div className="overflow-x-auto"><Table>
+      <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Category</TableHead><TableHead>Calculation</TableHead><TableHead>Default</TableHead><TableHead>Taxable</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+      <TableBody>{filtered.map((row) => <TableRow key={row.id}><TableCell className="font-mono text-xs">{row.code}</TableCell><TableCell className="font-medium">{row.name}</TableCell><TableCell>{row.type}</TableCell><TableCell>{row.category ?? "-"}</TableCell><TableCell>{row.calculation_type}</TableCell><TableCell>{row.default_percentage ? `${row.default_percentage}%` : money(row.default_amount)}</TableCell><TableCell>{Boolean(row.is_taxable) ? "Yes" : "No"}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><RowActionButton intent="edit" title="Edit component" onClick={() => setEditing(row)}><Edit className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.is_active ? "disable" : "enable"} size="sm" title={row.is_active ? "Disable" : "Enable"} onClick={() => void toggle(row)}>{row.is_active ? "Disable" : "Enable"}</RowActionButton></> : null}</div></TableCell></TableRow>)}</TableBody>
+    </Table></div>
     {editing ? <ComponentModal value={editing} onChange={setEditing} onClose={() => setEditing(null)} onSave={() => void save()} /> : null}
   </PayrollTablePageLayout>;
 }
 
 function ComponentModal({ value, onChange, onClose, onSave }: { value: Partial<PayrollComponent>; onChange: (value: Partial<PayrollComponent>) => void; onClose: () => void; onSave: () => void }) {
   return <Modal title={value.id ? "Edit component" : "Create component"} onClose={onClose} onSave={onSave}><div className="grid gap-3 md:grid-cols-2"><Field label="Code"><Input value={value.code ?? ""} onChange={(event) => onChange({ ...value, code: event.target.value })} /></Field><Field label="Name"><Input value={value.name ?? ""} onChange={(event) => onChange({ ...value, name: event.target.value })} /></Field><Field label="Type"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value.type ?? "ALLOWANCE"} onChange={(event) => onChange({ ...value, type: event.target.value as PayrollComponent["type"] })}>{["BASIC_SALARY", "ALLOWANCE", "FIXED_DEDUCTION", "VARIABLE_DEDUCTION", "ATTENDANCE_DEDUCTION", "LEAVE_DEDUCTION", "ADVANCE_DEDUCTION", "ONE_TIME_DEDUCTION", "OVERTIME_PLACEHOLDER", "BENEFIT_PLACEHOLDER", "ADJUSTMENT", "EARNING", "DEDUCTION"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field><Field label="Category"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value.category ?? ""} onChange={(event) => onChange({ ...value, category: event.target.value || null })}><option value="">None</option>{["BASIC", "ALLOWANCE", "BENEFIT", "OVERTIME", "ADVANCE", "ATTENDANCE", "LEAVE", "OTHER", "SALARY", "DEDUCTION", "ADJUSTMENT"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field><Field label="Calculation type"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value.calculation_type ?? "FIXED_AMOUNT"} onChange={(event) => onChange({ ...value, calculation_type: event.target.value as PayrollComponent["calculation_type"] })}>{["FIXED_AMOUNT", "PERCENTAGE_OF_BASIC", "PERCENTAGE_OF_GROSS", "DAILY_RATE", "HOURLY_RATE", "FORMULA_PLACEHOLDER", "MANUAL", "FIXED", "VARIABLE", "PERCENTAGE"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field><Field label="Default amount"><Input type="number" value={value.default_amount ?? ""} onChange={(event) => onChange({ ...value, default_amount: event.target.value ? Number(event.target.value) : null })} /></Field><Field label="Default percentage"><Input type="number" value={value.default_percentage ?? ""} onChange={(event) => onChange({ ...value, default_percentage: event.target.value ? Number(event.target.value) : null })} /></Field><Field label="Sort order"><Input type="number" value={value.sort_order ?? 100} onChange={(event) => onChange({ ...value, sort_order: Number(event.target.value) })} /></Field><Toggle label="Applies to basic salary" checked={Boolean(value.applies_to_basic_salary)} onChange={(applies_to_basic_salary) => onChange({ ...value, applies_to_basic_salary })} /><Toggle label="Taxable" checked={Boolean(value.is_taxable)} onChange={(is_taxable) => onChange({ ...value, is_taxable })} /><Toggle label="Active" checked={Boolean(value.is_active)} onChange={(is_active) => onChange({ ...value, is_active })} /></div></Modal>;
+}
+
+function DeductionCardRow({ row, canManage, onEdit, onToggle, onCancel }: { row: PayrollDeduction; canManage: boolean; onEdit: () => void; onToggle: () => void; onCancel: () => void }) {
+  return (
+    <div style={cardRowStyle}>
+      <div className="min-w-0 flex-1">
+        <EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" showMetadata={false} />
+        <CardRowMeta items={[row.employee_no, row.component_name ?? row.payroll_component_id, row.deduction_type, money(row.amount), `${row.start_date ?? "-"} to ${row.end_date ?? "-"}`, row.reason]} />
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <StatusBadge value={row.status} />
+        <div className="flex gap-1">
+          {canManage ? <>
+            <RowActionButton intent="edit" title="Edit deduction" onClick={onEdit}><Edit className="h-4 w-4" /></RowActionButton>
+            <RowActionButton intent={row.status === "ACTIVE" ? "disable" : "enable"} size="sm" title={row.status === "ACTIVE" ? "Disable" : "Enable"} onClick={onToggle}>{row.status === "ACTIVE" ? "Disable" : "Enable"}</RowActionButton>
+            <RowActionButton intent="delete" size="sm" title="Cancel deduction" onClick={onCancel}>Cancel</RowActionButton>
+          </> : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function PayrollDeductionsPage() {
@@ -372,8 +447,7 @@ export function PayrollDeductionsPage() {
   ], [departmentId, departments, jobLevelId, jobLevels, locationId, locations, positionId, positions, search, status, type]);
   if (!canView) return <Panel><EmptyState title="Deductions unavailable" description="Your account needs payroll.view permission." /></Panel>;
   return <PayrollTablePageLayout title="Payroll Deductions" description="Manage fixed, variable, one-time, and recurring deductions." error={error} loading={loading} empty={rows.length === 0} emptyTitle="No deductions" chips={chips} onReset={() => { setSearch(""); setDepartmentId(""); setLocationId(""); setJobLevelId(""); setPositionId(""); setStatus(""); setType(""); }} filters={<><SearchInput value={search} onChange={setSearch} /><StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["ACTIVE", "INACTIVE", "APPLIED", "CANCELLED"].map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} /><StandardSelectFilter value={type} onValueChange={setType} allLabel="All types" width="status" options={["FIXED", "VARIABLE", "ONE_TIME", "RECURRING"].map((item) => ({ value: item, label: item.replace(/_/g, " ") }))} /><MoreFiltersSheet title="Deduction filters" onReset={() => { setDepartmentId(""); setLocationId(""); setJobLevelId(""); setPositionId(""); }}><FilterSection title="Organization"><PayrollOrgFilter departments={departments} locations={locations} jobLevels={jobLevels} positions={positions} departmentId={departmentId} locationId={locationId} jobLevelId={jobLevelId} positionId={positionId} onChange={(next) => { setDepartmentId(next.departmentId); setLocationId(next.locationId); setJobLevelId(next.jobLevelId); setPositionId(next.positionId); }} /></FilterSection></MoreFiltersSheet></>} exportRows={rows as unknown as Record<string, unknown>[]} exportColumns={["employee_no", "employee_name", "component_name", "deduction_type", "amount", "start_date", "end_date", "status", "reason"]} action={canManage ? <Button size="sm" onClick={() => setEditing({ deduction_type: "ONE_TIME", status: "ACTIVE" })}><Plus className="h-4 w-4" /> Create deduction</Button> : null}>
-    <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Component</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Period</TableHead><TableHead>Status</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-    <TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" /></TableCell><TableCell>{row.component_name ?? row.payroll_component_id ?? "-"}</TableCell><TableCell>{row.deduction_type}</TableCell><TableCell>{money(row.amount)}</TableCell><TableCell>{row.start_date ?? "-"} to {row.end_date ?? "-"}</TableCell><TableCell><StatusBadge value={row.status} /></TableCell><TableCell>{row.reason}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><RowActionButton intent="edit" title="Edit deduction" onClick={() => setEditing(row)}><Edit className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.status === "ACTIVE" ? "disable" : "enable"} size="sm" title={row.status === "ACTIVE" ? "Disable" : "Enable"} onClick={() => setRowAction({ row, name: row.status === "ACTIVE" ? "disable" : "enable" })}>{row.status === "ACTIVE" ? "Disable" : "Enable"}</RowActionButton><RowActionButton intent="delete" size="sm" title="Cancel deduction" onClick={() => { setActionReason(""); setRowAction({ row, name: "cancel" }); }}>Cancel</RowActionButton></> : null}</div></TableCell></TableRow>)}</TableBody>
+    <div className="flex flex-col gap-2 p-3">{rows.map((row) => <DeductionCardRow key={row.id} row={row} canManage={canManage} onEdit={() => setEditing(row)} onToggle={() => setRowAction({ row, name: row.status === "ACTIVE" ? "disable" : "enable" })} onCancel={() => { setActionReason(""); setRowAction({ row, name: "cancel" }); }} />)}</div>
     {editing ? <DeductionModal value={editing} employees={employees} departments={departments} locations={locations} jobLevels={jobLevels} positions={positions} components={components} periods={periods} onChange={setEditing} onClose={() => setEditing(null)} onSave={() => void save()} /> : null}
     {rowAction ? <ActionModal title={`${rowAction.name[0].toUpperCase()}${rowAction.name.slice(1)} deduction`} description={rowAction.name === "cancel" ? "Cancelling a deduction requires a reason." : "Confirm this deduction status change."} reason={actionReason} reasonRequired={rowAction.name === "cancel"} onReason={rowAction.name === "cancel" ? setActionReason : undefined} onClose={() => { setRowAction(null); setActionReason(""); }} onConfirm={() => void confirmAction()} /> : null}
   </PayrollTablePageLayout>;
@@ -381,6 +455,25 @@ export function PayrollDeductionsPage() {
 
 function DeductionModal({ value, employees, departments, locations, jobLevels, positions, components, periods, onChange, onClose, onSave }: { value: Partial<PayrollDeduction>; employees: Employee[]; departments: OrganizationDepartment[]; locations: OrganizationLocation[]; jobLevels: OrganizationJobLevel[]; positions: OrganizationPosition[]; components: PayrollComponent[]; periods: PayrollPeriod[]; onChange: (value: Partial<PayrollDeduction>) => void; onClose: () => void; onSave: () => void }) {
   return <Modal title={value.id ? "Edit deduction" : "Create deduction"} onClose={onClose} onSave={onSave}><div className="grid gap-3 md:grid-cols-2"><div className="md:col-span-2"><EmployeeSelect employees={employees} departments={departments} locations={locations} jobLevels={jobLevels} positions={positions} value={value.employee_id} onChange={(employee_id) => onChange({ ...value, employee_id })} /></div><Field label="Component"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value.payroll_component_id ?? ""} onChange={(event) => onChange({ ...value, payroll_component_id: event.target.value || null })}><option value="">No component</option>{components.map((component) => <option key={component.id} value={component.id}>{component.code} - {component.name}</option>)}</SelectField></Field><Field label="Deduction type"><SelectField className="h-9 w-full rounded-md border bg-white px-3 text-sm" value={value.deduction_type ?? "ONE_TIME"} onChange={(event) => onChange({ ...value, deduction_type: event.target.value as PayrollDeduction["deduction_type"] })}>{["FIXED", "VARIABLE", "ONE_TIME", "RECURRING"].map((item) => <option key={item} value={item}>{item}</option>)}</SelectField></Field><Field label="Amount"><Input type="number" value={value.amount ?? ""} onChange={(event) => onChange({ ...value, amount: Number(event.target.value) })} /></Field><Field label="Start date"><Input type="date" value={value.start_date ?? ""} onChange={(event) => onChange({ ...value, start_date: event.target.value || null })} /></Field><Field label="End date"><Input type="date" value={value.end_date ?? ""} onChange={(event) => onChange({ ...value, end_date: event.target.value || null })} /></Field><Field label="Payroll period"><PeriodSelect periods={periods} value={value.payroll_period_id} onChange={(payroll_period_id) => onChange({ ...value, payroll_period_id })} /></Field><Field label="Reason"><Input value={value.reason ?? ""} onChange={(event) => onChange({ ...value, reason: event.target.value })} /></Field></div></Modal>;
+}
+
+function AdjustmentCardRow({ row, canManage, canApprove, onEdit, onApprove, onCancel }: { row: PayrollAdjustment; canManage: boolean; canApprove: boolean; onEdit: () => void; onApprove: () => void; onCancel: () => void }) {
+  return (
+    <div style={cardRowStyle}>
+      <div className="min-w-0 flex-1">
+        <EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" showMetadata={false} />
+        <CardRowMeta items={[row.employee_no, row.payroll_period_id, row.adjustment_type, money(row.amount), row.reason]} />
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <StatusBadge value={row.status === "APPROVED" ? "APPROVED_PLACEHOLDER" : row.status} />
+        <div className="flex gap-1">
+          {canManage ? <RowActionButton intent="edit" title="Edit adjustment" onClick={onEdit}><Edit className="h-4 w-4" /></RowActionButton> : null}
+          {canApprove ? <RowActionButton intent="approve" size="sm" title="Approve" onClick={onApprove}>Approve</RowActionButton> : null}
+          {canManage ? <RowActionButton intent="delete" size="sm" title="Cancel adjustment" onClick={onCancel}>Cancel</RowActionButton> : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function PayrollAdjustmentsPage() {
@@ -400,8 +493,7 @@ export function PayrollAdjustmentsPage() {
   const chips = useMemo<ActiveFilterChip[]>(() => search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : [], [search]);
   if (!canView) return <Panel><EmptyState title="Adjustments unavailable" description="Your account needs payroll.view permission." /></Panel>;
   return <PayrollTablePageLayout title="Payroll Adjustments" description="Manage manual earning and deduction adjustments." error={error} loading={loading} empty={rows.length === 0} emptyTitle="No adjustments" chips={chips} onReset={() => setSearch("")} filters={<SearchInput value={search} onChange={setSearch} />} exportRows={rows as unknown as Record<string, unknown>[]} exportColumns={["employee_no", "employee_name", "payroll_period_id", "adjustment_type", "amount", "status", "reason"]} action={canManage ? <Button size="sm" onClick={() => setEditing({ adjustment_type: "EARNING", status: "DRAFT" })}><Plus className="h-4 w-4" /> Create adjustment</Button> : null}>
-    <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Period</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-    <TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" /></TableCell><TableCell>{row.payroll_period_id ?? "-"}</TableCell><TableCell>{row.adjustment_type}</TableCell><TableCell>{money(row.amount)}</TableCell><TableCell><StatusBadge value={row.status === "APPROVED" ? "APPROVED_PLACEHOLDER" : row.status} /></TableCell><TableCell>{row.reason}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <RowActionButton intent="edit" title="Edit adjustment" onClick={() => setEditing(row)}><Edit className="h-4 w-4" /></RowActionButton> : null}{canApprove ? <RowActionButton intent="approve" size="sm" title="Approve" onClick={() => setRowAction({ row, name: "approve" })}>Approve</RowActionButton> : null}{canManage ? <Button variant="ghost" size="sm" onClick={() => { setActionReason(""); setRowAction({ row, name: "cancel" }); }}>Cancel</Button> : null}</div></TableCell></TableRow>)}</TableBody>
+    <div className="flex flex-col gap-2 p-3">{rows.map((row) => <AdjustmentCardRow key={row.id} row={row} canManage={canManage} canApprove={canApprove} onEdit={() => setEditing(row)} onApprove={() => setRowAction({ row, name: "approve" })} onCancel={() => { setActionReason(""); setRowAction({ row, name: "cancel" }); }} />)}</div>
     {editing ? <AdjustmentModal value={editing} employees={employees} departments={departments} locations={locations} jobLevels={jobLevels} positions={positions} periods={periods} onChange={setEditing} onClose={() => setEditing(null)} onSave={() => void save()} /> : null}
     {rowAction ? <ActionModal title={rowAction.name === "approve" ? "Approve adjustment placeholder" : "Cancel adjustment"} description={rowAction.name === "approve" ? "Approve this adjustment as a Payroll Core placeholder." : "Cancelling an adjustment requires a reason."} reason={actionReason} reasonRequired={rowAction.name === "cancel"} onReason={rowAction.name === "cancel" ? setActionReason : undefined} onClose={() => { setRowAction(null); setActionReason(""); }} onConfirm={() => void confirmAction()} /> : null}
   </PayrollTablePageLayout>;
@@ -643,7 +735,9 @@ export function PayrollReportsPage() {
   ], [departmentId, departments, jobLevelId, jobLevels, locationId, locations, periodId, periods, positionId, positions, report, search]);
   if (!canView) return <Panel><EmptyState title="Payroll reports unavailable" description="Your account needs payroll.reports.view permission." /></Panel>;
   return <PayrollTablePageLayout title="Payroll Reports" description="Filter and export payroll summaries with the same visible criteria." error={error} loading={loading} empty={rows.length === 0} emptyTitle="No report rows" chips={chips} onReset={() => { setReport("summary"); setPeriodId(""); setDepartmentId(""); setLocationId(""); setJobLevelId(""); setPositionId(""); setSearch(""); }} filters={<><SearchInput value={search} onChange={setSearch} /><StandardSelectFilter value={report} onValueChange={setReport} allLabel="Summary" width="documentType" options={reportOptions.map((item) => ({ value: item, label: item.replace(/-/g, " ") }))} /><StandardSelectFilter value={periodId} onValueChange={setPeriodId} allLabel="All periods" width="payrollPeriod" options={periods.map((period) => ({ value: period.id, label: `${period.period_month}/${period.period_year}` }))} /><MoreFiltersSheet title="Payroll report filters" onReset={() => { setDepartmentId(""); setLocationId(""); setJobLevelId(""); setPositionId(""); }}><FilterSection title="Organization"><PayrollOrgFilter departments={departments} locations={locations} jobLevels={jobLevels} positions={positions} departmentId={departmentId} locationId={locationId} jobLevelId={jobLevelId} positionId={positionId} onChange={(next) => { setDepartmentId(next.departmentId); setLocationId(next.locationId); setJobLevelId(next.jobLevelId); setPositionId(next.positionId); }} /></FilterSection></MoreFiltersSheet></>} exportRows={rows} exportColumns={Object.keys(rows[0] ?? { report: "", value: "" })} action={canExport ? <Button size="sm" onClick={() => void exportCsv()}><Download className="h-4 w-4" /> Export CSV</Button> : null}>
-    <TableHeader><TableRow>{Object.keys(rows[0] ?? { report: "", value: "" }).map((key) => <TableHead key={key}>{key}</TableHead>)}</TableRow></TableHeader>
-    <TableBody>{rows.map((row, index) => <TableRow key={index}>{Object.keys(rows[0] ?? row).map((key) => <TableCell key={key}>{String(row[key] ?? "-")}</TableCell>)}</TableRow>)}</TableBody>
+    <div className="overflow-x-auto"><Table>
+      <TableHeader><TableRow>{Object.keys(rows[0] ?? { report: "", value: "" }).map((key) => <TableHead key={key}>{key}</TableHead>)}</TableRow></TableHeader>
+      <TableBody>{rows.map((row, index) => <TableRow key={index}>{Object.keys(rows[0] ?? row).map((key) => <TableCell key={key}>{String(row[key] ?? "-")}</TableCell>)}</TableRow>)}</TableBody>
+    </Table></div>
   </PayrollTablePageLayout>;
 }

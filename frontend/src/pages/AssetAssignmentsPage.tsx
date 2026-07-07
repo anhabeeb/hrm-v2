@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
+import { AssetCardRow, AssetMetaChip, AssetMetaDot } from "../components/assets/AssetCardRow";
 import { AssetsNav } from "../components/assets/AssetsNav";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
@@ -14,6 +15,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { EmployeeCascadeSelect } from "../components/organization/EmployeeCascadeSelect";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
 import { Panel } from "../components/ui/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
@@ -152,39 +154,57 @@ export function AssetAssignmentsPage() {
         <div className="flex justify-end border-t p-3">{canIssue ? <Button size="sm" onClick={() => setModal({ type: "issue" })}>Issue asset</Button> : null}</div>
       </Panel>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-      <Panel className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Asset</TableHead><TableHead>Category</TableHead><TableHead>Status</TableHead><TableHead>Issued</TableHead><TableHead>Expected return</TableHead><TableHead>Returned</TableHead><TableHead>Deduction</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} departmentName={row.department_name} locationName={row.location_name} size="sm" to={`/employees/${row.employee_id}`} /></TableCell>
-                  <TableCell>{row.asset_code} / {row.asset_name}</TableCell>
-                  <TableCell>{row.category_name ?? "-"}</TableCell>
-                  <TableCell><Badge tone={row.status === "ISSUED" ? "success" : row.status === "RETURNED" ? "neutral" : "warning"}>{row.status}</Badge></TableCell>
-                  <TableCell>{row.issued_date ?? row.issued_at ?? "-"}</TableCell>
-                  <TableCell>{row.expected_return_date ?? row.expected_return_at ?? "-"}</TableCell>
-                  <TableCell>{row.returned_date ?? row.returned_at ?? "-"}</TableCell>
-                  <TableCell>{row.deduction_amount ?? "-"}</TableCell>
-                  <TableCell><div className="flex min-w-[520px] justify-end gap-1">
-                    <RowActionButton intent="view" size="sm" title="Events" onClick={() => setModal({ type: "events", row })}><Eye className="h-4 w-4" /> Events</RowActionButton>
-                    {canManage ? <RowActionButton intent="upload" size="sm" title="Attachments" onClick={() => setModal({ type: "attachments", row })}><FilePlus className="h-4 w-4" /> Attachments</RowActionButton> : null}
-                    {row.status === "ISSUED" && canReturn ? <RowActionButton intent="release" size="sm" title="Return" onClick={() => setModal({ type: "lifecycle", row, action: "return" })}>Return</RowActionButton> : null}
-                    {row.status === "ISSUED" && canDamage ? <RowActionButton intent="warning" size="sm" title="Damage" onClick={() => setModal({ type: "lifecycle", row, action: "mark-damaged" })}>Damage</RowActionButton> : null}
-                    {row.status === "ISSUED" && canLost ? <RowActionButton intent="warning" size="sm" title="Lost" onClick={() => setModal({ type: "lifecycle", row, action: "mark-lost" })}>Lost</RowActionButton> : null}
-                    {row.status === "ISSUED" && canWriteOff ? <RowActionButton intent="delete" size="sm" title="Write off" onClick={() => setModal({ type: "lifecycle", row, action: "write-off" })}>Write off</RowActionButton> : null}
-                    {row.status === "ISSUED" && canIssue ? <RowActionButton intent="upload" size="sm" title="Replace" onClick={() => setModal({ type: "replace", row })}><Repeat2 className="h-4 w-4" /> Replace</RowActionButton> : null}
-                    {canDeductions ? <RowActionButton intent="create" size="sm" title="Deduction" onClick={() => setModal({ type: "deduction", row })}><Link2 className="h-4 w-4" /> Deduction</RowActionButton> : null}
-                    <Link to={`/employees/${row.employee_id}`}><RowActionButton intent="view" size="sm" title="Employee 360">Employee 360</RowActionButton></Link>
-                  </div></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {!rows.length ? <EmptyState title="No assignments" description="Assignments appear after assets are issued to employees." /> : null}
+      <PerformanceDataTable
+        empty={rows.length === 0}
+        rowCount={rows.length}
+        emptyTitle="No assignments"
+        emptyDescription="Assignments appear after assets are issued to employees."
+        className="border-0 bg-transparent p-0 shadow-none"
+      >
+        <div className="flex flex-col gap-2">
+          {rows.map((row) => (
+            <AssetCardRow
+              key={row.id}
+              title={
+                <EmployeeIdentityCell
+                  employeeId={row.employee_id}
+                  employeeName={row.employee_name}
+                  employeeNumber={row.employee_no}
+                  departmentName={row.department_name}
+                  locationName={row.location_name}
+                  size="md"
+                  showMetadata={false}
+                  to={`/employees/${row.employee_id}`}
+                />
+              }
+              meta={
+                <>
+                  <AssetMetaChip>{row.asset_code} / {row.asset_name}</AssetMetaChip>
+                  {row.category_name ? <><AssetMetaDot /><AssetMetaChip>{row.category_name}</AssetMetaChip></> : null}
+                  <AssetMetaDot /><AssetMetaChip>Issued {row.issued_date ?? row.issued_at ?? "-"}</AssetMetaChip>
+                  <AssetMetaDot /><AssetMetaChip>Expected return {row.expected_return_date ?? row.expected_return_at ?? "-"}</AssetMetaChip>
+                  <AssetMetaDot /><AssetMetaChip>Returned {row.returned_date ?? row.returned_at ?? "-"}</AssetMetaChip>
+                  <AssetMetaDot /><AssetMetaChip>Deduction {row.deduction_amount ?? "-"}</AssetMetaChip>
+                </>
+              }
+              trailing={<Badge tone={row.status === "ISSUED" ? "success" : row.status === "RETURNED" ? "neutral" : "warning"}>{row.status}</Badge>}
+              actions={
+                <div className="flex flex-wrap justify-end gap-1">
+                  <RowActionButton intent="view" size="sm" title="Events" onClick={() => setModal({ type: "events", row })}><Eye className="h-4 w-4" /> Events</RowActionButton>
+                  {canManage ? <RowActionButton intent="upload" size="sm" title="Attachments" onClick={() => setModal({ type: "attachments", row })}><FilePlus className="h-4 w-4" /> Attachments</RowActionButton> : null}
+                  {row.status === "ISSUED" && canReturn ? <RowActionButton intent="release" size="sm" title="Return" onClick={() => setModal({ type: "lifecycle", row, action: "return" })}>Return</RowActionButton> : null}
+                  {row.status === "ISSUED" && canDamage ? <RowActionButton intent="warning" size="sm" title="Damage" onClick={() => setModal({ type: "lifecycle", row, action: "mark-damaged" })}>Damage</RowActionButton> : null}
+                  {row.status === "ISSUED" && canLost ? <RowActionButton intent="warning" size="sm" title="Lost" onClick={() => setModal({ type: "lifecycle", row, action: "mark-lost" })}>Lost</RowActionButton> : null}
+                  {row.status === "ISSUED" && canWriteOff ? <RowActionButton intent="delete" size="sm" title="Write off" onClick={() => setModal({ type: "lifecycle", row, action: "write-off" })}>Write off</RowActionButton> : null}
+                  {row.status === "ISSUED" && canIssue ? <RowActionButton intent="upload" size="sm" title="Replace" onClick={() => setModal({ type: "replace", row })}><Repeat2 className="h-4 w-4" /> Replace</RowActionButton> : null}
+                  {canDeductions ? <RowActionButton intent="create" size="sm" title="Deduction" onClick={() => setModal({ type: "deduction", row })}><Link2 className="h-4 w-4" /> Deduction</RowActionButton> : null}
+                  <Link to={`/employees/${row.employee_id}`}><RowActionButton intent="view" size="sm" title="Employee 360">Employee 360</RowActionButton></Link>
+                </div>
+              }
+            />
+          ))}
         </div>
-      </Panel>
+      </PerformanceDataTable>
       {modal?.type === "issue" ? <IssueModal employees={employees} items={items} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
       {modal?.type === "lifecycle" ? <LifecycleModal row={modal.row} action={modal.action} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
       {modal?.type === "replace" ? <ReplaceModal row={modal.row} items={items} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}

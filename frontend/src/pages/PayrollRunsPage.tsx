@@ -1,6 +1,6 @@
 import { Download, Eye, PlayCircle, RefreshCw, XCircle } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -17,7 +17,6 @@ import {
 import { AlertBanner, PageHeader, PageShell } from "../components/ui/page-shell";
 import { DataTableShell } from "../components/ui/data-table-shell";
 import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
@@ -34,6 +33,78 @@ function normalizeRunStatus(status: string) {
   if (status === "APPROVED") return "APPROVED_PLACEHOLDER";
   if (status === "PAID") return "FINALIZED_PLACEHOLDER";
   return status;
+}
+
+function MetaChip({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return <span style={{ fontSize: 12, color: "var(--v3-text-secondary)" }}>{children}</span>;
+}
+
+function Dot() {
+  return <span style={{ color: "var(--v3-border-strong)" }}>&middot;</span>;
+}
+
+function RunCardRow({ run, displayStatus, canRecalculate, canApprove, canExport, canCancel, onRecalculate, onApprove, onExport, onCancel }: {
+  run: PayrollRun;
+  displayStatus: string;
+  canRecalculate: boolean;
+  canApprove: boolean;
+  canExport: boolean;
+  canCancel: boolean;
+  onRecalculate: () => void;
+  onApprove: () => void;
+  onExport: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "0.9rem 1.1rem",
+        background: "var(--v3-surface-2)",
+        border: "0.5px solid var(--v3-border)",
+        borderRadius: "var(--v3-radius-card)"
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold">#{run.run_no} &middot; {run.period_month ? `${run.period_month}/${run.period_year}` : run.payroll_period_id}</div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <MetaChip>{run.calculation_mode}</MetaChip>
+          <Dot /><MetaChip>By {run.generated_by_name ?? "-"}</MetaChip>
+          <Dot /><MetaChip>Generated {run.generated_at}</MetaChip>
+          {run.approved_at ? <><Dot /><MetaChip>Approved {run.approved_at}</MetaChip></> : null}
+          {run.paid_at ? <><Dot /><MetaChip>Paid {run.paid_at}</MetaChip></> : null}
+          <Dot /><MetaChip>{run.employee_count ?? 0} employees</MetaChip>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-4">
+        <div className="flex gap-4 text-right">
+          <div>
+            <div className="text-[11px] text-muted-foreground">Earnings</div>
+            <div className="text-sm font-semibold">{money(run.total_earnings)}</div>
+          </div>
+          <div>
+            <div className="text-[11px] text-muted-foreground">Deductions</div>
+            <div className="text-sm font-semibold">{money(run.total_deductions)}</div>
+          </div>
+          <div>
+            <div className="text-[11px] text-muted-foreground">Net salary</div>
+            <div className="text-sm font-semibold">{money(run.net_salary_total)}</div>
+          </div>
+        </div>
+        <StatusBadge value={displayStatus} />
+        <div className="flex gap-1">
+          <Link to={`/payroll/runs/${run.id}`}><RowActionButton intent="view" title="View details"><Eye className="h-4 w-4" /></RowActionButton></Link>
+          {canRecalculate ? <RowActionButton intent="calculate" title="Recalculate" onClick={onRecalculate}><RefreshCw className="h-4 w-4" /></RowActionButton> : null}
+          {canApprove ? <RowActionButton intent="approve" title="Approve placeholder" onClick={onApprove}><PlayCircle className="h-4 w-4" /></RowActionButton> : null}
+          {canExport ? <RowActionButton intent="download" title="Export CSV" onClick={onExport}><Download className="h-4 w-4" /></RowActionButton> : null}
+          {canCancel && displayStatus !== "FINALIZED_PLACEHOLDER" && displayStatus !== "CANCELLED" ? <RowActionButton intent="delete" title="Cancel" onClick={onCancel}><XCircle className="h-4 w-4" /></RowActionButton> : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function PayrollRunsPage() {
@@ -153,14 +224,27 @@ export function PayrollRunsPage() {
         <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={payrollRunStatuses.map((item) => ({ value: item, label: humanizeStatus(item) }))} />
       </StandardFilterBar>
       <ActiveFilterChips chips={activeChips} />
-      <DataTableShell loading={loading} error={error} empty={!runs.length} emptyTitle="No payroll runs" emptyDescription="Generate a run from a payroll period.">
-          <Table>
-            <TableHeader><TableRow><TableHead>Run</TableHead><TableHead>Period</TableHead><TableHead>Status</TableHead><TableHead>Mode</TableHead><TableHead>Generated by</TableHead><TableHead>Generated</TableHead><TableHead>Approved</TableHead><TableHead>Paid</TableHead><TableHead>Employees</TableHead><TableHead>Earnings</TableHead><TableHead>Deductions</TableHead><TableHead>Net salary</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{runs.map((run) => {
+      <DataTableShell loading={loading} error={error} empty={!runs.length} emptyTitle="No payroll runs" emptyDescription="Generate a run from a payroll period." className="border-0 bg-transparent p-0 shadow-none">
+          <div className="flex flex-col gap-2">
+            {runs.map((run) => {
               const displayStatus = normalizeRunStatus(run.status);
-              return <TableRow key={run.id}><TableCell className="font-medium">#{run.run_no}</TableCell><TableCell>{run.period_month ? `${run.period_month}/${run.period_year}` : run.payroll_period_id}</TableCell><TableCell><StatusBadge value={displayStatus} /></TableCell><TableCell>{run.calculation_mode}</TableCell><TableCell>{run.generated_by_name ?? "-"}</TableCell><TableCell>{run.generated_at}</TableCell><TableCell>{run.approved_at ?? "-"}</TableCell><TableCell>{run.paid_at ?? "-"}</TableCell><TableCell>{run.employee_count ?? 0}</TableCell><TableCell>{money(run.total_earnings)}</TableCell><TableCell>{money(run.total_deductions)}</TableCell><TableCell>{money(run.net_salary_total)}</TableCell><TableCell><div className="flex justify-end gap-1"><Link to={`/payroll/runs/${run.id}`}><RowActionButton intent="view" title="View details"><Eye className="h-4 w-4" /></RowActionButton></Link>{canRecalculate ? <RowActionButton intent="calculate" title="Recalculate" onClick={() => setAction({ run, name: "recalculate" })}><RefreshCw className="h-4 w-4" /></RowActionButton> : null}{canApprove ? <RowActionButton intent="approve" title="Approve placeholder" onClick={() => setAction({ run, name: "approve" })}><PlayCircle className="h-4 w-4" /></RowActionButton> : null}{canExport ? <RowActionButton intent="download" title="Export CSV" onClick={() => void exportRun(run)}><Download className="h-4 w-4" /></RowActionButton> : null}{canCancel && displayStatus !== "FINALIZED_PLACEHOLDER" && displayStatus !== "CANCELLED" ? <RowActionButton intent="delete" title="Cancel" onClick={() => setAction({ run, name: "cancel" })}><XCircle className="h-4 w-4" /></RowActionButton> : null}</div></TableCell></TableRow>;
-            })}</TableBody>
-          </Table>
+              return (
+                <RunCardRow
+                  key={run.id}
+                  run={run}
+                  displayStatus={displayStatus}
+                  canRecalculate={canRecalculate}
+                  canApprove={canApprove}
+                  canExport={canExport}
+                  canCancel={canCancel}
+                  onRecalculate={() => setAction({ run, name: "recalculate" })}
+                  onApprove={() => setAction({ run, name: "approve" })}
+                  onExport={() => void exportRun(run)}
+                  onCancel={() => setAction({ run, name: "cancel" })}
+                />
+              );
+            })}
+          </div>
       </DataTableShell>
       {action ? (
         <ConfirmDialog

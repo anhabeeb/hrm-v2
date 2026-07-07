@@ -2,13 +2,13 @@ import { Check, RefreshCw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { ExportMenu } from "../components/export/ExportMenu";
+import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { Button, RowActionButton } from "../components/ui/button";
 import { DataTableFrame } from "../components/ui/data-table";
 import { ConfirmDialog } from "../components/ui/dialogs";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
 import { api } from "../lib/api";
@@ -131,56 +131,60 @@ export function KycRequestsPage() {
         <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
       </Panel>
 
-      <Panel className="overflow-hidden">
-        <DataTableFrame loading={loading} error={error} empty={!loading && !error && !requests.length}>
-          <Table>
-            <TableHeader className="sticky top-0">
-              <TableRow>
-                <TableHead>Employee no</TableHead>
-                <TableHead>Employee name</TableHead>
-                <TableHead>Section</TableHead>
-                <TableHead>Field key</TableHead>
-                <TableHead>Requested value</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Requested by</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Reviewed</TableHead>
-                <TableHead>Review note</TableHead>
-                <TableHead className="sticky right-0 bg-muted text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {requests.map((row) => {
-                const actionable = String(row.status) === "SUBMITTED" || String(row.status) === "REVIEWED";
-                return (
-                  <TableRow key={String(row.id)}>
-                    <TableCell className="whitespace-nowrap">{text(row.employee_no)}</TableCell>
-                    <TableCell className="whitespace-nowrap font-medium">{text(row.employee_name)}</TableCell>
-                    <TableCell>{text(row.section)}</TableCell>
-                    <TableCell>{text(row.field_key)}</TableCell>
-                    <TableCell className="max-w-[260px] truncate">{requestedSummary(row.requested_value_json)}</TableCell>
-                    <TableCell className="max-w-[220px] truncate">{text(row.reason)}</TableCell>
-                    <TableCell><StatusBadge value={row.status} /></TableCell>
-                    <TableCell className="whitespace-nowrap">{text(row.requested_by_name)}</TableCell>
-                    <TableCell className="whitespace-nowrap">{text(row.created_at)}</TableCell>
-                    <TableCell className="whitespace-nowrap">{text(row.reviewed_at)}</TableCell>
-                    <TableCell className="max-w-[220px] truncate">{text(row.review_note)}</TableCell>
-                    <TableCell className="sticky right-0 bg-white text-right">
-                      <div className="flex justify-end gap-1">
-                        <RowActionButton intent="approve" title="Approve" disabled={!actionable} onClick={() => { setReviewAction({ type: "approve", row }); setReviewNote(""); }}>
-                          <Check className="h-4 w-4" />
-                        </RowActionButton>
-                        <RowActionButton intent="disable" title="Reject" disabled={!actionable} onClick={() => { setReviewAction({ type: "reject", row }); setReviewNote(""); }}>
-                          <X className="h-4 w-4" />
-                        </RowActionButton>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+      <Panel className="overflow-hidden border-0 bg-transparent p-0 shadow-none">
+        <DataTableFrame loading={loading} error={error} empty={!loading && !error && !requests.length} className="border-0 bg-transparent shadow-none">
+          <div className="flex flex-col gap-2">
+            {requests.map((row) => {
+              const actionable = String(row.status) === "SUBMITTED" || String(row.status) === "REVIEWED";
+              return (
+                <div
+                  key={String(row.id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 16,
+                    padding: "0.9rem 1.1rem",
+                    background: "var(--v3-surface-2)",
+                    border: "0.5px solid var(--v3-border)",
+                    borderRadius: "var(--v3-radius-card)"
+                  }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <EmployeeIdentityCell
+                      employeeName={text(row.employee_name)}
+                      employeeNumber={text(row.employee_no)}
+                      showMetadata={false}
+                    />
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[52px] text-xs text-muted-foreground">
+                      <span>{text(row.section)} / {text(row.field_key)}</span>
+                      <span className="text-[var(--v3-border-strong)]">&middot;</span>
+                      <span className="max-w-[240px] truncate" title={requestedSummary(row.requested_value_json)}>New value: {requestedSummary(row.requested_value_json)}</span>
+                      {row.reason ? <><span className="text-[var(--v3-border-strong)]">&middot;</span><span className="max-w-[220px] truncate" title={text(row.reason)}>Reason: {text(row.reason)}</span></> : null}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[52px] text-xs text-muted-foreground">
+                      <span>Requested by {text(row.requested_by_name)}</span>
+                      <span className="text-[var(--v3-border-strong)]">&middot;</span>
+                      <span>Created {text(row.created_at)}</span>
+                      {row.reviewed_at ? <><span className="text-[var(--v3-border-strong)]">&middot;</span><span>Reviewed {text(row.reviewed_at)}</span></> : null}
+                      {row.review_note ? <><span className="text-[var(--v3-border-strong)]">&middot;</span><span className="max-w-[220px] truncate" title={text(row.review_note)}>Note: {text(row.review_note)}</span></> : null}
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <StatusBadge value={row.status} />
+                    <div className="flex gap-1">
+                      <RowActionButton intent="approve" title="Approve" disabled={!actionable} onClick={() => { setReviewAction({ type: "approve", row }); setReviewNote(""); }}>
+                        <Check className="h-4 w-4" />
+                      </RowActionButton>
+                      <RowActionButton intent="disable" title="Reject" disabled={!actionable} onClick={() => { setReviewAction({ type: "reject", row }); setReviewNote(""); }}>
+                        <X className="h-4 w-4" />
+                      </RowActionButton>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </DataTableFrame>
       </Panel>
       <ConfirmDialog

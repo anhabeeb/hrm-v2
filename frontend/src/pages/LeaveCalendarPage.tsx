@@ -7,7 +7,6 @@ import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { LeaveRequest, LeaveType } from "../types/leave";
@@ -109,13 +108,26 @@ export function LeaveCalendarPage() {
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Leave type</TableHead><TableHead>Start</TableHead><TableHead>End</TableHead><TableHead>Days</TableHead><TableHead>Status</TableHead><TableHead>Public holiday/weekend</TableHead></TableRow></TableHeader>
-            <TableBody>{requests.map((request) => <TableRow key={request.id}><TableCell><EmployeeIdentityCell employeeId={request.employee_id} employeeName={request.employee_name ?? "-"} employeeNumber={request.employee_no ?? ""} departmentName={request.department_name} locationName={request.location_name} size="sm" /></TableCell><TableCell>{request.department_name ?? "-"}</TableCell><TableCell>{request.location_name ?? "-"}</TableCell><TableCell>{request.leave_type_name}</TableCell><TableCell>{request.start_date}</TableCell><TableCell>{request.end_date}</TableCell><TableCell>{request.requested_days}</TableCell><TableCell><Badge tone={request.status === "APPROVED" ? "success" : "warning"}>{request.status}</Badge></TableCell><TableCell className="text-xs text-muted-foreground">{request.public_holiday_handling_json ?? "-"}</TableCell></TableRow>)}</TableBody>
-          </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={8} label="Loading leave calendar" /> : requests.length === 0 ? <EmptyState title="No leave blocks" description="Approved and pending leave requests will appear here." /> : null}
+        {loading ? <TableSkeleton rows={6} columns={8} label="Loading leave calendar" /> : requests.length === 0 ? <EmptyState title="No leave blocks" description="Approved and pending leave requests will appear here." /> : (
+          <div className="flex flex-col gap-2 p-3">
+            {requests.map((request) => (
+              <div key={request.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                <div className="min-w-0 flex-1">
+                  <EmployeeIdentityCell employeeId={request.employee_id} employeeName={request.employee_name ?? "-"} employeeNumber={request.employee_no ?? ""} departmentName={request.department_name} locationName={request.location_name} size="sm" />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[44px] text-xs text-muted-foreground">
+                    <span>{request.leave_type_name}</span>
+                    <span>&middot;</span>
+                    <span>{request.start_date} to {request.end_date}</span>
+                    <span>&middot;</span>
+                    <span>{request.requested_days} day(s)</span>
+                    {request.public_holiday_handling_json ? <><span>&middot;</span><span>{request.public_holiday_handling_json}</span></> : null}
+                  </div>
+                </div>
+                <Badge tone={request.status === "APPROVED" ? "success" : "warning"}>{request.status}</Badge>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
     </PageShell>
   );

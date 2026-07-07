@@ -16,7 +16,7 @@ import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { CardRowList, KeyValueCardRow } from "../components/table/KeyValueCardRow";
 import { ImportWizard } from "../components/import/ImportWizard";
 import { ActionTextButton } from "../components/ui/action-button";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
@@ -65,29 +65,23 @@ function rows(value: unknown): Row[] {
 }
 
 function RowTable({ data, columns, empty }: { data: Row[]; columns: string[]; empty: string }) {
+  const [titleColumn, ...restColumns] = columns;
+  const isBadgeColumn = (column: string) => ["status", "validation_status", "apply_status", "deployment_status"].includes(column);
   return (
-    <Panel className="overflow-hidden p-0">
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}</TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.map((row, index) => (
-              <TableRow key={String(row.id ?? row.key ?? row.batch_number ?? row.test_key ?? index)}>
-                {columns.map((column) => (
-                  <TableCell key={column} className="max-w-[360px] truncate">
-                    {["status", "validation_status", "apply_status", "deployment_status"].includes(column)
-                      ? <Badge tone={tone(row[column])}>{text(row[column])}</Badge>
-                      : text(row[column])}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {!data.length ? <EmptyState title={empty} description="No rows are available yet." /> : null}
-      </div>
+    <Panel className="overflow-hidden p-2">
+      <CardRowList empty={!data.length} emptyTitle={empty}>
+        {data.map((row, index) => (
+          <KeyValueCardRow
+            key={String(row.id ?? row.key ?? row.batch_number ?? row.test_key ?? index)}
+            title={text(row[titleColumn])}
+            badge={isBadgeColumn(titleColumn) ? <Badge tone={tone(row[titleColumn])}>{text(row[titleColumn])}</Badge> : undefined}
+            fields={restColumns.map((column) => ({
+              label: column.replace(/_/g, " "),
+              value: isBadgeColumn(column) ? <Badge tone={tone(row[column])}>{text(row[column])}</Badge> : text(row[column])
+            }))}
+          />
+        ))}
+      </CardRowList>
     </Panel>
   );
 }

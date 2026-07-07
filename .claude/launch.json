@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hrmv2-worker",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/Users/Greenwing/Documents/HRM V2", "run", "dev:worker"],
+      "port": 8787
+    },
+    {
+      "name": "hrmv2-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/Users/Greenwing/Documents/HRM V2", "run", "dev:frontend"],
+      "port": 5173
+    }
+  ]
+}

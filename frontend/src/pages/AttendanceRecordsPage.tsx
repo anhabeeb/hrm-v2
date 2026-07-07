@@ -28,7 +28,6 @@ import {
 } from "../components/filters";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { useDebouncedTableFilters } from "../hooks/useDebouncedTableFilters";
 import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
@@ -286,47 +285,82 @@ export function AttendanceRecordsPage() {
         <StandardSelectFilter value={status} onValueChange={setStatus} allLabel="All statuses" width="status" options={["PRESENT", "ABSENT", "LATE", "EARLY_LEAVE", "HALF_DAY", "LEAVE", "SICK_LEAVE", "LONG_LEAVE", "DAY_OFF", "PUBLIC_HOLIDAY", "MISSING_PUNCH", "PENDING_CORRECTION", "CORRECTED"].map((item) => ({ value: item, label: item }))} />
       </StandardFilterBar>
       <ActiveFilterChips chips={activeChips} />
-      <Panel className="overflow-hidden">
-        <PerformanceDataTable loading={loading || recordsQuery.isInitialLoading} refreshing={recordsQuery.isRefreshing || isDebouncing} error={error ?? recordsQuery.error?.message ?? null} empty={records.length === 0} rowCount={records.length} emptyTitle="No attendance records found" emptyDescription="Create records, import raw logs, or adjust filters." skeleton={<TableSkeleton rows={5} columns={9} label="Loading attendance records" />}>
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead>Clock in/out</TableHead><TableHead>Work</TableHead><TableHead>Late/Early</TableHead><TableHead>Source</TableHead><TableHead>Payroll impact</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {records.map((record) => <TableRow key={record.id}>
-                <TableCell><EmployeeIdentityCell employeeId={record.employee_id} employeeName={record.employee_name} employeeNumber={record.employee_no} departmentName={record.department_name} locationName={record.location_name} size="sm" /></TableCell>
-                <TableCell>{record.attendance_date}</TableCell>
-                <TableCell><Badge tone={statusTone(record.status)}>{record.status}</Badge>{record.missed_punch ? <Badge tone="warning" className="ml-1">Missed punch</Badge> : null}</TableCell>
-                <TableCell>{record.first_clock_in ? new Date(record.first_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {record.last_clock_out ? new Date(record.last_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</TableCell>
-                <TableCell>{record.total_work_minutes ?? 0} min</TableCell>
-                <TableCell>{record.late_minutes ?? 0} / {record.early_checkout_minutes ?? 0}</TableCell>
-                <TableCell>{record.source}</TableCell>
-                <TableCell className="max-w-64 truncate">{record.payroll_impact_json ?? "None"}</TableCell>
-                <TableCell className="max-w-48 truncate">{record.notes ?? "-"}</TableCell>
-                <TableCell><div className="flex justify-end gap-1">{canManage ? <RowActionButton intent="edit" title="Edit" onClick={() => setEditing(record)}><Edit className="h-4 w-4" /></RowActionButton> : null}{canManage ? <RowActionButton intent="calculate" title="Recalculate" onClick={() => void recalculate(record)}><RefreshCw className="h-4 w-4" /></RowActionButton> : null}</div></TableCell>
-              </TableRow>)}
-            </TableBody>
-          </Table>
-        </PerformanceDataTable>
-        <TablePaginationBar page={recordPage} pageSize={recordPageSize} rowCount={records.length} hasMore={Boolean(recordPagination?.has_more)} onPageChange={setRecordPage} onPageSizeChange={setRecordPageSize} />
-      </Panel>
+      <PerformanceDataTable loading={loading || recordsQuery.isInitialLoading} refreshing={recordsQuery.isRefreshing || isDebouncing} error={error ?? recordsQuery.error?.message ?? null} empty={records.length === 0} rowCount={records.length} emptyTitle="No attendance records found" emptyDescription="Create records, import raw logs, or adjust filters." skeleton={<TableSkeleton rows={5} columns={9} label="Loading attendance records" />} className="border-0 bg-transparent p-0 shadow-none">
+        <div className="flex flex-col gap-2">
+          {records.map((record) => (
+            <div key={record.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+              <div className="min-w-0 flex-1">
+                <EmployeeIdentityCell employeeId={record.employee_id} employeeName={record.employee_name} employeeNumber={record.employee_no} departmentName={record.department_name} locationName={record.location_name} size="sm" />
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[44px] text-xs text-muted-foreground">
+                  <span>{record.attendance_date}</span>
+                  <span>&middot;</span>
+                  <span>{record.first_clock_in ? new Date(record.first_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {record.last_clock_out ? new Date(record.last_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</span>
+                  <span>&middot;</span>
+                  <span>{record.total_work_minutes ?? 0} min worked</span>
+                  <span>&middot;</span>
+                  <span>Late {record.late_minutes ?? 0} / Early {record.early_checkout_minutes ?? 0}</span>
+                  <span>&middot;</span>
+                  <span>{record.source}</span>
+                  {record.notes ? <><span>&middot;</span><span className="max-w-64 truncate">{record.notes}</span></> : null}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Badge tone={statusTone(record.status)}>{record.status}</Badge>
+                {record.missed_punch ? <Badge tone="warning">Missed punch</Badge> : null}
+                {canManage ? <RowActionButton intent="edit" title="Edit" onClick={() => setEditing(record)}><Edit className="h-4 w-4" /></RowActionButton> : null}
+                {canManage ? <RowActionButton intent="calculate" title="Recalculate" onClick={() => void recalculate(record)}><RefreshCw className="h-4 w-4" /></RowActionButton> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </PerformanceDataTable>
+      <TablePaginationBar page={recordPage} pageSize={recordPageSize} rowCount={records.length} hasMore={Boolean(recordPagination?.has_more)} onPageChange={setRecordPage} onPageSizeChange={setRecordPageSize} />
       <Panel className="overflow-hidden">
         <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">Recent Attendance Logs</h2></div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Log time</TableHead><TableHead>Type</TableHead><TableHead>Source</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{logs.slice(0, 12).map((log) => <TableRow key={log.id}><TableCell>{log.employee_name ?? log.external_employee_code ?? "-"}</TableCell><TableCell>{new Date(log.log_time).toLocaleString()}</TableCell><TableCell>{log.log_type}</TableCell><TableCell>{log.source}</TableCell><TableCell className="max-w-64 truncate">{log.notes ?? "-"}</TableCell><TableCell><div className="flex justify-end">{canManageLogs ? <RowActionButton intent="edit" title="Edit log" onClick={() => setEditingLog(log)}><Edit className="h-4 w-4" /></RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
-          </Table>
-        </div>
-        {loading ? <TableSkeleton rows={4} columns={6} label="Loading attendance logs" /> : logs.length === 0 ? <EmptyState title="No attendance logs found" description="Manual and device-normalized logs will appear here." /> : null}
+        {loading ? <TableSkeleton rows={4} columns={6} label="Loading attendance logs" /> : logs.length === 0 ? <EmptyState title="No attendance logs found" description="Manual and device-normalized logs will appear here." /> : (
+          <div className="flex flex-col gap-2 p-3">
+            {logs.slice(0, 12).map((log) => (
+              <div key={log.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.75rem 1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-900">{log.employee_name ?? log.external_employee_code ?? "-"}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                    <span>{new Date(log.log_time).toLocaleString()}</span>
+                    <span>&middot;</span>
+                    <span>{log.log_type}</span>
+                    <span>&middot;</span>
+                    <span>{log.source}</span>
+                    {log.notes ? <><span>&middot;</span><span className="max-w-64 truncate">{log.notes}</span></> : null}
+                  </div>
+                </div>
+                {canManageLogs ? <RowActionButton intent="edit" title="Edit log" onClick={() => setEditingLog(log)}><Edit className="h-4 w-4" /></RowActionButton> : null}
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
       <Panel className="overflow-hidden">
         <div className="border-b px-3 py-2"><h2 className="text-sm font-semibold">Recent Raw Device Logs</h2></div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Device</TableHead><TableHead>Punch time</TableHead><TableHead>Type</TableHead><TableHead>Source</TableHead><TableHead>Imported</TableHead></TableRow></TableHeader>
-            <TableBody>{rawLogs.slice(0, 12).map((log) => <TableRow key={log.id}><TableCell>{log.employee_name ?? log.external_employee_code ?? "-"}</TableCell><TableCell>{log.device_name ?? log.device_code ?? "-"}</TableCell><TableCell>{new Date(log.punch_time).toLocaleString()}</TableCell><TableCell>{log.punch_type ?? "UNKNOWN"}</TableCell><TableCell>{log.source}</TableCell><TableCell>{new Date(log.imported_at).toLocaleString()}</TableCell></TableRow>)}</TableBody>
-          </Table>
-        </div>
-        {loading ? <TableSkeleton rows={4} columns={6} label="Loading raw attendance logs" /> : rawLogs.length === 0 ? <EmptyState title="No raw logs found" description="Raw device and import logs will appear here." /> : null}
+        {loading ? <TableSkeleton rows={4} columns={6} label="Loading raw attendance logs" /> : rawLogs.length === 0 ? <EmptyState title="No raw logs found" description="Raw device and import logs will appear here." /> : (
+          <div className="flex flex-col gap-2 p-3">
+            {rawLogs.slice(0, 12).map((log) => (
+              <div key={log.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.75rem 1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-900">{log.employee_name ?? log.external_employee_code ?? "-"}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                    <span>{log.device_name ?? log.device_code ?? "-"}</span>
+                    <span>&middot;</span>
+                    <span>{new Date(log.punch_time).toLocaleString()}</span>
+                    <span>&middot;</span>
+                    <span>{log.punch_type ?? "UNKNOWN"}</span>
+                    <span>&middot;</span>
+                    <span>{log.source}</span>
+                  </div>
+                </div>
+                <div className="shrink-0 text-xs text-muted-foreground">Imported {new Date(log.imported_at).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
       {editing !== undefined && token ? <AttendanceRecordModal token={token} employees={employees} record={editing} onClose={() => setEditing(undefined)} onSaved={async () => { await load(); await recordsQuery.refetch(); }} /> : null}
       {editingLog !== undefined && token ? <AttendanceManualLogModal token={token} employees={employees} log={editingLog} onClose={() => setEditingLog(undefined)} onSaved={async () => { await load(); await recordsQuery.refetch(); }} /> : null}

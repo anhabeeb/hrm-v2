@@ -25,7 +25,7 @@ import {
 } from "../components/filters";
 import { CheckboxField, PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { Employee } from "../types/employees";
@@ -242,15 +242,38 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
         <StandardDateRangeFilter value={leaveDateRange} onChange={setLeaveDateRange} label="Date Range" />
       </StandardFilterBar>
       <ActiveFilterChips chips={activeChips} />
-      <Panel className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Leave type</TableHead><TableHead>Dates</TableHead><TableHead>Days</TableHead><TableHead>Status</TableHead><TableHead>Document</TableHead><TableHead>Deduction</TableHead><TableHead>Current step</TableHead><TableHead>Submitted</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{requests.map((request) => <TableRow key={request.id}><TableCell><EmployeeIdentityCell employeeId={request.employee_id} employeeName={request.employee_name} employeeNumber={request.employee_no} departmentName={request.department_name} locationName={request.location_name} size="sm" to={`/employees/${request.employee_id}`} /></TableCell><TableCell>{request.department_name ?? "-"}</TableCell><TableCell>{request.leave_type_name}</TableCell><TableCell>{request.start_date} to {request.end_date}</TableCell><TableCell>{request.requested_days}</TableCell><TableCell><Badge tone={tone(request.status)}>{request.status}</Badge></TableCell><TableCell>{request.document_status}</TableCell><TableCell>{request.salary_deduction_mode ?? "NONE"}</TableCell><TableCell>{request.current_approval_step ?? "-"}</TableCell><TableCell>{request.submitted_at ? new Date(request.submitted_at).toLocaleDateString() : "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><RowActionButton intent="view" title="View details" onClick={() => setDetailRequest(request)}><Eye className="h-4 w-4" /></RowActionButton>{request.status === "DRAFT" && canCreate ? <RowActionButton intent="neutral" title="Submit" onClick={() => { setActionTarget({ request, name: "submit" }); setActionNote(""); }}><RotateCcw className="h-4 w-4" /></RowActionButton> : null}{request.status === "PENDING_APPROVAL" && canApprove ? <RowActionButton intent="approve" title="Approve" onClick={() => { setActionTarget({ request, name: "approve" }); setActionNote(""); }}><Check className="h-4 w-4" /></RowActionButton> : null}{request.status === "PENDING_APPROVAL" && canApprove ? <RowActionButton intent="reject" title="Reject" onClick={() => { setActionTarget({ request, name: "reject" }); setActionNote(""); }}><X className="h-4 w-4" /></RowActionButton> : null}{request.status !== "CANCELLED" && request.status !== "REJECTED" && canCancel ? <RowActionButton intent="delete" title="Cancel" onClick={() => { setActionTarget({ request, name: "cancel" }); setActionNote(""); }}><X className="h-4 w-4 text-red-600" /></RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody>
-          </Table>
+      <PerformanceDataTable loading={loading} refreshing={false} error={null} empty={requests.length === 0} rowCount={requests.length} emptyTitle="No leave requests found" emptyDescription="Create a leave request or adjust filters." skeleton={<TableSkeleton rows={6} columns={10} label="Loading leave requests" />} className="border-0 bg-transparent p-0 shadow-none">
+        <div className="flex flex-col gap-2">
+          {requests.map((request) => (
+            <div key={request.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+              <div className="min-w-0 flex-1">
+                <EmployeeIdentityCell employeeId={request.employee_id} employeeName={request.employee_name} employeeNumber={request.employee_no} departmentName={request.department_name} locationName={request.location_name} size="sm" to={`/employees/${request.employee_id}`} />
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[44px] text-xs text-muted-foreground">
+                  <span>{request.leave_type_name}</span>
+                  <span>&middot;</span>
+                  <span>{request.start_date} to {request.end_date}</span>
+                  <span>&middot;</span>
+                  <span>{request.requested_days} day(s)</span>
+                  <span>&middot;</span>
+                  <span>Doc: {request.document_status}</span>
+                  <span>&middot;</span>
+                  <span>Deduction: {request.salary_deduction_mode ?? "NONE"}</span>
+                  {request.current_approval_step ? <><span>&middot;</span><span>Step: {request.current_approval_step}</span></> : null}
+                  {request.submitted_at ? <><span>&middot;</span><span>Submitted {new Date(request.submitted_at).toLocaleDateString()}</span></> : null}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Badge tone={tone(request.status)}>{request.status}</Badge>
+                <RowActionButton intent="view" title="View details" onClick={() => setDetailRequest(request)}><Eye className="h-4 w-4" /></RowActionButton>
+                {request.status === "DRAFT" && canCreate ? <RowActionButton intent="neutral" title="Submit" onClick={() => { setActionTarget({ request, name: "submit" }); setActionNote(""); }}><RotateCcw className="h-4 w-4" /></RowActionButton> : null}
+                {request.status === "PENDING_APPROVAL" && canApprove ? <RowActionButton intent="approve" title="Approve" onClick={() => { setActionTarget({ request, name: "approve" }); setActionNote(""); }}><Check className="h-4 w-4" /></RowActionButton> : null}
+                {request.status === "PENDING_APPROVAL" && canApprove ? <RowActionButton intent="reject" title="Reject" onClick={() => { setActionTarget({ request, name: "reject" }); setActionNote(""); }}><X className="h-4 w-4" /></RowActionButton> : null}
+                {request.status !== "CANCELLED" && request.status !== "REJECTED" && canCancel ? <RowActionButton intent="delete" title="Cancel" onClick={() => { setActionTarget({ request, name: "cancel" }); setActionNote(""); }}><X className="h-4 w-4 text-red-600" /></RowActionButton> : null}
+              </div>
+            </div>
+          ))}
         </div>
-        {loading ? <TableSkeleton rows={6} columns={10} label="Loading leave requests" /> : requests.length === 0 ? <EmptyState title="No leave requests found" description="Create a leave request or adjust filters." /> : null}
-      </Panel>
+      </PerformanceDataTable>
       {modalOpen && token ? <LeaveRequestModal token={token} employees={employees} leaveTypes={types} onClose={() => setModalOpen(false)} onSaved={async (request) => { await load(); if (request.document_required) setDetailRequest(request); }} /> : null}
       {detailRequest && token ? <LeaveRequestDetailModal token={token} request={detailRequest} permissions={permissions} onClose={() => setDetailRequest(null)} onChanged={load} /> : null}
       <ConfirmDialog

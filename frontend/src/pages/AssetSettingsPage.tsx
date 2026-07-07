@@ -1,15 +1,14 @@
 import { Pencil, Power } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { AssetCardRow, AssetMetaChip, AssetMetaDot } from "../components/assets/AssetCardRow";
 import { AssetsNav } from "../components/assets/AssetsNav";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
-import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
-import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { AssetCategory, AssetDeductionRule } from "../types/assets";
@@ -57,9 +56,76 @@ export function AssetSettingsPage({ mode = "categories" }: { mode?: "categories"
       <AssetsNav />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
       {mode === "categories" ? (
-        <Panel className="overflow-hidden p-0"><div className="flex justify-end border-b p-3">{canManageCategories ? <Button size="sm" onClick={() => setCategoryModal("new")}>Create category</Button> : null}</div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead><TableHead>Sort</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{categories.map((row) => <TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{row.name}</TableCell><TableCell>{row.type ?? row.category_type}</TableCell><TableCell>{row.description ?? "-"}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell>{row.sort_order}</TableCell><TableCell><div className="flex justify-end gap-1">{canManageCategories ? <><RowActionButton intent="edit" title="Edit category" aria-label="Edit category" onClick={() => setCategoryModal(row)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable category" : "Enable category"} aria-label={row.is_active ? "Disable category" : "Enable category"} onClick={() => void toggleCategory(row)}><Power className="h-4 w-4" /></RowActionButton></> : "-"}</div></TableCell></TableRow>)}</TableBody></Table>{!categories.length ? <EmptyState title="No categories" description="Seeded defaults appear after schema seed is applied." /> : null}</div></Panel>
+        <div className="space-y-3">
+          <div className="flex justify-end">{canManageCategories ? <Button size="sm" onClick={() => setCategoryModal("new")}>Create category</Button> : null}</div>
+          <PerformanceDataTable
+            empty={categories.length === 0}
+            rowCount={categories.length}
+            emptyTitle="No categories"
+            emptyDescription="Seeded defaults appear after schema seed is applied."
+            className="border-0 bg-transparent p-0 shadow-none"
+          >
+            <div className="flex flex-col gap-2">
+              {categories.map((row) => (
+                <AssetCardRow
+                  key={row.id}
+                  title={row.name}
+                  meta={
+                    <>
+                      <AssetMetaChip>{row.code}</AssetMetaChip>
+                      <AssetMetaDot /><AssetMetaChip>{row.type ?? row.category_type}</AssetMetaChip>
+                      <AssetMetaDot /><AssetMetaChip>{row.description ?? "-"}</AssetMetaChip>
+                      <AssetMetaDot /><AssetMetaChip>Sort {row.sort_order}</AssetMetaChip>
+                    </>
+                  }
+                  trailing={<Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge>}
+                  actions={canManageCategories ? (
+                    <>
+                      <RowActionButton intent="edit" title="Edit category" aria-label="Edit category" onClick={() => setCategoryModal(row)}><Pencil className="h-4 w-4" /></RowActionButton>
+                      <RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable category" : "Enable category"} aria-label={row.is_active ? "Disable category" : "Enable category"} onClick={() => void toggleCategory(row)}><Power className="h-4 w-4" /></RowActionButton>
+                    </>
+                  ) : null}
+                />
+              ))}
+            </div>
+          </PerformanceDataTable>
+        </div>
       ) : (
-        <Panel className="overflow-hidden p-0"><div className="flex justify-end border-b p-3">{canManageRules ? <Button size="sm" onClick={() => setRuleModal("new")}>Create rule</Button> : null}</div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Category</TableHead><TableHead>Condition</TableHead><TableHead>Event</TableHead><TableHead>Mode</TableHead><TableHead>Amount</TableHead><TableHead>Percent</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rules.map((row) => <TableRow key={row.id}><TableCell>{row.category_name ?? "-"}</TableCell><TableCell>{String(row.condition_status ?? "-")}</TableCell><TableCell>{String(row.event_type ?? "-")}</TableCell><TableCell>{row.deduction_mode}</TableCell><TableCell>{String(row.deduction_amount ?? row.fixed_amount ?? "-")}</TableCell><TableCell>{String(row.deduction_percent ?? row.percentage ?? "-")}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell><div className="flex justify-end gap-1">{canManageRules ? <><RowActionButton intent="edit" title="Edit deduction rule" aria-label="Edit deduction rule" onClick={() => setRuleModal(row)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable deduction rule" : "Enable deduction rule"} aria-label={row.is_active ? "Disable deduction rule" : "Enable deduction rule"} onClick={() => void toggleRule(row)}><Power className="h-4 w-4" /></RowActionButton></> : "-"}</div></TableCell></TableRow>)}</TableBody></Table>{!rules.length ? <EmptyState title="No deduction rules" description="Create rules for lost or damaged item recovery." /> : null}</div></Panel>
+        <div className="space-y-3">
+          <div className="flex justify-end">{canManageRules ? <Button size="sm" onClick={() => setRuleModal("new")}>Create rule</Button> : null}</div>
+          <PerformanceDataTable
+            empty={rules.length === 0}
+            rowCount={rules.length}
+            emptyTitle="No deduction rules"
+            emptyDescription="Create rules for lost or damaged item recovery."
+            className="border-0 bg-transparent p-0 shadow-none"
+          >
+            <div className="flex flex-col gap-2">
+              {rules.map((row) => (
+                <AssetCardRow
+                  key={row.id}
+                  title={row.category_name ?? "Any category"}
+                  meta={
+                    <>
+                      <AssetMetaChip>{String(row.condition_status ?? "-")}</AssetMetaChip>
+                      <AssetMetaDot /><AssetMetaChip>{String(row.event_type ?? "-")}</AssetMetaChip>
+                      <AssetMetaDot /><AssetMetaChip>{row.deduction_mode}</AssetMetaChip>
+                      <AssetMetaDot /><AssetMetaChip>Amount {String(row.deduction_amount ?? row.fixed_amount ?? "-")}</AssetMetaChip>
+                      <AssetMetaDot /><AssetMetaChip>Percent {String(row.deduction_percent ?? row.percentage ?? "-")}</AssetMetaChip>
+                    </>
+                  }
+                  trailing={<Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge>}
+                  actions={canManageRules ? (
+                    <>
+                      <RowActionButton intent="edit" title="Edit deduction rule" aria-label="Edit deduction rule" onClick={() => setRuleModal(row)}><Pencil className="h-4 w-4" /></RowActionButton>
+                      <RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable deduction rule" : "Enable deduction rule"} aria-label={row.is_active ? "Disable deduction rule" : "Enable deduction rule"} onClick={() => void toggleRule(row)}><Power className="h-4 w-4" /></RowActionButton>
+                    </>
+                  ) : null}
+                />
+              ))}
+            </div>
+          </PerformanceDataTable>
+        </div>
       )}
       {categoryModal ? <CategoryModal category={categoryModal === "new" ? undefined : categoryModal} onClose={() => setCategoryModal(null)} onSaved={() => { setCategoryModal(null); void load(); }} /> : null}
       {ruleModal ? <RuleModal rule={ruleModal === "new" ? undefined : ruleModal} categories={categories} onClose={() => setRuleModal(null)} onSaved={() => { setRuleModal(null); void load(); }} /> : null}

@@ -7,7 +7,6 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { EmployeeNoteCategory, NoteVisibility } from "../types/assets";
@@ -45,12 +44,52 @@ export function EmployeeNotesSettingsPage() {
         actions={canManage ? <Button size="sm" onClick={() => setModal("new")}>Create category</Button> : null}
       />
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-      <Panel className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <Table><TableHeader><TableRow><TableHead>Key</TableHead><TableHead>Name</TableHead><TableHead>Visibility</TableHead><TableHead>Description</TableHead><TableHead>Protected</TableHead><TableHead>Status</TableHead><TableHead>Sort</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{categories.map((row) => <TableRow key={row.id}><TableCell>{row.key ?? row.code}</TableCell><TableCell>{row.name}</TableCell><TableCell><Badge tone={row.default_visibility === "RESTRICTED" ? "danger" : row.default_visibility === "HR_ONLY" ? "warning" : "neutral"}>{row.default_visibility}</Badge></TableCell><TableCell>{row.description ?? "-"}</TableCell><TableCell>{row.is_protected ? <Badge tone="info">Protected</Badge> : "-"}</TableCell><TableCell><Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge></TableCell><TableCell>{row.sort_order}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><RowActionButton intent="edit" title="Edit" onClick={() => setModal(row)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable" : "Enable"} onClick={() => void toggle(row)}><Power className="h-4 w-4" /></RowActionButton></> : "-"}</div></TableCell></TableRow>)}</TableBody></Table>
-          {!categories.length ? <EmptyState title="No note categories" description="Seeded note categories appear after seed is applied." /> : null}
+      {!categories.length ? (
+        <Panel className="overflow-hidden p-0">
+          <EmptyState title="No note categories" description="Seeded note categories appear after seed is applied." />
+        </Panel>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {categories.map((row) => (
+            <div
+              key={row.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                padding: "0.9rem 1.1rem",
+                background: "var(--v3-surface-2)",
+                border: "0.5px solid var(--v3-border)",
+                borderRadius: "var(--v3-radius-card)"
+              }}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-900">{row.name}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{row.key ?? row.code}</span>
+                  {row.is_protected ? <Badge tone="info">Protected</Badge> : null}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                  {row.description ? <span>{row.description}</span> : null}
+                  {row.description ? <span className="text-[var(--v3-border-strong)]">&middot;</span> : null}
+                  <span>Sort {row.sort_order}</span>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge tone={row.default_visibility === "RESTRICTED" ? "danger" : row.default_visibility === "HR_ONLY" ? "warning" : "neutral"}>{row.default_visibility}</Badge>
+                <Badge tone={row.is_active ? "success" : "neutral"}>{row.is_active ? "Active" : "Inactive"}</Badge>
+                {canManage ? (
+                  <div className="flex gap-1">
+                    <RowActionButton intent="edit" title="Edit" onClick={() => setModal(row)}><Pencil className="h-4 w-4" /></RowActionButton>
+                    <RowActionButton intent={row.is_active ? "disable" : "enable"} title={row.is_active ? "Disable" : "Enable"} onClick={() => void toggle(row)}><Power className="h-4 w-4" /></RowActionButton>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
         </div>
-      </Panel>
+      )}
       {modal ? <CategoryModal category={modal === "new" ? undefined : modal} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
     </PageShell>
   );

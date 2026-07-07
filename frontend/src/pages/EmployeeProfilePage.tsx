@@ -757,35 +757,30 @@ function EmployeeSetupReadinessPanel({
           {blockerSection ? `${blockerSection}: ` : ""}{blockerMessage}
         </div>
       ) : null}
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Section</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Required</TableHead>
-              <TableHead>Message</TableHead>
-              <TableHead>Next action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sections.length ? sections.map((section) => (
-              <TableRow key={section.section_key}>
-                <TableCell className="font-medium">{section.section_label}</TableCell>
-                <TableCell><Badge tone={setupTone(section.status)}>{readableStatus(section.status)}</Badge></TableCell>
-                <TableCell>{section.is_required ? "Yes" : "No"}</TableCell>
-                <TableCell className="max-w-[360px] whitespace-normal text-muted-foreground">{blockingSummary(section)}</TableCell>
-                <TableCell className="max-w-[280px] whitespace-normal">{section.next_action ?? "-"}</TableCell>
-              </TableRow>
-            )) : (
-              <TableRow>
-                <TableCell colSpan={5}>
-                  <EmptyState title="Setup readiness not built" description="Rebuild readiness to generate Employee 360 section statuses for this employee." />
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+      <div className="p-3">
+        {sections.length ? (
+          <div className="flex flex-col gap-2">
+            {sections.map((section) => (
+              <div
+                key={section.section_key}
+                className="flex flex-col gap-2 rounded-[var(--v3-radius-card)] border-[0.5px] p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+                style={{ borderColor: "var(--v3-border)", background: "var(--v3-surface-2)" }}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{section.section_label}</span>
+                    <Badge tone={setupTone(section.status)}>{readableStatus(section.status)}</Badge>
+                    <span className="text-xs text-muted-foreground">{section.is_required ? "Required" : "Optional"}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{blockingSummary(section)}</p>
+                </div>
+                <div className="shrink-0 text-xs text-muted-foreground sm:max-w-[240px] sm:text-right">{section.next_action ?? "-"}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="Setup readiness not built" description="Rebuild readiness to generate Employee 360 section statuses for this employee." />
+        )}
       </div>
     </div>
   );
@@ -942,9 +937,10 @@ function UserAccessPanel({
         <Summary title="Suggested scope" rows={[["Scope", suggested?.suggested_scope?.scope_type ?? "-"], ["Departments", listIds(suggested?.suggested_scope?.allowed_department_ids)], ["Locations", listIds(suggested?.suggested_scope?.allowed_location_ids)], ["Manage", suggested?.suggested_scope?.can_manage ? "Yes" : "No"]]} />
       </div>
       <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
-        <span className="font-medium">Employee email: </span>
+        <span className="font-medium">{employeeEmail?.email_type === "WORK_EMAIL" ? "Office email: " : "Employee email: "}</span>
         <span>{employeeEmail?.email ?? employeeEmail?.raw_email ?? "No email on file"}</span>
-        {employeeEmail?.email ? <Badge tone="success" className="ml-2">Using employee email from profile</Badge> : null}
+        {employeeEmail?.email && employeeEmail.email_type === "WORK_EMAIL" ? <Badge tone="success" className="ml-2">Using office email</Badge> : null}
+        {employeeEmail?.email && employeeEmail.email_type === "PERSONAL_EMAIL" ? <Badge tone="warning" className="ml-2">No office email on file — using personal email</Badge> : null}
         <span className="ml-2 text-muted-foreground">{employeeEmail?.message ?? "Provisioning will require an account email."}</span>
         {employeeEmail?.recommendation === "LINK_EXISTING_USER" && employeeEmail.matching_user ? (
           <Badge tone="info" className="ml-2">Existing user found: {employeeEmail.matching_user.email}</Badge>
@@ -1035,23 +1031,56 @@ function UserAccessPanel({
         </div>
         <div className="rounded-md border">
           <div className="border-b px-3 py-2 text-sm font-semibold">Assigned scopes</div>
-          <div className="overflow-x-auto">
-            <Table className="min-w-[760px]">
-              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Source</TableHead><TableHead>Scope</TableHead><TableHead>Module</TableHead><TableHead>Departments</TableHead><TableHead>Locations</TableHead><TableHead>Rights</TableHead></TableRow></TableHeader>
-              <TableBody>{assignedScopes.map((scope) => <TableRow key={scope.id}><TableCell>{scope.name}</TableCell><TableCell>{scopeSource(scope)}</TableCell><TableCell>{scope.scope_type}</TableCell><TableCell>{scope.module_key ?? "All"}</TableCell><TableCell>{listIds(scope.allowed_department_ids)}</TableCell><TableCell>{listIds(scope.allowed_location_ids)}</TableCell><TableCell>{scope.can_manage ? "Manage" : scope.can_view ? "View" : "-"}</TableCell></TableRow>)}</TableBody>
-            </Table>
-            {!assignedScopes.length ? <div className="px-3 py-4 text-sm text-muted-foreground">No user-specific scopes assigned.</div> : null}
+          <div className="flex flex-col gap-2 p-3">
+            {assignedScopes.length ? assignedScopes.map((scope) => (
+              <div
+                key={scope.id}
+                className="flex flex-col gap-1.5 rounded-[var(--v3-radius-card)] border-[0.5px] p-3"
+                style={{ borderColor: "var(--v3-border)", background: "var(--v3-surface-2)" }}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium">{scope.name}</span>
+                  <Badge tone="neutral">{scopeSource(scope)}</Badge>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                  <span>{scope.scope_type}</span>
+                  <span>&middot;</span>
+                  <span>{scope.module_key ?? "All"}</span>
+                  <span>&middot;</span>
+                  <span>{scope.can_manage ? "Manage" : scope.can_view ? "View" : "-"}</span>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Departments: {listIds(scope.allowed_department_ids)} &middot; Locations: {listIds(scope.allowed_location_ids)}
+                </div>
+              </div>
+            )) : <div className="px-1 py-3 text-sm text-muted-foreground">No user-specific scopes assigned.</div>}
           </div>
         </div>
       </div>
       {account?.link_history?.length ? (
         <div className="rounded-md border">
           <div className="border-b px-3 py-2 text-sm font-semibold">Link history</div>
-          <div className="overflow-x-auto">
-            <Table className="min-w-[760px]">
-              <TableHeader><TableRow><TableHead>Status</TableHead><TableHead>User</TableHead><TableHead>Linked</TableHead><TableHead>Unlinked/deactivated</TableHead><TableHead>Reason</TableHead><TableHead>Invite</TableHead></TableRow></TableHeader>
-              <TableBody>{account.link_history.map((link) => <TableRow key={link.id}><TableCell><StatusBadge value={link.status} /></TableCell><TableCell>{link.account_email_created ?? link.user_id}</TableCell><TableCell>{link.linked_at}{link.linked_by_name ? ` by ${link.linked_by_name}` : ""}</TableCell><TableCell>{link.deactivated_at ?? link.unlinked_at ?? "-"}</TableCell><TableCell>{link.deactivation_reason ?? link.unlink_reason ?? "-"}</TableCell><TableCell>{link.invite_status ?? "-"}</TableCell></TableRow>)}</TableBody>
-            </Table>
+          <div className="flex flex-col gap-2 p-3">
+            {account.link_history.map((link) => (
+              <div
+                key={link.id}
+                className="flex flex-col gap-1.5 rounded-[var(--v3-radius-card)] border-[0.5px] p-3"
+                style={{ borderColor: "var(--v3-border)", background: "var(--v3-surface-2)" }}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium">{link.account_email_created ?? link.user_id}</span>
+                  <StatusBadge value={link.status} />
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Linked {link.linked_at}{link.linked_by_name ? ` by ${link.linked_by_name}` : ""}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {link.deactivated_at ?? link.unlinked_at ? `Unlinked/deactivated ${link.deactivated_at ?? link.unlinked_at}` : "Not unlinked"}
+                  {link.deactivation_reason ?? link.unlink_reason ? ` — ${link.deactivation_reason ?? link.unlink_reason}` : ""}
+                  {link.invite_status ? ` · Invite: ${link.invite_status}` : ""}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ) : null}
@@ -1127,11 +1156,28 @@ function LifecycleTaskTable({ title, rows }: { title: string; rows: LifecycleTas
     <div className="rounded-md border">
       <div className="border-b px-3 py-2 text-sm font-semibold">{title}</div>
       {rows.length === 0 ? <EmptyState title="No checklist rows" description="Tasks will be generated after the related lifecycle case is created." /> : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Group</TableHead><TableHead>Status</TableHead><TableHead>Required</TableHead><TableHead>Due</TableHead><TableHead>Reason</TableHead></TableRow></TableHeader>
-            <TableBody>{rows.map((task) => <TableRow key={String(task.id)}><TableCell>{String(task.task_name ?? task.title ?? task.task_key ?? "-")}</TableCell><TableCell>{String(task.task_group ?? "-")}</TableCell><TableCell><Badge tone={task.task_status === "COMPLETED" ? "success" : task.task_status === "BLOCKED" ? "danger" : task.task_status === "WAIVED" ? "warning" : "neutral"}>{String(task.task_status ?? task.status ?? "-")}</Badge></TableCell><TableCell>{task.is_required || task.required ? "Yes" : "No"}</TableCell><TableCell>{String(task.due_date ?? "-")}</TableCell><TableCell>{String(task.waiver_reason ?? task.blocked_reason ?? "-")}</TableCell></TableRow>)}</TableBody>
-          </Table>
+        <div className="flex flex-col gap-2 p-3">
+          {rows.map((task) => (
+            <div
+              key={String(task.id)}
+              className="flex flex-col gap-1.5 rounded-[var(--v3-radius-card)] border-[0.5px] p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+              style={{ borderColor: "var(--v3-border)", background: "var(--v3-surface-2)" }}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">{String(task.task_name ?? task.title ?? task.task_key ?? "-")}</span>
+                  <Badge tone={task.task_status === "COMPLETED" ? "success" : task.task_status === "BLOCKED" ? "danger" : task.task_status === "WAIVED" ? "warning" : "neutral"}>{String(task.task_status ?? task.status ?? "-")}</Badge>
+                  {task.is_required || task.required ? <span className="text-xs text-muted-foreground">Required</span> : null}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                  <span>{String(task.task_group ?? "-")}</span>
+                  <span>&middot;</span>
+                  <span>Due {String(task.due_date ?? "-")}</span>
+                  {(task.waiver_reason ?? task.blocked_reason) ? <><span>&middot;</span><span>{String(task.waiver_reason ?? task.blocked_reason)}</span></> : null}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1164,11 +1210,28 @@ function ProfileUpdateRequests({ rows }: { rows: Record<string, unknown>[] }) {
     <div className="rounded-md border">
       <div className="border-b px-3 py-2 text-sm font-semibold">Profile update requests</div>
       {rows.length === 0 ? <EmptyState title="No profile update requests" description="Pending and recent self-service profile requests for this employee will appear here." /> : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Field</TableHead><TableHead>Old/current value</TableHead><TableHead>Requested value</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead><TableHead>Reviewer note</TableHead><TableHead>Created</TableHead></TableRow></TableHeader>
-            <TableBody>{rows.map((row) => <TableRow key={String(row.id)}><TableCell>{String(row.field_key ?? row.section ?? "-")}</TableCell><TableCell>{parseFieldValue(row.old_value_json)}</TableCell><TableCell>{parseFieldValue(row.requested_value_json)}</TableCell><TableCell>{String(row.reason ?? "-")}</TableCell><TableCell><Badge tone={row.status === "APPROVED" ? "success" : row.status === "REJECTED" ? "danger" : "warning"}>{String(row.status ?? "-")}</Badge></TableCell><TableCell>{String(row.review_note ?? "-")}</TableCell><TableCell>{String(row.created_at ?? "-")}</TableCell></TableRow>)}</TableBody>
-          </Table>
+        <div className="flex flex-col gap-2 p-3">
+          {rows.map((row) => (
+            <div
+              key={String(row.id)}
+              className="flex flex-col gap-1.5 rounded-[var(--v3-radius-card)] border-[0.5px] p-3"
+              style={{ borderColor: "var(--v3-border)", background: "var(--v3-surface-2)" }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">{String(row.field_key ?? row.section ?? "-")}</span>
+                <Badge tone={row.status === "APPROVED" ? "success" : row.status === "REJECTED" ? "danger" : "warning"}>{String(row.status ?? "-")}</Badge>
+              </div>
+              <div className="text-xs text-muted-foreground">Old: {parseFieldValue(row.old_value_json)}</div>
+              <div className="text-xs text-muted-foreground">Requested: {parseFieldValue(row.requested_value_json)}</div>
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                <span>Reason: {String(row.reason ?? "-")}</span>
+                <span>&middot;</span>
+                <span>Reviewer note: {String(row.review_note ?? "-")}</span>
+                <span>&middot;</span>
+                <span>Created {String(row.created_at ?? "-")}</span>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1211,51 +1274,87 @@ function Contacts({
   return (
     <div className="space-y-3">
       <div className="flex justify-end">{canManage ? <Button size="sm" onClick={onAdd}>Add contact</Button> : null}</div>
-      <div className="overflow-x-auto rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Type</TableHead>
-              <TableHead>Value</TableHead>
-              <TableHead>Country</TableHead>
-              <TableHead>Relationship</TableHead>
-              <TableHead>Primary</TableHead>
-              <TableHead>Priority</TableHead>
-              <TableHead>Sensitive</TableHead>
-              <TableHead>Notes</TableHead>
-              {canManage ? <TableHead className="text-right">Actions</TableHead> : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {contacts.map((contact) => (
-              <TableRow key={contact.id}>
-                <TableCell>{contact.contact_type}</TableCell>
-                <TableCell>{contact.value}</TableCell>
-                <TableCell>{contact.country_code ?? "-"}</TableCell>
-                <TableCell>{contact.relationship ?? "-"}</TableCell>
-                <TableCell>{contact.is_primary ? "Yes" : "No"}</TableCell>
-                <TableCell>{contact.emergency_priority ?? "-"}</TableCell>
-                <TableCell>{contact.is_sensitive ? <Badge tone="warning">Sensitive</Badge> : "-"}</TableCell>
-                <TableCell>{contact.notes ?? "-"}</TableCell>
-                {canManage ? (
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <RowActionButton intent="edit" size="sm" title="Edit" onClick={() => onEdit(contact)}>Edit</RowActionButton>
-                      <RowActionButton intent="archive" size="sm" title="Archive" onClick={() => onArchive(contact)}>Archive</RowActionButton>
-                    </div>
-                  </TableCell>
-                ) : null}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="flex flex-col gap-2">
+        {contacts.length ? contacts.map((contact) => (
+          <div
+            key={contact.id}
+            className="flex flex-col gap-2 rounded-[var(--v3-radius-card)] border-[0.5px] p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+            style={{ borderColor: "var(--v3-border)", background: "var(--v3-surface-2)" }}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{contact.contact_type}</span>
+                <span className="text-sm text-muted-foreground">{contact.value}</span>
+                {contact.is_primary ? <Badge tone="success">Primary</Badge> : null}
+                {contact.is_sensitive ? <Badge tone="warning">Sensitive</Badge> : null}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                <span>{contact.country_code ?? "-"}</span>
+                <span>&middot;</span>
+                <span>{contact.relationship ?? "No relationship"}</span>
+                {contact.emergency_priority ? <><span>&middot;</span><span>Priority {contact.emergency_priority}</span></> : null}
+                {contact.notes ? <><span>&middot;</span><span>{contact.notes}</span></> : null}
+              </div>
+            </div>
+            {canManage ? (
+              <div className="flex shrink-0 justify-end gap-1">
+                <RowActionButton intent="edit" size="sm" title="Edit" onClick={() => onEdit(contact)}>Edit</RowActionButton>
+                <RowActionButton intent="archive" size="sm" title="Archive" onClick={() => onArchive(contact)}>Archive</RowActionButton>
+              </div>
+            ) : null}
+          </div>
+        )) : (
+          <div className="rounded-[var(--v3-radius-card)] border-[0.5px] p-4 text-sm text-muted-foreground" style={{ borderColor: "var(--v3-border)", background: "var(--v3-surface-2)" }}>
+            No contacts on file.
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function OnboardingTable({ tasks, completed, onTask }: { tasks: OnboardingTask[]; completed: number; onTask?: (task: OnboardingTask, status: OnboardingStatus) => Promise<void> }) {
-  return <div className="rounded-md border"><div className="flex items-center justify-between border-b px-3 py-2"><div><h3 className="text-sm font-semibold">Onboarding checklist</h3><p className="text-xs text-muted-foreground">{completed}/{tasks.length} completed</p></div><CheckCircle2 className="h-4 w-4 text-muted-foreground" /></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Task</TableHead><TableHead>Module</TableHead><TableHead>Required</TableHead><TableHead>Status</TableHead><TableHead>Completed at</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader><TableBody>{tasks.map((task) => <TableRow key={task.id}><TableCell>{task.title}</TableCell><TableCell>{task.module}</TableCell><TableCell>{task.required ? "Yes" : "No"}</TableCell><TableCell><Badge tone={task.status === "COMPLETED" ? "success" : task.status === "BLOCKED" ? "danger" : "neutral"}>{task.status}</Badge></TableCell><TableCell>{task.completed_at ?? "-"}</TableCell><TableCell>{onTask ? <div className="flex gap-1"><RowActionButton intent="complete" size="sm" title="Mark task done" onClick={() => void onTask(task, "COMPLETED")}>Done</RowActionButton><RowActionButton intent="neutral" size="sm" title="Skip task" onClick={() => void onTask(task, "SKIPPED")}>Skip</RowActionButton><RowActionButton intent="warning" size="sm" title="Block task" onClick={() => void onTask(task, "BLOCKED")}>Block</RowActionButton>{task.status !== "PENDING" ? <RowActionButton intent="restore" size="sm" title="Reopen task" onClick={() => void onTask(task, "PENDING")}>Reopen</RowActionButton> : null}</div> : "-"}</TableCell></TableRow>)}</TableBody></Table></div></div>;
+  return (
+    <div className="rounded-md border">
+      <div className="flex items-center justify-between border-b px-3 py-2">
+        <div>
+          <h3 className="text-sm font-semibold">Onboarding checklist</h3>
+          <p className="text-xs text-muted-foreground">{completed}/{tasks.length} completed</p>
+        </div>
+        <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="flex flex-col gap-2 p-3">
+        {tasks.map((task) => (
+          <div
+            key={task.id}
+            className="flex flex-col gap-2 rounded-[var(--v3-radius-card)] border-[0.5px] p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+            style={{ borderColor: "var(--v3-border)", background: "var(--v3-surface-2)" }}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{task.title}</span>
+                <Badge tone={task.status === "COMPLETED" ? "success" : task.status === "BLOCKED" ? "danger" : "neutral"}>{task.status}</Badge>
+                {task.required ? <span className="text-xs text-muted-foreground">Required</span> : null}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                <span>{task.module}</span>
+                <span>&middot;</span>
+                <span>Completed {task.completed_at ?? "-"}</span>
+              </div>
+            </div>
+            {onTask ? (
+              <div className="flex shrink-0 flex-wrap gap-1">
+                <RowActionButton intent="complete" size="sm" title="Mark task done" onClick={() => void onTask(task, "COMPLETED")}>Done</RowActionButton>
+                <RowActionButton intent="neutral" size="sm" title="Skip task" onClick={() => void onTask(task, "SKIPPED")}>Skip</RowActionButton>
+                <RowActionButton intent="warning" size="sm" title="Block task" onClick={() => void onTask(task, "BLOCKED")}>Block</RowActionButton>
+                {task.status !== "PENDING" ? <RowActionButton intent="restore" size="sm" title="Reopen task" onClick={() => void onTask(task, "PENDING")}>Reopen</RowActionButton> : null}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function Placeholder({ title, items }: { title: string; items: string[] }) {
@@ -1267,7 +1366,32 @@ function AuditTable({ audit }: { audit: Record<string, unknown>[] }) {
 }
 
 function SimpleRows({ title, rows, columns }: { title: string; rows: Record<string, unknown>[]; columns: string[] }) {
-  return <div className="rounded-md border"><div className="border-b px-3 py-2 text-sm font-semibold">{title}</div>{rows.length === 0 ? <EmptyState title="No records yet" description="Activity will appear here as Employee 360 changes are made." /> : <div className="overflow-x-auto"><Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c.replace(/_/g, " ")}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((row, index) => <TableRow key={index}>{columns.map((c) => <TableCell key={c}>{String(row[c] ?? "-")}</TableCell>)}</TableRow>)}</TableBody></Table></div>}</div>;
+  return (
+    <div
+      className="overflow-hidden rounded-[var(--v3-radius-card)] border-[0.5px]"
+      style={{ borderColor: "var(--v3-border)" }}
+    >
+      <div className="border-b px-3 py-2 text-sm font-semibold" style={{ borderColor: "var(--v3-border)" }}>{title}</div>
+      {rows.length === 0 ? <EmptyState title="No records yet" description="Activity will appear here as Employee 360 changes are made." /> : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader className="bg-transparent">
+              <TableRow className="hover:bg-transparent" style={{ borderBottom: "0.5px solid var(--v3-border)" }}>
+                {columns.map((c) => <TableHead key={c} className="font-medium normal-case text-muted-foreground">{c.replace(/_/g, " ")}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody className="divide-y-0">
+              {rows.map((row, index) => (
+                <TableRow key={index} style={{ borderTop: "0.5px solid var(--v3-border)" }}>
+                  {columns.map((c) => <TableCell key={c}>{String(row[c] ?? "-")}</TableCell>)}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ContactModal({ contact, onClose, onSave }: { contact?: EmployeeContact; onClose: () => void; onSave: (input: EmployeeContactInput) => void }) {

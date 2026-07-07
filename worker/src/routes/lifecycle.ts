@@ -4486,7 +4486,17 @@ onboardingRoutes.patch("/cases/:caseId/contact-info", requireAnyPermission([...o
   }
   await upsertContact("PERSONAL_PHONE", optionalText(body.phone ?? body.personal_phone), { country_code: body.country_code });
   await upsertContact("PERSONAL_EMAIL", optionalText(body.personal_email));
+  // Office email is a distinct contact type from personal email — this is what
+  // account provisioning prefers (see getEmployeeEmailSuggestion in employees.ts).
+  await upsertContact("WORK_EMAIL", optionalText(body.work_email));
+  // Emergency contacts: up to five distinct, clearly-typed entries (not one
+  // freeform field) so HR can capture a real emergency contact plus guardian/
+  // spouse/parent/other, each with their own relationship and priority order.
   await upsertContact("EMERGENCY", optionalText(body.emergency_contact_value), { relationship: body.emergency_relationship, emergency_priority: 1, notes: body.emergency_notes });
+  await upsertContact("GUARDIAN", optionalText(body.guardian_contact_value), { relationship: body.guardian_relationship, emergency_priority: 2, notes: body.guardian_notes });
+  await upsertContact("SPOUSE", optionalText(body.spouse_contact_value), { relationship: body.spouse_relationship, emergency_priority: 3, notes: body.spouse_notes });
+  await upsertContact("PARENT", optionalText(body.parent_contact_value), { relationship: body.parent_relationship, emergency_priority: 4, notes: body.parent_notes });
+  await upsertContact("OTHER", optionalText(body.other_contact_value), { relationship: body.other_relationship, emergency_priority: 5, notes: body.other_notes });
   const address = optionalText(body.address_line);
   if (address) {
     const existingAddress = await c.env.DB.prepare("SELECT id FROM employee_addresses WHERE employee_id = ? AND address_type = 'CURRENT' AND is_primary = 1").bind(employeeId).first<{ id: string }>();
@@ -4512,7 +4522,7 @@ onboardingRoutes.patch("/cases/:caseId/contact-info", requireAnyPermission([...o
     employeeId,
     taskKey: "contact_info",
     action: "onboarding.workspace.contact_info_saved",
-    updatedSlice: { contact: { employee_id: employeeId, phone: optionalText(body.phone ?? body.personal_phone), personal_email: optionalText(body.personal_email) } },
+    updatedSlice: { contact: { employee_id: employeeId, phone: optionalText(body.phone ?? body.personal_phone), personal_email: optionalText(body.personal_email), work_email: optionalText(body.work_email) } },
     targetedWorkspaceSlices: ["contacts", "readiness"],
     sectionStatusUpdate,
     warning: sectionStatusUpdate.warning,

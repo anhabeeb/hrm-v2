@@ -260,22 +260,28 @@ export async function rebuildAndAggregateOnboardingSectionReadiness(
   const selectedDefinitions = requested.length ? definitions.filter((definition) => requested.includes(definition.section_key)) : definitions;
   const employee = await getCaseEmployeeSnapshot(db, caseId);
   const timeoutMs = Math.max(1000, Math.min(15000, Number(options.timeoutMs ?? DEFAULT_SECTION_STATUS_TIMEOUT_MS) || DEFAULT_SECTION_STATUS_TIMEOUT_MS));
-  const sectionTimings: SectionTiming[] = [];
-  let rebuiltCount = 0;
 
-  for (const definition of selectedDefinitions) {
-    const result = await rebuildSection(db, {
-      caseId,
-      definition,
-      actorUserId: actorUserId ?? null,
-      timeoutMs,
-      requestId: options.requestId ?? null,
-      employeeId: employee?.employee_id ?? null,
-      companyId: employee?.company_id ?? null
-    });
-    if (result.rebuilt) rebuiltCount += 1;
-    sectionTimings.push(result.timing);
-  }
+  // Sections are rebuilt in parallel, not one-by-one — each already carries its own
+  // per-section timeout (withTimeout in rebuildSection), so a serial loop meant total
+  // worst-case latency scaled with section count (N x timeoutMs). Running them
+  // concurrently caps total latency at ~timeoutMs regardless of how many sections
+  // there are, and each section still writes its own independent status row, so
+  // there's no ordering dependency between them.
+  const results = await Promise.all(
+    selectedDefinitions.map((definition) =>
+      rebuildSection(db, {
+        caseId,
+        definition,
+        actorUserId: actorUserId ?? null,
+        timeoutMs,
+        requestId: options.requestId ?? null,
+        employeeId: employee?.employee_id ?? null,
+        companyId: employee?.company_id ?? null
+      })
+    )
+  );
+  const rebuiltCount = results.filter((result) => result.rebuilt).length;
+  const sectionTimings: SectionTiming[] = results.map((result) => result.timing);
 
   const storedRows = await getOnboardingSectionStatuses(db, caseId);
   const previewRows = composeOnboardingSectionStatusRows(definitions, storedRows, caseId);

@@ -1,6 +1,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { AssetCardRow, AssetMetaChip, AssetMetaDot } from "../components/assets/AssetCardRow";
 import { AssetsNav } from "../components/assets/AssetsNav";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
@@ -8,12 +9,11 @@ import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/dialogs";
-import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { AssetCategory, AssetItem } from "../types/assets";
@@ -98,7 +98,39 @@ export function AssetsItemsPage() {
         <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
       </Panel>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-      <Panel className="overflow-hidden p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Category</TableHead><TableHead>Variant</TableHead><TableHead>Size</TableHead><TableHead>Serial</TableHead><TableHead>Condition</TableHead><TableHead>Status</TableHead><TableHead>Replacement cost</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell>{item.code}</TableCell><TableCell>{item.name}</TableCell><TableCell>{item.category_name ?? "-"}</TableCell><TableCell>{item.variant ?? "-"}</TableCell><TableCell>{item.size ?? "-"}</TableCell><TableCell>{item.serial_no ?? item.serial_number ?? "-"}</TableCell><TableCell>{item.condition_status}</TableCell><TableCell><Badge tone={item.status === "AVAILABLE" ? "success" : item.status === "ISSUED" ? "info" : item.status === "ARCHIVED" ? "neutral" : "warning"}>{item.status}</Badge></TableCell><TableCell>{item.replacement_cost ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage ? <><RowActionButton intent="edit" title="Edit" onClick={() => setModal(item)}><Pencil className="h-4 w-4" /></RowActionButton><RowActionButton intent="archive" title="Delete" onClick={() => { setArchiveTarget(item); setArchiveReason(""); }}><Trash2 className="h-4 w-4" /></RowActionButton></> : "-"}</div></TableCell></TableRow>)}</TableBody></Table>{!items.length ? <EmptyState title="No asset items" description="Create item records before issuing assets to employees." /> : null}</div></Panel>
+      <PerformanceDataTable
+        empty={items.length === 0}
+        rowCount={items.length}
+        emptyTitle="No asset items"
+        emptyDescription="Create item records before issuing assets to employees."
+        className="border-0 bg-transparent p-0 shadow-none"
+      >
+        <div className="flex flex-col gap-2">
+          {items.map((item) => (
+            <AssetCardRow
+              key={item.id}
+              title={`${item.code} / ${item.name}`}
+              meta={
+                <>
+                  <AssetMetaChip>{item.category_name ?? "-"}</AssetMetaChip>
+                  <AssetMetaDot /><AssetMetaChip>{item.variant ?? "-"}</AssetMetaChip>
+                  <AssetMetaDot /><AssetMetaChip>Size {item.size ?? "-"}</AssetMetaChip>
+                  <AssetMetaDot /><AssetMetaChip>Serial {item.serial_no ?? item.serial_number ?? "-"}</AssetMetaChip>
+                  <AssetMetaDot /><AssetMetaChip>{item.condition_status}</AssetMetaChip>
+                  <AssetMetaDot /><AssetMetaChip>Replacement cost {item.replacement_cost ?? "-"}</AssetMetaChip>
+                </>
+              }
+              trailing={<Badge tone={item.status === "AVAILABLE" ? "success" : item.status === "ISSUED" ? "info" : item.status === "ARCHIVED" ? "neutral" : "warning"}>{item.status}</Badge>}
+              actions={canManage ? (
+                <>
+                  <RowActionButton intent="edit" title="Edit" onClick={() => setModal(item)}><Pencil className="h-4 w-4" /></RowActionButton>
+                  <RowActionButton intent="archive" title="Delete" onClick={() => { setArchiveTarget(item); setArchiveReason(""); }}><Trash2 className="h-4 w-4" /></RowActionButton>
+                </>
+              ) : null}
+            />
+          ))}
+        </div>
+      </PerformanceDataTable>
       {modal ? <ItemModal item={modal === "new" ? undefined : modal} categories={categories} onClose={() => setModal(null)} onSaved={() => { setModal(null); void load(); }} /> : null}
       <ConfirmDialog
         open={Boolean(archiveTarget)}

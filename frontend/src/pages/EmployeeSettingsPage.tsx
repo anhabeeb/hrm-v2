@@ -8,7 +8,6 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { CheckboxField, PageHeader, PageShell, StandardTabs } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { EmployeeNumberSettings, EmployeeStatusSetting } from "../types/employees";
@@ -124,27 +123,53 @@ export function EmployeeSettingsPage() {
               <div className="flex justify-end">
                 {canStatus ? <Button size="sm" onClick={() => setModal({ mode: "create", status: createBlankStatus() })}><Plus className="h-4 w-4" /> Create Status</Button> : null}
               </div>
-              <div className="overflow-x-auto rounded-md border">
-                <Table>
-                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Key</TableHead><TableHead>Protected</TableHead><TableHead>Status</TableHead><TableHead>Login</TableHead><TableHead>Payroll</TableHead><TableHead>Roster</TableHead><TableHead>Active lists</TableHead><TableHead>Clearance requirements</TableHead><TableHead>Sort</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {statuses.map((status) => (
-                      <TableRow key={status.id}>
-                        <TableCell className="font-medium">{status.name}</TableCell>
-                        <TableCell className="font-mono text-xs">{status.key}</TableCell>
-                        <TableCell>{status.is_protected ? <Badge tone="warning">Protected</Badge> : "-"}</TableCell>
-                        <TableCell><Badge tone={status.is_active ? "success" : "neutral"}>{status.is_active ? "Active" : "Inactive"}</Badge></TableCell>
-                        <TableCell>{status.can_login ? "Yes" : "No"}</TableCell>
-                        <TableCell>{status.include_in_payroll ? "Yes" : "No"}</TableCell>
-                        <TableCell>{status.include_in_roster ? "Yes" : "No"}</TableCell>
-                        <TableCell>{status.show_in_active_lists ? "Yes" : "No"}</TableCell>
-                        <TableCell>{[status.requires_final_settlement && "Settlement", status.requires_document_clearance && "Documents", status.requires_asset_clearance && "Assets"].filter(Boolean).join(", ") || "-"}</TableCell>
-                        <TableCell>{status.sort_order}</TableCell>
-                        <TableCell><div className="flex justify-end gap-1"><RowActionButton intent="view" title="View"><Eye className="h-4 w-4" /></RowActionButton>{canStatus ? <RowActionButton intent="edit" title="Edit" onClick={() => setModal({ mode: "edit", status })}><Pencil className="h-4 w-4" /></RowActionButton> : null}{canStatus ? <RowActionButton intent={status.is_active ? "disable" : "enable"} title={status.is_active ? "Disable" : "Enable"} onClick={() => setStatusActionTarget(status)}>{status.is_active ? <ToggleRight className="h-4 w-4 text-emerald-700" /> : <ToggleLeft className="h-4 w-4" />}</RowActionButton> : null}</div></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="flex flex-col gap-2">
+                {statuses.map((status) => {
+                  const clearance = [status.requires_final_settlement && "Settlement", status.requires_document_clearance && "Documents", status.requires_asset_clearance && "Assets"].filter(Boolean).join(", ");
+                  return (
+                    <div
+                      key={status.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 16,
+                        padding: "0.9rem 1.1rem",
+                        background: "var(--v3-surface-2)",
+                        border: "0.5px solid var(--v3-border)",
+                        borderRadius: "var(--v3-radius-card)"
+                      }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-slate-900">{status.name}</span>
+                          <span className="font-mono text-xs text-muted-foreground">{status.key}</span>
+                          {status.is_protected ? <Badge tone="warning">Protected</Badge> : null}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                          <span>Login {status.can_login ? "yes" : "no"}</span>
+                          <span className="text-[var(--v3-border-strong)]">&middot;</span>
+                          <span>Payroll {status.include_in_payroll ? "yes" : "no"}</span>
+                          <span className="text-[var(--v3-border-strong)]">&middot;</span>
+                          <span>Roster {status.include_in_roster ? "yes" : "no"}</span>
+                          <span className="text-[var(--v3-border-strong)]">&middot;</span>
+                          <span>Active lists {status.show_in_active_lists ? "yes" : "no"}</span>
+                          <span className="text-[var(--v3-border-strong)]">&middot;</span>
+                          <span>Sort {status.sort_order}</span>
+                          {clearance ? <><span className="text-[var(--v3-border-strong)]">&middot;</span><span>Requires {clearance}</span></> : null}
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge tone={status.is_active ? "success" : "neutral"}>{status.is_active ? "Active" : "Inactive"}</Badge>
+                        <div className="flex gap-1">
+                          <RowActionButton intent="view" title="View"><Eye className="h-4 w-4" /></RowActionButton>
+                          {canStatus ? <RowActionButton intent="edit" title="Edit" onClick={() => setModal({ mode: "edit", status })}><Pencil className="h-4 w-4" /></RowActionButton> : null}
+                          {canStatus ? <RowActionButton intent={status.is_active ? "disable" : "enable"} title={status.is_active ? "Disable" : "Enable"} onClick={() => setStatusActionTarget(status)}>{status.is_active ? <ToggleRight className="h-4 w-4 text-emerald-700" /> : <ToggleLeft className="h-4 w-4" />}</RowActionButton> : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}

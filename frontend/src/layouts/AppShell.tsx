@@ -237,7 +237,7 @@ export function AppShell() {
 
   return (
     <AdminShell>
-      <div className="flex h-screen overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#eef6f6_100%)]">
+      <div className="flex h-screen overflow-hidden bg-background">
         <aside
           className={cn(
             "fixed inset-y-0 left-0 z-40 flex h-screen border-r bg-white/95 shadow-sm backdrop-blur transition-all duration-200 lg:static lg:translate-x-0",
@@ -277,7 +277,7 @@ export function AppShell() {
                             cn(
                               "group flex h-10 items-center rounded-md px-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
                               collapsed ? "justify-center" : "gap-3",
-                              isActive && "bg-primary/10 text-primary ring-1 ring-primary/10"
+                              isActive && "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground"
                             )
                           }
                         >
@@ -330,7 +330,7 @@ export function AppShell() {
                                     cn(
                                       "group flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
                                       collapsed ? "justify-center" : "gap-3",
-                                      isActive && "bg-primary/10 text-primary ring-1 ring-primary/10"
+                                      isActive && "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground"
                                     )
                                   }
                                 >

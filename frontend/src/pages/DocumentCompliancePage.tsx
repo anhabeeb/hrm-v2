@@ -1,5 +1,5 @@
 import { Bell, CheckCircle2, ClipboardList, FileWarning, RefreshCw, Settings, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
 import { ExportMenu } from "../components/export/ExportMenu";
@@ -9,12 +9,11 @@ import { ActionTextButton } from "../components/ui/action-button";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
-import { CardSkeleton, TableSkeleton } from "../components/loading";
+import { CardSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { SubNavigationBar, SubNavigationItem } from "../components/ui/navigation-tabs";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
@@ -256,21 +255,154 @@ function Dashboard({ dashboard, loading }: { dashboard: DocumentComplianceDashbo
   return <div className="space-y-4 p-3"><div className="grid gap-2 md:grid-cols-4 xl:grid-cols-8">{tiles.map(([label, value, tone]) => <div key={label} className="rounded-md border p-3"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 text-xl font-semibold"><Badge tone={tone}>{String(value ?? 0)}</Badge></div></div>)}</div><Alerts rows={dashboard.alerts ?? []} loading={false} canManage={false} onAction={() => undefined} /></div>;
 }
 
+function MetaChip({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return <span style={{ fontSize: 12, color: "var(--v3-text-secondary)" }}>{children}</span>;
+}
+
+function Dot() {
+  return <span style={{ color: "var(--v3-border-strong)" }}>&middot;</span>;
+}
+
+function ComplianceRowCard({ title, meta, badges, actions }: { title: ReactNode; meta: ReactNode; badges?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "0.9rem 1.1rem",
+        background: "var(--v3-surface-2)",
+        border: "0.5px solid var(--v3-border)",
+        borderRadius: "var(--v3-radius-card)"
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-slate-900">{title}</div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">{meta}</div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {badges}
+        {actions}
+      </div>
+    </div>
+  );
+}
+
 function GenericRows({ rows, loading }: { rows: Record<string, unknown>[]; loading: boolean }) {
-  const columns = ["employee_name", "employee_no", "department_name", "location_name", "position_title", "document_type_name", "document_number", "expiry_date", "days_until_expiry", "status", "reason"];
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((row, index) => <TableRow key={String(row.id ?? `${row.employee_id}-${row.document_type_id}-${index}`)}>{columns.map((column) => <TableCell key={column}>{column === "status" ? <Badge tone={statusTone(String(row[column] ?? row.display_status ?? row.requirement_status))}>{asText(row[column] ?? row.display_status ?? row.requirement_status)}</Badge> : asText(row[column])}</TableCell>)}</TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={Math.max(columns.length, 5)} label="Loading compliance rows" /> : rows.length === 0 ? <EmptyState title="No rows found" description="No records match this view." /> : null}</div>;
+  if (loading) return <CardSkeleton cards={5} label="Loading compliance rows" />;
+  if (rows.length === 0) return <EmptyState title="No rows found" description="No records match this view." />;
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {rows.map((row, index) => {
+        const status = row.status ?? row.display_status ?? row.requirement_status;
+        return (
+          <ComplianceRowCard
+            key={String(row.id ?? `${row.employee_id}-${row.document_type_id}-${index}`)}
+            title={<>{asText(row.employee_name)}<span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{asText(row.employee_no)}</span></>}
+            meta={<>
+              <MetaChip>{asText(row.department_name)}</MetaChip>
+              <Dot /><MetaChip>{asText(row.location_name)}</MetaChip>
+              <Dot /><MetaChip>{asText(row.position_title)}</MetaChip>
+              <Dot /><MetaChip>{asText(row.document_type_name)}</MetaChip>
+              {row.document_number ? <><Dot /><MetaChip>Doc# {asText(row.document_number)}</MetaChip></> : null}
+              {row.expiry_date ? <><Dot /><MetaChip>Expires {asText(row.expiry_date)}</MetaChip></> : null}
+              {row.days_until_expiry !== undefined && row.days_until_expiry !== null ? <><Dot /><MetaChip>{asText(row.days_until_expiry)} days</MetaChip></> : null}
+              {row.reason ? <><Dot /><MetaChip>{asText(row.reason)}</MetaChip></> : null}
+            </>}
+            badges={<Badge tone={statusTone(String(status))}>{asText(status)}</Badge>}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 function Alerts({ rows, loading, canManage, onAction }: { rows: DocumentExpiryAlert[]; loading: boolean; canManage: boolean; onAction: (row: DocumentExpiryAlert, action: "acknowledge" | "resolve" | "dismiss") => void }) {
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Document</TableHead><TableHead>Alert</TableHead><TableHead>Severity</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead>Expiry</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" /></TableCell><TableCell>{row.restricted ? "Restricted document" : row.document_type_name ?? "-"}</TableCell><TableCell>{row.alert_type}</TableCell><TableCell><Badge tone={statusTone(row.severity)}>{row.severity}</Badge></TableCell><TableCell><Badge tone={statusTone(row.status)}>{row.status}</Badge></TableCell><TableCell>{row.due_date ?? "-"}</TableCell><TableCell>{row.expiry_date ?? "-"}</TableCell><TableCell>{row.notes ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage && row.status === "OPEN" ? <RowActionButton intent="neutral" size="sm" title="Ack" onClick={() => onAction(row, "acknowledge")}><Bell className="h-4 w-4" /> Ack</RowActionButton> : null}{canManage && row.status !== "RESOLVED" ? <RowActionButton intent="approve" size="sm" title="Resolve" onClick={() => onAction(row, "resolve")}><CheckCircle2 className="h-4 w-4" /> Resolve</RowActionButton> : null}{canManage && row.status !== "DISMISSED" ? <RowActionButton intent="warning" size="sm" title="Dismiss" onClick={() => onAction(row, "dismiss")}><XCircle className="h-4 w-4" /> Dismiss</RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={9} label="Loading document expiry alerts" /> : rows.length === 0 ? <EmptyState title="No alerts" description="There are no matching document alerts." /> : null}</div>;
+  if (loading) return <CardSkeleton cards={5} label="Loading document expiry alerts" />;
+  if (rows.length === 0) return <EmptyState title="No alerts" description="There are no matching document alerts." />;
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {rows.map((row) => (
+        <ComplianceRowCard
+          key={row.id}
+          title={<EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" />}
+          meta={<>
+            <MetaChip>{row.restricted ? "Restricted document" : row.document_type_name ?? "-"}</MetaChip>
+            <Dot /><MetaChip>{row.alert_type}</MetaChip>
+            {row.due_date ? <><Dot /><MetaChip>Due {row.due_date}</MetaChip></> : null}
+            {row.expiry_date ? <><Dot /><MetaChip>Expires {row.expiry_date}</MetaChip></> : null}
+            {row.notes ? <><Dot /><MetaChip>{row.notes}</MetaChip></> : null}
+          </>}
+          badges={<>
+            <Badge tone={statusTone(row.severity)}>{row.severity}</Badge>
+            <Badge tone={statusTone(row.status)}>{row.status}</Badge>
+          </>}
+          actions={
+            <div className="flex gap-1">
+              {canManage && row.status === "OPEN" ? <RowActionButton intent="neutral" size="sm" title="Ack" onClick={() => onAction(row, "acknowledge")}><Bell className="h-4 w-4" /> Ack</RowActionButton> : null}
+              {canManage && row.status !== "RESOLVED" ? <RowActionButton intent="approve" size="sm" title="Resolve" onClick={() => onAction(row, "resolve")}><CheckCircle2 className="h-4 w-4" /> Resolve</RowActionButton> : null}
+              {canManage && row.status !== "DISMISSED" ? <RowActionButton intent="warning" size="sm" title="Dismiss" onClick={() => onAction(row, "dismiss")}><XCircle className="h-4 w-4" /> Dismiss</RowActionButton> : null}
+            </div>
+          }
+        />
+      ))}
+    </div>
+  );
 }
 
 function RenewalCases({ rows, loading, canManage, onAction }: { rows: DocumentRenewalCase[]; loading: boolean; canManage: boolean; onAction: (row: DocumentRenewalCase, action: "mark-in-progress" | "mark-waiting" | "complete" | "cancel") => void }) {
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Case</TableHead><TableHead>Employee</TableHead><TableHead>Document</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead>Priority</TableHead><TableHead>Due</TableHead><TableHead>Assigned</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell className="font-mono text-xs">{row.renewal_case_number}</TableCell><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" /></TableCell><TableCell>{row.document_type_name ?? "-"}</TableCell><TableCell>{row.case_type}</TableCell><TableCell><Badge tone={statusTone(row.status)}>{row.status}</Badge></TableCell><TableCell>{row.priority}</TableCell><TableCell>{row.due_date ?? "-"}</TableCell><TableCell>{row.assigned_to_name ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1">{canManage && row.status === "OPEN" ? <RowActionButton intent="create" size="sm" title="Start" onClick={() => onAction(row, "mark-in-progress")}>Start</RowActionButton> : null}{canManage && row.status !== "COMPLETED" ? <RowActionButton intent="warning" size="sm" title="Waiting" onClick={() => onAction(row, "mark-waiting")}>Waiting</RowActionButton> : null}{canManage && row.status !== "COMPLETED" ? <RowActionButton intent="approve" size="sm" title="Complete" onClick={() => onAction(row, "complete")}>Complete</RowActionButton> : null}{canManage && row.status !== "CANCELLED" ? <RowActionButton intent="delete" size="sm" title="Cancel renewal case" onClick={() => onAction(row, "cancel")}>Cancel</RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={9} label="Loading renewal cases" /> : rows.length === 0 ? <EmptyState title="No renewal cases" description="Expiry and missing document workflows will appear here." /> : null}</div>;
+  if (loading) return <CardSkeleton cards={5} label="Loading renewal cases" />;
+  if (rows.length === 0) return <EmptyState title="No renewal cases" description="Expiry and missing document workflows will appear here." />;
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {rows.map((row) => (
+        <ComplianceRowCard
+          key={row.id}
+          title={<EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" />}
+          meta={<>
+            <MetaChip><span className="font-mono">{row.renewal_case_number}</span></MetaChip>
+            <Dot /><MetaChip>{row.document_type_name ?? "-"}</MetaChip>
+            <Dot /><MetaChip>{row.case_type}</MetaChip>
+            <Dot /><MetaChip>Priority {row.priority}</MetaChip>
+            {row.due_date ? <><Dot /><MetaChip>Due {row.due_date}</MetaChip></> : null}
+            {row.assigned_to_name ? <><Dot /><MetaChip>Assigned {row.assigned_to_name}</MetaChip></> : null}
+          </>}
+          badges={<Badge tone={statusTone(row.status)}>{row.status}</Badge>}
+          actions={
+            <div className="flex gap-1">
+              {canManage && row.status === "OPEN" ? <RowActionButton intent="create" size="sm" title="Start" onClick={() => onAction(row, "mark-in-progress")}>Start</RowActionButton> : null}
+              {canManage && row.status !== "COMPLETED" ? <RowActionButton intent="warning" size="sm" title="Waiting" onClick={() => onAction(row, "mark-waiting")}>Waiting</RowActionButton> : null}
+              {canManage && row.status !== "COMPLETED" ? <RowActionButton intent="approve" size="sm" title="Complete" onClick={() => onAction(row, "complete")}>Complete</RowActionButton> : null}
+              {canManage && row.status !== "CANCELLED" ? <RowActionButton intent="delete" size="sm" title="Cancel renewal case" onClick={() => onAction(row, "cancel")}>Cancel</RowActionButton> : null}
+            </div>
+          }
+        />
+      ))}
+    </div>
+  );
 }
 
 function Waivers({ rows, loading, canManage, onCancel }: { rows: DocumentRequirementWaiver[]; loading: boolean; canManage: boolean; onCancel: (row: DocumentRequirementWaiver) => void }) {
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Document</TableHead><TableHead>Reason</TableHead><TableHead>Start</TableHead><TableHead>End</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" /></TableCell><TableCell>{row.document_type_name ?? row.document_type_code ?? "-"}</TableCell><TableCell>{row.waiver_reason}</TableCell><TableCell>{row.waiver_start_date}</TableCell><TableCell>{row.waiver_end_date ?? "-"}</TableCell><TableCell><Badge tone={statusTone(row.status)}>{row.status}</Badge></TableCell><TableCell className="text-right">{canManage && row.status === "ACTIVE" ? <RowActionButton intent="delete" size="sm" title="Cancel waiver" onClick={() => onCancel(row)}>Cancel</RowActionButton> : null}</TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={7} label="Loading requirement waivers" /> : rows.length === 0 ? <EmptyState title="No waivers" description="Waived requirements will appear here." /> : null}</div>;
+  if (loading) return <CardSkeleton cards={5} label="Loading requirement waivers" />;
+  if (rows.length === 0) return <EmptyState title="No waivers" description="Waived requirements will appear here." />;
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {rows.map((row) => (
+        <ComplianceRowCard
+          key={row.id}
+          title={<EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name} employeeNumber={row.employee_no} size="sm" />}
+          meta={<>
+            <MetaChip>{row.document_type_name ?? row.document_type_code ?? "-"}</MetaChip>
+            <Dot /><MetaChip>{row.waiver_reason}</MetaChip>
+            <Dot /><MetaChip>{row.waiver_start_date} - {row.waiver_end_date ?? "Ongoing"}</MetaChip>
+          </>}
+          badges={<Badge tone={statusTone(row.status)}>{row.status}</Badge>}
+          actions={canManage && row.status === "ACTIVE" ? <RowActionButton intent="delete" size="sm" title="Cancel waiver" onClick={() => onCancel(row)}>Cancel</RowActionButton> : null}
+        />
+      ))}
+    </div>
+  );
 }
 
 function SettingsForm({ settings, token, canManage, onSaved, onError }: { settings: DocumentComplianceSettings; token: string; canManage: boolean; onSaved: () => Promise<void>; onError: (value: string | null) => void }) {
@@ -308,7 +440,27 @@ function SettingsForm({ settings, token, canManage, onSaved, onError }: { settin
 }
 
 function TypeCompliance({ types, loading, canManage, onEdit }: { types: DocumentType[]; loading: boolean; canManage: boolean; onEdit: (type: DocumentType) => void }) {
-  return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Sensitivity</TableHead><TableHead>Expiry</TableHead><TableHead>Urgent days</TableHead><TableHead>Activation block</TableHead><TableHead>Payroll warning</TableHead><TableHead>Settlement warning</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{types.map((type) => <TableRow key={type.id}><TableCell className="font-medium">{type.name}<div className="font-mono text-xs text-muted-foreground">{type.code}</div></TableCell><TableCell><Badge tone={type.is_sensitive ? "warning" : "neutral"}>{type.sensitivity_level ?? (type.is_sensitive ? "SENSITIVE" : "NORMAL")}</Badge></TableCell><TableCell>{type.expiry_required || type.requires_expiry_date ? "Required" : "Optional"}</TableCell><TableCell>{type.urgent_expiring_days ?? "-"}</TableCell><TableCell>{type.blocks_employee_activation ? "Yes" : "No"}</TableCell><TableCell>{type.creates_payroll_warning ? "Yes" : "No"}</TableCell><TableCell>{type.creates_final_settlement_warning ? "Yes" : "No"}</TableCell><TableCell className="text-right">{canManage ? <RowActionButton intent="edit" size="sm" title="Edit" onClick={() => onEdit(type)}>Edit</RowActionButton> : null}</TableCell></TableRow>)}</TableBody></Table>{loading ? <TableSkeleton rows={5} columns={8} label="Loading document type compliance rules" /> : types.length === 0 ? <EmptyState title="No document types" description="Create document types first." /> : null}</div>;
+  if (loading) return <CardSkeleton cards={5} label="Loading document type compliance rules" />;
+  if (types.length === 0) return <EmptyState title="No document types" description="Create document types first." />;
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {types.map((type) => (
+        <ComplianceRowCard
+          key={type.id}
+          title={<>{type.name}<span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{type.code}</span></>}
+          meta={<>
+            <MetaChip>{type.expiry_required || type.requires_expiry_date ? "Expiry required" : "Expiry optional"}</MetaChip>
+            <Dot /><MetaChip>Urgent {type.urgent_expiring_days ?? "-"} days</MetaChip>
+            <Dot /><MetaChip>Activation block {type.blocks_employee_activation ? "Yes" : "No"}</MetaChip>
+            <Dot /><MetaChip>Payroll warning {type.creates_payroll_warning ? "Yes" : "No"}</MetaChip>
+            <Dot /><MetaChip>Settlement warning {type.creates_final_settlement_warning ? "Yes" : "No"}</MetaChip>
+          </>}
+          badges={<Badge tone={type.is_sensitive ? "warning" : "neutral"}>{type.sensitivity_level ?? (type.is_sensitive ? "SENSITIVE" : "NORMAL")}</Badge>}
+          actions={canManage ? <RowActionButton intent="edit" size="sm" title="Edit" onClick={() => onEdit(type)}>Edit</RowActionButton> : null}
+        />
+      ))}
+    </div>
+  );
 }
 
 function TypeComplianceModal({ token, type, onClose, onSaved }: { token: string; type: DocumentType; onClose: () => void; onSaved: () => Promise<void> }) {

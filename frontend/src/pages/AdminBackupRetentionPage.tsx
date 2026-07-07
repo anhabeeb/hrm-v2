@@ -9,7 +9,7 @@ import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { CardRowList, KeyValueCardRow } from "../components/table/KeyValueCardRow";
 import { AdminHelpLink } from "../features/admin-help/AdminHelpLink";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
@@ -55,27 +55,22 @@ function SummaryCard({ label, value, icon: Icon }: { label: string; value: unkno
 }
 
 function SimpleTable({ rows: tableRows, columns, empty }: { rows: Row[]; columns: string[]; empty: string }) {
+  const [titleColumn, ...restColumns] = columns;
   return (
-    <Panel className="overflow-hidden p-0">
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}</TableRow>
-          </TableHeader>
-          <TableBody>
-            {tableRows.map((row, index) => (
-              <TableRow key={String(row.id ?? row.policy_key ?? row.job_id ?? row.target ?? index)}>
-                {columns.map((column) => (
-                  <TableCell key={column} className="max-w-[360px] truncate" title={text(row[column])}>
-                    {["status", "is_enabled", "dry_run"].includes(column) ? <Badge tone={tone(row[column])}>{text(row[column])}</Badge> : text(row[column])}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {!tableRows.length ? <EmptyState title={empty} description="No sensitive data is displayed in this operational view." /> : null}
-      </div>
+    <Panel className="overflow-hidden p-2">
+      <CardRowList empty={!tableRows.length} emptyTitle={empty} emptyDescription="No sensitive data is displayed in this operational view.">
+        {tableRows.map((row, index) => (
+          <KeyValueCardRow
+            key={String(row.id ?? row.policy_key ?? row.job_id ?? row.target ?? index)}
+            title={text(row[titleColumn])}
+            badge={["status", "is_enabled", "dry_run"].includes(titleColumn) ? <Badge tone={tone(row[titleColumn])}>{text(row[titleColumn])}</Badge> : undefined}
+            fields={restColumns.map((column) => ({
+              label: column.replace(/_/g, " "),
+              value: ["status", "is_enabled", "dry_run"].includes(column) ? <Badge tone={tone(row[column])}>{text(row[column])}</Badge> : text(row[column])
+            }))}
+          />
+        ))}
+      </CardRowList>
     </Panel>
   );
 }

@@ -198,6 +198,7 @@ export interface EmployeeUserAccount {
   employee_email: {
     email: string | null;
     raw_email: string | null;
+    email_type: "WORK_EMAIL" | "PERSONAL_EMAIL" | null;
     is_valid: boolean;
     source: string;
     message: string;

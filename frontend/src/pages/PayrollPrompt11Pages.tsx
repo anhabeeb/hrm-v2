@@ -4,14 +4,12 @@ import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCel
 import { ExportMenu } from "../components/export/ExportMenu";
 import { PayrollNav } from "../components/payroll/PayrollNav";
 import { Button, RowActionButton } from "../components/ui/button";
-import { ResponsiveTableWrapper } from "../components/ui/data-table-shell";
 import { EmptyState } from "../components/ui/empty-state";
 import { TableSkeleton } from "../components/loading";
 import { Input } from "../components/ui/input";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge } from "../components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { PayrollHistoryRow, PayrollPaymentRegister, PayrollPayslip } from "../types/payroll";
@@ -40,6 +38,42 @@ function usePageLoad<T>(loader: (token: string) => Promise<T>, canView: boolean)
   }
   useEffect(() => { void load(); }, [token, canView]);
   return { data, error, loading, reload: load };
+}
+
+function CardRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "0.9rem 1.1rem",
+        background: "var(--v3-surface-2)",
+        border: "0.5px solid var(--v3-border)",
+        borderRadius: "var(--v3-radius-card)"
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MetaChip({ children, className }: { children: React.ReactNode; className?: string }) {
+  if (!children) return null;
+  return <span className={className} style={{ fontSize: 12, color: "var(--v3-text-secondary)" }}>{children}</span>;
+}
+
+function Dot() {
+  return <span style={{ color: "var(--v3-border-strong)" }}>&middot;</span>;
+}
+
+function StatBlock({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
+  return (
+    <div className="text-right">
+      <div style={{ fontSize: 11, color: "var(--v3-text-muted)" }}>{label}</div>
+      <div className={emphasize ? "text-sm font-semibold" : "text-sm"} style={{ color: "var(--v3-text-primary)" }}>{value}</div>
+    </div>
+  );
 }
 
 export function PayrollPayslipsPage() {
@@ -73,7 +107,44 @@ export function PayrollPayslipsPage() {
   }
   const rows = data?.payslips ?? [];
   if (!canView) return <Panel><EmptyState title="Payslips unavailable" description="Your account needs payroll payslip permission." /></Panel>;
-  return <PageShell><Header title="Payslips" description="Generated payslips from finalized payroll snapshots." exportRows={rows as unknown as Record<string, unknown>[]} exportColumns={["period_month", "period_year", "payslip_number", "employee_no_snapshot", "employee_name_snapshot", "status", "version_number", "generated_at"]} /><ErrorMessage error={error ?? actionError} /><Panel className="overflow-hidden"><ResponsiveTableWrapper><Table><TableHeader><TableRow><TableHead>Period</TableHead><TableHead>Payslip</TableHead><TableHead>Employee</TableHead><TableHead>Status</TableHead><TableHead>Version</TableHead><TableHead>Generated</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row: PayrollPayslip) => <TableRow key={row.id}><TableCell>{row.period_month}/{row.period_year}</TableCell><TableCell className="font-mono text-xs">{row.payslip_number}</TableCell><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot ?? "-"} employeeNumber={row.employee_no_snapshot ?? ""} size="sm" /></TableCell><TableCell><StatusBadge value={row.status} /></TableCell><TableCell>{row.version_number}</TableCell><TableCell>{row.generated_at ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><RowActionButton intent="view" title="Preview" onClick={() => void openPreview(row.id)}><Eye className="h-4 w-4" /></RowActionButton>{canDownload ? <RowActionButton intent="download" title="Download" onClick={() => void download(row.id)}><Download className="h-4 w-4" /></RowActionButton> : null}{canRegenerate ? <RowActionButton intent="generate" title="Regenerate" onClick={() => void regenerate(row.id)}><RefreshCw className="h-4 w-4" /></RowActionButton> : null}</div></TableCell></TableRow>)}</TableBody></Table></ResponsiveTableWrapper>{loading ? <TableSkeleton rows={5} columns={7} label="Loading payslips" /> : rows.length === 0 ? <EmptyState title="No payslips available" description="Generate payslips from a finalized payroll run." /> : null}</Panel></PageShell>;
+  return (
+    <PageShell>
+      <Header title="Payslips" description="Generated payslips from finalized payroll snapshots." exportRows={rows as unknown as Record<string, unknown>[]} exportColumns={["period_month", "period_year", "payslip_number", "employee_no_snapshot", "employee_name_snapshot", "status", "version_number", "generated_at"]} />
+      <ErrorMessage error={error ?? actionError} />
+      <Panel className="border-0 bg-transparent p-0 shadow-none">
+        <div className="flex flex-col gap-2 p-3">
+          {rows.map((row: PayrollPayslip) => (
+            <CardRow key={row.id}>
+              <div className="min-w-0 flex-1">
+                <EmployeeIdentityCell
+                  employeeId={row.employee_id}
+                  employeeName={row.employee_name_snapshot ?? "-"}
+                  employeeNumber={row.employee_no_snapshot ?? ""}
+                  size="sm"
+                  showMetadata={false}
+                />
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[40px]">
+                  <MetaChip>{row.period_month}/{row.period_year}</MetaChip>
+                  <Dot /><MetaChip className="font-mono">{row.payslip_number}</MetaChip>
+                  <Dot /><MetaChip>Version {row.version_number}</MetaChip>
+                  {row.generated_at ? <><Dot /><MetaChip>Generated {row.generated_at}</MetaChip></> : null}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <StatusBadge value={row.status} />
+                <div className="flex gap-1">
+                  <RowActionButton intent="view" title="Preview" onClick={() => void openPreview(row.id)}><Eye className="h-4 w-4" /></RowActionButton>
+                  {canDownload ? <RowActionButton intent="download" title="Download" onClick={() => void download(row.id)}><Download className="h-4 w-4" /></RowActionButton> : null}
+                  {canRegenerate ? <RowActionButton intent="generate" title="Regenerate" onClick={() => void regenerate(row.id)}><RefreshCw className="h-4 w-4" /></RowActionButton> : null}
+                </div>
+              </div>
+            </CardRow>
+          ))}
+        </div>
+        {loading ? <TableSkeleton rows={5} columns={7} label="Loading payslips" /> : rows.length === 0 ? <EmptyState title="No payslips available" description="Generate payslips from a finalized payroll run." /> : null}
+      </Panel>
+    </PageShell>
+  );
 }
 
 export function PayrollPaymentRegisterPage() {
@@ -130,47 +201,40 @@ export function PayrollPaymentRegisterPage() {
     <PageShell>
       <Header title="Payment Register" description="Manual payment confirmation only. No bank transfer is performed." exportRows={rows as unknown as Record<string, unknown>[]} exportColumns={["period_month", "period_year", "employee_number_snapshot", "employee_name_snapshot", "payment_method_snapshot", "bank_name_snapshot", "bank_account_number_masked", "net_salary_amount", "payment_status", "confirmation_reference"]} />
       <ErrorMessage error={error ?? actionError} />
-      <Panel className="overflow-hidden">
-        <ResponsiveTableWrapper>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Period</TableHead>
-                <TableHead>Employee</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>Bank</TableHead>
-                <TableHead>Account</TableHead>
-                <TableHead>Net salary</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Reference</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row: PayrollPaymentRegister) => {
-                const closed = row.payment_status === "MANUALLY_CONFIRMED_PAID" || row.payment_status === "CANCELLED";
-                return (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.period_month}/{row.period_year}</TableCell>
-                    <TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot} employeeNumber={row.employee_number_snapshot} size="sm" /></TableCell>
-                    <TableCell>{row.payment_method_snapshot ?? "-"}</TableCell>
-                    <TableCell>{row.bank_name_snapshot ?? "-"}</TableCell>
-                    <TableCell>{row.bank_account_number_masked ?? "-"}</TableCell>
-                    <TableCell>{money(row.net_salary_amount)}</TableCell>
-                    <TableCell><StatusBadge value={row.payment_status} /></TableCell>
-                    <TableCell>{row.confirmation_reference ?? "-"}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        {canConfirm ? <RowActionButton intent="approve" title="Confirm paid manually" disabled={closed} onClick={() => openAction("confirm", row)}><CheckCircle2 className="h-4 w-4" /></RowActionButton> : null}
-                        {canCancel ? <RowActionButton intent="disable" title="Cancel payment row" disabled={closed} onClick={() => openAction("cancel", row)}><XCircle className="h-4 w-4" /></RowActionButton> : null}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </ResponsiveTableWrapper>
+      <Panel className="border-0 bg-transparent p-0 shadow-none">
+        <div className="flex flex-col gap-2 p-3">
+          {rows.map((row: PayrollPaymentRegister) => {
+            const closed = row.payment_status === "MANUALLY_CONFIRMED_PAID" || row.payment_status === "CANCELLED";
+            return (
+              <CardRow key={row.id}>
+                <div className="min-w-0 flex-1">
+                  <EmployeeIdentityCell
+                    employeeId={row.employee_id}
+                    employeeName={row.employee_name_snapshot}
+                    employeeNumber={row.employee_number_snapshot}
+                    size="sm"
+                    showMetadata={false}
+                  />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[40px]">
+                    <MetaChip>{row.period_month}/{row.period_year}</MetaChip>
+                    <Dot /><MetaChip>{row.payment_method_snapshot ?? "-"}</MetaChip>
+                    <Dot /><MetaChip>{row.bank_name_snapshot ?? "-"}</MetaChip>
+                    <Dot /><MetaChip>{row.bank_account_number_masked ?? "-"}</MetaChip>
+                    {row.confirmation_reference ? <><Dot /><MetaChip>Ref {row.confirmation_reference}</MetaChip></> : null}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-4">
+                  <StatBlock label="Net salary" value={money(row.net_salary_amount)} emphasize />
+                  <StatusBadge value={row.payment_status} />
+                  <div className="flex gap-1">
+                    {canConfirm ? <RowActionButton intent="approve" title="Confirm paid manually" disabled={closed} onClick={() => openAction("confirm", row)}><CheckCircle2 className="h-4 w-4" /></RowActionButton> : null}
+                    {canCancel ? <RowActionButton intent="disable" title="Cancel payment row" disabled={closed} onClick={() => openAction("cancel", row)}><XCircle className="h-4 w-4" /></RowActionButton> : null}
+                  </div>
+                </div>
+              </CardRow>
+            );
+          })}
+        </div>
         {loading ? <TableSkeleton rows={5} columns={9} label="Loading payment register" /> : rows.length === 0 ? <EmptyState title="No payment register rows" description="Prepare the register from a finalized payroll run." /> : null}
       </Panel>
       {action ? (
@@ -218,5 +282,39 @@ export function PayrollHistoryPage() {
   const { data, error, loading } = usePageLoad((token) => api.getPayrollHistory(token), canView);
   const rows = data?.history ?? [];
   if (!canView) return <Panel><EmptyState title="Payroll history unavailable" description="Your account needs payroll history permission." /></Panel>;
-  return <PageShell><Header title="Payroll History" description="Finalized payroll history based on frozen payroll result snapshots." exportRows={rows as unknown as Record<string, unknown>[]} exportColumns={["period_month", "period_year", "run_no", "employee_no_snapshot", "employee_name_snapshot", "department_name", "location_name", "total_earnings", "total_deductions", "net_salary", "status"]} /><ErrorMessage error={error} /><Panel className="overflow-hidden"><ResponsiveTableWrapper><Table><TableHeader><TableRow><TableHead>Period</TableHead><TableHead>Run</TableHead><TableHead>Employee</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Earnings</TableHead><TableHead>Deductions</TableHead><TableHead>Net</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{rows.map((row: PayrollHistoryRow, index) => <TableRow key={`${row.payroll_run_id}-${row.employee_id}-${index}`}><TableCell>{row.period_month}/{row.period_year}</TableCell><TableCell>#{row.run_no}</TableCell><TableCell><EmployeeIdentityCell employeeId={row.employee_id} employeeName={row.employee_name_snapshot} employeeNumber={row.employee_no_snapshot} departmentName={row.department_name} locationName={row.location_name} size="sm" /></TableCell><TableCell>{row.department_name ?? "-"}</TableCell><TableCell>{row.location_name ?? "-"}</TableCell><TableCell>{money(row.total_earnings)}</TableCell><TableCell>{money(row.total_deductions)}</TableCell><TableCell className="font-semibold">{money(row.net_salary)}</TableCell><TableCell><StatusBadge value={row.status} /></TableCell></TableRow>)}</TableBody></Table></ResponsiveTableWrapper>{loading ? <TableSkeleton rows={5} columns={9} label="Loading payroll history" /> : rows.length === 0 ? <EmptyState title="No finalized payroll history" description="Finalized payroll snapshots will appear here." /> : null}</Panel></PageShell>;
+  return (
+    <PageShell>
+      <Header title="Payroll History" description="Finalized payroll history based on frozen payroll result snapshots." exportRows={rows as unknown as Record<string, unknown>[]} exportColumns={["period_month", "period_year", "run_no", "employee_no_snapshot", "employee_name_snapshot", "department_name", "location_name", "total_earnings", "total_deductions", "net_salary", "status"]} />
+      <ErrorMessage error={error} />
+      <Panel className="border-0 bg-transparent p-0 shadow-none">
+        <div className="flex flex-col gap-2 p-3">
+          {rows.map((row: PayrollHistoryRow, index) => (
+            <CardRow key={`${row.payroll_run_id}-${row.employee_id}-${index}`}>
+              <div className="min-w-0 flex-1">
+                <EmployeeIdentityCell
+                  employeeId={row.employee_id}
+                  employeeName={row.employee_name_snapshot}
+                  employeeNumber={row.employee_no_snapshot}
+                  departmentName={row.department_name}
+                  locationName={row.location_name}
+                  size="sm"
+                />
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[40px]">
+                  <MetaChip>{row.period_month}/{row.period_year}</MetaChip>
+                  <Dot /><MetaChip>Run #{row.run_no}</MetaChip>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-4">
+                <StatBlock label="Earnings" value={money(row.total_earnings)} />
+                <StatBlock label="Deductions" value={money(row.total_deductions)} />
+                <StatBlock label="Net" value={money(row.net_salary)} emphasize />
+                <StatusBadge value={row.status} />
+              </div>
+            </CardRow>
+          ))}
+        </div>
+        {loading ? <TableSkeleton rows={5} columns={9} label="Loading payroll history" /> : rows.length === 0 ? <EmptyState title="No finalized payroll history" description="Finalized payroll snapshots will appear here." /> : null}
+      </Panel>
+    </PageShell>
+  );
 }

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { AssetCardRow, AssetMetaChip, AssetMetaDot } from "../components/assets/AssetCardRow";
 import { AssetsNav } from "../components/assets/AssetsNav";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { ActiveFilterChips, FilterResetButton, FilterSection, formatDateRangeLabel, MoreFiltersSheet, StandardDateRangeFilter, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { EmptyState } from "../components/ui/empty-state";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { downloadBlob } from "../lib/export-utils";
@@ -15,6 +16,7 @@ import type { AssetCategory } from "../types/assets";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 
 const columns = ["employee_no", "employee_name", "department_name", "location_name", "asset_code", "asset_name", "category_name", "status", "issued_date", "expected_return_date", "returned_date", "deduction_amount"];
+const metaColumns = columns.filter((column) => column !== "employee_name" && column !== "status");
 
 export function AssetsReportsPage() {
   const { token, user } = useAuth();
@@ -101,7 +103,33 @@ export function AssetsReportsPage() {
         <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
       </Panel>
       {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-      <Panel className="overflow-hidden p-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column.replace(/_/g, " ")}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((row, index) => <TableRow key={index}>{columns.map((column) => <TableCell key={column}>{String(row[column] ?? "-")}</TableCell>)}</TableRow>)}</TableBody></Table>{!rows.length ? <EmptyState title="No report rows" description="Adjust filters or issue assets to employees." /> : null}</div></Panel>
+      <PerformanceDataTable
+        empty={rows.length === 0}
+        rowCount={rows.length}
+        emptyTitle="No report rows"
+        emptyDescription="Adjust filters or issue assets to employees."
+        className="border-0 bg-transparent p-0 shadow-none"
+      >
+        <div className="flex flex-col gap-2">
+          {rows.map((row, index) => (
+            <AssetCardRow
+              key={index}
+              title={String(row.employee_name ?? "-")}
+              meta={
+                <>
+                  {metaColumns.map((column, columnIndex) => (
+                    <span key={column} className="flex items-center gap-1.5">
+                      {columnIndex > 0 ? <AssetMetaDot /> : null}
+                      <AssetMetaChip>{`${column.replace(/_/g, " ")}: ${String(row[column] ?? "-")}`}</AssetMetaChip>
+                    </span>
+                  ))}
+                </>
+              }
+              trailing={row.status ? <Badge tone={row.status === "ISSUED" ? "success" : row.status === "RETURNED" ? "neutral" : "warning"}>{String(row.status)}</Badge> : null}
+            />
+          ))}
+        </div>
+      </PerformanceDataTable>
     </PageShell>
   );
 }

@@ -32,7 +32,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { CheckboxField, PageHeader, PageShell, SelectField as UiSelectField, StandardTabs } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { KeyValueCardRow } from "../components/table/KeyValueCardRow";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -596,85 +596,53 @@ function UsersTable(props: UsersTableProps) {
       {props.loading ? <TableSkeleton rows={6} columns={9} label="Loading users" /> : null}
       {!props.loading && props.users.length === 0 ? <EmptyState title="No users found" description="Adjust filters or create a user." /> : null}
       {!props.loading && props.users.length > 0 ? (
-        <div className="overflow-x-auto">
-          <Table className="min-w-[1120px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Username</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Roles</TableHead>
-                <TableHead>Linked employee</TableHead>
-                <TableHead>Last login</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="w-[220px] text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {props.users.map((accessUser) => {
-                const lastOwner = accessUser.is_owner && accessUser.status === "ACTIVE" && props.activeOwnerCount <= 1;
-                return (
-                  <TableRow key={accessUser.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {accessUser.name}
-                        {accessUser.is_owner ? <Badge tone="info">Protected</Badge> : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>{accessUser.email}</TableCell>
-                    <TableCell className="text-muted-foreground">{accessUser.username ?? "-"}</TableCell>
-                    <TableCell>
-                      <Badge tone={statusTone(accessUser.status)}>{accessUser.status}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex max-w-xs flex-wrap gap-1">
-                        {accessUser.roles.length ? accessUser.roles.map((role) => <Badge key={role}>{role}</Badge>) : <span className="text-muted-foreground">No roles</span>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {accessUser.employee_id ? (
-                        <div className="min-w-0">
-                          <div className="truncate font-medium text-slate-700">{accessUser.employee_name ?? "Linked employee"}</div>
-                          <div className="truncate text-xs">{accessUser.employee_no ?? accessUser.employee_id}</div>
-                        </div>
-                      ) : "Standalone"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(accessUser.last_login_at)}</TableCell>
-                    <TableCell className="text-muted-foreground">{compactDate(accessUser.created_at)}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        <IconAction title="View" onClick={() => props.onView(accessUser)} icon={<Eye className="h-4 w-4" />} />
-                        <IconAction title="Edit" onClick={() => props.onEdit(accessUser)} icon={<Edit className="h-4 w-4" />} />
-                        <IconAction title="Assign roles" onClick={() => props.onAssign(accessUser)} icon={<UserCog className="h-4 w-4" />} />
-                        {accessUser.status === "ACTIVE" ? (
-                          <IconAction
-                            title={lastOwner ? "Last active Owner is protected" : "Disable"}
-                            disabled={lastOwner}
-                            onClick={() => props.onStatusAction(accessUser, "disable")}
-                            icon={<XCircle className="h-4 w-4" />}
-                          />
-                        ) : (
-                          <IconAction title="Enable" onClick={() => props.onStatusAction(accessUser, "enable")} icon={<CheckCircle2 className="h-4 w-4" />} />
-                        )}
-                        {accessUser.status === "LOCKED" ? (
-                          <IconAction title="Unlock" onClick={() => props.onStatusAction(accessUser, "unlock")} icon={<Unlock className="h-4 w-4" />} />
-                        ) : (
-                          <IconAction
-                            title={lastOwner ? "Last active Owner is protected" : "Lock"}
-                            disabled={lastOwner}
-                            onClick={() => props.onStatusAction(accessUser, "lock")}
-                            icon={<Lock className="h-4 w-4" />}
-                          />
-                        )}
-                        <IconAction title="Reset password" onClick={() => props.onReset(accessUser)} icon={<KeyRound className="h-4 w-4" />} />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+        <div className="flex flex-col gap-2 p-2">
+          {props.users.map((accessUser) => {
+            const lastOwner = accessUser.is_owner && accessUser.status === "ACTIVE" && props.activeOwnerCount <= 1;
+            return (
+              <KeyValueCardRow
+                key={accessUser.id}
+                title={<span className="flex flex-wrap items-center gap-2">{accessUser.name}{accessUser.is_owner ? <Badge tone="info">Protected</Badge> : null}</span>}
+                subtitle={accessUser.email}
+                badge={<Badge tone={statusTone(accessUser.status)}>{accessUser.status}</Badge>}
+                actions={
+                  <div className="flex flex-wrap justify-end gap-1">
+                    <IconAction title="View" onClick={() => props.onView(accessUser)} icon={<Eye className="h-4 w-4" />} />
+                    <IconAction title="Edit" onClick={() => props.onEdit(accessUser)} icon={<Edit className="h-4 w-4" />} />
+                    <IconAction title="Assign roles" onClick={() => props.onAssign(accessUser)} icon={<UserCog className="h-4 w-4" />} />
+                    {accessUser.status === "ACTIVE" ? (
+                      <IconAction
+                        title={lastOwner ? "Last active Owner is protected" : "Disable"}
+                        disabled={lastOwner}
+                        onClick={() => props.onStatusAction(accessUser, "disable")}
+                        icon={<XCircle className="h-4 w-4" />}
+                      />
+                    ) : (
+                      <IconAction title="Enable" onClick={() => props.onStatusAction(accessUser, "enable")} icon={<CheckCircle2 className="h-4 w-4" />} />
+                    )}
+                    {accessUser.status === "LOCKED" ? (
+                      <IconAction title="Unlock" onClick={() => props.onStatusAction(accessUser, "unlock")} icon={<Unlock className="h-4 w-4" />} />
+                    ) : (
+                      <IconAction
+                        title={lastOwner ? "Last active Owner is protected" : "Lock"}
+                        disabled={lastOwner}
+                        onClick={() => props.onStatusAction(accessUser, "lock")}
+                        icon={<Lock className="h-4 w-4" />}
+                      />
+                    )}
+                    <IconAction title="Reset password" onClick={() => props.onReset(accessUser)} icon={<KeyRound className="h-4 w-4" />} />
+                  </div>
+                }
+                fields={[
+                  { label: "Username", value: accessUser.username ?? "-" },
+                  { label: "Roles", value: accessUser.roles.length ? <span className="flex flex-wrap gap-1">{accessUser.roles.map((role) => <Badge key={role}>{role}</Badge>)}</span> : "No roles" },
+                  { label: "Linked employee", value: accessUser.employee_id ? `${accessUser.employee_name ?? "Linked employee"} (${accessUser.employee_no ?? accessUser.employee_id})` : "Standalone" },
+                  { label: "Last login", value: formatDate(accessUser.last_login_at) },
+                  { label: "Created", value: compactDate(accessUser.created_at) }
+                ]}
+              />
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -706,56 +674,37 @@ function RolesTable(props: RolesTableProps) {
       {props.loading ? <TableSkeleton rows={5} columns={7} label="Loading roles" /> : null}
       {!props.loading && props.roles.length === 0 ? <EmptyState title="No roles found" description="Create a role template to assign permissions." /> : null}
       {!props.loading && props.roles.length > 0 ? (
-        <div className="overflow-x-auto">
-          <Table className="min-w-[940px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Role name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Permissions</TableHead>
-                <TableHead>Users</TableHead>
-                <TableHead className="w-[180px] text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {props.roles.map((role) => (
-                <TableRow key={role.id}>
-                  <TableCell className="font-medium">{role.name}</TableCell>
-                  <TableCell className="max-w-sm text-muted-foreground">{role.description ?? "-"}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {role.is_system_role ? <Badge tone="info">System</Badge> : <Badge>Template</Badge>}
-                      {role.is_protected ? <Badge tone="warning">Protected</Badge> : null}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge tone={role.is_active ? "success" : "danger"}>{role.is_active ? "Active" : "Inactive"}</Badge>
-                  </TableCell>
-                  <TableCell>{role.permission_count}</TableCell>
-                  <TableCell>{role.user_count}</TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <IconAction title="View" onClick={() => props.onView(role)} icon={<Eye className="h-4 w-4" />} />
-                      <IconAction title="Edit" onClick={() => props.onEdit(role)} icon={<Edit className="h-4 w-4" />} />
-                      <IconAction title="Assign permissions" onClick={() => props.onPermissions(role)} icon={<SlidersHorizontal className="h-4 w-4" />} />
-                      {role.is_active ? (
-                        <IconAction
-                          title={role.is_protected ? "Protected role cannot be disabled" : "Disable"}
-                          disabled={role.is_protected}
-                          onClick={() => props.onAction(role, "disable")}
-                          icon={<XCircle className="h-4 w-4" />}
-                        />
-                      ) : (
-                        <IconAction title="Enable" onClick={() => props.onAction(role, "enable")} icon={<CheckCircle2 className="h-4 w-4" />} />
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="flex flex-col gap-2 p-2">
+          {props.roles.map((role) => (
+            <KeyValueCardRow
+              key={role.id}
+              title={role.name}
+              subtitle={role.description ?? "No description"}
+              badge={<Badge tone={role.is_active ? "success" : "danger"}>{role.is_active ? "Active" : "Inactive"}</Badge>}
+              actions={
+                <div className="flex justify-end gap-1">
+                  <IconAction title="View" onClick={() => props.onView(role)} icon={<Eye className="h-4 w-4" />} />
+                  <IconAction title="Edit" onClick={() => props.onEdit(role)} icon={<Edit className="h-4 w-4" />} />
+                  <IconAction title="Assign permissions" onClick={() => props.onPermissions(role)} icon={<SlidersHorizontal className="h-4 w-4" />} />
+                  {role.is_active ? (
+                    <IconAction
+                      title={role.is_protected ? "Protected role cannot be disabled" : "Disable"}
+                      disabled={role.is_protected}
+                      onClick={() => props.onAction(role, "disable")}
+                      icon={<XCircle className="h-4 w-4" />}
+                    />
+                  ) : (
+                    <IconAction title="Enable" onClick={() => props.onAction(role, "enable")} icon={<CheckCircle2 className="h-4 w-4" />} />
+                  )}
+                </div>
+              }
+              fields={[
+                { label: "Type", value: <span className="flex flex-wrap gap-1">{role.is_system_role ? <Badge tone="info">System</Badge> : <Badge>Template</Badge>}{role.is_protected ? <Badge tone="warning">Protected</Badge> : null}</span> },
+                { label: "Permissions", value: role.permission_count },
+                { label: "Users", value: role.user_count }
+              ]}
+            />
+          ))}
         </div>
       ) : null}
     </div>
@@ -811,27 +760,16 @@ function PermissionsTable(props: PermissionsTableProps) {
       {props.loading ? <TableSkeleton rows={6} columns={4} label="Loading permissions" /> : null}
       {!props.loading && props.permissions.length === 0 ? <EmptyState title="No permissions found" description="Adjust filters to view the registry." /> : null}
       {!props.loading && props.permissions.length > 0 ? (
-        <div className="overflow-x-auto">
-          <Table className="min-w-[820px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Key</TableHead>
-                <TableHead>Module</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Critical</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {props.permissions.map((permission) => (
-                <TableRow key={permission.key}>
-                  <TableCell className="font-mono text-xs">{permission.key}</TableCell>
-                  <TableCell>{MODULE_LABELS[permission.module] ?? permission.module}</TableCell>
-                  <TableCell className="text-muted-foreground">{permission.description ?? "-"}</TableCell>
-                  <TableCell>{permission.is_critical ? <Badge tone="warning">Critical</Badge> : <Badge>Standard</Badge>}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="flex flex-col gap-2 p-2">
+          {props.permissions.map((permission) => (
+            <KeyValueCardRow
+              key={permission.key}
+              title={<span className="font-mono text-xs">{permission.key}</span>}
+              subtitle={permission.description ?? "No description"}
+              badge={permission.is_critical ? <Badge tone="warning">Critical</Badge> : <Badge>Standard</Badge>}
+              fields={[{ label: "Module", value: MODULE_LABELS[permission.module] ?? permission.module }]}
+            />
+          ))}
         </div>
       ) : null}
     </div>
@@ -861,21 +799,27 @@ function RoleMappingsTable(props: {
       {props.loading ? <TableSkeleton rows={5} columns={7} label="Loading role mappings" /> : null}
       {!props.loading && props.mappings.length === 0 ? <EmptyState title="No role mappings found" description="Create access templates that suggest roles and data scopes for employee-linked users." /> : null}
       {!props.loading && props.mappings.length > 0 ? (
-        <div className="overflow-x-auto">
-          <Table className="min-w-[1120px]">
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Suggested role</TableHead><TableHead>Matching criteria</TableHead><TableHead>Suggested scope</TableHead><TableHead>Priority</TableHead><TableHead>Status</TableHead><TableHead className="w-[120px] text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{props.mappings.map((mapping) => (
-              <TableRow key={mapping.id}>
-                <TableCell><div className="font-medium">{mapping.name}</div><div className="truncate text-xs text-muted-foreground">{mapping.description ?? "No description"}</div></TableCell>
-                <TableCell>{mapping.role_name ?? mapping.default_role_id}</TableCell>
-                <TableCell><div className="flex flex-wrap gap-1">{mapping.employee_type ? <Badge>{mapping.employee_type}</Badge> : null}{mapping.employment_type ? <Badge>{mapping.employment_type}</Badge> : null}{mapping.department_name ? <Badge>{mapping.department_name}</Badge> : null}{mapping.position_title ? <Badge>{mapping.position_title}</Badge> : null}{mapping.location_name ? <Badge>{mapping.location_name}</Badge> : null}{mapping.job_level_name ? <Badge>{mapping.job_level_name}</Badge> : null}{!mapping.employee_type && !mapping.employment_type && !mapping.department_id && !mapping.position_id && !mapping.location_id && !mapping.job_level_id ? <Badge tone="warning">Fallback</Badge> : null}</div></TableCell>
-                <TableCell><div className="flex flex-wrap gap-1"><Badge tone={mapping.default_scope_type === "WHOLE_COMPANY" ? "warning" : undefined}>{SCOPE_TYPE_LABELS[mapping.default_scope_type]}</Badge>{mapping.can_view ? <Badge tone="success">View</Badge> : null}{mapping.can_manage ? <Badge tone="warning">Manage</Badge> : null}</div></TableCell>
-                <TableCell>{mapping.priority}</TableCell>
-                <TableCell>{mapping.is_active ? <Badge tone="success">Active</Badge> : <Badge tone="danger">Inactive</Badge>}</TableCell>
-                <TableCell><div className="flex justify-end gap-1"><IconAction title="Edit mapping" onClick={() => props.onEdit(mapping)} icon={<Edit className="h-4 w-4" />} disabled={!props.canManage} /><IconAction title={mapping.is_active ? "Disable mapping" : "Enable mapping"} onClick={() => props.onAction(mapping, mapping.is_active ? "disable" : "enable")} icon={mapping.is_active ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />} disabled={!props.canManage} /></div></TableCell>
-              </TableRow>
-            ))}</TableBody>
-          </Table>
+        <div className="flex flex-col gap-2 p-2">
+          {props.mappings.map((mapping) => (
+            <KeyValueCardRow
+              key={mapping.id}
+              title={mapping.name}
+              subtitle={mapping.description ?? "No description"}
+              badge={mapping.is_active ? <Badge tone="success">Active</Badge> : <Badge tone="danger">Inactive</Badge>}
+              actions={
+                <div className="flex justify-end gap-1">
+                  <IconAction title="Edit mapping" onClick={() => props.onEdit(mapping)} icon={<Edit className="h-4 w-4" />} disabled={!props.canManage} />
+                  <IconAction title={mapping.is_active ? "Disable mapping" : "Enable mapping"} onClick={() => props.onAction(mapping, mapping.is_active ? "disable" : "enable")} icon={mapping.is_active ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />} disabled={!props.canManage} />
+                </div>
+              }
+              fields={[
+                { label: "Suggested role", value: mapping.role_name ?? mapping.default_role_id },
+                { label: "Matching criteria", value: <span className="flex flex-wrap gap-1">{mapping.employee_type ? <Badge>{mapping.employee_type}</Badge> : null}{mapping.employment_type ? <Badge>{mapping.employment_type}</Badge> : null}{mapping.department_name ? <Badge>{mapping.department_name}</Badge> : null}{mapping.position_title ? <Badge>{mapping.position_title}</Badge> : null}{mapping.location_name ? <Badge>{mapping.location_name}</Badge> : null}{mapping.job_level_name ? <Badge>{mapping.job_level_name}</Badge> : null}{!mapping.employee_type && !mapping.employment_type && !mapping.department_id && !mapping.position_id && !mapping.location_id && !mapping.job_level_id ? <Badge tone="warning">Fallback</Badge> : null}</span> },
+                { label: "Suggested scope", value: <span className="flex flex-wrap gap-1"><Badge tone={mapping.default_scope_type === "WHOLE_COMPANY" ? "warning" : undefined}>{SCOPE_TYPE_LABELS[mapping.default_scope_type]}</Badge>{mapping.can_view ? <Badge tone="success">View</Badge> : null}{mapping.can_manage ? <Badge tone="warning">Manage</Badge> : null}</span> },
+                { label: "Priority", value: mapping.priority }
+              ]}
+            />
+          ))}
         </div>
       ) : null}
     </div>
@@ -939,14 +883,31 @@ function AccessScopesTable(props: {
       {props.loading ? <TableSkeleton rows={5} columns={8} label="Loading access scopes" /> : null}
       {!props.loading && props.scopes.length === 0 ? <EmptyState title="No access scopes found" description="Create role or user scopes to limit employee data by department, location, team, or company." /> : null}
       {!props.loading && props.scopes.length > 0 ? (
-        <div className="overflow-x-auto">
-          <Table className="min-w-[1080px]">
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Owner</TableHead><TableHead>Module</TableHead><TableHead>Scope</TableHead><TableHead>Rights</TableHead><TableHead>Status</TableHead><TableHead>Updated</TableHead><TableHead className="w-[120px] text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{props.scopes.map((scope) => {
-              const owner = scope.scope_owner_type === "ROLE" ? scope.role_name ?? scope.role_id : scope.scope_owner_type === "USER" ? `${scope.user_name ?? "User"}${scope.user_email ? ` (${scope.user_email})` : ""}` : scope.role_mapping_name ?? scope.role_mapping_rule_id ?? "Role mapping rule";
-              return <TableRow key={scope.id}><TableCell><div className="font-medium">{scope.name}</div><div className="truncate text-xs text-muted-foreground">{scope.description ?? "No description"}</div></TableCell><TableCell>{owner}</TableCell><TableCell>{scope.module_key ? MODULE_LABELS[scope.module_key] ?? scope.module_key : "All scoped modules"}</TableCell><TableCell><Badge tone={scope.scope_type === "WHOLE_COMPANY" ? "warning" : undefined}>{SCOPE_TYPE_LABELS[scope.scope_type]}</Badge></TableCell><TableCell><div className="flex flex-wrap gap-1">{scope.can_view ? <Badge tone="success">View</Badge> : null}{scope.can_manage ? <Badge tone="warning">Manage</Badge> : null}</div></TableCell><TableCell>{scope.is_active ? <Badge tone="success">Active</Badge> : <Badge tone="danger">Inactive</Badge>}</TableCell><TableCell>{formatDate(scope.updated_at)}</TableCell><TableCell><div className="flex justify-end gap-1"><IconAction title="Edit scope" onClick={() => props.onEdit(scope)} icon={<Edit className="h-4 w-4" />} disabled={!props.canManage} /><IconAction title={scope.is_active ? "Disable scope" : "Enable scope"} onClick={() => props.onAction(scope, scope.is_active ? "disable" : "enable")} icon={scope.is_active ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />} disabled={!props.canManage} /></div></TableCell></TableRow>;
-            })}</TableBody>
-          </Table>
+        <div className="flex flex-col gap-2 p-2">
+          {props.scopes.map((scope) => {
+            const owner = scope.scope_owner_type === "ROLE" ? scope.role_name ?? scope.role_id : scope.scope_owner_type === "USER" ? `${scope.user_name ?? "User"}${scope.user_email ? ` (${scope.user_email})` : ""}` : scope.role_mapping_name ?? scope.role_mapping_rule_id ?? "Role mapping rule";
+            return (
+              <KeyValueCardRow
+                key={scope.id}
+                title={scope.name}
+                subtitle={scope.description ?? "No description"}
+                badge={scope.is_active ? <Badge tone="success">Active</Badge> : <Badge tone="danger">Inactive</Badge>}
+                actions={
+                  <div className="flex justify-end gap-1">
+                    <IconAction title="Edit scope" onClick={() => props.onEdit(scope)} icon={<Edit className="h-4 w-4" />} disabled={!props.canManage} />
+                    <IconAction title={scope.is_active ? "Disable scope" : "Enable scope"} onClick={() => props.onAction(scope, scope.is_active ? "disable" : "enable")} icon={scope.is_active ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />} disabled={!props.canManage} />
+                  </div>
+                }
+                fields={[
+                  { label: "Owner", value: owner },
+                  { label: "Module", value: scope.module_key ? MODULE_LABELS[scope.module_key] ?? scope.module_key : "All scoped modules" },
+                  { label: "Scope", value: <Badge tone={scope.scope_type === "WHOLE_COMPANY" ? "warning" : undefined}>{SCOPE_TYPE_LABELS[scope.scope_type]}</Badge> },
+                  { label: "Rights", value: <span className="flex flex-wrap gap-1">{scope.can_view ? <Badge tone="success">View</Badge> : null}{scope.can_manage ? <Badge tone="warning">Manage</Badge> : null}</span> },
+                  { label: "Updated", value: formatDate(scope.updated_at) }
+                ]}
+              />
+            );
+          })}
         </div>
       ) : null}
     </div>

@@ -15,7 +15,6 @@ import { Input } from "../components/ui/input";
 import { OrganizationCascadeSelector } from "../components/organization/OrganizationCascadeSelector";
 import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { useDebouncedTableFilters } from "../hooks/useDebouncedTableFilters";
 import { usePaginatedQuery } from "../hooks/usePaginatedQuery";
@@ -202,25 +201,38 @@ export function AttendanceCorrectionsPage() {
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <PerformanceDataTable loading={loading || correctionsQuery.isInitialLoading} refreshing={correctionsQuery.isRefreshing || isDebouncing} error={error ?? correctionsQuery.error?.message ?? null} empty={corrections.length === 0} rowCount={corrections.length} emptyTitle="No correction requests found" emptyDescription="Submit a correction request or adjust filters." skeleton={<TableSkeleton rows={5} columns={9} label="Loading attendance corrections" />}>
-          <Table>
-            <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Date</TableHead><TableHead>Current</TableHead><TableHead>Requested changes</TableHead><TableHead>Reason</TableHead><TableHead>Status</TableHead><TableHead>Requested by</TableHead><TableHead>Reviewed by</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{corrections.map((correction) => {
+        <PerformanceDataTable loading={loading || correctionsQuery.isInitialLoading} refreshing={correctionsQuery.isRefreshing || isDebouncing} error={error ?? correctionsQuery.error?.message ?? null} empty={corrections.length === 0} rowCount={corrections.length} emptyTitle="No correction requests found" emptyDescription="Submit a correction request or adjust filters." skeleton={<TableSkeleton rows={5} columns={9} label="Loading attendance corrections" />} className="border-0 bg-transparent p-0 shadow-none">
+          <div className="flex flex-col gap-2 p-3">
+            {corrections.map((correction) => {
               const current = parseSnapshot(correction.current_values_json);
               const pending = correction.status === "PENDING" || correction.status === "SUBMITTED";
-              return <TableRow key={correction.id}>
-                <TableCell><EmployeeIdentityCell employeeId={correction.employee_id} employeeName={correction.employee_name ?? "-"} employeeNumber={correction.employee_no ?? ""} departmentName={correction.department_name} locationName={correction.location_name} size="sm" /></TableCell>
-                <TableCell>{correction.attendance_date}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{String(current.status ?? "-")} · {String(current.first_clock_in ?? "-")} / {String(current.last_clock_out ?? "-")}</TableCell>
-                <TableCell>{correction.requested_status ?? "-"} · {correction.requested_clock_in ? new Date(correction.requested_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {correction.requested_clock_out ? new Date(correction.requested_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</TableCell>
-                <TableCell className="max-w-64 truncate">{correction.reason}</TableCell>
-                <TableCell><Badge tone={tone(correction.status)}>{correction.status}</Badge></TableCell>
-                <TableCell>{correction.requested_by_name ?? "-"}</TableCell>
-                <TableCell>{correction.reviewed_by_name ?? "-"}</TableCell>
-                <TableCell><div className="flex justify-end gap-1">{pending && canApprove ? <RowActionButton intent="approve" title="Approve" onClick={() => setReviewAction({ correction, type: "approve" })}><Check className="h-4 w-4" /></RowActionButton> : null}{pending && canReject ? <RowActionButton intent="reject" title="Reject" onClick={() => setReviewAction({ correction, type: "reject" })}><X className="h-4 w-4" /></RowActionButton> : null}{pending && canCancel ? <RowActionButton intent="delete" title="Cancel" onClick={() => setReviewAction({ correction, type: "cancel" })}><X className="h-4 w-4 text-red-600" /></RowActionButton> : null}</div></TableCell>
-              </TableRow>;
-            })}</TableBody>
-          </Table>
+              return (
+                <div key={correction.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "0.9rem 1.1rem", background: "var(--v3-surface-2)", border: "0.5px solid var(--v3-border)", borderRadius: "var(--v3-radius-card)" }}>
+                  <div className="min-w-0 flex-1">
+                    <EmployeeIdentityCell employeeId={correction.employee_id} employeeName={correction.employee_name ?? "-"} employeeNumber={correction.employee_no ?? ""} departmentName={correction.department_name} locationName={correction.location_name} size="sm" />
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[44px] text-xs text-muted-foreground">
+                      <span>{correction.attendance_date}</span>
+                      <span>&middot;</span>
+                      <span>Current: {String(current.status ?? "-")} {String(current.first_clock_in ?? "-")} / {String(current.last_clock_out ?? "-")}</span>
+                      <span>&middot;</span>
+                      <span>Requested: {correction.requested_status ?? "-"} {correction.requested_clock_in ? new Date(correction.requested_clock_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"} / {correction.requested_clock_out ? new Date(correction.requested_clock_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "-"}</span>
+                      <span>&middot;</span>
+                      <span className="max-w-64 truncate">{correction.reason}</span>
+                      <span>&middot;</span>
+                      <span>By {correction.requested_by_name ?? "-"}</span>
+                      {correction.reviewed_by_name ? <><span>&middot;</span><span>Reviewed by {correction.reviewed_by_name}</span></> : null}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Badge tone={tone(correction.status)}>{correction.status}</Badge>
+                    {pending && canApprove ? <RowActionButton intent="approve" title="Approve" onClick={() => setReviewAction({ correction, type: "approve" })}><Check className="h-4 w-4" /></RowActionButton> : null}
+                    {pending && canReject ? <RowActionButton intent="reject" title="Reject" onClick={() => setReviewAction({ correction, type: "reject" })}><X className="h-4 w-4" /></RowActionButton> : null}
+                    {pending && canCancel ? <RowActionButton intent="delete" title="Cancel" onClick={() => setReviewAction({ correction, type: "cancel" })}><X className="h-4 w-4 text-red-600" /></RowActionButton> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </PerformanceDataTable>
         <TablePaginationBar page={page} pageSize={pageSize} rowCount={corrections.length} hasMore={Boolean(pagination?.has_more)} onPageChange={setPage} onPageSizeChange={setPageSize} />
       </Panel>

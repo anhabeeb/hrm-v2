@@ -11,7 +11,7 @@ import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Panel } from "../components/ui/panel";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { KeyValueCardRow } from "../components/table/KeyValueCardRow";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -640,38 +640,21 @@ function LocationsTab(props: {
         <StandardSelectFilter value={props.typeFilter} onValueChange={(value) => props.onType(value as "all" | LocationType)} allLabel="All types" width="status" options={locationTypes.map((type) => ({ value: type, label: type }))} />
       </SectionToolbar>
       <TableWrap empty={!props.locations.length} emptyTitle="No locations found">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Island/City</TableHead>
-              <TableHead>Address</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {props.locations.map((location) => (
-              <TableRow key={location.id}>
-                <TableCell className="font-mono text-xs">{location.code}</TableCell>
-                <TableCell className="font-medium">{location.name}</TableCell>
-                <TableCell>{location.type}</TableCell>
-                <TableCell>{location.island_city ?? "-"}</TableCell>
-                <TableCell className="max-w-[260px] truncate">{location.address ?? "-"}</TableCell>
-                <TableCell>{location.phone ?? "-"}</TableCell>
-                <TableCell>
-                  <StatusBadge active={location.is_active} />
-                </TableCell>
-                <TableCell>
-                  <RowActions canManage={props.canManage} active={location.is_active} onView={() => props.onView(location)} onEdit={() => props.onEdit(location)} onAction={() => props.onAction(location)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {props.locations.map((location) => (
+          <KeyValueCardRow
+            key={location.id}
+            title={location.name}
+            subtitle={location.code}
+            badge={<StatusBadge active={location.is_active} />}
+            actions={<RowActions canManage={props.canManage} active={location.is_active} onView={() => props.onView(location)} onEdit={() => props.onEdit(location)} onAction={() => props.onAction(location)} />}
+            fields={[
+              { label: "Type", value: location.type },
+              { label: "Island/City", value: location.island_city ?? "-" },
+              { label: "Address", value: location.address ?? "-" },
+              { label: "Phone", value: location.phone ?? "-" }
+            ]}
+          />
+        ))}
       </TableWrap>
     </>
   );
@@ -693,34 +676,19 @@ function DepartmentsTab(props: {
     <>
       <SectionToolbar {...props} title="Departments" />
       <TableWrap empty={!props.departments.length} emptyTitle="No departments found">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Parent department</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {props.departments.map((department) => (
-              <TableRow key={department.id}>
-                <TableCell className="font-mono text-xs">{department.code}</TableCell>
-                <TableCell className="font-medium">{department.name}</TableCell>
-                <TableCell>{department.parent_department_name ?? "-"}</TableCell>
-                <TableCell className="max-w-[360px] truncate">{department.description ?? "-"}</TableCell>
-                <TableCell>
-                  <StatusBadge active={department.is_active} />
-                </TableCell>
-                <TableCell>
-                  <RowActions canManage={props.canManage} active={department.is_active} onView={() => props.onView(department)} onEdit={() => props.onEdit(department)} onAction={() => props.onAction(department)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {props.departments.map((department) => (
+          <KeyValueCardRow
+            key={department.id}
+            title={department.name}
+            subtitle={department.code}
+            badge={<StatusBadge active={department.is_active} />}
+            actions={<RowActions canManage={props.canManage} active={department.is_active} onView={() => props.onView(department)} onEdit={() => props.onEdit(department)} onAction={() => props.onAction(department)} />}
+            fields={[
+              { label: "Parent department", value: department.parent_department_name ?? "-" },
+              { label: "Description", value: department.description ?? "-" }
+            ]}
+          />
+        ))}
       </TableWrap>
     </>
   );
@@ -742,34 +710,19 @@ function JobLevelsTab(props: {
     <>
       <SectionToolbar {...props} title="Job Levels" />
       <TableWrap empty={!props.jobLevels.length} emptyTitle="No job levels found">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Rank order</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {props.jobLevels.map((level) => (
-              <TableRow key={level.id}>
-                <TableCell className="font-mono text-xs">{level.code}</TableCell>
-                <TableCell className="font-medium">{level.name}</TableCell>
-                <TableCell>{level.rank_order}</TableCell>
-                <TableCell className="max-w-[360px] truncate">{level.description ?? "-"}</TableCell>
-                <TableCell>
-                  <StatusBadge active={level.is_active} />
-                </TableCell>
-                <TableCell>
-                  <RowActions canManage={props.canManage} active={level.is_active} onView={() => props.onView(level)} onEdit={() => props.onEdit(level)} onAction={() => props.onAction(level)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {props.jobLevels.map((level) => (
+          <KeyValueCardRow
+            key={level.id}
+            title={level.name}
+            subtitle={level.code}
+            badge={<StatusBadge active={level.is_active} />}
+            actions={<RowActions canManage={props.canManage} active={level.is_active} onView={() => props.onView(level)} onEdit={() => props.onEdit(level)} onAction={() => props.onAction(level)} />}
+            fields={[
+              { label: "Rank order", value: level.rank_order },
+              { label: "Description", value: level.description ?? "-" }
+            ]}
+          />
+        ))}
       </TableWrap>
     </>
   );
@@ -808,36 +761,20 @@ function PositionsTab(props: {
         <StandardSelectFilter value={props.levelFilter} onValueChange={props.onLevel} allLabel="All levels" width="jobLevel" options={props.jobLevels.map((level) => ({ value: level.id, label: level.name }))} />
       </SectionToolbar>
       <TableWrap empty={!props.positions.length} emptyTitle="No positions found">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Title</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Job level</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {props.positions.map((position) => (
-              <TableRow key={position.id}>
-                <TableCell className="font-mono text-xs">{position.code}</TableCell>
-                <TableCell className="font-medium">{position.title}</TableCell>
-                <TableCell>{position.department_name ?? "-"}</TableCell>
-                <TableCell>{position.level_name ?? "-"}</TableCell>
-                <TableCell className="max-w-[360px] truncate">{position.description ?? "-"}</TableCell>
-                <TableCell>
-                  <StatusBadge active={position.is_active} />
-                </TableCell>
-                <TableCell>
-                  <RowActions canManage={props.canManage} active={position.is_active} onView={() => props.onView(position)} onEdit={() => props.onEdit(position)} onAction={() => props.onAction(position)} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {props.positions.map((position) => (
+          <KeyValueCardRow
+            key={position.id}
+            title={position.title}
+            subtitle={position.code}
+            badge={<StatusBadge active={position.is_active} />}
+            actions={<RowActions canManage={props.canManage} active={position.is_active} onView={() => props.onView(position)} onEdit={() => props.onEdit(position)} onAction={() => props.onAction(position)} />}
+            fields={[
+              { label: "Department", value: position.department_name ?? "-" },
+              { label: "Job level", value: position.level_name ?? "-" },
+              { label: "Description", value: position.description ?? "-" }
+            ]}
+          />
+        ))}
       </TableWrap>
     </>
   );
@@ -847,7 +784,7 @@ function TableWrap({ empty, emptyTitle, children }: { empty: boolean; emptyTitle
   if (empty) {
     return <EmptyState title={emptyTitle} description="Adjust filters or create a new record when you have access." />;
   }
-  return <div className="overflow-x-auto rounded-md border">{children}</div>;
+  return <div className="flex flex-col gap-2">{children}</div>;
 }
 
 function OrganizationModal({

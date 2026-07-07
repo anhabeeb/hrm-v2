@@ -5,6 +5,22 @@ export default {
   theme: {
     extend: {
       colors: {
+        // V3 design system: the app's neutral scale is redefined here (instead of
+        // Tailwind's default blue-gray slate) so every existing slate-* class across
+        // the codebase picks up V3's violet-tinted neutrals with no per-file changes.
+        slate: {
+          50: "#F7F7FB",
+          100: "#EFEFF6",
+          200: "#E7E7F1",
+          300: "#D3D3E3",
+          400: "#9A9DB0",
+          500: "#6B6F86",
+          600: "#565A72",
+          700: "#40435C",
+          800: "#2A2C42",
+          900: "#1D1F35",
+          950: "#14162B"
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

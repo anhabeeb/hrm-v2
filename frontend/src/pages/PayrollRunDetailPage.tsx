@@ -208,14 +208,53 @@ export function PayrollRunDetailPage() {
         </div>
       </Panel> : null}
       <div className="grid gap-4 xl:grid-cols-2">
-        <Panel className="overflow-hidden"><div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Approval timeline</h2></div><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Time</TableHead><TableHead>Action</TableHead><TableHead>Actor</TableHead><TableHead>Status</TableHead><TableHead>Reason / note</TableHead></TableRow></TableHeader><TableBody>{approvals.map((event) => <TableRow key={event.id}><TableCell>{event.created_at}</TableCell><TableCell>{event.action}</TableCell><TableCell>{event.actor_name_snapshot ?? "-"}</TableCell><TableCell>{event.previous_status ?? "-"} {"->"} {event.new_status ?? "-"}</TableCell><TableCell>{event.reason ?? event.note ?? "-"}</TableCell></TableRow>)}</TableBody></Table></div>{loading ? <TableSkeleton rows={3} columns={5} label="Loading payroll approval timeline" /> : approvals.length === 0 ? <EmptyState title="No approval events" description="Submit, approval, rejection, and finalization events will appear here." /> : null}</Panel>
+        <Panel className="overflow-hidden">
+          <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Approval timeline</h2></div>
+          {loading ? (
+            <TableSkeleton rows={3} columns={5} label="Loading payroll approval timeline" />
+          ) : approvals.length === 0 ? (
+            <EmptyState title="No approval events" description="Submit, approval, rejection, and finalization events will appear here." />
+          ) : (
+            <div className="flex flex-col gap-2 p-3">
+              {approvals.map((event) => (
+                <div
+                  key={event.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 16,
+                    padding: "0.75rem 1rem",
+                    background: "var(--v3-surface-2)",
+                    border: "0.5px solid var(--v3-border)",
+                    borderRadius: "var(--v3-radius-card)"
+                  }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">{event.action}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                      <span>{event.created_at}</span>
+                      <span style={{ color: "var(--v3-border-strong)" }}>&middot;</span>
+                      <span>{event.actor_name_snapshot ?? "-"}</span>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-xs text-muted-foreground">
+                    {event.previous_status ?? "-"} {"->"} {event.new_status ?? "-"}
+                  </div>
+                  <div className="max-w-[220px] shrink-0 truncate text-right text-xs text-muted-foreground" title={event.reason ?? event.note ?? undefined}>
+                    {event.reason ?? event.note ?? "-"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
         <Panel className="overflow-hidden"><div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Payslips and payment register</h2><p className="text-xs text-muted-foreground">Payment register is manual confirmation only. No bank export is included.</p></div><div className="grid gap-3 p-4 md:grid-cols-2"><div><div className="text-xs text-muted-foreground">Payslips generated</div><div className="text-lg font-semibold">{payslips.length}</div></div><div><div className="text-xs text-muted-foreground">Payment rows prepared</div><div className="text-lg font-semibold">{payments.length}</div></div></div></Panel>
       </div>
       <Panel className="overflow-hidden">
         <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Employee payroll review</h2><p className="text-xs text-muted-foreground">Attendance, leave, roster, advance, and net salary foundations are stored as snapshots for export.</p></div>
-        <PerformanceDataTable loading={loading || payrollEmployeesQuery.isInitialLoading} refreshing={payrollEmployeesQuery.isRefreshing} error={error ?? payrollEmployeesQuery.error?.message ?? null} empty={employees.length === 0} rowCount={employees.length} emptyTitle="No employee rows" emptyDescription="Recalculate or generate the run to create employee snapshots." skeleton={<TableSkeleton rows={5} columns={9} label="Loading payroll review rows" />}>
+        <PerformanceDataTable loading={loading || payrollEmployeesQuery.isInitialLoading} refreshing={payrollEmployeesQuery.isRefreshing} error={error ?? payrollEmployeesQuery.error?.message ?? null} empty={employees.length === 0} rowCount={employees.length} emptyTitle="No employee rows" emptyDescription="Recalculate or generate the run to create employee snapshots." skeleton={<TableSkeleton rows={5} columns={9} label="Loading payroll review rows" />} className="rounded-lg">
           <Table>
-            <TableHeader><TableRow><TableHead className="sticky left-0 z-10 min-w-[280px] bg-white">Employee</TableHead><TableHead>Department</TableHead><TableHead>Location</TableHead><TableHead>Basic</TableHead><TableHead>Days</TableHead><TableHead>Scheduled</TableHead><TableHead>Worked</TableHead><TableHead>Absent</TableHead><TableHead>Leave</TableHead><TableHead>Unpaid leave</TableHead><TableHead>Late</TableHead><TableHead>Missed punch</TableHead><TableHead>Missed ranges</TableHead><TableHead>Earnings</TableHead><TableHead>Deductions</TableHead><TableHead>Advance</TableHead><TableHead>Attendance</TableHead><TableHead>Leave deduct.</TableHead><TableHead>Net</TableHead><TableHead>Status</TableHead><TableHead className="sticky right-0 bg-white text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead className="sticky left-0 z-10 min-w-[280px] bg-slate-50/60">Employee</TableHead><TableHead className="bg-slate-50/60">Department</TableHead><TableHead className="bg-slate-50/60">Location</TableHead><TableHead className="bg-slate-50/60">Basic</TableHead><TableHead className="bg-slate-50/60">Days</TableHead><TableHead className="bg-slate-50/60">Scheduled</TableHead><TableHead className="bg-slate-50/60">Worked</TableHead><TableHead className="bg-slate-50/60">Absent</TableHead><TableHead className="bg-slate-50/60">Leave</TableHead><TableHead className="bg-slate-50/60">Unpaid leave</TableHead><TableHead className="bg-slate-50/60">Late</TableHead><TableHead className="bg-slate-50/60">Missed punch</TableHead><TableHead className="bg-slate-50/60">Missed ranges</TableHead><TableHead className="bg-slate-50/60">Earnings</TableHead><TableHead className="bg-slate-50/60">Deductions</TableHead><TableHead className="bg-slate-50/60">Advance</TableHead><TableHead className="bg-slate-50/60">Attendance</TableHead><TableHead className="bg-slate-50/60">Leave deduct.</TableHead><TableHead className="bg-slate-50/60">Net</TableHead><TableHead className="bg-slate-50/60">Status</TableHead><TableHead className="sticky right-0 bg-slate-50/60 text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>{employees.map((employee) => {
               const displayStatus = normalizeResultStatus(employee.status);
               return <TableRow key={employee.id}><TableCell className="sticky left-0 z-10 bg-white"><EmployeeIdentityCell employeeId={employee.employee_id} employeeName={employee.employee_name_snapshot} employeeNumber={employee.employee_no_snapshot} departmentName={employee.department_name} locationName={employee.location_name} size="sm" to={`/employees/${employee.employee_id}`} /></TableCell><TableCell>{employee.department_name ?? "-"}</TableCell><TableCell>{employee.location_name ?? "-"}</TableCell><TableCell>{money(employee.basic_salary)}</TableCell><TableCell>{employee.days_in_period}</TableCell><TableCell>{employee.scheduled_work_days ?? "-"}</TableCell><TableCell>{employee.days_worked ?? "-"}</TableCell><TableCell>{employee.absent_days ?? 0}</TableCell><TableCell>{employee.leave_days ?? 0}</TableCell><TableCell>{employee.unpaid_leave_days ?? 0}</TableCell><TableCell>{employee.late_days ?? 0}</TableCell><TableCell>{employee.missed_punch_days ?? 0}</TableCell><TableCell className="max-w-[220px] truncate">{employee.missed_date_ranges_json ?? "-"}</TableCell><TableCell>{money(employee.total_earnings)}</TableCell><TableCell>{money(employee.total_deductions)}</TableCell><TableCell>{money(employee.advance_deductions)}</TableCell><TableCell>{money(employee.attendance_deductions)}</TableCell><TableCell>{money(employee.leave_deductions)}</TableCell><TableCell className="font-semibold">{money(employee.net_salary)}</TableCell><TableCell><StatusBadge value={displayStatus} /></TableCell><TableCell className="sticky right-0 bg-white"><div className="flex justify-end gap-1"><RowActionButton intent="view" title="View lines" onClick={() => void showLines(employee)}><Eye className="h-4 w-4" /></RowActionButton><Link to={`/employees/${employee.employee_id}`}><RowActionButton intent="view" title="Open Employee 360"><UserRound className="h-4 w-4" /></RowActionButton></Link>{canManage && displayStatus !== "HELD" ? <RowActionButton intent="hold" title="Hold row" onClick={() => setHoldModal({ employee, action: "hold" })}><PauseCircle className="h-4 w-4" /></RowActionButton> : null}{canManage && displayStatus === "HELD" ? <RowActionButton intent="release" title="Release hold" onClick={() => setHoldModal({ employee, action: "release" })}><PlayCircle className="h-4 w-4" /></RowActionButton> : null}</div></TableCell></TableRow>;
@@ -266,11 +305,13 @@ function LinesModal({ employee, lines, onClose }: { employee: PayrollRunEmployee
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
       <div className="w-full max-w-4xl rounded-lg border bg-white shadow-xl">
         <div className="flex items-center justify-between border-b px-4 py-3"><div><h2 className="text-sm font-semibold">{employee.employee_name_snapshot}</h2><p className="text-xs text-muted-foreground">Payroll lines and calculation sources.</p></div><Button variant="outline" size="sm" onClick={onClose}>Close</Button></div>
-        <div className="max-h-[70vh] overflow-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Category</TableHead><TableHead>Description</TableHead><TableHead>Source</TableHead><TableHead>Amount</TableHead></TableRow></TableHeader>
-            <TableBody>{(lines ?? []).map((line) => <TableRow key={line.id}><TableCell>{line.line_type}</TableCell><TableCell>{line.category ?? "-"}</TableCell><TableCell>{line.description}</TableCell><TableCell>{line.source}</TableCell><TableCell>{money(line.amount)}</TableCell></TableRow>)}</TableBody>
-          </Table>
+        <div className="max-h-[70vh] overflow-auto p-3">
+          <div className="overflow-hidden rounded-md border-[0.5px] border-slate-200">
+            <Table>
+              <TableHeader><TableRow><TableHead className="bg-slate-50/60">Type</TableHead><TableHead className="bg-slate-50/60">Category</TableHead><TableHead className="bg-slate-50/60">Description</TableHead><TableHead className="bg-slate-50/60">Source</TableHead><TableHead className="bg-slate-50/60">Amount</TableHead></TableRow></TableHeader>
+              <TableBody>{(lines ?? []).map((line) => <TableRow key={line.id}><TableCell>{line.line_type}</TableCell><TableCell>{line.category ?? "-"}</TableCell><TableCell>{line.description}</TableCell><TableCell>{line.source}</TableCell><TableCell>{money(line.amount)}</TableCell></TableRow>)}</TableBody>
+            </Table>
+          </div>
           {!lines ? <TableSkeleton rows={5} columns={5} label="Loading payroll line details" /> : lines.length === 0 ? <EmptyState title="No payroll lines" description="This row does not have line items yet." /> : null}
         </div>
       </div>

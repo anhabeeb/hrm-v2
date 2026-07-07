@@ -1,6 +1,6 @@
 import { CalendarPlus, Edit, PlayCircle, Search, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ActiveFilterChips, FilterResetButton, FilterSection, MoreFiltersSheet, StandardFilterBar, StandardSearchInput, StandardSelectFilter } from "../components/filters";
 import { TableSkeleton } from "../components/loading";
 import { PayrollNav } from "../components/payroll/PayrollNav";
@@ -10,7 +10,6 @@ import { Input } from "../components/ui/input";
 import { PageHeader, PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { StatusBadge, humanizeStatus } from "../components/ui/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import type { PayrollPeriod } from "../types/payroll";
@@ -25,6 +24,62 @@ function normalizePeriodStatus(status: string) {
   if (status === "APPROVED") return "APPROVED_PLACEHOLDER";
   if (status === "PAID" || status === "CLOSED") return "FINALIZED_PLACEHOLDER";
   return status;
+}
+
+function MetaChip({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return <span style={{ fontSize: 12, color: "var(--v3-text-secondary)" }}>{children}</span>;
+}
+
+function Dot() {
+  return <span style={{ color: "var(--v3-border-strong)" }}>&middot;</span>;
+}
+
+function PeriodCardRow({ period, canUpdate, canCalculate, canCancel, displayStatus, onEdit, onGenerate, onCancel }: {
+  period: PayrollPeriod;
+  canUpdate: boolean;
+  canCalculate: boolean;
+  canCancel: boolean;
+  displayStatus: string;
+  onEdit: () => void;
+  onGenerate: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "0.9rem 1.1rem",
+        background: "var(--v3-surface-2)",
+        border: "0.5px solid var(--v3-border)",
+        borderRadius: "var(--v3-radius-card)"
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold">{period.period_month}/{period.period_year}</div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <MetaChip>Start {period.start_date}</MetaChip>
+          <Dot /><MetaChip>End {period.end_date}</MetaChip>
+          <Dot /><MetaChip>Payment {period.salary_payment_date ?? "-"}</MetaChip>
+          <Dot /><MetaChip>By {period.created_by_name ?? "-"}</MetaChip>
+          {period.approved_at ? <><Dot /><MetaChip>Approved {period.approved_at}</MetaChip></> : null}
+          {period.paid_at ? <><Dot /><MetaChip>Paid {period.paid_at}</MetaChip></> : null}
+          {period.closed_at ? <><Dot /><MetaChip>Closed {period.closed_at}</MetaChip></> : null}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <StatusBadge value={displayStatus} />
+        <div className="flex gap-1">
+          <Link to={`/payroll/runs?period_id=${period.id}`}><RowActionButton intent="view" title="Open runs"><Search className="h-4 w-4" /></RowActionButton></Link>
+          {canUpdate ? <RowActionButton intent="edit" title="Edit period" onClick={onEdit}><Edit className="h-4 w-4" /></RowActionButton> : null}
+          {canCalculate ? <RowActionButton intent="generate" title="Generate run" onClick={onGenerate}><PlayCircle className="h-4 w-4" /></RowActionButton> : null}
+          {canCancel && !["FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"].includes(displayStatus) ? <RowActionButton intent="delete" title="Cancel period" onClick={onCancel}><XCircle className="h-4 w-4" /></RowActionButton> : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function PayrollPeriodsPage() {
@@ -132,16 +187,30 @@ export function PayrollPeriodsPage() {
           </StandardFilterBar>
           <ActiveFilterChips chips={activeFilterChips} className="mt-2" />
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Month/year</TableHead><TableHead>Start</TableHead><TableHead>End</TableHead><TableHead>Payment date</TableHead><TableHead>Status</TableHead><TableHead>Created by</TableHead><TableHead>Approved</TableHead><TableHead>Paid</TableHead><TableHead>Closed</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>{periods.map((period) => {
+        {loading ? (
+          <TableSkeleton rows={6} columns={8} label="Loading payroll periods" />
+        ) : periods.length === 0 ? (
+          <EmptyState title="No payroll periods" description="Create a period before generating payroll runs." />
+        ) : (
+          <div className="flex flex-col gap-2 p-3">
+            {periods.map((period) => {
               const displayStatus = normalizePeriodStatus(period.status);
-              return <TableRow key={period.id}><TableCell className="font-medium">{period.period_month}/{period.period_year}</TableCell><TableCell>{period.start_date}</TableCell><TableCell>{period.end_date}</TableCell><TableCell>{period.salary_payment_date ?? "-"}</TableCell><TableCell><StatusBadge value={displayStatus} /></TableCell><TableCell>{period.created_by_name ?? "-"}</TableCell><TableCell>{period.approved_at ?? "-"}</TableCell><TableCell>{period.paid_at ?? "-"}</TableCell><TableCell>{period.closed_at ?? "-"}</TableCell><TableCell><div className="flex justify-end gap-1"><Link to={`/payroll/runs?period_id=${period.id}`}><RowActionButton intent="view" title="Open runs"><Search className="h-4 w-4" /></RowActionButton></Link>{canUpdate ? <RowActionButton intent="edit" title="Edit period" onClick={() => { setForm({ start_date: period.start_date, end_date: period.end_date, salary_payment_date: period.salary_payment_date ?? "" }); setModal({ type: "edit", period }); }}><Edit className="h-4 w-4" /></RowActionButton> : null}{canCalculate ? <RowActionButton intent="generate" title="Generate run" onClick={() => { setForm({}); setModal({ type: "generate", period }); }}><PlayCircle className="h-4 w-4" /></RowActionButton> : null}{canCancel && !["FINALIZED_PLACEHOLDER", "LOCKED", "CANCELLED"].includes(displayStatus) ? <RowActionButton intent="delete" title="Cancel period" onClick={() => { setForm({ reason: "" }); setModal({ type: "cancel", period }); }}><XCircle className="h-4 w-4" /></RowActionButton> : null}</div></TableCell></TableRow>;
-            })}</TableBody>
-          </Table>
-        </div>
-        {loading ? <TableSkeleton rows={6} columns={8} label="Loading payroll periods" /> : periods.length === 0 ? <EmptyState title="No payroll periods" description="Create a period before generating payroll runs." /> : null}
+              return (
+                <PeriodCardRow
+                  key={period.id}
+                  period={period}
+                  canUpdate={canUpdate}
+                  canCalculate={canCalculate}
+                  canCancel={canCancel}
+                  displayStatus={displayStatus}
+                  onEdit={() => { setForm({ start_date: period.start_date, end_date: period.end_date, salary_payment_date: period.salary_payment_date ?? "" }); setModal({ type: "edit", period }); }}
+                  onGenerate={() => { setForm({}); setModal({ type: "generate", period }); }}
+                  onCancel={() => { setForm({ reason: "" }); setModal({ type: "cancel", period }); }}
+                />
+              );
+            })}
+          </div>
+        )}
       </Panel>
       {modal ? <PeriodModal modal={modal} form={form} setForm={setForm} onClose={() => { setModal(null); setForm({}); }} onSubmit={() => void submitModal()} /> : null}
     </PageShell>
