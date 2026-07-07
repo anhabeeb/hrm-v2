@@ -49,6 +49,7 @@ interface PageHeaderProps {
   primaryAction?: ReactNode;
   secondaryActions?: ReactNode;
   moduleStatus?: ReactNode;
+  variant?: "card" | "plain";
   className?: string;
 }
 
@@ -90,6 +91,7 @@ export function PageHeader({
   primaryAction,
   secondaryActions,
   moduleStatus,
+  variant = "card",
   className
 }: PageHeaderProps) {
   const location = useLocation();
@@ -120,7 +122,7 @@ export function PageHeader({
   ) : null;
 
   return (
-    <div className={cn("box-border flex w-full max-w-none min-w-0 flex-col gap-3 rounded-lg border bg-white px-4 py-4 shadow-panel lg:flex-row lg:items-center lg:justify-between", className)}>
+    <div className={cn("box-border flex w-full max-w-none min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between", variant === "plain" ? "" : "rounded-lg border bg-white px-4 py-4 shadow-panel", className)}>
       <div className="flex min-w-0 items-start gap-3">
         {icon ? <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-slate-50 text-slate-600">{icon}</div> : null}
         <div className="min-w-0">

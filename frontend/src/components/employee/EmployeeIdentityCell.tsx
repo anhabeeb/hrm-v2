@@ -26,6 +26,17 @@ function canUseSecureAvatar(employee?: Partial<Employee> | null): employee is Em
   return Boolean(employee?.id && employee?.employee_no && employee?.full_name);
 }
 
+// Same approved 6-triad category palette used for badges/charts elsewhere;
+// avatars aren't semantically tied to a category, so we just cycle through it.
+const AVATAR_COLOR_PALETTE = [
+  { bg: "#E6F1FB", text: "#0C447C" },
+  { bg: "#FAECE7", text: "#993C1D" },
+  { bg: "#EAF3DE", text: "#27500A" },
+  { bg: "#EEEDFE", text: "#534AB7" },
+  { bg: "#FAEEDA", text: "#854F0B" },
+  { bg: "#FCEBEB", text: "#A32D2D" }
+];
+
 export function AvatarWithFallback({
   employee,
   token,
@@ -34,6 +45,7 @@ export function AvatarWithFallback({
   avatarUrl,
   profilePhotoUrl,
   size = "md",
+  colorIndex,
   className
 }: {
   employee?: Partial<Employee> | null;
@@ -43,6 +55,7 @@ export function AvatarWithFallback({
   avatarUrl?: string | null;
   profilePhotoUrl?: string | null;
   size?: IdentitySize;
+  colorIndex?: number;
   className?: string;
 }) {
   const classes = sizeClasses[size];
@@ -52,9 +65,13 @@ export function AvatarWithFallback({
 
   const src = profilePhotoUrl || avatarUrl;
   const value = initials(name ?? employee?.full_name ?? employee?.display_name, employeeNumber ?? employee?.employee_no);
+  const color = colorIndex !== undefined ? AVATAR_COLOR_PALETTE[colorIndex % AVATAR_COLOR_PALETTE.length] : null;
 
   return (
-    <div className={cn(classes.avatar, "flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 font-semibold text-slate-600", className)}>
+    <div
+      className={cn(classes.avatar, "flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold", !color && "border border-slate-200 bg-slate-100 text-slate-600", className)}
+      style={color && !src ? { background: color.bg, color: color.text } : undefined}
+    >
       {src ? <img src={src} alt={name ?? "Employee"} className="h-full w-full object-cover" /> : value || <UserRound className="h-4 w-4 text-slate-500" />}
     </div>
   );
@@ -86,6 +103,7 @@ export function EmployeeIdentityCell({
   showMetadata = true,
   showStatus = false,
   to,
+  colorIndex,
   className
 }: {
   employee?: Partial<Employee> | null;
@@ -103,6 +121,7 @@ export function EmployeeIdentityCell({
   showMetadata?: boolean;
   showStatus?: boolean;
   to?: string | null;
+  colorIndex?: number;
   className?: string;
 }) {
   const name = employeeName ?? employee?.full_name ?? employee?.display_name ?? "Unknown employee";
@@ -125,6 +144,7 @@ export function EmployeeIdentityCell({
         avatarUrl={avatarUrl}
         profilePhotoUrl={profilePhotoUrl}
         size={size}
+        colorIndex={colorIndex}
       />
       <div className="min-w-0">
         <div className={cn("flex min-w-0 items-center gap-2 font-medium leading-tight text-slate-900", classes.title)}>

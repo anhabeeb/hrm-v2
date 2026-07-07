@@ -1,4 +1,4 @@
-import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Save, Search, SlidersHorizontal, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Save, Search, SlidersHorizontal, X } from "lucide-react";
 import { Children, Fragment, isValidElement, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -251,6 +251,7 @@ export function StandardFilterBar({
   reset,
   saveView,
   actions,
+  variant = "card",
   className
 }: {
   search?: ReactNode;
@@ -259,6 +260,7 @@ export function StandardFilterBar({
   reset?: ReactNode;
   saveView?: ReactNode;
   actions?: ReactNode;
+  variant?: "card" | "plain";
   className?: string;
 }) {
   const { leftFilters, rightActions: slottedRightActions } = partitionFilterChildren(children);
@@ -267,7 +269,7 @@ export function StandardFilterBar({
   return (
     <div
       data-standard-filter-bar
-      className={cn("rounded-lg border bg-white px-3 py-3 shadow-panel", className)}
+      className={cn(variant === "plain" ? "" : "rounded-lg border bg-white px-3 py-3 shadow-panel", className)}
     >
       <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between" data-filter-layout-row>
         <div data-filter-left-group data-filter-left-filters data-left-filters className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -370,6 +372,7 @@ export function StandardSelectFilter({
   loading,
   width = "default",
   widthVariant,
+  variant = "field",
   className,
   ariaLabel
 }: {
@@ -382,10 +385,40 @@ export function StandardSelectFilter({
   loading?: boolean;
   width?: FilterWidthVariant;
   widthVariant?: FilterWidthVariant;
+  variant?: "field" | "plain";
   className?: string;
   ariaLabel?: string;
 }) {
   const resolvedWidth = widthVariant ?? width;
+  const optionsList = (
+    <>
+      {allLabel ? <option value="">{loading ? "Loading..." : allLabel}</option> : null}
+      {!allLabel && placeholder ? <option value="">{loading ? "Loading..." : placeholder}</option> : null}
+      {options.map((option) => (
+        <option key={option.value} value={option.value} disabled={option.disabled} title={option.title ?? option.label}>
+          {option.label}
+        </option>
+      ))}
+    </>
+  );
+
+  if (variant === "plain") {
+    return (
+      <div className={cn("relative shrink-0", className)}>
+        <SelectField
+          aria-label={ariaLabel ?? placeholder ?? allLabel ?? "Filter"}
+          className="h-8 w-full cursor-pointer appearance-none truncate border-0 bg-transparent py-0 pl-0 pr-5 text-xs font-normal text-muted-foreground hover:text-slate-900"
+          disabled={disabled || loading}
+          value={value}
+          onValueChange={onValueChange}
+          title={options.find((option) => option.value === value)?.label}
+        >
+          {optionsList}
+        </SelectField>
+        <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <SelectField
@@ -396,13 +429,7 @@ export function StandardSelectFilter({
       onValueChange={onValueChange}
       title={options.find((option) => option.value === value)?.label}
     >
-      {allLabel ? <option value="">{loading ? "Loading..." : allLabel}</option> : null}
-      {!allLabel && placeholder ? <option value="">{loading ? "Loading..." : placeholder}</option> : null}
-      {options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled} title={option.title ?? option.label}>
-          {option.label}
-        </option>
-      ))}
+      {optionsList}
     </SelectField>
   );
 }
@@ -559,6 +586,7 @@ export function MoreFiltersSheet({
   onReset,
   onApply,
   triggerLabel = "More Filters",
+  triggerVariant = "button",
   disabled
 }: {
   children: ReactNode;
@@ -569,6 +597,7 @@ export function MoreFiltersSheet({
   onReset?: () => void;
   onApply?: () => void;
   triggerLabel?: string;
+  triggerVariant?: "button" | "plain";
   disabled?: boolean;
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
@@ -581,10 +610,21 @@ export function MoreFiltersSheet({
   return (
     <Sheet open={isOpen} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="outline" className="h-10 whitespace-nowrap" disabled={disabled}>
-          <SlidersHorizontal className="h-4 w-4" />
-          {triggerLabel}
-        </Button>
+        {triggerVariant === "plain" ? (
+          <button
+            type="button"
+            disabled={disabled}
+            className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium text-primary hover:text-primary/80 disabled:pointer-events-none disabled:opacity-50"
+          >
+            <SlidersHorizontal className="h-3 w-3" />
+            {triggerLabel}
+          </button>
+        ) : (
+          <Button variant="outline" className="h-10 whitespace-nowrap" disabled={disabled}>
+            <SlidersHorizontal className="h-4 w-4" />
+            {triggerLabel}
+          </Button>
+        )}
       </SheetTrigger>
       <SheetContent side="right" aria-label={title}>
         <SheetHeader>
@@ -636,7 +676,20 @@ export function ActiveFilterChips({ chips, className }: { chips: ActiveFilterChi
   );
 }
 
-export function FilterResetButton({ onReset, disabled, label = "Reset" }: { onReset: () => void; disabled?: boolean; label?: string }) {
+export function FilterResetButton({ onReset, disabled, label = "Reset", variant = "button" }: { onReset: () => void; disabled?: boolean; label?: string; variant?: "button" | "plain" }) {
+  if (variant === "plain") {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onReset}
+        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium text-muted-foreground hover:text-slate-900 disabled:pointer-events-none disabled:opacity-50"
+      >
+        <RefreshCw className="h-3 w-3" />
+        {label}
+      </button>
+    );
+  }
   return (
     <Button variant="outline" className="h-10 whitespace-nowrap" disabled={disabled} onClick={onReset}>
       {label}

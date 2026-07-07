@@ -11,9 +11,10 @@ export type ExportMenuProps = {
   disabled?: boolean;
   filterSummary?: string[];
   onBackendExport?: (format: "xlsx" | "pdf") => Promise<void>;
+  variant?: "button" | "plain";
 };
 
-export function ExportMenu({ moduleName, rows, columns, disabled, filterSummary = [], onBackendExport }: ExportMenuProps) {
+export function ExportMenu({ moduleName, rows, columns, disabled, filterSummary = [], onBackendExport, variant = "button" }: ExportMenuProps) {
   const [open, setOpen] = useState(false);
   const [running, setRunning] = useState<"xlsx" | "pdf" | null>(null);
 
@@ -30,10 +31,22 @@ export function ExportMenu({ moduleName, rows, columns, disabled, filterSummary 
 
   return (
     <div className="relative inline-flex">
-      <ActionTextButton intent="export" size="sm" onClick={() => setOpen((value) => !value)} disabled={disabled}>
-        <Download className="h-4 w-4" />
-        Export
-      </ActionTextButton>
+      {variant === "plain" ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-muted-foreground hover:text-slate-900 disabled:pointer-events-none disabled:opacity-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Export
+        </button>
+      ) : (
+        <ActionTextButton intent="export" size="sm" onClick={() => setOpen((value) => !value)} disabled={disabled}>
+          <Download className="h-4 w-4" />
+          Export
+        </ActionTextButton>
+      )}
       {open ? (
         <Panel className="absolute right-0 top-10 z-30 w-56 p-2 shadow-xl">
           <div className="px-2 pb-2 text-xs font-medium text-muted-foreground">Export {moduleName}</div>

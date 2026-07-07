@@ -1,5 +1,9 @@
-import type { ReactNode } from "react";
+import { MoreVertical } from "lucide-react";
+import { useState, type ComponentType, type ReactNode } from "react";
 import { EmployeeIdentityCell } from "./EmployeeIdentityCell";
+import { Panel } from "../ui/panel";
+import { cn } from "../../lib/utils";
+import { humanizeTechnicalLabel } from "../../lib/displayLabels";
 import type { Employee } from "../../types/employees";
 
 /**
@@ -59,28 +63,22 @@ export function EmployeeCardRow({
   employee,
   token,
   to,
-  actions
+  colorIndex,
+  actions,
+  overflowActions
 }: {
   employee: Employee;
   token?: string | null;
   to: string;
+  colorIndex?: number;
   actions?: ReactNode;
+  overflowActions?: ReactNode;
 }) {
   const statusLabel = employee.status_name ?? employee.status_key ?? "-";
   const tone = employeeStatusTone(employee.status_key);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 16,
-        padding: "0.9rem 1.1rem",
-        background: "var(--v3-surface-2)",
-        border: "0.5px solid var(--v3-border)",
-        borderRadius: "var(--v3-radius-card)"
-      }}
-    >
+    <Panel className="flex items-center gap-4 p-3.5">
       <div className="min-w-0 flex-1">
         <EmployeeIdentityCell
           employee={employee}
@@ -90,25 +88,72 @@ export function EmployeeCardRow({
           employeeName={employee.full_name}
           employeeNumber={employee.employee_no}
           to={to}
+          colorIndex={colorIndex}
         />
         <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[52px]">
           <MetaChip>{employee.employee_no}</MetaChip>
           {employee.department_name ? <><Dot /><MetaChip>{employee.department_name}</MetaChip></> : null}
-          {employee.position_title ? <><Dot /><MetaChip>{employee.position_title}</MetaChip></> : null}
-          {employee.location_name ? <><Dot /><MetaChip>{employee.location_name}</MetaChip></> : null}
-          {employee.job_level_name ? <><Dot /><MetaChip>{employee.job_level_name}</MetaChip></> : null}
-          <Dot /><MetaChip>{employee.employment_type}</MetaChip>
-          {employee.joining_date ? <><Dot /><MetaChip>Joined {employee.joining_date}</MetaChip></> : null}
+          <Dot /><MetaChip>{humanizeTechnicalLabel(employee.employment_type)}</MetaChip>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        <EmployeeStatusPill tone={employee.user_linked ? "success" : "neutral"}>
-          {employee.user_linked ? "User linked" : "No user"}
-        </EmployeeStatusPill>
+      <div className="flex shrink-0 items-center gap-3">
         <EmployeeStatusPill tone={tone}>{statusLabel}</EmployeeStatusPill>
-        {actions}
+        <div className="flex items-center gap-1 border-l pl-3" style={{ borderColor: "var(--v3-border)" }}>
+          {actions}
+          {overflowActions ? <RowOverflowMenu>{overflowActions}</RowOverflowMenu> : null}
+        </div>
       </div>
+    </Panel>
+  );
+}
+
+export function RowOverflowMenu({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        aria-label="More actions"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open ? (
+        <Panel className="absolute right-0 top-9 z-30 w-44 p-1" onClick={() => setOpen(false)}>
+          <div className="flex flex-col">{children}</div>
+        </Panel>
+      ) : null}
     </div>
+  );
+}
+
+export function MenuAction({
+  icon: Icon,
+  destructive,
+  disabled,
+  onClick,
+  children
+}: {
+  icon: ComponentType<{ className?: string }>;
+  destructive?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium disabled:pointer-events-none disabled:opacity-50",
+        destructive ? "text-[#A32D2D] hover:bg-[#FCEBEB]" : "text-slate-700 hover:bg-slate-100"
+      )}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      {children}
+    </button>
   );
 }
