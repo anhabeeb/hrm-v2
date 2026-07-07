@@ -51,6 +51,8 @@ const EmployeesPageV3 = lazyPage(() => import("../pages-v3/EmployeesPage"), "Emp
 const EmployeeProfilePageV3 = lazyPage(() => import("../pages-v3/EmployeeProfilePage"), "EmployeeProfilePage");
 const AttendanceListPageV3 = lazyPage(() => import("../pages-v3/AttendanceListPage"), "AttendanceListPage");
 const AttendanceEmployeeCalendarPageV3 = lazyPage(() => import("../pages-v3/AttendanceEmployeeCalendarPage"), "AttendanceEmployeeCalendarPage");
+const PayrollRunsListPageV3 = lazyPage(() => import("../pages-v3/PayrollRunsListPage"), "PayrollRunsListPage");
+const PayrollRunDetailPageV3 = lazyPage(() => import("../pages-v3/PayrollRunDetailPage"), "PayrollRunDetailPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -242,6 +244,8 @@ export function AppRoutes() {
             <Route path="v3-preview/employees/:id" element={<EmployeeProfilePageV3 />} />
             <Route path="v3-preview/attendance" element={<AttendanceListPageV3 />} />
             <Route path="v3-preview/attendance/:employeeId" element={<AttendanceEmployeeCalendarPageV3 />} />
+            <Route path="v3-preview/payroll/runs" element={<PayrollRunsListPageV3 />} />
+            <Route path="v3-preview/payroll/runs/:runId" element={<PayrollRunDetailPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
