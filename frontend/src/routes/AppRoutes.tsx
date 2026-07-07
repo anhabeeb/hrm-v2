@@ -45,6 +45,8 @@ const UniformTypesPage = lazyPage(() => import("../pages/AssetUniformAdvancedPag
 const AuditLogPage = lazyPage(() => import("../pages/AuditLogPage"), "AuditLogPage");
 const ContractsPage = lazyPage(() => import("../pages/ContractsPage"), "ContractsPage");
 const DashboardPage = lazyPage(() => import("../pages/DashboardPage"), "DashboardPage");
+// Temporary preview-only routes for the pages-v3 redesign rebuild (see project memory) — not linked from any nav, removed once each page is promoted to replace its pages/ counterpart.
+const DashboardPageV3 = lazyPage(() => import("../pages-v3/DashboardPage"), "DashboardPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -231,6 +233,7 @@ export function AppRoutes() {
             <Route index element={<DashboardPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="command-center" element={<Navigate to="/dashboard" replace />} />
+            <Route path="v3-preview/dashboard" element={<DashboardPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
