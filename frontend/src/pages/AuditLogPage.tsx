@@ -40,21 +40,6 @@ export function AuditLogPage() {
 
   useEffect(() => { void load(); }, [token, canView]);
 
-  async function exportCsv() {
-    if (!token) return;
-    try {
-      const file = await api.exportAuditLogsCsv(token, filters);
-      const href = URL.createObjectURL(file.blob);
-      const link = document.createElement("a");
-      link.href = href;
-      link.download = file.filename;
-      link.click();
-      URL.revokeObjectURL(href);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to export audit log.");
-    }
-  }
-
   function setDateRange(range: StandardDateRange) {
     setFilters((current) => ({ ...current, date_from: range.from ?? "", date_to: range.to ?? "" }));
   }
@@ -95,10 +80,6 @@ export function AuditLogPage() {
             columns={["created_at", "module", "action", "entity_type", "entity_id", "actor_name", "actor_email", "reason", "ip_address"]}
             filterSummary={Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)}
             onBackendExport={async (format) => {
-              if (format === "csv") {
-                await exportCsv();
-                return;
-              }
               const { exportRows } = await import("../lib/export-utils");
               exportRows(format, "Audit Log", ["created_at", "module", "action", "entity_type", "entity_id", "actor_name", "actor_email", "reason", "ip_address"], rows as unknown as Record<string, unknown>[], Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`));
             }}

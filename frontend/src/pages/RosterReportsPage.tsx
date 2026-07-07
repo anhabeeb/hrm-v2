@@ -10,7 +10,6 @@ import { Badge } from "../components/ui/badge";
 import { Panel } from "../components/ui/panel";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
-import { downloadBlob } from "../lib/export-utils";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 import type { RosterAssignmentStatus } from "../types/roster";
 
@@ -71,16 +70,6 @@ export function RosterReportsPage() {
 
   const filtered = reports;
 
-  async function exportCsv() {
-    if (!token) return;
-    try {
-      const download = await api.exportRosterReportCsv(token, filters);
-      downloadBlob(download.blob, download.filename || `roster-report-${weekStart}.csv`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to export roster report.");
-    }
-  }
-
   if (!canView) return <PageShell><Panel><EmptyState title="Roster reports unavailable" description="Your account needs roster.reports.view permission." /></Panel></PageShell>;
   if (moduleDisabled) {
     return (
@@ -104,10 +93,6 @@ export function RosterReportsPage() {
             columns={["employee_no", "employee_name", "department_name", "location_name", "scheduled_days", "off_days", "leave_days", "unassigned_days", "scheduled_minutes"]}
             filterSummary={Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)}
             onBackendExport={async (format) => {
-              if (format === "csv") {
-                await exportCsv();
-                return;
-              }
               const { exportRows } = await import("../lib/export-utils");
               exportRows(format, "Roster Reports", ["employee_no", "employee_name", "department_name", "location_name", "scheduled_days", "off_days", "leave_days", "unassigned_days", "scheduled_minutes"], filtered, Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`));
             }}

@@ -34,21 +34,50 @@
   --v3-border-strong: #D3D3E3;
   --v3-accent: #7F77DD;
   --v3-accent-strong: #5B4FE9;
-  --v3-bg-accent: #EEEDFE;
-  --v3-text-accent: #534AB7;
-  --v3-bg-success: #EAF3DE;
-  --v3-text-success: #3B6D11;
-  --v3-bg-warning: #FAEEDA;
-  --v3-text-warning: #854F0B;
-  --v3-bg-danger: #FCEBEB;
-  --v3-text-danger: #A32D2D;
   --v3-radius-card: 12px;
+  --v3-shadow-card: 0 1px 3px rgba(20, 22, 43, 0.07), 0 1px 2px rgba(20, 22, 43, 0.04);
+
+  /* Category color triads (swatch/text/bg) — the app's single source of truth for
+     tagging/status color everywhere: badges, leave-balance rings, category icons,
+     calendar day states. Six named colors, not domain-specific (e.g. not
+     "leaveAnnual") so the same set applies across leave types, asset categories,
+     document types, attendance states, and anywhere else that needs 6 distinguishable
+     tones at a glance. */
+  --v3-category-blue: #378ADD;
+  --v3-category-blue-text: #0C447C;
+  --v3-category-blue-bg: #E6F1FB;
+  --v3-category-coral: #F0997B;
+  --v3-category-coral-text: #993C1D;
+  --v3-category-coral-bg: #FAECE7;
+  --v3-category-green: #5DCAA5;
+  --v3-category-green-text: #27500A;
+  --v3-category-green-bg: #EAF3DE;
+  --v3-category-pink-violet: #AFA9EC;
+  --v3-category-pink-violet-text: #534AB7;
+  --v3-category-pink-violet-bg: #EEEDFE;
+  --v3-category-amber: #FAC775;
+  --v3-category-amber-text: #854F0B;
+  --v3-category-amber-bg: #FAEEDA;
+  --v3-category-red: #F09595;
+  --v3-category-red-text: #A32D2D;
+  --v3-category-red-bg: #FCEBEB;
+
+  /* Semantic aliases — same 6 colors, referenced (not duplicated) so there is one
+     definition per color. */
+  --v3-bg-accent: var(--v3-category-pink-violet-bg);
+  --v3-text-accent: var(--v3-category-pink-violet-text);
+  --v3-bg-success: var(--v3-category-green-bg);
+  --v3-text-success: var(--v3-category-green-text);
+  --v3-bg-warning: var(--v3-category-amber-bg);
+  --v3-text-warning: var(--v3-category-amber-text);
+  --v3-bg-danger: var(--v3-category-red-bg);
+  --v3-text-danger: var(--v3-category-red-text);
 
   /* Leave-type ring colors — soft, distinguishable, not primary-saturated */
-  --v3-ring-annual: #AFA9EC;
-  --v3-ring-sick: #F0997B;
-  --v3-ring-casual: #5DCAA5;
-  --v3-ring-other: #F0C96B;
+  --v3-ring-annual: var(--v3-category-pink-violet);
+  --v3-ring-sick: var(--v3-category-coral);
+  --v3-ring-casual: var(--v3-category-green);
+  --v3-ring-other: var(--v3-category-amber);
 }
 
 * {
@@ -74,6 +103,32 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+/* Themed scrollbar — apply to any scrollable region (sidebar nav, dialogs,
+   long lists/tables) instead of the browser default. Standard properties
+   cover Firefox + modern Chromium; the ::-webkit-scrollbar rules give the
+   same look (and an exact 6px width) on older WebKit/Chromium. */
+.themed-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #D3D3E3 transparent;
+}
+.themed-scroll:hover {
+  scrollbar-color: #AFA9EC transparent;
+}
+.themed-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.themed-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.themed-scroll::-webkit-scrollbar-thumb {
+  background-color: #D3D3E3;
+  border-radius: 3px;
+}
+.themed-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: #AFA9EC;
 }
 
 @keyframes loader-slide {

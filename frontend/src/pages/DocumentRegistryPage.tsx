@@ -110,16 +110,6 @@ export function DocumentRegistryPage() {
     void load();
   }, [token, canView, activeFilters]);
 
-  async function exportCsv() {
-    if (!token) return;
-    try {
-      const result = await api.exportDocumentRegistryCsv(token, activeFilters);
-      downloadBlob(result.blob, result.filename);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to export registry.");
-    }
-  }
-
   async function download(doc: EmployeeDocument) {
     if (!token) return;
     try {
@@ -199,10 +189,6 @@ export function DocumentRegistryPage() {
               columns={["employee_no", "employee_name", "document_type_name", "document_number", "display_status", "issue_date", "expiry_date", "created_at"]}
               filterSummary={Object.entries(activeFilters).map(([key, value]) => `${key}: ${value}`)}
               onBackendExport={async (format) => {
-                if (format === "csv") {
-                  await exportCsv();
-                  return;
-                }
                 const { exportRows } = await import("../lib/export-utils");
                 exportRows(format, "Document Registry", ["employee_no", "employee_name", "document_type_name", "document_number", "display_status", "issue_date", "expiry_date", "created_at"], documents as unknown as Record<string, unknown>[], Object.entries(activeFilters).map(([key, value]) => `${key}: ${value}`));
               }}

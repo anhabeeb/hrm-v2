@@ -46,10 +46,13 @@ export default {
       borderRadius: {
         lg: "8px",
         md: "6px",
-        sm: "4px"
+        sm: "4px",
+        // Card radius for the approved redesign — kept separate from `lg` since
+        // `lg` is used 100+ times app-wide for buttons/badges/modals/etc, not just cards.
+        card: "12px"
       },
       boxShadow: {
-        panel: "0 1px 2px rgba(15, 23, 42, 0.06)"
+        panel: "0 1px 3px rgba(20, 22, 43, 0.07), 0 1px 2px rgba(20, 22, 43, 0.04)"
       }
     }
   },

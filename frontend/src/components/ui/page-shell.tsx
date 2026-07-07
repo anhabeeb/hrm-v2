@@ -576,7 +576,7 @@ export function NoSearchResultsState({ action }: { action?: ReactNode }) {
   return <ErrorState title="No matching records" description="No results match the current search and filters." action={action} />;
 }
 
-type StandardTabItem = {
+export type StandardTabItem = {
   key: string;
   label: ReactNode;
   icon?: ReactNode;

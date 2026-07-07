@@ -10,14 +10,14 @@ export type ExportMenuProps = {
   columns: Array<string | ExportColumn>;
   disabled?: boolean;
   filterSummary?: string[];
-  onBackendExport?: (format: "csv" | "xlsx" | "pdf") => Promise<void>;
+  onBackendExport?: (format: "xlsx" | "pdf") => Promise<void>;
 };
 
 export function ExportMenu({ moduleName, rows, columns, disabled, filterSummary = [], onBackendExport }: ExportMenuProps) {
   const [open, setOpen] = useState(false);
-  const [running, setRunning] = useState<"csv" | "xlsx" | "pdf" | null>(null);
+  const [running, setRunning] = useState<"xlsx" | "pdf" | null>(null);
 
-  async function run(format: "csv" | "xlsx" | "pdf") {
+  async function run(format: "xlsx" | "pdf") {
     setRunning(format);
     try {
       if (onBackendExport) await onBackendExport(format);
@@ -38,10 +38,6 @@ export function ExportMenu({ moduleName, rows, columns, disabled, filterSummary 
         <Panel className="absolute right-0 top-10 z-30 w-56 p-2 shadow-xl">
           <div className="px-2 pb-2 text-xs font-medium text-muted-foreground">Export {moduleName}</div>
           <div className="grid gap-1">
-            <ActionTextButton intent="export" size="sm" className="justify-start" onClick={() => void run("csv")} disabled={Boolean(running)}>
-              <FileText className="h-4 w-4" />
-              CSV
-            </ActionTextButton>
             <ActionTextButton intent="export" size="sm" className="justify-start" onClick={() => void run("xlsx")} disabled={Boolean(running)}>
               <FileSpreadsheet className="h-4 w-4" />
               Excel .xlsx

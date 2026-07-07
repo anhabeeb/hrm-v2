@@ -27,7 +27,7 @@ export type NavigationTabsVariant = "equal" | "scrollable" | "compact";
 export const NAVIGATION_TAB_SIZE_TOKENS = {
   tabWidth: "min-w-fit",
   tabHeight: "h-10 min-h-10 max-h-10",
-  shell: "box-border w-full max-w-none min-w-0 overflow-x-auto rounded-lg border bg-white p-1 shadow-panel [scrollbar-width:thin]",
+  shell: "themed-scroll box-border w-full max-w-none min-w-0 overflow-x-auto rounded-lg border bg-white p-1 shadow-panel",
   listBase: "flex w-max min-w-full items-center gap-2",
   listEqual: "flex w-max min-w-full",
   listScrollable: "flex w-max min-w-full",

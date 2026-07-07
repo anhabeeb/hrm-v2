@@ -40,19 +40,6 @@ export function normalizeExportColumns(columns: Array<string | ExportColumn>) {
   return columns.map((column) => typeof column === "string" ? { key: column, label: friendlyColumnLabel(column) } : { ...column, label: column.label ?? friendlyColumnLabel(column.key) });
 }
 
-export function csvEscape(value: unknown) {
-  const text = value === null || value === undefined ? "" : String(value);
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-export function rowsToCsv(columns: Array<string | ExportColumn>, rows: ExportRow[]) {
-  const normalized = normalizeExportColumns(columns);
-  return [
-    normalized.map((column) => csvEscape(column.label)).join(","),
-    ...rows.map((row) => normalized.map((column) => csvEscape(row[column.key])).join(","))
-  ].join("\n");
-}
-
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -266,11 +253,7 @@ function pdfText(value: string) {
   return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)").replace(/[^\x20-\x7E]/g, "?");
 }
 
-export function exportRows(format: "csv" | "xlsx" | "pdf", moduleName: string, columns: Array<string | ExportColumn>, rows: ExportRow[], metadata: string[] = []) {
-  if (format === "csv") {
-    downloadBlob(new Blob([rowsToCsv(columns, rows)], { type: "text/csv;charset=utf-8" }), exportFileName(moduleName, "csv"));
-    return;
-  }
+export function exportRows(format: "xlsx" | "pdf", moduleName: string, columns: Array<string | ExportColumn>, rows: ExportRow[], metadata: string[] = []) {
   if (format === "xlsx") {
     downloadBlob(createXlsxBlob(moduleName, columns, rows, metadata), exportFileName(moduleName, "xlsx"));
     return;

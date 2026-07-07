@@ -11,7 +11,6 @@ import { Panel } from "../components/ui/panel";
 import { PerformanceDataTable } from "../components/table/PerformanceDataTable";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
-import { downloadBlob } from "../lib/export-utils";
 import type { AssetCategory } from "../types/assets";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 
@@ -54,16 +53,6 @@ export function AssetsReportsPage() {
 
   useEffect(() => { void load(); }, [token]);
 
-  async function exportCsv() {
-    if (!token) return;
-    try {
-      const file = await api.exportAssetsReportCsv(token, filters);
-      downloadBlob(file.blob, file.filename);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to export report.");
-    }
-  }
-
   return (
       <PageShell>
       <PageHeader title="Asset Reports" description="Export-friendly asset assignment and deduction reporting." />
@@ -79,10 +68,6 @@ export function AssetsReportsPage() {
               columns={columns}
               filterSummary={Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)}
               onBackendExport={async (format) => {
-                if (format === "csv") {
-                  await exportCsv();
-                  return;
-                }
                 const { exportRows } = await import("../lib/export-utils");
                 exportRows(format, "Asset Reports", columns, rows, Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`));
               }}

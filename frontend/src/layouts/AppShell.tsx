@@ -258,7 +258,7 @@ export function AppShell() {
               ) : null}
             </div>
 
-            <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 [scrollbar-color:#94a3b8_transparent] [scrollbar-width:thin]">
+            <nav className="themed-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
               <div className={cn("space-y-1.5", collapsed && "space-y-2")}>
                 {visibleTopLevelItems.length ? (
                   <div className="mb-3 border-b border-slate-100 pb-3">

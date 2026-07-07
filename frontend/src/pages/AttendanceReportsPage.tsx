@@ -10,7 +10,6 @@ import { PageHeader, PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
-import { downloadBlob } from "../lib/export-utils";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 
 export function AttendanceReportsPage() {
@@ -70,16 +69,6 @@ export function AttendanceReportsPage() {
     void load();
   }, [token, canView, filters]);
 
-  async function exportCsv() {
-    if (!token) return;
-    try {
-      const download = await api.exportAttendanceReportCsv(token, filters);
-      downloadBlob(download.blob, download.filename || `attendance-report-${dateFrom || "all"}-${dateTo || "all"}.csv`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to export attendance report.");
-    }
-  }
-
   if (!canView) return <PageShell><Panel><EmptyState title="Attendance reports unavailable" description="Your account needs attendance.reports.view permission." /></Panel></PageShell>;
   if (attendanceDisabled) return <PageShell><PageHeader title="Attendance Reports" description="Attendance module is disabled." /><AttendanceNav /><Panel><EmptyState title="Attendance module is disabled." description="Attendance report data and exports are hidden until an administrator enables the module." /></Panel></PageShell>;
 
@@ -95,10 +84,6 @@ export function AttendanceReportsPage() {
             columns={["employee_no", "employee_name", "department_name", "location_name", "present_days", "absent_days", "late_days", "missed_punch_days", "total_work_minutes"]}
             filterSummary={Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`)}
             onBackendExport={async (format) => {
-              if (format === "csv") {
-                await exportCsv();
-                return;
-              }
               const { exportRows } = await import("../lib/export-utils");
               exportRows(format, "Attendance Reports", ["employee_no", "employee_name", "department_name", "location_name", "present_days", "absent_days", "late_days", "missed_punch_days", "total_work_minutes"], reports, Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}: ${value}`));
             }}
