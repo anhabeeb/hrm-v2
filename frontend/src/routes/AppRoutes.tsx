@@ -49,6 +49,8 @@ const DashboardPage = lazyPage(() => import("../pages/DashboardPage"), "Dashboar
 const DashboardPageV3 = lazyPage(() => import("../pages-v3/DashboardPage"), "DashboardPage");
 const EmployeesPageV3 = lazyPage(() => import("../pages-v3/EmployeesPage"), "EmployeesPage");
 const EmployeeProfilePageV3 = lazyPage(() => import("../pages-v3/EmployeeProfilePage"), "EmployeeProfilePage");
+const AttendanceListPageV3 = lazyPage(() => import("../pages-v3/AttendanceListPage"), "AttendanceListPage");
+const AttendanceEmployeeCalendarPageV3 = lazyPage(() => import("../pages-v3/AttendanceEmployeeCalendarPage"), "AttendanceEmployeeCalendarPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -238,6 +240,8 @@ export function AppRoutes() {
             <Route path="v3-preview/dashboard" element={<DashboardPageV3 />} />
             <Route path="v3-preview/employees" element={<EmployeesPageV3 />} />
             <Route path="v3-preview/employees/:id" element={<EmployeeProfilePageV3 />} />
+            <Route path="v3-preview/attendance" element={<AttendanceListPageV3 />} />
+            <Route path="v3-preview/attendance/:employeeId" element={<AttendanceEmployeeCalendarPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
