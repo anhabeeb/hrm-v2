@@ -1,19 +1,19 @@
 import { Bell, CalendarDays, CreditCard, Download, Eye, FileText, Landmark, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { EmployeeIdentityCell } from "../components/employee/EmployeeIdentityCell";
-import { Badge } from "../components/ui/badge";
-import { Button, RowActionButton } from "../components/ui/button";
-import { DataTableFrame } from "../components/ui/data-table";
-import { EmptyState } from "../components/ui/empty-state";
-import { Input } from "../components/ui/input";
-import { MobileListCard, PageHeader, PageShell, QuickActionCard, SelectField } from "../components/ui/page-shell";
-import { Panel } from "../components/ui/panel";
-import { ProgressRing } from "../components/ui/progress-ring";
-import { StatusBadge } from "../components/ui/status-badge";
-import { useAuth } from "../hooks/useAuth";
-import { ApiError, api } from "../lib/api";
-import { cn } from "../lib/utils";
+import { EmployeeIdentityCell } from "../../components/employee/EmployeeIdentityCell";
+import { Badge } from "../../components/ui/badge";
+import { Button, RowActionButton } from "../../components/ui/button";
+import { DataTableFrame } from "../../components/ui/data-table";
+import { EmptyState } from "../../components/ui/empty-state";
+import { Input } from "../../components/ui/input";
+import { MobileListCard, PageHeader, PageShell, QuickActionCard, SelectField } from "../../components/ui/page-shell";
+import { Panel } from "../../components/ui/panel";
+import { ProgressRing } from "../../components/ui/progress-ring";
+import { StatusBadge } from "../../components/ui/status-badge";
+import { useAuth } from "../../hooks/useAuth";
+import { ApiError, api } from "../../lib/api";
+import { cn } from "../../lib/utils";
 
 type Mode = "home" | "profile" | "documents" | "attendance" | "leave" | "roster" | "payroll" | "payment-methods" | "bank-loans" | "pension" | "contracts" | "onboarding" | "offboarding" | "assets" | "uniforms" | "approvals" | "notifications" | "kyc";
 type Row = Record<string, unknown>;
@@ -50,7 +50,7 @@ function navItemVisible(item: (typeof nav)[number], visibility: ModuleVisibility
   return visibilityAllows(visibility, moduleKeys) && visibilityAllows(visibility, visibilityKeys);
 }
 
-export function SelfServicePage({ mode = "home" }: { mode?: Mode }) {
+export function SelfServiceShell({ mode = "home" }: { mode?: Mode }) {
   const { token, user } = useAuth();
   const [linked, setLinked] = useState<boolean | null>(null);
   const [data, setData] = useState<Record<string, unknown> | null>(null);

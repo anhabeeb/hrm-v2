@@ -134,7 +134,24 @@ const RosterReportsPage = lazyPage(() => import("../pages/RosterReportsPage"), "
 const RosterSettingsPage = lazyPage(() => import("../pages/RosterSettingsPage"), "RosterSettingsPage");
 const RosterShiftTemplatesPage = lazyPage(() => import("../pages/RosterShiftTemplatesPage"), "RosterShiftTemplatesPage");
 const RosterWeeklyPage = lazyPage(() => import("../pages/RosterWeeklyPage"), "RosterWeeklyPage");
-const SelfServicePage = lazyPage(() => import("../pages/SelfServicePage"), "SelfServicePage");
+const SelfServiceHomePage = lazyPage(() => import("../pages/self-service/SelfServiceHomePage"), "SelfServiceHomePage");
+const SelfServiceProfilePage = lazyPage(() => import("../pages/self-service/SelfServiceProfilePage"), "SelfServiceProfilePage");
+const SelfServiceDocumentsPage = lazyPage(() => import("../pages/self-service/SelfServiceDocumentsPage"), "SelfServiceDocumentsPage");
+const SelfServiceAttendancePage = lazyPage(() => import("../pages/self-service/SelfServiceAttendancePage"), "SelfServiceAttendancePage");
+const SelfServiceLeavePage = lazyPage(() => import("../pages/self-service/SelfServiceLeavePage"), "SelfServiceLeavePage");
+const SelfServiceRosterPage = lazyPage(() => import("../pages/self-service/SelfServiceRosterPage"), "SelfServiceRosterPage");
+const SelfServicePayrollPage = lazyPage(() => import("../pages/self-service/SelfServicePayrollPage"), "SelfServicePayrollPage");
+const SelfServicePaymentMethodsPage = lazyPage(() => import("../pages/self-service/SelfServicePaymentMethodsPage"), "SelfServicePaymentMethodsPage");
+const SelfServiceBankLoansPage = lazyPage(() => import("../pages/self-service/SelfServiceBankLoansPage"), "SelfServiceBankLoansPage");
+const SelfServicePensionPage = lazyPage(() => import("../pages/self-service/SelfServicePensionPage"), "SelfServicePensionPage");
+const SelfServiceContractsPage = lazyPage(() => import("../pages/self-service/SelfServiceContractsPage"), "SelfServiceContractsPage");
+const SelfServiceOnboardingPage = lazyPage(() => import("../pages/self-service/SelfServiceOnboardingPage"), "SelfServiceOnboardingPage");
+const SelfServiceOffboardingPage = lazyPage(() => import("../pages/self-service/SelfServiceOffboardingPage"), "SelfServiceOffboardingPage");
+const SelfServiceAssetsPage = lazyPage(() => import("../pages/self-service/SelfServiceAssetsPage"), "SelfServiceAssetsPage");
+const SelfServiceUniformsPage = lazyPage(() => import("../pages/self-service/SelfServiceUniformsPage"), "SelfServiceUniformsPage");
+const SelfServiceApprovalsPage = lazyPage(() => import("../pages/self-service/SelfServiceApprovalsPage"), "SelfServiceApprovalsPage");
+const SelfServiceNotificationsPage = lazyPage(() => import("../pages/self-service/SelfServiceNotificationsPage"), "SelfServiceNotificationsPage");
+const SelfServiceKycPage = lazyPage(() => import("../pages/self-service/SelfServiceKycPage"), "SelfServiceKycPage");
 const SelfServiceSettingsPage = lazyPage(() => import("../pages/SelfServiceSettingsPage"), "SelfServiceSettingsPage");
 const SearchResultsPage = lazyPage(() => import("../pages/SearchResultsPage"), "SearchResultsPage");
 const SettingsPage = lazyPage(() => import("../pages/SettingsPage"), "SettingsPage");
@@ -165,7 +182,7 @@ registerRoutePreloader("admin-backup-retention", () => AdminBackupRetentionPage.
 registerRoutePreloader("performance-dashboard", () => PerformanceDashboardPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("admin-help", () => AdminHelpGuidePage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("users-access", () => UsersAccessPage.preload?.() ?? Promise.resolve());
-registerRoutePreloader("self-service", () => SelfServicePage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("self-service", () => SelfServiceHomePage.preload?.() ?? Promise.resolve());
 
 function RequireAuth() {
   const { loading, bootstrap, user } = useAuth();
@@ -414,24 +431,24 @@ export function AppRoutes() {
             <Route path="assets/reports" element={operational("assets_uniforms", "Assets and uniforms", <AssetsReportsPage />)} />
             <Route path="reports" element={operational(["reports", "reports_exports"], "Reports", <ReportsPage />)} />
             <Route path="reports/audit" element={<AuditLogPage />} />
-            <Route path="self-service" element={operational("self_service", "Self-service", <SelfServicePage />)} />
-            <Route path="self-service/profile" element={operational("self_service", "Self-service", <SelfServicePage mode="profile" />)} />
-            <Route path="self-service/documents" element={operationalAll(["self_service", "documents"], "Documents", <SelfServicePage mode="documents" />)} />
-            <Route path="self-service/attendance" element={operationalAll(["self_service", "attendance"], "Attendance", <SelfServicePage mode="attendance" />)} />
-            <Route path="self-service/leave" element={operationalAll(["self_service", "leave"], "Leave", <SelfServicePage mode="leave" />)} />
-            <Route path="self-service/roster" element={operationalAll(["self_service", "roster"], "Roster", <SelfServicePage mode="roster" />)} />
-            <Route path="self-service/payroll" element={operationalAll(["self_service", "payroll"], "Payroll", <SelfServicePage mode="payroll" />)} />
-            <Route path="self-service/payment-methods" element={operationalAll(["self_service", "payroll", "payroll_payment_methods"], "Payment methods", <SelfServicePage mode="payment-methods" />)} />
-            <Route path="self-service/bank-loans" element={operationalAll(["self_service", "payroll", "payroll_bank_loans"], "Bank loans", <SelfServicePage mode="bank-loans" />)} />
-            <Route path="self-service/pension" element={operationalAll(["self_service", "payroll", "payroll_pension"], "Pension", <SelfServicePage mode="pension" />)} />
-            <Route path="self-service/contracts" element={operationalAll(["self_service", "contracts"], "Contracts", <SelfServicePage mode="contracts" />)} />
-            <Route path="self-service/onboarding" element={operationalAll(["self_service", "onboarding"], "Onboarding", <SelfServicePage mode="onboarding" />)} />
-            <Route path="self-service/offboarding" element={operationalAll(["self_service", "offboarding"], "Offboarding", <SelfServicePage mode="offboarding" />)} />
-            <Route path="self-service/assets" element={operationalAll(["self_service", "assets_uniforms"], "Assets and uniforms", <SelfServicePage mode="assets" />)} />
-            <Route path="self-service/uniforms" element={operationalAll(["self_service", "assets_uniforms"], "Assets and uniforms", <SelfServicePage mode="uniforms" />)} />
-            <Route path="self-service/approvals" element={operationalAll(["self_service", "approvals"], "Approvals", <SelfServicePage mode="approvals" />)} />
-            <Route path="self-service/notifications" element={operationalAll(["self_service", "notifications"], "Notifications", <SelfServicePage mode="notifications" />)} />
-            <Route path="self-service/kyc-requests" element={operationalAll(["self_service", "documents"], "KYC requests", <SelfServicePage mode="kyc" />)} />
+            <Route path="self-service" element={operational("self_service", "Self-service", <SelfServiceHomePage />)} />
+            <Route path="self-service/profile" element={operational("self_service", "Self-service", <SelfServiceProfilePage />)} />
+            <Route path="self-service/documents" element={operationalAll(["self_service", "documents"], "Documents", <SelfServiceDocumentsPage />)} />
+            <Route path="self-service/attendance" element={operationalAll(["self_service", "attendance"], "Attendance", <SelfServiceAttendancePage />)} />
+            <Route path="self-service/leave" element={operationalAll(["self_service", "leave"], "Leave", <SelfServiceLeavePage />)} />
+            <Route path="self-service/roster" element={operationalAll(["self_service", "roster"], "Roster", <SelfServiceRosterPage />)} />
+            <Route path="self-service/payroll" element={operationalAll(["self_service", "payroll"], "Payroll", <SelfServicePayrollPage />)} />
+            <Route path="self-service/payment-methods" element={operationalAll(["self_service", "payroll", "payroll_payment_methods"], "Payment methods", <SelfServicePaymentMethodsPage />)} />
+            <Route path="self-service/bank-loans" element={operationalAll(["self_service", "payroll", "payroll_bank_loans"], "Bank loans", <SelfServiceBankLoansPage />)} />
+            <Route path="self-service/pension" element={operationalAll(["self_service", "payroll", "payroll_pension"], "Pension", <SelfServicePensionPage />)} />
+            <Route path="self-service/contracts" element={operationalAll(["self_service", "contracts"], "Contracts", <SelfServiceContractsPage />)} />
+            <Route path="self-service/onboarding" element={operationalAll(["self_service", "onboarding"], "Onboarding", <SelfServiceOnboardingPage />)} />
+            <Route path="self-service/offboarding" element={operationalAll(["self_service", "offboarding"], "Offboarding", <SelfServiceOffboardingPage />)} />
+            <Route path="self-service/assets" element={operationalAll(["self_service", "assets_uniforms"], "Assets and uniforms", <SelfServiceAssetsPage />)} />
+            <Route path="self-service/uniforms" element={operationalAll(["self_service", "assets_uniforms"], "Assets and uniforms", <SelfServiceUniformsPage />)} />
+            <Route path="self-service/approvals" element={operationalAll(["self_service", "approvals"], "Approvals", <SelfServiceApprovalsPage />)} />
+            <Route path="self-service/notifications" element={operationalAll(["self_service", "notifications"], "Notifications", <SelfServiceNotificationsPage />)} />
+            <Route path="self-service/kyc-requests" element={operationalAll(["self_service", "documents"], "KYC requests", <SelfServiceKycPage />)} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/admin" element={<AdminSettingsPage />} />
             <Route path="settings/admin/backup-retention" element={<AdminBackupRetentionPage />} />
