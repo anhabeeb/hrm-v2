@@ -93,6 +93,8 @@ const OnboardingListPageV3 = lazyPage(() => import("../pages-v3/OnboardingListPa
 const OnboardingCaseWorkspacePageV3 = lazyPage(() => import("../pages-v3/OnboardingCaseWorkspacePage"), "OnboardingCaseWorkspacePage");
 const OffboardingListPageV3 = lazyPage(() => import("../pages-v3/OffboardingListPage"), "OffboardingListPage");
 const OffboardingCaseWorkspacePageV3 = lazyPage(() => import("../pages-v3/OffboardingCaseWorkspacePage"), "OffboardingCaseWorkspacePage");
+const LifecycleSettingsPageV3 = lazyPage(() => import("../pages-v3/LifecycleSettingsPage"), "LifecycleSettingsPage");
+const OnboardingAlertsPageV3 = lazyPage(() => import("../pages-v3/OnboardingAlertsPage"), "OnboardingAlertsPage");
 const RosterWeeklyPageV3 = lazyPage(() => import("../pages-v3/RosterWeeklyPage"), "RosterWeeklyPage");
 const RosterShiftTemplatesPageV3 = lazyPage(() => import("../pages-v3/RosterShiftTemplatesPage"), "RosterShiftTemplatesPage");
 const RosterReportsPageV3 = lazyPage(() => import("../pages-v3/RosterReportsPage"), "RosterReportsPage");
@@ -409,8 +411,11 @@ export function AppRoutes() {
             <Route path="v3-preview/documents/compliance/waivers" element={<DocumentsCompliancePageV3 mode="waivers" />} />
             <Route path="v3-preview/documents/missing" element={<DocumentsMissingPageV3 />} />
             <Route path="v3-preview/onboarding" element={<OnboardingListPageV3 />} />
+            <Route path="v3-preview/onboarding/alerts" element={<OnboardingAlertsPageV3 />} />
+            <Route path="v3-preview/onboarding/settings" element={<LifecycleSettingsPageV3 kind="onboarding" />} />
             <Route path="v3-preview/onboarding/:caseId" element={<OnboardingCaseWorkspacePageV3 />} />
             <Route path="v3-preview/offboarding" element={<OffboardingListPageV3 />} />
+            <Route path="v3-preview/offboarding/settings" element={<LifecycleSettingsPageV3 kind="offboarding" />} />
             <Route path="v3-preview/offboarding/:caseId" element={<OffboardingCaseWorkspacePageV3 />} />
             <Route path="v3-preview/roster" element={<RosterWeeklyPageV3 />} />
             <Route path="v3-preview/roster/shift-templates" element={<RosterShiftTemplatesPageV3 />} />
@@ -482,14 +487,16 @@ export function AppRoutes() {
             <Route path="employees/kyc-requests" element={<KycRequestsPageV3 />} />
             <Route path="employees/settings" element={<EmployeeSettingsPageV3 />} />
             <Route path="employees/:id" element={<EmployeeProfilePageV3 />} />
-            <Route path="onboarding" element={<LegacyOnboardingRedirect />} />
-            <Route path="onboarding/cases" element={<LegacyOnboardingRedirect />} />
-            <Route path="onboarding/history" element={operational("onboarding", "Onboarding history", <OnboardingCasesPage />)} />
-            <Route path="onboarding/alerts" element={operational("onboarding", "Onboarding", <OnboardingAlertsPage />)} />
-            <Route path="onboarding/settings" element={<OnboardingSettingsPage />} />
-            <Route path="offboarding" element={operational("offboarding", "Offboarding", <OffboardingDashboardPage />)} />
-            <Route path="offboarding/cases" element={operational("offboarding", "Offboarding", <OffboardingCasesPage />)} />
-            <Route path="offboarding/settings" element={<OffboardingSettingsPage />} />
+            <Route path="onboarding" element={operational("onboarding", "Onboarding", <OnboardingListPageV3 />)} />
+            <Route path="onboarding/cases" element={operational("onboarding", "Onboarding", <OnboardingListPageV3 />)} />
+            <Route path="onboarding/history" element={operational("onboarding", "Onboarding history", <OnboardingListPageV3 />)} />
+            <Route path="onboarding/alerts" element={operational("onboarding", "Onboarding", <OnboardingAlertsPageV3 />)} />
+            <Route path="onboarding/settings" element={<LifecycleSettingsPageV3 kind="onboarding" />} />
+            <Route path="onboarding/:caseId" element={operational("onboarding", "Onboarding", <OnboardingCaseWorkspacePageV3 />)} />
+            <Route path="offboarding" element={operational("offboarding", "Offboarding", <OffboardingListPageV3 />)} />
+            <Route path="offboarding/cases" element={operational("offboarding", "Offboarding", <OffboardingListPageV3 />)} />
+            <Route path="offboarding/settings" element={<LifecycleSettingsPageV3 kind="offboarding" />} />
+            <Route path="offboarding/:caseId" element={operational("offboarding", "Offboarding", <OffboardingCaseWorkspacePageV3 />)} />
             <Route path="lifecycle/reports" element={<LifecycleReportsPage />} />
             <Route path="contracts" element={operational("contracts", "Contracts", <ContractsPage />)} />
             <Route path="contracts/probation" element={operational("contracts", "Contracts", <ContractsPage mode="probation" />)} />
