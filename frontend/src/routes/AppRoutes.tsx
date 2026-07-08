@@ -87,6 +87,9 @@ const OnboardingCaseWorkspacePageV3 = lazyPage(() => import("../pages-v3/Onboard
 const OffboardingListPageV3 = lazyPage(() => import("../pages-v3/OffboardingListPage"), "OffboardingListPage");
 const OffboardingCaseWorkspacePageV3 = lazyPage(() => import("../pages-v3/OffboardingCaseWorkspacePage"), "OffboardingCaseWorkspacePage");
 const RosterWeeklyPageV3 = lazyPage(() => import("../pages-v3/RosterWeeklyPage"), "RosterWeeklyPage");
+const RosterShiftTemplatesPageV3 = lazyPage(() => import("../pages-v3/RosterShiftTemplatesPage"), "RosterShiftTemplatesPage");
+const RosterReportsPageV3 = lazyPage(() => import("../pages-v3/RosterReportsPage"), "RosterReportsPage");
+const RosterSettingsPageV3 = lazyPage(() => import("../pages-v3/RosterSettingsPage"), "RosterSettingsPage");
 const SettingsHubPageV3 = lazyPage(() => import("../pages-v3/SettingsHubPage"), "SettingsHubPage");
 const SettingsModulesPageV3 = lazyPage(() => import("../pages-v3/SettingsModulesPage"), "SettingsModulesPage");
 const SelfServiceHomePageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceHomePage"), "SelfServiceHomePage");
@@ -373,6 +376,9 @@ export function AppRoutes() {
             <Route path="v3-preview/offboarding" element={<OffboardingListPageV3 />} />
             <Route path="v3-preview/offboarding/:caseId" element={<OffboardingCaseWorkspacePageV3 />} />
             <Route path="v3-preview/roster" element={<RosterWeeklyPageV3 />} />
+            <Route path="v3-preview/roster/shift-templates" element={<RosterShiftTemplatesPageV3 />} />
+            <Route path="v3-preview/roster/reports" element={<RosterReportsPageV3 />} />
+            <Route path="v3-preview/roster/settings" element={<RosterSettingsPageV3 />} />
             <Route path="v3-preview/settings" element={<SettingsHubPageV3 />} />
             <Route path="v3-preview/settings/modules" element={<SettingsModulesPageV3 />} />
             <Route path="v3-preview/self-service" element={<SelfServiceHomePageV3 />} />

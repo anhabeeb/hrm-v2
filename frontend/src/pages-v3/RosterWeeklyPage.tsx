@@ -7,10 +7,12 @@ import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { EmptyState } from "../components/ui/empty-state";
+import { RouteNavRail } from "../components/ui/route-nav-rail";
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
+import { ROSTER_NAV_ITEMS } from "./rosterNav";
 import type { OrganizationDepartment, OrganizationLocation } from "../types/organization";
 import type { RosterAssignment, RosterEmployeeRow, ShiftTemplate, WeeklyOffRule, WeeklyRoster } from "../types/roster";
 
@@ -165,7 +167,14 @@ export function RosterWeeklyPage() {
   }, [token, canView, weekStart, departmentId, locationId]);
 
   if (!canView) {
-    return <PageShell constrained={false}><Panel className="p-4"><EmptyState title="Roster unavailable" description="Your account needs roster.view permission." /></Panel></PageShell>;
+    return (
+      <PageShell constrained={false}>
+        <div className="flex gap-4">
+          <RouteNavRail items={ROSTER_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+          <div className="min-w-0 flex-1"><Panel className="p-4"><EmptyState title="Roster unavailable" description="Your account needs roster.view permission." /></Panel></div>
+        </div>
+      </PageShell>
+    );
   }
 
   const days = weekly?.days ?? [];
@@ -233,7 +242,9 @@ export function RosterWeeklyPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="space-y-3">
+      <div className="flex gap-4">
+        <RouteNavRail items={ROSTER_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+        <div className="min-w-0 flex-1 space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-lg font-medium text-slate-950">Weekly roster</p>
@@ -365,6 +376,7 @@ export function RosterWeeklyPage() {
             ) : null}
           </>
         )}
+        </div>
       </div>
 
       {quickPicker ? (
