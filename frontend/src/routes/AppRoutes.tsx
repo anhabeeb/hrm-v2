@@ -106,6 +106,13 @@ const ApprovalReportsPageV3 = lazyPage(() => import("../pages-v3/ApprovalReports
 const KycRequestsPageV3 = lazyPage(() => import("../pages-v3/KycRequestsPage"), "KycRequestsPage");
 const EmployeeSetupListPageV3 = lazyPage(() => import("../pages-v3/EmployeeSetupListPage"), "EmployeeSetupListPage");
 const EmployeeSettingsPageV3 = lazyPage(() => import("../pages-v3/EmployeeSettingsPage"), "EmployeeSettingsPage");
+const ReportsPageV3 = lazyPage(() => import("../pages-v3/ReportsPage"), "ReportsPage");
+const AuditLogPageV3 = lazyPage(() => import("../pages-v3/AuditLogPage"), "AuditLogPage");
+const UsersAccessUsersPageV3 = lazyPage(() => import("../pages-v3/UsersAccessUsersPage"), "UsersAccessUsersPage");
+const UsersAccessRolesPageV3 = lazyPage(() => import("../pages-v3/UsersAccessRolesPage"), "UsersAccessRolesPage");
+const UsersAccessPermissionsPageV3 = lazyPage(() => import("../pages-v3/UsersAccessPermissionsPage"), "UsersAccessPermissionsPage");
+const UsersAccessRoleMappingsPageV3 = lazyPage(() => import("../pages-v3/UsersAccessRoleMappingsPage"), "UsersAccessRoleMappingsPage");
+const UsersAccessScopesPageV3 = lazyPage(() => import("../pages-v3/UsersAccessScopesPage"), "UsersAccessScopesPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -380,6 +387,13 @@ export function AppRoutes() {
             <Route path="v3-preview/employees/kyc-requests" element={<KycRequestsPageV3 />} />
             <Route path="v3-preview/employees/setup" element={<EmployeeSetupListPageV3 />} />
             <Route path="v3-preview/employees/settings" element={<EmployeeSettingsPageV3 />} />
+            <Route path="v3-preview/reports" element={<ReportsPageV3 />} />
+            <Route path="v3-preview/audit" element={<AuditLogPageV3 />} />
+            <Route path="v3-preview/users-access/users" element={<UsersAccessUsersPageV3 />} />
+            <Route path="v3-preview/users-access/roles" element={<UsersAccessRolesPageV3 />} />
+            <Route path="v3-preview/users-access/permissions" element={<UsersAccessPermissionsPageV3 />} />
+            <Route path="v3-preview/users-access/role-mappings" element={<UsersAccessRoleMappingsPageV3 />} />
+            <Route path="v3-preview/users-access/access-scopes" element={<UsersAccessScopesPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
