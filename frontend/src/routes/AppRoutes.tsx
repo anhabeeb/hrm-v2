@@ -355,8 +355,8 @@ export function AppRoutes() {
         <Route path="/login" element={<LoginGate />} />
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
-            <Route index element={<DashboardPage />} />
-            <Route path="dashboard" element={<DashboardPage />} />
+            <Route index element={<DashboardPageV3 />} />
+            <Route path="dashboard" element={<DashboardPageV3 />} />
             <Route path="command-center" element={<Navigate to="/dashboard" replace />} />
             <Route path="v3-preview/dashboard" element={<DashboardPageV3 />} />
             <Route path="v3-preview/employees" element={<EmployeesPageV3 />} />
