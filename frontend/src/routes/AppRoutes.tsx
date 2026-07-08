@@ -103,6 +103,9 @@ const ApprovalWorkflowsPageV3 = lazyPage(() => import("../pages-v3/ApprovalWorkf
 const ApprovalDelegationsPageV3 = lazyPage(() => import("../pages-v3/ApprovalDelegationsPage"), "ApprovalDelegationsPage");
 const ApprovalTemplatesPageV3 = lazyPage(() => import("../pages-v3/ApprovalTemplatesPage"), "ApprovalTemplatesPage");
 const ApprovalReportsPageV3 = lazyPage(() => import("../pages-v3/ApprovalReportsPage"), "ApprovalReportsPage");
+const KycRequestsPageV3 = lazyPage(() => import("../pages-v3/KycRequestsPage"), "KycRequestsPage");
+const EmployeeSetupListPageV3 = lazyPage(() => import("../pages-v3/EmployeeSetupListPage"), "EmployeeSetupListPage");
+const EmployeeSettingsPageV3 = lazyPage(() => import("../pages-v3/EmployeeSettingsPage"), "EmployeeSettingsPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -374,6 +377,9 @@ export function AppRoutes() {
             <Route path="v3-preview/approvals/delegations" element={<ApprovalDelegationsPageV3 />} />
             <Route path="v3-preview/approvals/templates" element={<ApprovalTemplatesPageV3 />} />
             <Route path="v3-preview/approvals/reports" element={<ApprovalReportsPageV3 />} />
+            <Route path="v3-preview/employees/kyc-requests" element={<KycRequestsPageV3 />} />
+            <Route path="v3-preview/employees/setup" element={<EmployeeSetupListPageV3 />} />
+            <Route path="v3-preview/employees/settings" element={<EmployeeSettingsPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
