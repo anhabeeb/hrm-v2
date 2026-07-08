@@ -99,6 +99,13 @@ const RosterReportsPageV3 = lazyPage(() => import("../pages-v3/RosterReportsPage
 const RosterSettingsPageV3 = lazyPage(() => import("../pages-v3/RosterSettingsPage"), "RosterSettingsPage");
 const SettingsHubPageV3 = lazyPage(() => import("../pages-v3/SettingsHubPage"), "SettingsHubPage");
 const SettingsModulesPageV3 = lazyPage(() => import("../pages-v3/SettingsModulesPage"), "SettingsModulesPage");
+const OrganizationSettingsPageV3 = lazyPage(() => import("../pages-v3/OrganizationSettingsPage"), "OrganizationSettingsPage");
+const AdminSettingsPageV3 = lazyPage(() => import("../pages-v3/AdminSettingsPage"), "AdminSettingsPage");
+const SelfServiceSettingsPageV3 = lazyPage(() => import("../pages-v3/SelfServiceSettingsPage"), "SelfServiceSettingsPage");
+const DocumentSettingsPageV3 = lazyPage(() => import("../pages-v3/DocumentSettingsPage"), "DocumentSettingsPage");
+const DocumentComplianceSettingsPageV3 = lazyPage(() => import("../pages-v3/DocumentComplianceSettingsPage"), "DocumentComplianceSettingsPage");
+const ContractsSettingsPageV3 = lazyPage(() => import("../pages-v3/ContractsSettingsPage"), "ContractsSettingsPage");
+const EmployeeNotesSettingsPageV3 = lazyPage(() => import("../pages-v3/EmployeeNotesSettingsPage"), "EmployeeNotesSettingsPage");
 const SelfServiceHomePageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceHomePage"), "SelfServiceHomePage");
 const SelfServiceProfilePageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceProfilePage"), "SelfServiceProfilePage");
 const SelfServiceDocumentsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceDocumentsPage"), "SelfServiceDocumentsPage");
@@ -411,6 +418,14 @@ export function AppRoutes() {
             <Route path="v3-preview/roster/settings" element={<RosterSettingsPageV3 />} />
             <Route path="v3-preview/settings" element={<SettingsHubPageV3 />} />
             <Route path="v3-preview/settings/modules" element={<SettingsModulesPageV3 />} />
+            <Route path="v3-preview/settings/organization" element={<OrganizationSettingsPageV3 />} />
+            <Route path="v3-preview/settings/admin" element={<AdminSettingsPageV3 />} />
+            <Route path="v3-preview/settings/self-service" element={<SelfServiceSettingsPageV3 />} />
+            <Route path="v3-preview/settings/documents" element={<DocumentSettingsPageV3 />} />
+            <Route path="v3-preview/settings/documents/compliance" element={<DocumentComplianceSettingsPageV3 />} />
+            <Route path="v3-preview/settings/documents/compliance/types" element={<DocumentComplianceSettingsPageV3 initialTab="type-rules" />} />
+            <Route path="v3-preview/settings/contracts" element={<ContractsSettingsPageV3 />} />
+            <Route path="v3-preview/settings/employee-notes" element={<EmployeeNotesSettingsPageV3 />} />
             <Route path="v3-preview/self-service" element={<SelfServiceHomePageV3 />} />
             <Route path="v3-preview/self-service/profile" element={<SelfServiceProfilePageV3 />} />
             <Route path="v3-preview/self-service/documents" element={<SelfServiceDocumentsPageV3 />} />
