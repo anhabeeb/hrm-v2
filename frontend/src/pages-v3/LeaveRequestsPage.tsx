@@ -56,7 +56,7 @@ function currentYear() {
   return new Date().getFullYear();
 }
 
-export function LeaveRequestsPage() {
+export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: boolean }) {
   const { token, user } = useAuth();
   const alerts = useAlert();
   const permissions = new Set(user?.permissions ?? []);
@@ -93,7 +93,7 @@ export function LeaveRequestsPage() {
     try {
       const year = currentYear();
       const [requestResult, typeResult, deptResult, locResult, dashboardResult, ytdResult] = await Promise.all([
-        api.listLeaveRequests(token, {}),
+        api.listLeaveRequests(token, approvalsOnly ? { pending_my_approval: true } : {}),
         api.listLeaveTypes(token),
         api.listDepartments(token),
         api.listLocations(token),
@@ -181,12 +181,12 @@ export function LeaveRequestsPage() {
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-lg font-medium text-slate-950">Leave requests</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Review, approve, or track leave across the team</p>
+              <p className="text-lg font-medium text-slate-950">{approvalsOnly ? "Pending leave approvals" : "Leave requests"}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{approvalsOnly ? "Requests waiting on your approval step" : "Review, approve, or track leave across the team"}</p>
             </div>
             <ExportMenu
               variant="plain"
-              moduleName="Leave requests"
+              moduleName={approvalsOnly ? "Pending leave approvals" : "Leave requests"}
               rows={filtered as unknown as Record<string, unknown>[]}
               columns={["employee_no", "employee_name", "department_name", "leave_type_name", "start_date", "end_date", "requested_days", "status", "current_approval_step", "submitted_at"]}
             />

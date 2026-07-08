@@ -366,6 +366,7 @@ export function AppRoutes() {
             <Route path="v3-preview/payroll/settings" element={<PayrollSettingsPageV3 />} />
             <Route path="v3-preview/payroll/reports" element={<PayrollReportsPageV3 />} />
             <Route path="v3-preview/leave/requests" element={<LeaveRequestsPageV3 />} />
+            <Route path="v3-preview/leave/approvals" element={<LeaveRequestsPageV3 approvalsOnly />} />
             <Route path="v3-preview/leave/calendar" element={<LeaveCalendarPageV3 />} />
             <Route path="v3-preview/leave/balances" element={<LeaveBalancesPageV3 />} />
             <Route path="v3-preview/leave/types-policies" element={<LeaveTypesPoliciesPageV3 />} />
