@@ -71,6 +71,9 @@ const LeaveTypesPoliciesPageV3 = lazyPage(() => import("../pages-v3/LeaveTypesPo
 const LeaveWorkflowsPageV3 = lazyPage(() => import("../pages-v3/LeaveWorkflowsPage"), "LeaveWorkflowsPage");
 const LeaveDocumentRulesPageV3 = lazyPage(() => import("../pages-v3/LeaveDocumentRulesPage"), "LeaveDocumentRulesPage");
 const LeaveDeductionRulesPageV3 = lazyPage(() => import("../pages-v3/LeaveDeductionRulesPage"), "LeaveDeductionRulesPage");
+const AssetsItemsPageV3 = lazyPage(() => import("../pages-v3/AssetsItemsPage"), "AssetsItemsPage");
+const AssetAssignmentsPageV3 = lazyPage(() => import("../pages-v3/AssetAssignmentsPage"), "AssetAssignmentsPage");
+const AssetsReportsPageV3 = lazyPage(() => import("../pages-v3/AssetsReportsPage"), "AssetsReportsPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -282,6 +285,9 @@ export function AppRoutes() {
             <Route path="v3-preview/leave/workflows" element={<LeaveWorkflowsPageV3 />} />
             <Route path="v3-preview/leave/document-rules" element={<LeaveDocumentRulesPageV3 />} />
             <Route path="v3-preview/leave/deduction-rules" element={<LeaveDeductionRulesPageV3 />} />
+            <Route path="v3-preview/assets/items" element={<AssetsItemsPageV3 />} />
+            <Route path="v3-preview/assets/assignments" element={<AssetAssignmentsPageV3 />} />
+            <Route path="v3-preview/assets/reports" element={<AssetsReportsPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
