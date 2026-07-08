@@ -116,7 +116,7 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, approvalsOnly]);
 
   const filtered = useMemo(() => {
     return requests

@@ -46,6 +46,7 @@ export function DocumentComplianceSettingsPage({ initialTab = "settings" }: { in
   }
 
   useEffect(() => { void load(); }, [token]);
+  useEffect(() => { setTab(initialTab); }, [initialTab]);
 
   function update<K extends keyof DocumentComplianceSettings>(key: K, value: DocumentComplianceSettings[K]) {
     if (settings) setSettings({ ...settings, [key]: value });
