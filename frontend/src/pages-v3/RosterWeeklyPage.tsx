@@ -102,6 +102,8 @@ export function RosterWeeklyPage() {
   const [moreOpen, setMoreOpen] = useState(false);
 
   const [weekly, setWeekly] = useState<WeeklyRoster | null>(null);
+  const [changeRequests, setChangeRequests] = useState<Record<string, unknown>[]>([]);
+  const [decidingRequestId, setDecidingRequestId] = useState<string | null>(null);
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [draft, setDraft] = useState<Record<string, Partial<RosterAssignment>>>({});
@@ -117,25 +119,43 @@ export function RosterWeeklyPage() {
 
   const filters = useMemo(() => ({ week_start_date: weekStart, department_id: departmentId || undefined, location_id: locationId || undefined }), [weekStart, departmentId, locationId]);
 
+  const canManageChangeRequests = permissions.has("roster.change_requests.manage") || permissions.has("roster.manage");
+
   async function load() {
     if (!token || !canView) return;
     setLoading(true);
     setError(null);
     try {
-      const [weeklyResult, departmentResult, locationResult] = await Promise.all([
+      const [weeklyResult, departmentResult, locationResult, changeRequestsResult] = await Promise.all([
         api.getWeeklyRoster(token, filters),
         api.listDepartments(token),
-        api.listLocations(token)
+        api.listLocations(token),
+        api.getRosterChangeRequests(token, { status: "PENDING_MANAGER" }).catch(() => ({ requests: [] as Record<string, unknown>[] }))
       ]);
       setWeekly(weeklyResult);
       setDepartments(departmentResult.departments);
       setLocations(locationResult.locations);
       setDraft(weeklyResult.assignment_map ?? {});
       setDirty(new Set());
+      setChangeRequests(changeRequestsResult.requests);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to load weekly roster.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function decideChangeRequest(requestId: string, decision: "APPROVED" | "REJECTED") {
+    if (!token) return;
+    setDecidingRequestId(requestId);
+    try {
+      await api.decideRosterChangeRequest(token, requestId, { decision });
+      alerts.showSuccess(decision === "APPROVED" ? "Request approved" : "Request rejected", "");
+      await load();
+    } catch (err) {
+      alerts.showApiError(err, "Unable to decide this request.");
+    } finally {
+      setDecidingRequestId(null);
     }
   }
 
@@ -245,6 +265,37 @@ export function RosterWeeklyPage() {
         </Panel>
 
         {error ? <Panel className="p-3 text-xs text-[#A32D2D]">{error}</Panel> : null}
+
+        {canManageChangeRequests && changeRequests.length ? (
+          <Panel className="overflow-hidden">
+            <div className="flex items-center gap-2.5 border-b px-4 py-3">
+              <div className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-md bg-[#FAEEDA]"><ClipboardCopy className="h-3.5 w-3.5 text-[#854F0B]" /></div>
+              <p className="text-xs font-medium text-slate-950">Pending change requests</p>
+              <Badge tone="warning" className="ml-auto">{changeRequests.length} awaiting your review</Badge>
+            </div>
+            <div className="flex flex-col">
+              {changeRequests.map((r, i) => {
+                const isSwap = text(r.request_type) === "SWAP";
+                const summary = isSwap
+                  ? `Requesting to swap ${text(r.roster_date)} with ${text(r.swap_with_employee_name, "a colleague")}`
+                  : `Requesting ${text(r.roster_date)} shift moved from ${text(r.current_start_time, "off") || "off"}${r.current_start_time ? `–${text(r.current_end_time)}` : ""}${r.current_location_name ? ` (${text(r.current_location_name)})` : ""} to ${text(r.requested_start_time, "off") || "off"}${r.requested_start_time ? `–${text(r.requested_end_time)}` : ""}${r.requested_location_name ? ` (${text(r.requested_location_name)})` : ""}`;
+                const deciding = decidingRequestId === String(r.id);
+                return (
+                  <div key={String(r.id ?? i)} className="flex items-center gap-3 border-b border-[#F1F1F7] px-4 py-3 last:border-b-0">
+                    <div className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-[#E6F1FB] text-[11px] font-medium text-[#0C447C]">{initialsOf(text(r.employee_name, "?"))}</div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-slate-950">{text(r.employee_name)}</p>
+                      <p className="mt-0.5 text-[9px] text-muted-foreground">{summary}</p>
+                      <p className="mt-0.5 text-[8px] text-muted-foreground">Reason: "{text(r.reason)}"</p>
+                    </div>
+                    <Button size="sm" variant="outline" className="border-[#F09595] text-[#A32D2D] hover:bg-[#FCEBEB]" loading={deciding} onClick={() => void decideChangeRequest(String(r.id), "REJECTED")}>Reject</Button>
+                    <Button size="sm" loading={deciding} onClick={() => void decideChangeRequest(String(r.id), "APPROVED")}>Approve</Button>
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+        ) : null}
 
         {loading ? (
           <div className="flex flex-col gap-2">{Array.from({ length: 4 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>

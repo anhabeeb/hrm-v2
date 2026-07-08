@@ -82,7 +82,8 @@ const selfServiceSettingKeys = [
   "allow_profile_update_requests",
   "allow_attendance_correction_requests",
   "allow_leave_requests",
-  "allow_payslip_downloads"
+  "allow_payslip_downloads",
+  "allow_roster_change_requests"
 ] as const;
 
 const selfServiceDefaultSettings = {
@@ -113,7 +114,8 @@ const selfServiceDefaultSettings = {
   allow_profile_update_requests: 1,
   allow_attendance_correction_requests: 1,
   allow_leave_requests: 1,
-  allow_payslip_downloads: 1
+  allow_payslip_downloads: 1,
+  allow_roster_change_requests: 1
 };
 
 type SelfServiceSettingKey = (typeof selfServiceSettingKeys)[number];
@@ -130,8 +132,8 @@ async function ensureSelfServiceSettings(db: AppBindings["Bindings"]["DB"]) {
         documents_compliance_enabled, contracts_enabled, assets_enabled, uniforms_enabled,
         approvals_enabled, onboarding_enabled, offboarding_enabled, notifications_enabled,
         show_sensitive_payroll_values, show_sensitive_bank_details, allow_profile_update_requests,
-        allow_attendance_correction_requests, allow_leave_requests, allow_payslip_downloads)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        allow_attendance_correction_requests, allow_leave_requests, allow_payslip_downloads, allow_roster_change_requests)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(selfServiceDefaultSettings.id, ...selfServiceSettingKeys.map((key) => selfServiceDefaultSettings[key]))
     .run();
@@ -1473,6 +1475,163 @@ selfServiceRoutes.get("/roster/week", async (c) => {
       .all<Row>()
   ).results;
   return ok(c, { week_start_date: start, week_end_date: end, assignments });
+});
+
+async function currentAssignmentSnapshot(db: AppBindings["Bindings"]["DB"], employeeId: string, rosterDate: string) {
+  const row = await db
+    .prepare(
+      `SELECT ra.*, st.start_time AS shift_start_time, st.end_time AS shift_end_time, rp.location_id AS period_location_id
+       FROM roster_assignments ra
+       JOIN roster_periods rp ON rp.id = ra.roster_period_id
+       LEFT JOIN shift_templates st ON st.id = ra.shift_template_id
+       WHERE ra.employee_id = ? AND ra.roster_date = ?`
+    )
+    .bind(employeeId, rosterDate)
+    .first<Row>();
+  if (!row) return row;
+  return { ...row, location_id: row.location_id ?? row.period_location_id } as Row;
+}
+
+selfServiceRoutes.get("/roster/colleagues", async (c) => {
+  if (!hasAny(c, ["self_service.roster_change_request", "self_service.roster.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view roster colleagues.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const rosterDate = readString(c.req.query("roster_date"));
+  if (!rosterDate) return fail(c, 400, "VALIDATION_ERROR", "Roster date is required.");
+  const rows = await c.env.DB
+    .prepare(
+      `SELECT e.id AS employee_id, e.full_name, e.employee_no, p.title AS position_title,
+        ra.custom_start_time, ra.custom_end_time, st.start_time AS shift_start_time, st.end_time AS shift_end_time,
+        COALESCE(ra.location_id, rp.location_id) AS location_id, l.name AS location_name
+       FROM roster_assignments ra
+       JOIN roster_periods rp ON rp.id = ra.roster_period_id
+       JOIN employees e ON e.id = ra.employee_id
+       LEFT JOIN positions p ON p.id = e.primary_position_id
+       LEFT JOIN shift_templates st ON st.id = ra.shift_template_id
+       LEFT JOIN locations l ON l.id = COALESCE(ra.location_id, rp.location_id)
+       WHERE ra.roster_date = ? AND ra.employee_id != ? AND ra.status NOT IN ('OFF', 'DAY_OFF', 'UNASSIGNED', 'CANCELLED', 'LEAVE', 'SICK_LEAVE', 'LONG_LEAVE')
+         AND ra.roster_period_id = (SELECT roster_period_id FROM roster_assignments WHERE employee_id = ? AND roster_date = ?)
+       ORDER BY e.full_name`
+    )
+    .bind(rosterDate, gate.employeeId, gate.employeeId, rosterDate)
+    .all<Row>();
+  return ok(c, { colleagues: rows.results });
+});
+
+selfServiceRoutes.get("/roster/change-requests", async (c) => {
+  if (!hasAny(c, ["self_service.roster_change_request", "self_service.roster.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view roster change requests.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const rows = await c.env.DB
+    .prepare(
+      `SELECT r.*, req.full_name AS employee_name, sw.full_name AS swap_with_employee_name,
+        l.name AS requested_location_name, cl.name AS current_location_name
+       FROM roster_change_requests r
+       JOIN employees req ON req.id = r.employee_id
+       LEFT JOIN employees sw ON sw.id = r.swap_with_employee_id
+       LEFT JOIN locations l ON l.id = r.requested_location_id
+       LEFT JOIN locations cl ON cl.id = r.current_location_id
+       WHERE r.employee_id = ? OR r.swap_with_employee_id = ?
+       ORDER BY r.created_at DESC`
+    )
+    .bind(gate.employeeId, gate.employeeId)
+    .all<Row>();
+  return ok(c, { requests: rows.results });
+});
+
+selfServiceRoutes.post("/roster/change-requests", async (c) => {
+  if (!hasAny(c, ["self_service.roster_change_request"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to request roster changes.");
+  const selfServiceDisabled = await assertSelfServiceModuleEnabled(c, "roster_enabled");
+  if (selfServiceDisabled) return selfServiceDisabled;
+  const disabled = await requireSelfServiceRosterEnabled(c);
+  if (disabled) return disabled;
+  const selfServiceSettings = await getSelfServiceSettingsRow(c);
+  if (!boolSetting(selfServiceSettings, "allow_roster_change_requests")) return fail(c, 403, "SELF_SERVICE_ROSTER_CHANGE_REQUESTS_DISABLED", "Roster change requests are disabled.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const body = await readJsonBody(c.req.raw);
+  const requestType = readString(body.request_type).toUpperCase();
+  if (!["CHANGE_DETAILS", "SWAP"].includes(requestType)) return fail(c, 400, "VALIDATION_ERROR", "Request type must be CHANGE_DETAILS or SWAP.");
+  const rosterDate = readString(body.roster_date);
+  if (!rosterDate) return fail(c, 400, "VALIDATION_ERROR", "Roster date is required.");
+  const reason = readString(body.reason);
+  if (!reason) return fail(c, 400, "REASON_REQUIRED", "A reason is required.");
+  const existing = await c.env.DB.prepare("SELECT id FROM roster_change_requests WHERE employee_id = ? AND roster_date = ? AND status IN ('PENDING_COLLEAGUE', 'PENDING_MANAGER')").bind(gate.employeeId, rosterDate).first<{ id: string }>();
+  if (existing) return fail(c, 409, "REQUEST_ALREADY_PENDING", "A pending change request already exists for this date.");
+  const current = await currentAssignmentSnapshot(c.env.DB, gate.employeeId!, rosterDate);
+  if (!current) return fail(c, 400, "NO_ROSTER_ASSIGNMENT", "You have no roster assignment on this date to change.");
+  const currentStart = current.custom_start_time ?? current.shift_start_time ?? null;
+  const currentEnd = current.custom_end_time ?? current.shift_end_time ?? null;
+  const id = crypto.randomUUID();
+
+  if (requestType === "SWAP") {
+    const swapWithEmployeeId = readString(body.swap_with_employee_id);
+    if (!swapWithEmployeeId) return fail(c, 400, "VALIDATION_ERROR", "A colleague to swap with is required.");
+    if (swapWithEmployeeId === gate.employeeId) return fail(c, 400, "VALIDATION_ERROR", "You cannot swap with yourself.");
+    const colleague = await currentAssignmentSnapshot(c.env.DB, swapWithEmployeeId, rosterDate);
+    if (!colleague) return fail(c, 400, "COLLEAGUE_NOT_SCHEDULED", "The selected colleague does not have a shift on this date.");
+    await c.env.DB
+      .prepare(
+        `INSERT INTO roster_change_requests
+         (id, employee_id, request_type, roster_date, current_start_time, current_end_time, current_location_id, current_status,
+          requested_start_time, requested_end_time, requested_location_id, swap_with_employee_id, swap_with_roster_assignment_id, reason, status)
+         VALUES (?, ?, 'SWAP', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_COLLEAGUE')`
+      )
+      .bind(
+        id, gate.employeeId, rosterDate, currentStart, currentEnd, current.location_id ?? null, current.status ?? null,
+        colleague.custom_start_time ?? colleague.shift_start_time ?? null, colleague.custom_end_time ?? colleague.shift_end_time ?? null, colleague.location_id ?? null,
+        swapWithEmployeeId, colleague.id, reason
+      )
+      .run();
+  } else {
+    const requestedStartTime = readString(body.requested_start_time) || null;
+    const requestedEndTime = readString(body.requested_end_time) || null;
+    const requestedLocationId = readString(body.requested_location_id) || null;
+    await c.env.DB
+      .prepare(
+        `INSERT INTO roster_change_requests
+         (id, employee_id, request_type, roster_date, current_start_time, current_end_time, current_location_id, current_status,
+          requested_start_time, requested_end_time, requested_location_id, reason, status)
+         VALUES (?, ?, 'CHANGE_DETAILS', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_MANAGER')`
+      )
+      .bind(id, gate.employeeId, rosterDate, currentStart, currentEnd, current.location_id ?? null, current.status ?? null, requestedStartTime, requestedEndTime, requestedLocationId, reason)
+      .run();
+  }
+
+  await recordAudit(c.env.DB, { actorUserId: c.get("currentUser").id, action: "self_service.roster_change_request.created", module: "self_service", entityType: "roster_change_request", entityId: id, newValue: { roster_date: rosterDate, request_type: requestType }, ipAddress: getClientIp(c.req.raw), userAgent: c.req.header("User-Agent") });
+  await publishAccessEvent(c.env, "self_service.changed", { actor_user_id: c.get("currentUser").id, entity_type: "roster_change_request", entity_id: id, action: "self_service.roster_change_request.created" });
+  return ok(c, { request: await c.env.DB.prepare("SELECT * FROM roster_change_requests WHERE id = ?").bind(id).first<Row>() }, 201);
+});
+
+selfServiceRoutes.post("/roster/change-requests/:requestId/colleague-respond", async (c) => {
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const request = await c.env.DB.prepare("SELECT * FROM roster_change_requests WHERE id = ?").bind(c.req.param("requestId")).first<Row>();
+  if (!request) return fail(c, 404, "NOT_FOUND", "Roster change request was not found.");
+  if (request.swap_with_employee_id !== gate.employeeId) return fail(c, 403, "FORBIDDEN", "This request does not name you as the swap colleague.");
+  if (request.status !== "PENDING_COLLEAGUE") return fail(c, 400, "REQUEST_NOT_AWAITING_COLLEAGUE", "This request is not awaiting your response.");
+  const body = await readJsonBody(c.req.raw);
+  const decision = readString(body.decision).toUpperCase();
+  if (!["ACCEPTED", "DECLINED"].includes(decision)) return fail(c, 400, "VALIDATION_ERROR", "Decision must be ACCEPTED or DECLINED.");
+  const note = readString(body.note) || null;
+  const now = new Date().toISOString();
+  const newStatus = decision === "ACCEPTED" ? "PENDING_MANAGER" : "REJECTED";
+  await c.env.DB.prepare("UPDATE roster_change_requests SET colleague_decision = ?, colleague_decided_at = ?, colleague_decision_note = ?, status = ?, updated_at = ? WHERE id = ?").bind(decision, now, note, newStatus, now, request.id).run();
+  await recordAudit(c.env.DB, { actorUserId: c.get("currentUser").id, action: "self_service.roster_change_request.colleague_responded", module: "self_service", entityType: "roster_change_request", entityId: String(request.id), newValue: { decision }, ipAddress: getClientIp(c.req.raw), userAgent: c.req.header("User-Agent") });
+  return ok(c, { request: await c.env.DB.prepare("SELECT * FROM roster_change_requests WHERE id = ?").bind(request.id).first<Row>() });
+});
+
+selfServiceRoutes.post("/roster/change-requests/:requestId/cancel", async (c) => {
+  if (!hasAny(c, ["self_service.roster_change_request", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to cancel roster change requests.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const request = await c.env.DB.prepare("SELECT * FROM roster_change_requests WHERE id = ? AND employee_id = ?").bind(c.req.param("requestId"), gate.employeeId).first<Row>();
+  if (!request) return fail(c, 404, "NOT_FOUND", "Roster change request was not found.");
+  if (!["PENDING_COLLEAGUE", "PENDING_MANAGER"].includes(String(request.status))) return fail(c, 400, "REQUEST_NOT_CANCELLABLE", "Only pending requests can be cancelled.");
+  const now = new Date().toISOString();
+  await c.env.DB.prepare("UPDATE roster_change_requests SET status = 'CANCELLED', cancelled_at = ?, cancelled_by_user_id = ?, updated_at = ? WHERE id = ?").bind(now, c.get("currentUser").id, now, request.id).run();
+  await recordAudit(c.env.DB, { actorUserId: c.get("currentUser").id, action: "self_service.roster_change_request.cancelled", module: "self_service", entityType: "roster_change_request", entityId: String(request.id), ipAddress: getClientIp(c.req.raw), userAgent: c.req.header("User-Agent") });
+  return ok(c, { cancelled: true });
 });
 
 selfServiceRoutes.get("/payroll", async (c) => {

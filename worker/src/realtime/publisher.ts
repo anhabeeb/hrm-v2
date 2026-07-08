@@ -177,6 +177,7 @@ export interface AccessRealtimePayload {
     | "roster_period"
     | "roster_assignment"
     | "weekly_off_rule"
+    | "roster_change_request"
     | "roster_settings"
     | "roster_report"
     | "payroll_component"

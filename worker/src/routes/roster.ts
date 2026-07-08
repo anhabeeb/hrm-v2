@@ -159,7 +159,7 @@ async function auditRoster(c: Context<AppBindings>, input: { action: string; ent
   });
 }
 
-async function publishRoster(c: Context<AppBindings>, event: Parameters<typeof publishAccessEvent>[1], entityType: "shift_template" | "roster_period" | "roster_assignment" | "weekly_off_rule" | "roster_settings" | "roster_report", entityId: string, action: string) {
+async function publishRoster(c: Context<AppBindings>, event: Parameters<typeof publishAccessEvent>[1], entityType: "shift_template" | "roster_period" | "roster_assignment" | "weekly_off_rule" | "roster_settings" | "roster_report" | "roster_change_request", entityId: string, action: string) {
   await publishAccessEvent(c.env, event, { actor_user_id: c.get("currentUser").id, entity_type: entityType, entity_id: entityId, action });
   if (event !== "roster.changed") await publishAccessEvent(c.env, "roster.changed", { actor_user_id: c.get("currentUser").id, entity_type: entityType, entity_id: entityId, action });
 }
@@ -1209,6 +1209,85 @@ rosterRoutes.get("/reports/export.csv", requireAnyPermission(["roster.reports.ex
   const header = ["roster_date", "employee_no", "employee_name", "department_name", "location_name", "status", "shift_code", "shift_name", "custom_start_time", "custom_end_time", "notes"];
   const csv = [header.join(","), ...rows.map((row) => header.map((key) => `"${String(row[key] ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
   return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=roster-report.csv" } });
+});
+
+rosterRoutes.get("/change-requests", requireAnyPermission(["roster.change_requests.view", "roster.change_requests.manage", "roster.view", "roster.manage"]), async (c) => {
+  const status = readString(c.req.query("status")).toUpperCase() || "PENDING_MANAGER";
+  const scope = await buildEmployeeScopeWhereClause(c.env.DB, c.get("currentUser"), "roster", "view", "e");
+  const conditions = [scope.sql];
+  const params: BindValue[] = [...scope.params];
+  if (status !== "ALL") { conditions.push("r.status = ?"); params.push(status); }
+  const rows = await c.env.DB
+    .prepare(
+      `SELECT r.*, e.full_name AS employee_name, e.employee_no AS employee_number,
+        sw.full_name AS swap_with_employee_name, l.name AS requested_location_name, cl.name AS current_location_name
+       FROM roster_change_requests r
+       JOIN employees e ON e.id = r.employee_id
+       LEFT JOIN employees sw ON sw.id = r.swap_with_employee_id
+       LEFT JOIN locations l ON l.id = r.requested_location_id
+       LEFT JOIN locations cl ON cl.id = r.current_location_id
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY r.created_at DESC`
+    )
+    .bind(...params)
+    .all<Record<string, unknown>>();
+  return ok(c, { requests: rows.results });
+});
+
+async function applyRosterChangeRequest(c: Context<AppBindings>, employeeId: string, rosterDate: string, fields: { customStartTime: string | null; customEndTime: string | null; locationId: string | null }, reason: string) {
+  const existing = await c.env.DB.prepare("SELECT * FROM roster_assignments WHERE employee_id = ? AND roster_date = ?").bind(employeeId, rosterDate).first<Record<string, unknown>>();
+  if (!existing) return { error: "No roster assignment exists for this employee on this date." };
+  const period = await getPeriod(c, String(existing.roster_period_id));
+  if (!period) return { error: "Roster period was not found." };
+  const status = fields.customStartTime && fields.customEndTime ? "SCHEDULED" : "OFF";
+  return saveAssignment(c, period, {
+    employee_id: employeeId,
+    roster_date: rosterDate,
+    shift_template_id: status === "SCHEDULED" ? null : existing.shift_template_id,
+    custom_start_time: fields.customStartTime,
+    custom_end_time: fields.customEndTime,
+    location_id: fields.locationId ?? existing.location_id,
+    status,
+    reason
+  }, "SYSTEM");
+}
+
+rosterRoutes.post("/change-requests/:requestId/decide", requireAnyPermission(["roster.change_requests.manage", "roster.manage"]), async (c) => {
+  const request = await c.env.DB.prepare("SELECT * FROM roster_change_requests WHERE id = ?").bind(routeParam(c, "requestId")).first<Record<string, unknown>>();
+  if (!request) return fail(c, 404, "NOT_FOUND", "Roster change request was not found.");
+  if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "roster", "manage"))) return fail(c, 404, "NOT_FOUND", "Roster change request was not found.");
+  if (request.status !== "PENDING_MANAGER") return fail(c, 400, "REQUEST_NOT_PENDING", "This request is not awaiting manager review.");
+  const body = await readJsonBody(c.req.raw);
+  const decision = readString(body.decision).toUpperCase();
+  if (!["APPROVED", "REJECTED"].includes(decision)) return fail(c, 400, "VALIDATION_ERROR", "Decision must be APPROVED or REJECTED.");
+  const note = optionalString(body.note);
+  const now = new Date().toISOString();
+
+  if (decision === "APPROVED") {
+    const reason = `Roster change request approved: ${String(request.reason ?? "")}`;
+    const primary = await applyRosterChangeRequest(c, String(request.employee_id), String(request.roster_date), {
+      customStartTime: optionalString(request.requested_start_time),
+      customEndTime: optionalString(request.requested_end_time),
+      locationId: optionalString(request.requested_location_id)
+    }, reason);
+    if (primary.error) return fail(c, 400, "ASSIGNMENT_UPDATE_FAILED", primary.error);
+    if (request.request_type === "SWAP" && request.swap_with_employee_id) {
+      const colleagueCurrent = await c.env.DB.prepare("SELECT * FROM roster_assignments WHERE employee_id = ? AND roster_date = ?").bind(request.swap_with_employee_id, request.roster_date).first<Record<string, unknown>>();
+      if (!colleagueCurrent) return fail(c, 400, "ASSIGNMENT_UPDATE_FAILED", "Colleague no longer has a roster assignment on this date.");
+      const secondary = await applyRosterChangeRequest(c, String(request.swap_with_employee_id), String(request.roster_date), {
+        customStartTime: optionalString(request.current_start_time),
+        customEndTime: optionalString(request.current_end_time),
+        locationId: optionalString(request.current_location_id)
+      }, reason);
+      if (secondary.error) return fail(c, 400, "ASSIGNMENT_UPDATE_FAILED", secondary.error);
+    }
+  }
+
+  const newStatus = decision === "APPROVED" ? "APPROVED" : "REJECTED";
+  await c.env.DB.prepare("UPDATE roster_change_requests SET status = ?, manager_decision = ?, manager_decided_by_user_id = ?, manager_decided_at = ?, manager_decision_note = ?, updated_at = ? WHERE id = ?").bind(newStatus, decision, c.get("currentUser").id, now, note, now, request.id).run();
+  await auditRoster(c, { action: "roster.change_request.decided", entityType: "roster_change_request", entityId: String(request.id), reason: note, newValue: { decision } });
+  await publishRoster(c, "roster.changed", "roster_change_request", String(request.id), decision.toLowerCase());
+  return ok(c, { request: await c.env.DB.prepare("SELECT * FROM roster_change_requests WHERE id = ?").bind(request.id).first<Record<string, unknown>>() });
 });
 
 employeeRosterRoutes.get("/:employeeId/roster/assignments", requireAnyPermission(["employees.roster.view", "roster.view"]), async (c) => {

@@ -95,7 +95,7 @@ export function SelfServiceHomePage() {
           <Panel className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs font-medium text-slate-950">My roster this week</p>
-              <Link to="/self-service/roster" className="text-[10px] text-primary">View full roster</Link>
+              <Link to="/v3-preview/self-service/roster" className="text-[10px] text-primary">View full roster</Link>
             </div>
             <div className="grid grid-cols-7 gap-2">
               {roster.map((day, i) => {

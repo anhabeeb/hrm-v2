@@ -1901,11 +1901,32 @@ export const api = {
   exportRosterReportCsv(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return blobRequest(`/api/v1/roster/reports/export.csv${query(filters)}`, token);
   },
+  getRosterChangeRequests(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
+    return request<{ requests: Record<string, unknown>[] }>(`/api/v1/roster/change-requests${query(filters)}`, {}, token);
+  },
+  decideRosterChangeRequest(token: string, requestId: string, input: { decision: "APPROVED" | "REJECTED"; note?: string | null }) {
+    return request<{ request: Record<string, unknown> }>(`/api/v1/roster/change-requests/${requestId}/decide`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
   getSelfServiceRoster(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ week_start_date: string; week_end_date: string; assignments: RosterAssignment[] }>(`/api/v1/self-service/roster${query(filters)}`, {}, token);
   },
   getSelfServiceRosterWeek(token: string, filters?: Record<string, string | number | boolean | null | undefined>) {
     return request<{ week_start_date: string; week_end_date: string; assignments: RosterAssignment[] }>(`/api/v1/self-service/roster/week${query(filters)}`, {}, token);
+  },
+  getSelfServiceRosterColleagues(token: string, rosterDate: string) {
+    return request<{ colleagues: Record<string, unknown>[] }>(`/api/v1/self-service/roster/colleagues${query({ roster_date: rosterDate })}`, {}, token);
+  },
+  getSelfServiceRosterChangeRequests(token: string) {
+    return request<{ requests: Record<string, unknown>[] }>("/api/v1/self-service/roster/change-requests", {}, token);
+  },
+  createSelfServiceRosterChangeRequest(token: string, input: Record<string, unknown>) {
+    return request<{ request: Record<string, unknown> }>("/api/v1/self-service/roster/change-requests", { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  respondToRosterChangeRequestAsColleague(token: string, requestId: string, input: { decision: "ACCEPTED" | "DECLINED"; note?: string | null }) {
+    return request<{ request: Record<string, unknown> }>(`/api/v1/self-service/roster/change-requests/${requestId}/colleague-respond`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  cancelSelfServiceRosterChangeRequest(token: string, requestId: string) {
+    return request<{ cancelled: boolean }>(`/api/v1/self-service/roster/change-requests/${requestId}/cancel`, { method: "POST" }, token);
   },
   listPayrollComponents(token: string) {
     return request<{ components: PayrollComponent[] }>("/api/v1/payroll/components", {}, token);

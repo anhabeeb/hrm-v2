@@ -212,6 +212,7 @@ CREATE TABLE IF NOT EXISTS self_service_settings (
   allow_attendance_correction_requests INTEGER NOT NULL DEFAULT 1 CHECK (allow_attendance_correction_requests IN (0, 1)),
   allow_leave_requests INTEGER NOT NULL DEFAULT 1 CHECK (allow_leave_requests IN (0, 1)),
   allow_payslip_downloads INTEGER NOT NULL DEFAULT 1 CHECK (allow_payslip_downloads IN (0, 1)),
+  allow_roster_change_requests INTEGER NOT NULL DEFAULT 1 CHECK (allow_roster_change_requests IN (0, 1)),
   created_by_user_id TEXT,
   updated_by_user_id TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -3208,6 +3209,46 @@ CREATE INDEX IF NOT EXISTS idx_roster_assignments_employee_date ON roster_assign
 CREATE INDEX IF NOT EXISTS idx_roster_assignments_status ON roster_assignments(status, roster_date);
 CREATE INDEX IF NOT EXISTS idx_roster_assignments_scope ON roster_assignments(location_id, department_id, roster_date);
 CREATE INDEX IF NOT EXISTS idx_roster_assignments_shift_template ON roster_assignments(shift_template_id);
+
+CREATE TABLE IF NOT EXISTS roster_change_requests (
+  id TEXT PRIMARY KEY,
+  employee_id TEXT NOT NULL,
+  request_type TEXT NOT NULL CHECK (request_type IN ('CHANGE_DETAILS', 'SWAP')),
+  roster_date TEXT NOT NULL,
+  current_start_time TEXT,
+  current_end_time TEXT,
+  current_location_id TEXT,
+  current_status TEXT,
+  requested_start_time TEXT,
+  requested_end_time TEXT,
+  requested_location_id TEXT,
+  swap_with_employee_id TEXT,
+  swap_with_roster_assignment_id TEXT,
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'PENDING_MANAGER' CHECK (status IN ('PENDING_COLLEAGUE', 'PENDING_MANAGER', 'APPROVED', 'REJECTED', 'CANCELLED')),
+  colleague_decision TEXT CHECK (colleague_decision IN ('ACCEPTED', 'DECLINED') OR colleague_decision IS NULL),
+  colleague_decided_at TEXT,
+  colleague_decision_note TEXT,
+  manager_decision TEXT CHECK (manager_decision IN ('APPROVED', 'REJECTED') OR manager_decision IS NULL),
+  manager_decided_by_user_id TEXT,
+  manager_decided_at TEXT,
+  manager_decision_note TEXT,
+  cancelled_at TEXT,
+  cancelled_by_user_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+  FOREIGN KEY (swap_with_employee_id) REFERENCES employees(id) ON DELETE SET NULL,
+  FOREIGN KEY (swap_with_roster_assignment_id) REFERENCES roster_assignments(id) ON DELETE SET NULL,
+  FOREIGN KEY (current_location_id) REFERENCES locations(id) ON DELETE SET NULL,
+  FOREIGN KEY (requested_location_id) REFERENCES locations(id) ON DELETE SET NULL,
+  FOREIGN KEY (manager_decided_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (cancelled_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_roster_change_requests_employee ON roster_change_requests(employee_id, status);
+CREATE INDEX IF NOT EXISTS idx_roster_change_requests_status ON roster_change_requests(status, roster_date);
+CREATE INDEX IF NOT EXISTS idx_roster_change_requests_swap_with ON roster_change_requests(swap_with_employee_id, status);
 
 CREATE TABLE IF NOT EXISTS roster_assignment_history (
   id TEXT PRIMARY KEY,
