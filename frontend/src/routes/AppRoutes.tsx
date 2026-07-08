@@ -567,16 +567,16 @@ export function AppRoutes() {
             <Route path="documents/compliance/alerts" element={operational("documents", "Documents", <DocumentCompliancePage mode="alerts" />)} />
             <Route path="documents/compliance/renewal-cases" element={operational("documents", "Documents", <DocumentCompliancePage mode="renewal-cases" />)} />
             <Route path="documents/compliance/waivers" element={operational("documents", "Documents", <DocumentCompliancePage mode="waivers" />)} />
-            <Route path="assets" element={operational("assets_uniforms", "Assets and uniforms", <AssetsDashboardPage />)} />
-            <Route path="assets/items" element={operational("assets_uniforms", "Assets and uniforms", <AssetsItemsPage />)} />
-            <Route path="assets/assignments" element={operational("assets_uniforms", "Assets and uniforms", <AssetAssignmentsPage />)} />
-            <Route path="assets/uniforms" element={operational("assets_uniforms", "Assets and uniforms", <UniformInventoryPage />)} />
-            <Route path="assets/uniform-assignments" element={operational("assets_uniforms", "Assets and uniforms", <UniformAssignmentsPage />)} />
-            <Route path="assets/uniform-types" element={operational("assets_uniforms", "Assets and uniforms", <UniformTypesPage />)} />
-            <Route path="assets/categories" element={operational("assets_uniforms", "Assets and uniforms", <AssetSettingsPage mode="categories" />)} />
-            <Route path="assets/deduction-rules" element={operational("assets_uniforms", "Assets and uniforms", <AssetSettingsPage mode="deduction-rules" />)} />
-            <Route path="assets/settings" element={<AssetUniformSettingsPage />} />
-            <Route path="assets/reports" element={operational("assets_uniforms", "Assets and uniforms", <AssetsReportsPage />)} />
+            <Route path="assets" element={operational("assets_uniforms", "Assets and uniforms", <AssetsDashboardPageV3 />)} />
+            <Route path="assets/items" element={operational("assets_uniforms", "Assets and uniforms", <AssetsItemsPageV3 />)} />
+            <Route path="assets/assignments" element={operational("assets_uniforms", "Assets and uniforms", <AssetAssignmentsPageV3 />)} />
+            <Route path="assets/uniforms" element={operational("assets_uniforms", "Assets and uniforms", <AssetUniformInventoryPageV3 />)} />
+            <Route path="assets/uniform-assignments" element={operational("assets_uniforms", "Assets and uniforms", <AssetUniformAssignmentsPageV3 />)} />
+            <Route path="assets/uniform-types" element={operational("assets_uniforms", "Assets and uniforms", <AssetUniformTypesPageV3 />)} />
+            <Route path="assets/categories" element={operational("assets_uniforms", "Assets and uniforms", <AssetCategoriesPageV3 />)} />
+            <Route path="assets/deduction-rules" element={operational("assets_uniforms", "Assets and uniforms", <AssetDeductionRulesPageV3 />)} />
+            <Route path="assets/settings" element={<AssetUniformSettingsPageV3 />} />
+            <Route path="assets/reports" element={operational("assets_uniforms", "Assets and uniforms", <AssetsReportsPageV3 />)} />
             <Route path="reports" element={operational(["reports", "reports_exports"], "Reports", <ReportsPage />)} />
             <Route path="reports/audit" element={<AuditLogPage />} />
             <Route path="self-service" element={operational("self_service", "Self-service", <SelfServiceHomePage />)} />
