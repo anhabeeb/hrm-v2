@@ -82,6 +82,8 @@ const OnboardingCaseWorkspacePageV3 = lazyPage(() => import("../pages-v3/Onboard
 const OffboardingListPageV3 = lazyPage(() => import("../pages-v3/OffboardingListPage"), "OffboardingListPage");
 const OffboardingCaseWorkspacePageV3 = lazyPage(() => import("../pages-v3/OffboardingCaseWorkspacePage"), "OffboardingCaseWorkspacePage");
 const RosterWeeklyPageV3 = lazyPage(() => import("../pages-v3/RosterWeeklyPage"), "RosterWeeklyPage");
+const SettingsHubPageV3 = lazyPage(() => import("../pages-v3/SettingsHubPage"), "SettingsHubPage");
+const SettingsModulesPageV3 = lazyPage(() => import("../pages-v3/SettingsModulesPage"), "SettingsModulesPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -310,6 +312,8 @@ export function AppRoutes() {
             <Route path="v3-preview/offboarding" element={<OffboardingListPageV3 />} />
             <Route path="v3-preview/offboarding/:caseId" element={<OffboardingCaseWorkspacePageV3 />} />
             <Route path="v3-preview/roster" element={<RosterWeeklyPageV3 />} />
+            <Route path="v3-preview/settings" element={<SettingsHubPageV3 />} />
+            <Route path="v3-preview/settings/modules" element={<SettingsModulesPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
