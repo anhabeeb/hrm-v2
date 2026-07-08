@@ -74,6 +74,9 @@ const LeaveDeductionRulesPageV3 = lazyPage(() => import("../pages-v3/LeaveDeduct
 const AssetsItemsPageV3 = lazyPage(() => import("../pages-v3/AssetsItemsPage"), "AssetsItemsPage");
 const AssetAssignmentsPageV3 = lazyPage(() => import("../pages-v3/AssetAssignmentsPage"), "AssetAssignmentsPage");
 const AssetsReportsPageV3 = lazyPage(() => import("../pages-v3/AssetsReportsPage"), "AssetsReportsPage");
+const DocumentsRegistryPageV3 = lazyPage(() => import("../pages-v3/DocumentsRegistryPage"), "DocumentsRegistryPage");
+const DocumentsCompliancePageV3 = lazyPage(() => import("../pages-v3/DocumentsCompliancePage"), "DocumentsCompliancePage");
+const DocumentsMissingPageV3 = lazyPage(() => import("../pages-v3/DocumentsMissingPage"), "DocumentsMissingPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -288,6 +291,9 @@ export function AppRoutes() {
             <Route path="v3-preview/assets/items" element={<AssetsItemsPageV3 />} />
             <Route path="v3-preview/assets/assignments" element={<AssetAssignmentsPageV3 />} />
             <Route path="v3-preview/assets/reports" element={<AssetsReportsPageV3 />} />
+            <Route path="v3-preview/documents/registry" element={<DocumentsRegistryPageV3 />} />
+            <Route path="v3-preview/documents/compliance" element={<DocumentsCompliancePageV3 />} />
+            <Route path="v3-preview/documents/missing" element={<DocumentsMissingPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
