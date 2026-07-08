@@ -17,7 +17,8 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTi
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { PageShell, SelectField } from "../components/ui/page-shell";
+import { PageShell, SelectField, type StandardTabItem } from "../components/ui/page-shell";
+import { NavRail } from "../components/ui/nav-rail";
 import { Panel } from "../components/ui/panel";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
@@ -28,6 +29,13 @@ import type { Employee, EmployeeContact, EmployeeContactInput, OnboardingStatus,
 import type { EmployeeDocument } from "../types/documents";
 import type { LeaveBalance, LeaveRequest } from "../types/leave";
 import type { EmployeeUserAccount } from "../types/auth";
+import { EmployeeContractsPanel } from "../components/employee/EmployeeContractsPanel";
+import { EmployeePayrollPanel } from "../components/payroll/EmployeePayrollPanel";
+import { EmployeeFinalSettlementPanel } from "../components/payroll/EmployeeFinalSettlementPanel";
+import { EmployeeRosterPanel } from "../components/roster/EmployeeRosterPanel";
+import { EmployeeAssetsPanel } from "../components/assets/EmployeeAssetsPanel";
+import { EmployeeNotesPanel } from "../components/notes/EmployeeNotesPanel";
+import { EmployeeAuditPanel } from "../components/audit/EmployeeAuditPanel";
 
 const AVATAR_COLOR_PALETTE = [
   { bg: "#E6F1FB", text: "#0C447C" },
@@ -85,7 +93,7 @@ type PopupKind = "documents" | "leave" | "emergency" | "onboarding" | null;
 
 export function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
 
   const [employee, setEmployee] = useState<Employee | null>(null);
@@ -96,11 +104,34 @@ export function EmployeeProfilePage() {
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [userAccount, setUserAccount] = useState<EmployeeUserAccount | null>(null);
+  const [audit, setAudit] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [popup, setPopup] = useState<PopupKind>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [contactModal, setContactModal] = useState<{ mode: "create" | "edit"; contact?: EmployeeContact } | null>(null);
+  const [activeTab, setActiveTab] = useState("overview");
+
+  const permissions = useMemo(() => new Set(user?.permissions ?? []), [user]);
+  const assetsUniformsVisible = user?.module_visibility?.assets_uniforms !== false;
+  const canContracts = permissions.has("employees.contracts.view") || permissions.has("contracts.view");
+  const canPayroll = permissions.has("employees.payroll.view") || permissions.has("payroll.view");
+  const canFinalSettlement = permissions.has("employees.final_settlement.view") || permissions.has("final_settlement.view") || permissions.has("final_settlement.cases.view");
+  const canRoster = permissions.has("employees.roster.view") || permissions.has("roster.view");
+  const canAssets = assetsUniformsVisible && (permissions.has("employees.assets.view") || permissions.has("assets.view"));
+  const canNotes = permissions.has("employee_notes.view");
+  const canAudit = permissions.has("employees.audit.view") || permissions.has("audit.view");
+
+  const tabItems: StandardTabItem[] = [
+    { key: "overview", label: "Overview" },
+    { key: "contracts", label: "Contracts" },
+    { key: "payroll", label: "Payroll" },
+    { key: "final-settlement", label: "Final settlement" },
+    { key: "roster", label: "Roster" },
+    { key: "assets", label: "Assets & uniforms", hidden: !assetsUniformsVisible },
+    { key: "notes", label: "Notes" },
+    { key: "audit", label: "Audit log" }
+  ];
 
   async function load() {
     if (!token || !id) return;
@@ -117,6 +148,7 @@ export function EmployeeProfilePage() {
       setEmployee(overview.employee);
       setOnboarding(overview.onboarding);
       setContacts(overview.contacts);
+      setAudit(overview.audit ?? []);
       setDocuments(docs.documents);
       const s = attendanceSummary.summary as Record<string, number>;
       setAttendance({ present: s.present ?? 0, absent: s.absent ?? 0, late: s.late ?? 0 });
@@ -226,6 +258,10 @@ export function EmployeeProfilePage() {
             <FactPill>{humanizeTechnicalLabel(employee.employment_type)}</FactPill>
           </div>
 
+          <div className="flex gap-4">
+            <NavRail items={tabItems} active={activeTab} onChange={setActiveTab} className="hidden w-[172px] shrink-0 sm:flex" />
+            <div className="min-w-0 flex-1">
+          {activeTab === "overview" ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <Tile span="xl:col-span-3" title="Personal & contact">
               <div className="grid grid-cols-2 gap-x-3.5 gap-y-2.5 text-xs">
@@ -308,6 +344,31 @@ export function EmployeeProfilePage() {
                 {userAccount?.linked_user ? "Manage access" : "Provision account"}
               </Link>
             </Tile>
+          </div>
+          ) : null}
+
+          {activeTab === "contracts" ? (
+            canContracts ? <EmployeeContractsPanel employee={employee} token={token!} permissions={permissions} /> : <Panel className="p-4"><EmptyState title="Contracts unavailable" description="Your account needs employee contract access." /></Panel>
+          ) : null}
+          {activeTab === "payroll" ? (
+            canPayroll ? <EmployeePayrollPanel employee={employee} /> : <Panel className="p-4"><EmptyState title="Payroll unavailable" description="Your account needs employee payroll access." /></Panel>
+          ) : null}
+          {activeTab === "final-settlement" ? (
+            canFinalSettlement ? <EmployeeFinalSettlementPanel employee={employee} /> : <Panel className="p-4"><EmptyState title="Final settlement unavailable" description="Your account needs employee final settlement access." /></Panel>
+          ) : null}
+          {activeTab === "roster" ? (
+            canRoster ? <EmployeeRosterPanel token={token!} employee={employee} permissions={permissions} /> : <Panel className="p-4"><EmptyState title="Roster unavailable" description="Your account needs employees.roster.view permission." /></Panel>
+          ) : null}
+          {activeTab === "assets" ? (
+            canAssets ? <EmployeeAssetsPanel employee={employee} /> : <Panel className="p-4"><EmptyState title="Assets unavailable" description="Your account needs employee asset access." /></Panel>
+          ) : null}
+          {activeTab === "notes" ? (
+            canNotes ? <EmployeeNotesPanel employee={employee} /> : <Panel className="p-4"><EmptyState title="Notes unavailable" description="Your account needs employee_notes.view permission." /></Panel>
+          ) : null}
+          {activeTab === "audit" ? (
+            canAudit ? <EmployeeAuditPanel employee={employee} initialAudit={audit} /> : <Panel className="p-4"><EmptyState title="Audit unavailable" description="Your account needs employee audit access." /></Panel>
+          ) : null}
+            </div>
           </div>
         </div>
       </div>
