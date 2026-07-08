@@ -557,16 +557,16 @@ export function AppRoutes() {
             <Route path="roster/shift-templates" element={operational("roster", "Roster", <RosterShiftTemplatesPage />)} />
             <Route path="roster/reports" element={operational("roster", "Roster", <RosterReportsPage />)} />
             <Route path="roster/settings" element={<RosterSettingsPage />} />
-            <Route path="documents" element={operational("documents", "Documents", <DocumentRegistryPage />)} />
-            <Route path="documents/registry" element={operational("documents", "Documents", <DocumentRegistryPage />)} />
-            <Route path="documents/missing" element={operational("documents", "Documents", <MissingDocumentsPage />)} />
-            <Route path="documents/compliance" element={operational("documents", "Documents", <DocumentCompliancePage />)} />
-            <Route path="documents/compliance/missing" element={operational("documents", "Documents", <DocumentCompliancePage mode="missing" />)} />
-            <Route path="documents/compliance/expiring" element={operational("documents", "Documents", <DocumentCompliancePage mode="expiring" />)} />
-            <Route path="documents/compliance/expired" element={operational("documents", "Documents", <DocumentCompliancePage mode="expired" />)} />
-            <Route path="documents/compliance/alerts" element={operational("documents", "Documents", <DocumentCompliancePage mode="alerts" />)} />
-            <Route path="documents/compliance/renewal-cases" element={operational("documents", "Documents", <DocumentCompliancePage mode="renewal-cases" />)} />
-            <Route path="documents/compliance/waivers" element={operational("documents", "Documents", <DocumentCompliancePage mode="waivers" />)} />
+            <Route path="documents" element={operational("documents", "Documents", <DocumentsRegistryPageV3 />)} />
+            <Route path="documents/registry" element={operational("documents", "Documents", <DocumentsRegistryPageV3 />)} />
+            <Route path="documents/missing" element={operational("documents", "Documents", <DocumentsMissingPageV3 />)} />
+            <Route path="documents/compliance" element={operational("documents", "Documents", <DocumentsCompliancePageV3 />)} />
+            <Route path="documents/compliance/missing" element={operational("documents", "Documents", <DocumentsCompliancePageV3 mode="missing" />)} />
+            <Route path="documents/compliance/expiring" element={operational("documents", "Documents", <DocumentsCompliancePageV3 mode="expiring" />)} />
+            <Route path="documents/compliance/expired" element={operational("documents", "Documents", <DocumentsCompliancePageV3 mode="expired" />)} />
+            <Route path="documents/compliance/alerts" element={operational("documents", "Documents", <DocumentsCompliancePageV3 mode="alerts" />)} />
+            <Route path="documents/compliance/renewal-cases" element={operational("documents", "Documents", <DocumentsCompliancePageV3 mode="renewal-cases" />)} />
+            <Route path="documents/compliance/waivers" element={operational("documents", "Documents", <DocumentsCompliancePageV3 mode="waivers" />)} />
             <Route path="assets" element={operational("assets_uniforms", "Assets and uniforms", <AssetsDashboardPageV3 />)} />
             <Route path="assets/items" element={operational("assets_uniforms", "Assets and uniforms", <AssetsItemsPageV3 />)} />
             <Route path="assets/assignments" element={operational("assets_uniforms", "Assets and uniforms", <AssetAssignmentsPageV3 />)} />
