@@ -384,6 +384,12 @@ export function AppRoutes() {
             <Route path="v3-preview/assets/reports" element={<AssetsReportsPageV3 />} />
             <Route path="v3-preview/documents/registry" element={<DocumentsRegistryPageV3 />} />
             <Route path="v3-preview/documents/compliance" element={<DocumentsCompliancePageV3 />} />
+            <Route path="v3-preview/documents/compliance/missing" element={<DocumentsCompliancePageV3 mode="missing" />} />
+            <Route path="v3-preview/documents/compliance/expiring" element={<DocumentsCompliancePageV3 mode="expiring" />} />
+            <Route path="v3-preview/documents/compliance/expired" element={<DocumentsCompliancePageV3 mode="expired" />} />
+            <Route path="v3-preview/documents/compliance/alerts" element={<DocumentsCompliancePageV3 mode="alerts" />} />
+            <Route path="v3-preview/documents/compliance/renewal-cases" element={<DocumentsCompliancePageV3 mode="renewal-cases" />} />
+            <Route path="v3-preview/documents/compliance/waivers" element={<DocumentsCompliancePageV3 mode="waivers" />} />
             <Route path="v3-preview/documents/missing" element={<DocumentsMissingPageV3 />} />
             <Route path="v3-preview/onboarding" element={<OnboardingListPageV3 />} />
             <Route path="v3-preview/onboarding/:caseId" element={<OnboardingCaseWorkspacePageV3 />} />
