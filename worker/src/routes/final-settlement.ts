@@ -164,6 +164,24 @@ function canSeeSensitive(c: Context<AppBindings>) {
   ]);
 }
 
+const CLEARANCE_TYPE_PERMISSIONS: Record<string, string> = {
+  ASSET: "final_settlement.clearance.clear_asset",
+  UNIFORM: "final_settlement.clearance.clear_uniform",
+  DOCUMENT: "final_settlement.clearance.clear_document",
+  PAYROLL: "final_settlement.clearance.clear_payroll",
+  LEAVE: "final_settlement.clearance.clear_leave",
+  ATTENDANCE: "final_settlement.clearance.clear_attendance",
+  ROSTER: "final_settlement.clearance.clear_roster",
+  OTHER: "final_settlement.clearance.clear_other"
+};
+
+// Per-type permission OR the pre-existing blanket ones — additive, so anyone who already
+// had blanket clearance access keeps working exactly as before.
+function clearanceItemPermissions(clearanceType: unknown) {
+  const specific = CLEARANCE_TYPE_PERMISSIONS[String(clearanceType)];
+  return [specific, "final_settlement.clearance.update", "final_settlement.clearance.manage", "final_settlement.manage"].filter((v): v is string => Boolean(v));
+}
+
 function safeParseJson(value: unknown, fallback: unknown = null) {
   if (!value) return fallback;
   if (typeof value !== "string") return value;
@@ -1602,9 +1620,12 @@ finalSettlementRoutes.get("/cases/:caseId/clearance", requireAnyPermission(["fin
   return ok(c, { clearance: rows.results });
 });
 
-finalSettlementRoutes.patch("/cases/:caseId/clearance/:itemId", requireAnyPermission(["final_settlement.clearance.update", "final_settlement.clearance.manage", "final_settlement.manage"]), async (c) => {
+finalSettlementRoutes.patch("/cases/:caseId/clearance/:itemId", async (c) => {
   const settlementCase = await getScopedCase(c, routeParam(c, "caseId"), "manage");
   if (!settlementCase) return fail(c, 404, "SETTLEMENT_CASE_NOT_FOUND", "Final settlement case not found.");
+  const item = await c.env.DB.prepare("SELECT * FROM final_settlement_clearance_items WHERE id = ? AND settlement_case_id = ?").bind(routeParam(c, "itemId"), settlementCase.id).first<Record<string, unknown>>();
+  if (!item) return fail(c, 404, "CLEARANCE_ITEM_NOT_FOUND", "Clearance item not found.");
+  if (!hasAny(c, clearanceItemPermissions(item.clearance_type))) return fail(c, 403, "PERMISSION_DENIED", "You do not have permission to update this clearance type.");
   const body = await readJsonBody(c.req.raw);
   const status = readString(body.status).toUpperCase();
   if (!["PENDING", "CLEARED", "WAIVED", "BLOCKED"].includes(status)) return fail(c, 400, "INVALID_STATUS", "Invalid clearance status.");
@@ -1615,12 +1636,15 @@ finalSettlementRoutes.patch("/cases/:caseId/clearance/:itemId", requireAnyPermis
   return ok(c, { item: await c.env.DB.prepare("SELECT * FROM final_settlement_clearance_items WHERE id = ?").bind(routeParam(c, "itemId")).first<Record<string, unknown>>() });
 });
 
-finalSettlementRoutes.post("/cases/:caseId/clearance/:itemId/waive", requireAnyPermission(["final_settlement.clearance.waive", "final_settlement.manage"]), async (c) => {
+finalSettlementRoutes.post("/cases/:caseId/clearance/:itemId/waive", async (c) => {
   const body = await readJsonBody(c.req.raw);
   const reason = readString(body.reason);
   if (!reason) return fail(c, 400, "REASON_REQUIRED", "Reason is required.");
   const settlementCase = await getScopedCase(c, routeParam(c, "caseId"), "manage");
   if (!settlementCase) return fail(c, 404, "SETTLEMENT_CASE_NOT_FOUND", "Final settlement case not found.");
+  const item = await c.env.DB.prepare("SELECT * FROM final_settlement_clearance_items WHERE id = ? AND settlement_case_id = ?").bind(routeParam(c, "itemId"), settlementCase.id).first<Record<string, unknown>>();
+  if (!item) return fail(c, 404, "CLEARANCE_ITEM_NOT_FOUND", "Clearance item not found.");
+  if (!hasAny(c, [...clearanceItemPermissions(item.clearance_type), "final_settlement.clearance.waive"])) return fail(c, 403, "PERMISSION_DENIED", "You do not have permission to waive this clearance type.");
   const now = isoNow();
   await c.env.DB
     .prepare("UPDATE final_settlement_clearance_items SET status = 'WAIVED', reason = ?, updated_by_user_id = ?, updated_at = ? WHERE id = ? AND settlement_case_id = ?")
