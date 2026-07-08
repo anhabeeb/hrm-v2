@@ -92,7 +92,13 @@ const KycRequestsPage = lazyPage(() => import("../pages/KycRequestsPage"), "KycR
 const LeaveCalendarPage = lazyPage(() => import("../pages/LeaveCalendarPage"), "LeaveCalendarPage");
 const LeaveRequestsPage = lazyPage(() => import("../pages/LeaveRequestsPage"), "LeaveRequestsPage");
 const LeaveSettingsPage = lazyPage(() => import("../pages/LeaveSettingsPage"), "LeaveSettingsPage");
-const LifecyclePage = lazyPage(() => import("../pages/LifecyclePage"), "LifecyclePage");
+const OnboardingCasesPage = lazyPage(() => import("../pages/lifecycle/OnboardingCasesPage"), "OnboardingCasesPage");
+const OnboardingAlertsPage = lazyPage(() => import("../pages/lifecycle/OnboardingAlertsPage"), "OnboardingAlertsPage");
+const OnboardingSettingsPage = lazyPage(() => import("../pages/lifecycle/OnboardingSettingsPage"), "OnboardingSettingsPage");
+const OffboardingDashboardPage = lazyPage(() => import("../pages/lifecycle/OffboardingDashboardPage"), "OffboardingDashboardPage");
+const OffboardingCasesPage = lazyPage(() => import("../pages/lifecycle/OffboardingCasesPage"), "OffboardingCasesPage");
+const OffboardingSettingsPage = lazyPage(() => import("../pages/lifecycle/OffboardingSettingsPage"), "OffboardingSettingsPage");
+const LifecycleReportsPage = lazyPage(() => import("../pages/lifecycle/LifecycleReportsPage"), "LifecycleReportsPage");
 const LoginPage = lazyPage(() => import("../pages/LoginPage"), "LoginPage");
 const MissingDocumentsPage = lazyPage(() => import("../pages/MissingDocumentsPage"), "MissingDocumentsPage");
 const NotificationCenterPage = lazyPage(() => import("../pages/NotificationCenterPage"), "NotificationCenterPage");
@@ -132,7 +138,7 @@ registerRoutePreloader("employee-profile", () => EmployeeProfilePage.preload?.()
 registerRoutePreloader("employee-setup", () => EmployeeSetupListPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("employees", () => EmployeesPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("dashboard", () => DashboardPage.preload?.() ?? Promise.resolve());
-registerRoutePreloader("onboarding-case", () => LifecyclePage.preload?.() ?? Promise.resolve());
+registerRoutePreloader("onboarding-case", () => OnboardingCasesPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("contracts", () => ContractsPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("approvals", () => ApprovalsPage.preload?.() ?? Promise.resolve());
 registerRoutePreloader("attendance", () => AttendanceRecordsPage.preload?.() ?? Promise.resolve());
@@ -304,13 +310,13 @@ export function AppRoutes() {
             <Route path="employees/:id" element={<EmployeeProfilePage />} />
             <Route path="onboarding" element={<LegacyOnboardingRedirect />} />
             <Route path="onboarding/cases" element={<LegacyOnboardingRedirect />} />
-            <Route path="onboarding/history" element={operational("onboarding", "Onboarding history", <LifecyclePage mode="onboarding-cases" />)} />
-            <Route path="onboarding/alerts" element={operational("onboarding", "Onboarding", <LifecyclePage mode="onboarding-alerts" />)} />
-            <Route path="onboarding/settings" element={<LifecyclePage mode="onboarding-settings" />} />
-            <Route path="offboarding" element={operational("offboarding", "Offboarding", <LifecyclePage mode="offboarding-dashboard" />)} />
-            <Route path="offboarding/cases" element={operational("offboarding", "Offboarding", <LifecyclePage mode="offboarding-cases" />)} />
-            <Route path="offboarding/settings" element={<LifecyclePage mode="offboarding-settings" />} />
-            <Route path="lifecycle/reports" element={<LifecyclePage mode="lifecycle-reports" />} />
+            <Route path="onboarding/history" element={operational("onboarding", "Onboarding history", <OnboardingCasesPage />)} />
+            <Route path="onboarding/alerts" element={operational("onboarding", "Onboarding", <OnboardingAlertsPage />)} />
+            <Route path="onboarding/settings" element={<OnboardingSettingsPage />} />
+            <Route path="offboarding" element={operational("offboarding", "Offboarding", <OffboardingDashboardPage />)} />
+            <Route path="offboarding/cases" element={operational("offboarding", "Offboarding", <OffboardingCasesPage />)} />
+            <Route path="offboarding/settings" element={<OffboardingSettingsPage />} />
+            <Route path="lifecycle/reports" element={<LifecycleReportsPage />} />
             <Route path="contracts" element={operational("contracts", "Contracts", <ContractsPage />)} />
             <Route path="contracts/probation" element={operational("contracts", "Contracts", <ContractsPage mode="probation" />)} />
             <Route path="contracts/renewals" element={operational("contracts", "Contracts", <ContractsPage mode="renewals" />)} />
