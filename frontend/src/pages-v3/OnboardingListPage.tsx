@@ -208,12 +208,16 @@ function StartOnboardingModal({ onClose, onCreated, alerts, onRefresh }: { onClo
   const [departments, setDepartments] = useState<OrganizationDepartment[]>([]);
   const [locations, setLocations] = useState<OrganizationLocation[]>([]);
   const [positions, setPositions] = useState<OrganizationPosition[]>([]);
+  const [jobLevels, setJobLevels] = useState<Array<{ id: string; name: string }>>([]);
+  const [reportingManagers, setReportingManagers] = useState<Array<{ id: string; full_name: string }>>([]);
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [nationality, setNationality] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [positionId, setPositionId] = useState("");
   const [locationId, setLocationId] = useState("");
+  const [jobLevelId, setJobLevelId] = useState("");
+  const [reportingManagerId, setReportingManagerId] = useState("");
   const [employmentType, setEmploymentType] = useState<"FULL_TIME" | "PART_TIME" | "INTERN" | "TEMPORARY" | "CONTRACT">("FULL_TIME");
   const [startDate, setStartDate] = useState("");
   const [saving, setSaving] = useState(false);
@@ -225,11 +229,19 @@ function StartOnboardingModal({ onClose, onCreated, alerts, onRefresh }: { onClo
       setDepartments(res.departments);
       setLocations(res.locations);
       setPositions(res.positions);
+      setJobLevels(res.job_levels);
+      setReportingManagers(res.reporting_managers as unknown as Array<{ id: string; full_name: string }>);
     });
   }, [token]);
 
+  function selectPosition(id: string) {
+    setPositionId(id);
+    const level = positions.find((p) => p.id === id)?.level_id;
+    if (level) setJobLevelId(level);
+  }
+
   async function submit() {
-    if (!token || !fullName.trim() || !departmentId || !positionId || !locationId) return;
+    if (!token || !fullName.trim() || !departmentId || !positionId || !locationId || !jobLevelId || !startDate) return;
     setSaving(true);
     setError(null);
     try {
@@ -242,7 +254,9 @@ function StartOnboardingModal({ onClose, onCreated, alerts, onRefresh }: { onClo
         primary_department_id: departmentId,
         primary_position_id: positionId,
         primary_location_id: locationId,
-        joining_date: startDate || null,
+        job_level_id: jobLevelId,
+        reporting_manager_employee_id: reportingManagerId || null,
+        joining_date: startDate,
         payroll_included: true,
         roster_eligible: true
       });
@@ -284,7 +298,7 @@ function StartOnboardingModal({ onClose, onCreated, alerts, onRefresh }: { onClo
                 </div>
                 <div className="space-y-1.5">
                   <Label>Position</Label>
-                  <SelectField value={positionId} onValueChange={setPositionId}>
+                  <SelectField value={positionId} onValueChange={selectPosition}>
                     <option value="">Select position</option>
                     {positions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
                   </SelectField>
@@ -294,6 +308,20 @@ function StartOnboardingModal({ onClose, onCreated, alerts, onRefresh }: { onClo
                   <SelectField value={locationId} onValueChange={setLocationId}>
                     <option value="">Select outlet</option>
                     {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </SelectField>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Job level</Label>
+                  <SelectField value={jobLevelId} onValueChange={setJobLevelId}>
+                    <option value="">Select job level</option>
+                    {jobLevels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </SelectField>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Reporting manager (optional)</Label>
+                  <SelectField value={reportingManagerId} onValueChange={setReportingManagerId}>
+                    <option value="">Select manager</option>
+                    {reportingManagers.map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}
                   </SelectField>
                 </div>
                 <div className="space-y-1.5">
@@ -309,7 +337,7 @@ function StartOnboardingModal({ onClose, onCreated, alerts, onRefresh }: { onClo
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" loading={saving} disabled={!fullName.trim() || !departmentId || !positionId || !locationId} onClick={() => void submit()}>Start onboarding</Button>
+          <Button size="sm" loading={saving} disabled={!fullName.trim() || !departmentId || !positionId || !locationId || !jobLevelId || !startDate} onClick={() => void submit()}>Start onboarding</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
