@@ -93,6 +93,11 @@ const SelfServiceRosterPageV3 = lazyPage(() => import("../pages-v3/self-service/
 const SelfServicePayrollPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServicePayrollPage"), "SelfServicePayrollPage");
 const SelfServiceContractsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceContractsPage"), "SelfServiceContractsPage");
 const SelfServiceAssetsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceAssetsPage"), "SelfServiceAssetsPage");
+const ContractsListPageV3 = lazyPage(() => import("../pages-v3/ContractsListPage"), "ContractsListPage");
+const ContractsTypesPageV3 = lazyPage(() => import("../pages-v3/ContractsTypesPage"), "ContractsTypesPage");
+const ContractsProbationPageV3 = lazyPage(() => import("../pages-v3/ContractsProbationPage"), "ContractsProbationPage");
+const ContractsRenewalsPageV3 = lazyPage(() => import("../pages-v3/ContractsRenewalsPage"), "ContractsRenewalsPage");
+const ContractsAlertsPageV3 = lazyPage(() => import("../pages-v3/ContractsAlertsPage"), "ContractsAlertsPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -349,6 +354,11 @@ export function AppRoutes() {
             <Route path="v3-preview/self-service/payroll" element={<SelfServicePayrollPageV3 />} />
             <Route path="v3-preview/self-service/contracts" element={<SelfServiceContractsPageV3 />} />
             <Route path="v3-preview/self-service/assets" element={<SelfServiceAssetsPageV3 />} />
+            <Route path="v3-preview/contracts" element={<ContractsListPageV3 />} />
+            <Route path="v3-preview/contracts/types" element={<ContractsTypesPageV3 />} />
+            <Route path="v3-preview/contracts/probation" element={<ContractsProbationPageV3 />} />
+            <Route path="v3-preview/contracts/renewals" element={<ContractsRenewalsPageV3 />} />
+            <Route path="v3-preview/contracts/alerts" element={<ContractsAlertsPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
