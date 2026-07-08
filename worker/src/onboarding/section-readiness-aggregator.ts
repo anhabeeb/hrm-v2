@@ -53,13 +53,15 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, section: Onboard
 }
 
 async function getCaseEmployeeSnapshot(db: D1Database, caseId: string) {
+  // employees has no company_id column today, so this is always null — kept as a typed field
+  // (rather than dropped) since downstream OnboardingSectionStatusInput.company_id expects it.
   return db.prepare(`
-    SELECT oc.employee_id, e.company_id
+    SELECT oc.employee_id
       FROM employee_onboarding_cases oc
       LEFT JOIN employees e ON e.id = oc.employee_id
      WHERE oc.id = ?
      LIMIT 1
-  `).bind(caseId).first<{ employee_id: string | null; company_id: string | null }>();
+  `).bind(caseId).first<{ employee_id: string | null }>().then((row) => row ? { ...row, company_id: null as string | null } : row);
 }
 
 function failedSectionStatusInput(input: {

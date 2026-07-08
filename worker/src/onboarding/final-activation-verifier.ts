@@ -98,7 +98,9 @@ function elapsed(startedAt: number) {
 }
 
 async function getActivationCaseSnapshot(db: D1Database, caseId: string) {
-  return db.prepare(`
+  // employees has no company_id column today, so this is always null — kept as a typed field
+  // (rather than dropped) since ActivationCaseSnapshot.company_id is read downstream.
+  const row = await db.prepare(`
     SELECT
       oc.id AS case_id,
       oc.employee_id,
@@ -107,14 +109,14 @@ async function getActivationCaseSnapshot(db: D1Database, caseId: string) {
       e.archived_at AS employee_archived_at,
       e.employee_no,
       e.full_name,
-      e.company_id,
       es.key AS employee_status_key
     FROM employee_onboarding_cases oc
     LEFT JOIN employees e ON e.id = oc.employee_id
     LEFT JOIN employee_statuses es ON es.id = e.status_id
     WHERE oc.id = ?
     LIMIT 1
-  `).bind(caseId).first<ActivationCaseSnapshot>();
+  `).bind(caseId).first<Omit<ActivationCaseSnapshot, "company_id">>();
+  return row ? { ...row, company_id: null as string | null } : row;
 }
 
 async function getStoredOnboardingSectionStatusesForDryRun(db: D1Database, caseId: string) {
