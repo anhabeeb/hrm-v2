@@ -214,7 +214,7 @@ export function AttendanceEmployeeCalendarPage() {
                 onRequestAction={() => setCorrectionOpen(selectedDate)}
                 size="sm"
               />
-              <Button variant="outline" size="sm" onClick={() => navigate(`/attendance/logs?employee_id=${employeeId}&date=${selectedDate}`)}>View raw punches</Button>
+              <Button variant="outline" size="sm" onClick={() => navigate(`/v3-preview/attendance?employee_id=${employeeId}&date=${selectedDate}`)}>View raw punches</Button>
             </div>
           </Panel>
         ) : null}

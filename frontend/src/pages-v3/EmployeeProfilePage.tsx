@@ -297,7 +297,7 @@ export function EmployeeProfilePage() {
               )}
             </Tile>
 
-            <Tile span="xl:col-span-2" title="Attendance" onClick={() => navigate(`/attendance/records?employee_id=${employee.id}`)}>
+            <Tile span="xl:col-span-2" title="Attendance" onClick={() => navigate(`/v3-preview/attendance?employee_id=${employee.id}`)}>
               {attendanceRate !== null ? (
                 <>
                   <p className="text-2xl font-medium text-slate-950">{attendanceRate}%</p>
