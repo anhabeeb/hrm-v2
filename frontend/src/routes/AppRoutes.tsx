@@ -530,24 +530,24 @@ export function AppRoutes() {
             <Route path="leave/calendar" element={operational("leave", "Leave", <LeaveCalendarPage />)} />
             <Route path="leave/settings" element={operational("leave", "Leave", <LeaveSettingsPage />)} />
             <Route path="leave/workflows" element={operational("leave", "Leave", <LeaveSettingsPage />)} />
-            <Route path="payroll" element={operational("payroll", "Payroll", <PayrollDashboardPage />)} />
-            <Route path="payroll/periods" element={operational("payroll", "Payroll", <PayrollPeriodsPage />)} />
-            <Route path="payroll/runs" element={operational("payroll", "Payroll", <PayrollRunsPage />)} />
-            <Route path="payroll/runs/:id" element={operational("payroll", "Payroll", <PayrollRunDetailPage />)} />
-            <Route path="payroll/advances" element={operational("payroll_employee_advances", "Employee advances", <PayrollAdvancesPage />)} />
-            <Route path="payroll/deductions" element={operational("payroll", "Payroll", <PayrollDeductionsPage />)} />
-            <Route path="payroll/adjustments" element={operational("payroll_adjustments", "Payroll adjustments", <PayrollAdjustmentsPage />)} />
-            <Route path="payroll/components" element={operational("payroll", "Payroll", <PayrollComponentsPage />)} />
-            <Route path="payroll/payslips" element={operational("payroll_payslips", "Payslips", <PayrollPayslipsPage />)} />
-            <Route path="payroll/payment-register" element={operational("payroll_payment_register", "Payment register", <PayrollPaymentRegisterPage />)} />
-            <Route path="payroll/payment-institutions" element={operational("payroll_payment_institutions", "Payment institutions", <PayrollPaymentInstitutionsPage />)} />
-            <Route path="payroll/bank-loans" element={operational("payroll_bank_loans", "Bank loans", <PayrollBankLoansPage />)} />
-            <Route path="payroll/custom-deductions" element={operational("payroll_custom_deductions", "Custom deductions", <PayrollCustomDeductionsPage />)} />
-            <Route path="payroll/pension" element={operational("payroll_pension", "Pension", <PayrollPensionPage />)} />
-            <Route path="payroll/history" element={operational("payroll", "Payroll", <PayrollHistoryPage />)} />
-            <Route path="payroll/exit-payroll" element={operational("final_settlement", "Final settlement", <FinalSettlementPage />)} />
-            <Route path="payroll/settings" element={<PayrollSettingsPage />} />
-            <Route path="payroll/reports" element={operational("payroll_reports", "Payroll reports", <PayrollReportsPage />)} />
+            <Route path="payroll" element={operational("payroll", "Payroll", <PayrollDashboardPageV3 />)} />
+            <Route path="payroll/periods" element={operational("payroll", "Payroll", <PayrollPeriodsPageV3 />)} />
+            <Route path="payroll/runs" element={operational("payroll", "Payroll", <PayrollRunsListPageV3 />)} />
+            <Route path="payroll/runs/:runId" element={operational("payroll", "Payroll", <PayrollRunDetailPageV3 />)} />
+            <Route path="payroll/advances" element={operational("payroll_employee_advances", "Employee advances", <PayrollAdvancesPageV3 />)} />
+            <Route path="payroll/deductions" element={operational("payroll", "Payroll", <PayrollDeductionsPageV3 />)} />
+            <Route path="payroll/adjustments" element={operational("payroll_adjustments", "Payroll adjustments", <PayrollAdjustmentsPageV3 />)} />
+            <Route path="payroll/components" element={operational("payroll", "Payroll", <PayrollComponentsPageV3 />)} />
+            <Route path="payroll/payslips" element={operational("payroll_payslips", "Payslips", <PayrollPayslipsPageV3 />)} />
+            <Route path="payroll/payment-register" element={operational("payroll_payment_register", "Payment register", <PayrollPaymentRegisterPageV3 />)} />
+            <Route path="payroll/payment-institutions" element={operational("payroll_payment_institutions", "Payment institutions", <PayrollInstitutionsPageV3 />)} />
+            <Route path="payroll/bank-loans" element={operational("payroll_bank_loans", "Bank loans", <PayrollBankLoansPageV3 />)} />
+            <Route path="payroll/custom-deductions" element={operational("payroll_custom_deductions", "Custom deductions", <PayrollCustomDeductionsPageV3 />)} />
+            <Route path="payroll/pension" element={operational("payroll_pension", "Pension", <PayrollPensionPageV3 />)} />
+            <Route path="payroll/history" element={operational("payroll", "Payroll", <PayrollHistoryPageV3 />)} />
+            <Route path="payroll/exit-payroll" element={operational("final_settlement", "Final settlement", <PayrollFinalSettlementPageV3 />)} />
+            <Route path="payroll/settings" element={<PayrollSettingsPageV3 />} />
+            <Route path="payroll/reports" element={operational("payroll_reports", "Payroll reports", <PayrollReportsPageV3 />)} />
             <Route path="roster" element={operational("roster", "Roster", <RosterWeeklyPage />)} />
             <Route path="roster/weekly" element={operational("roster", "Roster", <RosterWeeklyPage />)} />
             <Route path="roster/shift-templates" element={operational("roster", "Roster", <RosterShiftTemplatesPage />)} />
