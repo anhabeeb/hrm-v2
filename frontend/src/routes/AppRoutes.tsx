@@ -84,6 +84,15 @@ const OffboardingCaseWorkspacePageV3 = lazyPage(() => import("../pages-v3/Offboa
 const RosterWeeklyPageV3 = lazyPage(() => import("../pages-v3/RosterWeeklyPage"), "RosterWeeklyPage");
 const SettingsHubPageV3 = lazyPage(() => import("../pages-v3/SettingsHubPage"), "SettingsHubPage");
 const SettingsModulesPageV3 = lazyPage(() => import("../pages-v3/SettingsModulesPage"), "SettingsModulesPage");
+const SelfServiceHomePageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceHomePage"), "SelfServiceHomePage");
+const SelfServiceProfilePageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceProfilePage"), "SelfServiceProfilePage");
+const SelfServiceDocumentsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceDocumentsPage"), "SelfServiceDocumentsPage");
+const SelfServiceAttendancePageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceAttendancePage"), "SelfServiceAttendancePage");
+const SelfServiceLeavePageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceLeavePage"), "SelfServiceLeavePage");
+const SelfServiceRosterPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceRosterPage"), "SelfServiceRosterPage");
+const SelfServicePayrollPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServicePayrollPage"), "SelfServicePayrollPage");
+const SelfServiceContractsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceContractsPage"), "SelfServiceContractsPage");
+const SelfServiceAssetsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceAssetsPage"), "SelfServiceAssetsPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -331,6 +340,15 @@ export function AppRoutes() {
             <Route path="v3-preview/roster" element={<RosterWeeklyPageV3 />} />
             <Route path="v3-preview/settings" element={<SettingsHubPageV3 />} />
             <Route path="v3-preview/settings/modules" element={<SettingsModulesPageV3 />} />
+            <Route path="v3-preview/self-service" element={<SelfServiceHomePageV3 />} />
+            <Route path="v3-preview/self-service/profile" element={<SelfServiceProfilePageV3 />} />
+            <Route path="v3-preview/self-service/documents" element={<SelfServiceDocumentsPageV3 />} />
+            <Route path="v3-preview/self-service/attendance" element={<SelfServiceAttendancePageV3 />} />
+            <Route path="v3-preview/self-service/leave" element={<SelfServiceLeavePageV3 />} />
+            <Route path="v3-preview/self-service/roster" element={<SelfServiceRosterPageV3 />} />
+            <Route path="v3-preview/self-service/payroll" element={<SelfServicePayrollPageV3 />} />
+            <Route path="v3-preview/self-service/contracts" element={<SelfServiceContractsPageV3 />} />
+            <Route path="v3-preview/self-service/assets" element={<SelfServiceAssetsPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />

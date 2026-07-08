@@ -1153,8 +1153,11 @@ selfServiceRoutes.get("/leave", async (c) => {
   const approvals = (
     await c.env.DB
       .prepare(
-        `SELECT a.* FROM leave_request_approvals a
+        `SELECT a.*, u.name AS approver_name, actor.name AS action_by_name
+         FROM leave_request_approvals a
          JOIN leave_requests lr ON lr.id = a.leave_request_id
+         LEFT JOIN users u ON u.id = a.approver_user_id
+         LEFT JOIN users actor ON actor.id = a.action_by_user_id
          WHERE lr.employee_id = ? ORDER BY a.step_order ASC, a.created_at ASC`
       )
       .bind(gate.employeeId)
