@@ -98,6 +98,11 @@ const ContractsTypesPageV3 = lazyPage(() => import("../pages-v3/ContractsTypesPa
 const ContractsProbationPageV3 = lazyPage(() => import("../pages-v3/ContractsProbationPage"), "ContractsProbationPage");
 const ContractsRenewalsPageV3 = lazyPage(() => import("../pages-v3/ContractsRenewalsPage"), "ContractsRenewalsPage");
 const ContractsAlertsPageV3 = lazyPage(() => import("../pages-v3/ContractsAlertsPage"), "ContractsAlertsPage");
+const ApprovalInboxPageV3 = lazyPage(() => import("../pages-v3/ApprovalInboxPage"), "ApprovalInboxPage");
+const ApprovalWorkflowsPageV3 = lazyPage(() => import("../pages-v3/ApprovalWorkflowsPage"), "ApprovalWorkflowsPage");
+const ApprovalDelegationsPageV3 = lazyPage(() => import("../pages-v3/ApprovalDelegationsPage"), "ApprovalDelegationsPage");
+const ApprovalTemplatesPageV3 = lazyPage(() => import("../pages-v3/ApprovalTemplatesPage"), "ApprovalTemplatesPage");
+const ApprovalReportsPageV3 = lazyPage(() => import("../pages-v3/ApprovalReportsPage"), "ApprovalReportsPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -359,6 +364,16 @@ export function AppRoutes() {
             <Route path="v3-preview/contracts/probation" element={<ContractsProbationPageV3 />} />
             <Route path="v3-preview/contracts/renewals" element={<ContractsRenewalsPageV3 />} />
             <Route path="v3-preview/contracts/alerts" element={<ContractsAlertsPageV3 />} />
+            <Route path="v3-preview/approvals" element={<ApprovalInboxPageV3 mode="inbox" />} />
+            <Route path="v3-preview/approvals/submitted" element={<ApprovalInboxPageV3 mode="submitted" />} />
+            <Route path="v3-preview/approvals/overdue" element={<ApprovalInboxPageV3 mode="overdue" />} />
+            <Route path="v3-preview/approvals/escalated" element={<ApprovalInboxPageV3 mode="escalated" />} />
+            <Route path="v3-preview/approvals/delegated" element={<ApprovalInboxPageV3 mode="delegated" />} />
+            <Route path="v3-preview/approvals/history" element={<ApprovalInboxPageV3 mode="history" />} />
+            <Route path="v3-preview/approvals/workflows" element={<ApprovalWorkflowsPageV3 />} />
+            <Route path="v3-preview/approvals/delegations" element={<ApprovalDelegationsPageV3 />} />
+            <Route path="v3-preview/approvals/templates" element={<ApprovalTemplatesPageV3 />} />
+            <Route path="v3-preview/approvals/reports" element={<ApprovalReportsPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
