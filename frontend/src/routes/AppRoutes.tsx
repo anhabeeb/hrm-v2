@@ -477,11 +477,11 @@ export function AppRoutes() {
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
-            <Route path="employees" element={<EmployeesPage />} />
-            <Route path="employees/setup" element={<EmployeeSetupListPage />} />
-            <Route path="employees/kyc-requests" element={<KycRequestsPage />} />
-            <Route path="employees/settings" element={<EmployeeSettingsPage />} />
-            <Route path="employees/:id" element={<EmployeeProfilePage />} />
+            <Route path="employees" element={<EmployeesPageV3 />} />
+            <Route path="employees/setup" element={<EmployeeSetupListPageV3 />} />
+            <Route path="employees/kyc-requests" element={<KycRequestsPageV3 />} />
+            <Route path="employees/settings" element={<EmployeeSettingsPageV3 />} />
+            <Route path="employees/:id" element={<EmployeeProfilePageV3 />} />
             <Route path="onboarding" element={<LegacyOnboardingRedirect />} />
             <Route path="onboarding/cases" element={<LegacyOnboardingRedirect />} />
             <Route path="onboarding/history" element={operational("onboarding", "Onboarding history", <OnboardingCasesPage />)} />
