@@ -9,6 +9,8 @@ import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 import { humanizeTechnicalLabel } from "../lib/displayLabels";
 import { cn } from "../lib/utils";
+import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { ATTENDANCE_NAV_ITEMS } from "./attendanceNav";
 import type { AttendanceRecord } from "../types/attendance";
 import type { Employee } from "../types/employees";
 
@@ -117,7 +119,9 @@ export function AttendanceListPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex flex-col gap-3">
+      <div className="flex gap-4">
+        <RouteNavRail items={ATTENDANCE_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+        <div className="min-w-0 flex-1 space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-lg font-medium text-slate-950">Attendance</p>
@@ -185,6 +189,7 @@ export function AttendanceListPage() {
         ) : (
           <Panel><EmptyState title="No employees found" description="Adjust filters or check back once attendance data is recorded." /></Panel>
         )}
+        </div>
       </div>
     </PageShell>
   );

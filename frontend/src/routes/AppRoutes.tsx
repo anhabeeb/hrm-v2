@@ -113,6 +113,11 @@ const UsersAccessRolesPageV3 = lazyPage(() => import("../pages-v3/UsersAccessRol
 const UsersAccessPermissionsPageV3 = lazyPage(() => import("../pages-v3/UsersAccessPermissionsPage"), "UsersAccessPermissionsPage");
 const UsersAccessRoleMappingsPageV3 = lazyPage(() => import("../pages-v3/UsersAccessRoleMappingsPage"), "UsersAccessRoleMappingsPage");
 const UsersAccessScopesPageV3 = lazyPage(() => import("../pages-v3/UsersAccessScopesPage"), "UsersAccessScopesPage");
+const AttendanceCalendarPageV3 = lazyPage(() => import("../pages-v3/AttendanceCalendarPage"), "AttendanceCalendarPage");
+const AttendanceCorrectionsPageV3 = lazyPage(() => import("../pages-v3/AttendanceCorrectionsPage"), "AttendanceCorrectionsPage");
+const AttendanceDevicesPageV3 = lazyPage(() => import("../pages-v3/AttendanceDevicesPage"), "AttendanceDevicesPage");
+const AttendanceReportsPageV3 = lazyPage(() => import("../pages-v3/AttendanceReportsPage"), "AttendanceReportsPage");
+const AttendanceSettingsPageV3 = lazyPage(() => import("../pages-v3/AttendanceSettingsPage"), "AttendanceSettingsPage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -394,6 +399,11 @@ export function AppRoutes() {
             <Route path="v3-preview/users-access/permissions" element={<UsersAccessPermissionsPageV3 />} />
             <Route path="v3-preview/users-access/role-mappings" element={<UsersAccessRoleMappingsPageV3 />} />
             <Route path="v3-preview/users-access/access-scopes" element={<UsersAccessScopesPageV3 />} />
+            <Route path="v3-preview/attendance/calendar" element={<AttendanceCalendarPageV3 />} />
+            <Route path="v3-preview/attendance/corrections" element={<AttendanceCorrectionsPageV3 />} />
+            <Route path="v3-preview/attendance/devices" element={<AttendanceDevicesPageV3 />} />
+            <Route path="v3-preview/attendance/reports" element={<AttendanceReportsPageV3 />} />
+            <Route path="v3-preview/attendance/settings" element={<AttendanceSettingsPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
