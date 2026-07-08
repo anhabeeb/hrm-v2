@@ -79,6 +79,13 @@ const LeaveDeductionRulesPageV3 = lazyPage(() => import("../pages-v3/LeaveDeduct
 const AssetsItemsPageV3 = lazyPage(() => import("../pages-v3/AssetsItemsPage"), "AssetsItemsPage");
 const AssetAssignmentsPageV3 = lazyPage(() => import("../pages-v3/AssetAssignmentsPage"), "AssetAssignmentsPage");
 const AssetsReportsPageV3 = lazyPage(() => import("../pages-v3/AssetsReportsPage"), "AssetsReportsPage");
+const AssetsDashboardPageV3 = lazyPage(() => import("../pages-v3/AssetsDashboardPage"), "AssetsDashboardPage");
+const AssetUniformTypesPageV3 = lazyPage(() => import("../pages-v3/AssetUniformTypesPage"), "AssetUniformTypesPage");
+const AssetUniformInventoryPageV3 = lazyPage(() => import("../pages-v3/AssetUniformInventoryPage"), "AssetUniformInventoryPage");
+const AssetUniformAssignmentsPageV3 = lazyPage(() => import("../pages-v3/AssetUniformAssignmentsPage"), "AssetUniformAssignmentsPage");
+const AssetCategoriesPageV3 = lazyPage(() => import("../pages-v3/AssetCategoriesPage"), "AssetCategoriesPage");
+const AssetDeductionRulesPageV3 = lazyPage(() => import("../pages-v3/AssetDeductionRulesPage"), "AssetDeductionRulesPage");
+const AssetUniformSettingsPageV3 = lazyPage(() => import("../pages-v3/AssetUniformSettingsPage"), "AssetUniformSettingsPage");
 const DocumentsRegistryPageV3 = lazyPage(() => import("../pages-v3/DocumentsRegistryPage"), "DocumentsRegistryPage");
 const DocumentsCompliancePageV3 = lazyPage(() => import("../pages-v3/DocumentsCompliancePage"), "DocumentsCompliancePage");
 const DocumentsMissingPageV3 = lazyPage(() => import("../pages-v3/DocumentsMissingPage"), "DocumentsMissingPage");
@@ -365,8 +372,15 @@ export function AppRoutes() {
             <Route path="v3-preview/leave/workflows" element={<LeaveWorkflowsPageV3 />} />
             <Route path="v3-preview/leave/document-rules" element={<LeaveDocumentRulesPageV3 />} />
             <Route path="v3-preview/leave/deduction-rules" element={<LeaveDeductionRulesPageV3 />} />
+            <Route path="v3-preview/assets" element={<AssetsDashboardPageV3 />} />
             <Route path="v3-preview/assets/items" element={<AssetsItemsPageV3 />} />
             <Route path="v3-preview/assets/assignments" element={<AssetAssignmentsPageV3 />} />
+            <Route path="v3-preview/assets/uniform-types" element={<AssetUniformTypesPageV3 />} />
+            <Route path="v3-preview/assets/uniforms" element={<AssetUniformInventoryPageV3 />} />
+            <Route path="v3-preview/assets/uniform-assignments" element={<AssetUniformAssignmentsPageV3 />} />
+            <Route path="v3-preview/assets/categories" element={<AssetCategoriesPageV3 />} />
+            <Route path="v3-preview/assets/deduction-rules" element={<AssetDeductionRulesPageV3 />} />
+            <Route path="v3-preview/assets/settings" element={<AssetUniformSettingsPageV3 />} />
             <Route path="v3-preview/assets/reports" element={<AssetsReportsPageV3 />} />
             <Route path="v3-preview/documents/registry" element={<DocumentsRegistryPageV3 />} />
             <Route path="v3-preview/documents/compliance" element={<DocumentsCompliancePageV3 />} />
