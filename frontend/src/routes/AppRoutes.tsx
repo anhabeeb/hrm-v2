@@ -77,6 +77,10 @@ const AssetsReportsPageV3 = lazyPage(() => import("../pages-v3/AssetsReportsPage
 const DocumentsRegistryPageV3 = lazyPage(() => import("../pages-v3/DocumentsRegistryPage"), "DocumentsRegistryPage");
 const DocumentsCompliancePageV3 = lazyPage(() => import("../pages-v3/DocumentsCompliancePage"), "DocumentsCompliancePage");
 const DocumentsMissingPageV3 = lazyPage(() => import("../pages-v3/DocumentsMissingPage"), "DocumentsMissingPage");
+const OnboardingListPageV3 = lazyPage(() => import("../pages-v3/OnboardingListPage"), "OnboardingListPage");
+const OnboardingCaseWorkspacePageV3 = lazyPage(() => import("../pages-v3/OnboardingCaseWorkspacePage"), "OnboardingCaseWorkspacePage");
+const OffboardingListPageV3 = lazyPage(() => import("../pages-v3/OffboardingListPage"), "OffboardingListPage");
+const OffboardingCaseWorkspacePageV3 = lazyPage(() => import("../pages-v3/OffboardingCaseWorkspacePage"), "OffboardingCaseWorkspacePage");
 const DataTransferPage = lazyPage(() => import("../pages/DataTransferPage"), "DataTransferPage");
 const DocumentCompliancePage = lazyPage(() => import("../pages/DocumentCompliancePage"), "DocumentCompliancePage");
 const DocumentRegistryPage = lazyPage(() => import("../pages/DocumentRegistryPage"), "DocumentRegistryPage");
@@ -300,6 +304,10 @@ export function AppRoutes() {
             <Route path="v3-preview/documents/registry" element={<DocumentsRegistryPageV3 />} />
             <Route path="v3-preview/documents/compliance" element={<DocumentsCompliancePageV3 />} />
             <Route path="v3-preview/documents/missing" element={<DocumentsMissingPageV3 />} />
+            <Route path="v3-preview/onboarding" element={<OnboardingListPageV3 />} />
+            <Route path="v3-preview/onboarding/:caseId" element={<OnboardingCaseWorkspacePageV3 />} />
+            <Route path="v3-preview/offboarding" element={<OffboardingListPageV3 />} />
+            <Route path="v3-preview/offboarding/:caseId" element={<OffboardingCaseWorkspacePageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
             <Route path="notifications" element={<NotificationCenterPage />} />
