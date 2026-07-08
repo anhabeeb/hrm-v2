@@ -506,11 +506,11 @@ export function AppRoutes() {
             <Route path="approvals/delegations" element={operational("approvals", "Approvals", <ApprovalsPage mode="delegations" />)} />
             <Route path="approvals/templates" element={<ApprovalsPage mode="templates" />} />
             <Route path="approvals/reports" element={operational("approvals", "Approvals", <ApprovalsPage mode="reports" />)} />
-            <Route path="attendance" element={operational("attendance", "Attendance", <AttendanceRecordsPage />)} />
-            <Route path="attendance/records" element={operational("attendance", "Attendance", <AttendanceRecordsPage />)} />
-            <Route path="attendance/calendar" element={operational("attendance", "Attendance", <AttendanceCalendarPage />)} />
-            <Route path="attendance/corrections" element={operational("attendance", "Attendance", <AttendanceCorrectionsPage />)} />
-            <Route path="attendance/devices" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDevicesPage />)} />
+            <Route path="attendance" element={operational("attendance", "Attendance", <AttendanceListPageV3 />)} />
+            <Route path="attendance/records" element={operational("attendance", "Attendance", <AttendanceListPageV3 />)} />
+            <Route path="attendance/calendar" element={operational("attendance", "Attendance", <AttendanceCalendarPageV3 />)} />
+            <Route path="attendance/corrections" element={operational("attendance", "Attendance", <AttendanceCorrectionsPageV3 />)} />
+            <Route path="attendance/devices" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDevicesPageV3 />)} />
             <Route path="attendance/devices/settings" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="settings" />)} />
             <Route path="attendance/biometric-mappings" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="mappings" />)} />
             <Route path="attendance/imports" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="imports" />)} />
@@ -521,8 +521,9 @@ export function AppRoutes() {
             <Route path="attendance/device-diagnostics" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="diagnostics" />)} />
             <Route path="attendance/vendor-integrations" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="vendor-integrations" />)} />
             <Route path="attendance/device-reports" element={operational("zkteco_attendance", "ZKTeco attendance", <AttendanceDeviceOperationsPage mode="reports" />)} />
-            <Route path="attendance/reports" element={operational("attendance", "Attendance", <AttendanceReportsPage />)} />
-            <Route path="attendance/settings" element={<AttendanceSettingsPage />} />
+            <Route path="attendance/reports" element={operational("attendance", "Attendance", <AttendanceReportsPageV3 />)} />
+            <Route path="attendance/settings" element={<AttendanceSettingsPageV3 />} />
+            <Route path="attendance/:employeeId" element={operational("attendance", "Attendance", <AttendanceEmployeeCalendarPageV3 />)} />
             <Route path="leave" element={operational("leave", "Leave", <LeaveRequestsPage />)} />
             <Route path="leave/requests" element={operational("leave", "Leave", <LeaveRequestsPage />)} />
             <Route path="leave/approvals" element={operational("leave", "Leave", <LeaveRequestsPage approvalsOnly />)} />
