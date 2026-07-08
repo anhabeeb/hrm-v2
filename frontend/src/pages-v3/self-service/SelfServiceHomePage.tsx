@@ -137,16 +137,16 @@ export function SelfServiceHomePage() {
                 </div>
               ) : <p className="text-center text-xs text-muted-foreground">No leave balance cycles yet.</p>}
               <div className="mt-3 flex justify-center">
-                <Link to="/self-service/leave"><Button size="sm"><Plus className="h-3.5 w-3.5" /> Request leave</Button></Link>
+                <Link to="/v3-preview/self-service/leave"><Button size="sm"><Plus className="h-3.5 w-3.5" /> Request leave</Button></Link>
               </div>
             </Panel>
           ) : null}
           <Panel className="p-4">
             <p className="mb-3 text-xs font-medium text-slate-950">Quick actions</p>
             <div className="flex flex-col gap-2">
-              {visible("payslips") ? <Link to="/self-service/payroll" className="flex items-center gap-2 rounded-md bg-[#F7F7FB] px-3 py-2 text-xs text-slate-950"><Receipt className="h-3.5 w-3.5 text-primary" /> View latest payslip</Link> : null}
-              <Link to="/self-service/profile" className="flex items-center gap-2 rounded-md bg-[#F7F7FB] px-3 py-2 text-xs text-slate-950"><UserCog className="h-3.5 w-3.5 text-primary" /> Update contact details</Link>
-              {visible("documents") ? <Link to="/self-service/documents" className="flex items-center gap-2 rounded-md bg-[#F7F7FB] px-3 py-2 text-xs text-slate-950"><Upload className="h-3.5 w-3.5 text-primary" /> Upload a document</Link> : null}
+              {visible("payslips") ? <Link to="/v3-preview/self-service/payroll" className="flex items-center gap-2 rounded-md bg-[#F7F7FB] px-3 py-2 text-xs text-slate-950"><Receipt className="h-3.5 w-3.5 text-primary" /> View latest payslip</Link> : null}
+              <Link to="/v3-preview/self-service/profile" className="flex items-center gap-2 rounded-md bg-[#F7F7FB] px-3 py-2 text-xs text-slate-950"><UserCog className="h-3.5 w-3.5 text-primary" /> Update contact details</Link>
+              {visible("documents") ? <Link to="/v3-preview/self-service/documents" className="flex items-center gap-2 rounded-md bg-[#F7F7FB] px-3 py-2 text-xs text-slate-950"><Upload className="h-3.5 w-3.5 text-primary" /> Upload a document</Link> : null}
             </div>
           </Panel>
         </div>
@@ -170,7 +170,7 @@ export function SelfServiceHomePage() {
             <Panel className="p-4">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs font-medium text-slate-950">My assets</p>
-                <Link to="/self-service/assets" className="text-[10px] text-primary">View all</Link>
+                <Link to="/v3-preview/self-service/assets" className="text-[10px] text-primary">View all</Link>
               </div>
               <AssetsSummary token={token} />
             </Panel>

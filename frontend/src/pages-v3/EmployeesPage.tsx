@@ -274,7 +274,7 @@ export function EmployeesPage() {
         actions={
           <>
           {(canStatus || canNumber) ? (
-            <Link to="/employees/settings" className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-slate-900">
+            <Link to="/v3-preview/employees/settings" className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-slate-900">
               <Settings2 className="h-3.5 w-3.5" /> Settings
             </Link>
           ) : null}

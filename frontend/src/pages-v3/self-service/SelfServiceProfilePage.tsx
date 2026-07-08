@@ -190,7 +190,7 @@ export function SelfServiceProfilePage() {
               </button>
             </div>
             <p className="text-xs text-muted-foreground">View and manage payment methods from My payroll.</p>
-            <Link to="/self-service/payroll" className="mt-2 inline-block text-[10px] text-primary">Go to My payroll →</Link>
+            <Link to="/v3-preview/self-service/payroll" className="mt-2 inline-block text-[10px] text-primary">Go to My payroll →</Link>
           </Panel>
         </div>
 
@@ -199,7 +199,7 @@ export function SelfServiceProfilePage() {
             <div className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-[#E6F1FB]"><FileText className="h-3.5 w-3.5 text-[#0C447C]" /></div>
             <p className="text-xs font-medium text-slate-950">Documents on file</p>
           </div>
-          <Link to="/self-service/documents" className="text-[10px] text-primary">Go to My documents →</Link>
+          <Link to="/v3-preview/self-service/documents" className="text-[10px] text-primary">Go to My documents →</Link>
         </Panel>
       </div>
 

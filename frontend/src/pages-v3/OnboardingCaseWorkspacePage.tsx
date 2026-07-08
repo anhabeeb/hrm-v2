@@ -234,7 +234,7 @@ export function OnboardingCaseWorkspacePage() {
           <Panel className="p-3 text-xs" style={{ background: "#FAEEDA", borderColor: "#FAC775" }}>
             <span className="font-medium text-[#854F0B]">{otherBlocking.length} additional required item{otherBlocking.length > 1 ? "s" : ""}</span>
             <span className="text-[#854F0B]"> ({otherBlocking.map((s) => s.section_label).join(", ")}) not shown here — manage from </span>
-            {employeeId ? <Link to={`/employees/${employeeId}?setup=1`} className="font-medium text-[#854F0B] underline">Employee 360</Link> : <span className="font-medium text-[#854F0B]">Employee 360</span>}
+            {employeeId ? <Link to={`/v3-preview/employees/${employeeId}?setup=1`} className="font-medium text-[#854F0B] underline">Employee 360</Link> : <span className="font-medium text-[#854F0B]">Employee 360</span>}
           </Panel>
         ) : null}
 

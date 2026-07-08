@@ -95,7 +95,7 @@ export function PayrollFinalSettlementPage() {
                           size="sm"
                         />
                       ) : null}
-                      <Link to={`/payroll/exit-payroll?case=${c.id}`}><Button variant="outline" size="sm">Edit line items</Button></Link>
+                      <Link to={`/v3-preview/payroll/final-settlement?case=${c.id}`}><Button variant="outline" size="sm">Edit line items</Button></Link>
                     </div>
                   </Panel>
                 );

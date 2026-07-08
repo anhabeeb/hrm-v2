@@ -205,7 +205,7 @@ export function OffboardingCaseWorkspacePage() {
           <Panel className="p-3 text-xs" style={{ background: "#FAEEDA", borderColor: "#FAC775" }}>
             <span className="font-medium text-[#854F0B]">{otherBlocking.length} additional required item{otherBlocking.length > 1 ? "s" : ""}</span>
             <span className="text-[#854F0B]"> ({otherBlocking.map((t) => t.task_name ?? t.title ?? t.task_key).join(", ")}) not shown here — manage from </span>
-            <Link to={`/employees/${caseRow.employee_id}`} className="font-medium text-[#854F0B] underline">Employee 360</Link>
+            <Link to={`/v3-preview/employees/${caseRow.employee_id}`} className="font-medium text-[#854F0B] underline">Employee 360</Link>
           </Panel>
         ) : null}
 

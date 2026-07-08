@@ -221,7 +221,7 @@ export function EmployeeProfilePage() {
     <PageShell constrained={false}>
       <div className="flex flex-col gap-0 overflow-hidden rounded-card border shadow-panel">
         <div className="flex items-center justify-between px-6 pb-11 pt-5" style={{ background: "#EEEDFE" }}>
-          <Link to="/employees" className="inline-flex items-center gap-1.5 text-xs text-[#6B6F86] hover:text-slate-900">
+          <Link to="/v3-preview/employees" className="inline-flex items-center gap-1.5 text-xs text-[#6B6F86] hover:text-slate-900">
             &larr; Employees / {employee.full_name}
           </Link>
           <div className="flex gap-2">
@@ -340,7 +340,7 @@ export function EmployeeProfilePage() {
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: userAccount?.linked_user ? "#5DCAA5" : "#F09595" }} />
                 <p className="text-xs text-slate-950">{userAccount?.linked_user ? `Linked to ${userAccount.linked_user.email}` : "No login yet"}</p>
               </div>
-              <Link to={`/employees/${employee.id}?setup=1`} className="text-xs text-primary hover:underline">
+              <Link to={`/v3-preview/employees/${employee.id}?setup=1`} className="text-xs text-primary hover:underline">
                 {userAccount?.linked_user ? "Manage access" : "Provision account"}
               </Link>
             </Tile>
@@ -484,7 +484,7 @@ function DocumentsPopup({ open, onClose, employeeName, documents }: { open: bool
         </DialogHeader>
         <DialogBody className="p-0">
           <div className="flex justify-end px-5 pt-4">
-            <Link to="/documents" className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground">
+            <Link to="/v3-preview/documents/registry" className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground">
               <Upload className="h-3.5 w-3.5" /> Upload document
             </Link>
           </div>

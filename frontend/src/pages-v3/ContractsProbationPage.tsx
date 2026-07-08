@@ -48,7 +48,7 @@ export function ContractsProbationPage() {
               {rows.map((row) => (
                 <Panel key={String(row.id)} className="flex items-center gap-3.5 p-3">
                   <div className="min-w-0 flex-1">
-                    <Link to={`/employees/${row.employee_id}`} className="text-xs font-medium text-slate-950 hover:underline">{text(row.employee_name_snapshot)}</Link>
+                    <Link to={`/v3-preview/employees/${row.employee_id}`} className="text-xs font-medium text-slate-950 hover:underline">{text(row.employee_name_snapshot)}</Link>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">{text(row.contract_number)} · Probation ends {text(row.probation_end_date)} · Confirmation due {text(row.confirmation_due_date)}</p>
                   </div>
                   <span className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium" style={{ background: statusTone(String(row.probation_status)).bg, color: statusTone(String(row.probation_status)).text }}>{humanizeTechnicalLabel(String(row.probation_status))}</span>

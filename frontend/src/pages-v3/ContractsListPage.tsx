@@ -102,7 +102,7 @@ export function ContractsListPage() {
                 <Panel key={String(row.id)} className="flex items-center gap-3.5 p-3">
                   <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#E6F1FB] text-xs font-medium text-[#0C447C]">{initialsOf(text(row.employee_name_snapshot ?? row.employee_name ?? row.full_name, "?"))}</div>
                   <div className="min-w-0 flex-1">
-                    <Link to={`/employees/${row.employee_id}`} className="text-xs font-medium text-slate-950 hover:underline">{text(row.employee_name_snapshot ?? row.employee_name ?? row.full_name)}</Link>
+                    <Link to={`/v3-preview/employees/${row.employee_id}`} className="text-xs font-medium text-slate-950 hover:underline">{text(row.employee_name_snapshot ?? row.employee_name ?? row.full_name)}</Link>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">
                       {text(row.contract_number)} · {text(row.contract_type_display_name ?? row.contract_type_name_snapshot, "No type")} · {text(row.contract_start_date)} to {text(row.contract_end_date, "open")}
                     </p>

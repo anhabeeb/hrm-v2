@@ -75,43 +75,43 @@ export function SettingsHubPage() {
         </div>
 
         <CategorySection label="General">
-          <IconCard to="/settings/organization" icon={<Building className="h-4 w-4" />} iconBg="#EEEDFE" iconColor="#26215C" title="Company profile" description="Name, registration, contact details" />
+          <IconCard to="/v3-preview/settings/organization" icon={<Building className="h-4 w-4" />} iconBg="#EEEDFE" iconColor="#26215C" title="Company profile" description="Name, registration, contact details" />
           <IconCard to="/v3-preview/settings/modules" icon={<ToggleRight className="h-4 w-4" />} iconBg="#E6F1FB" iconColor="#0C447C" title="Modules" description="Turn features on/off, with dependency checks" />
         </CategorySection>
 
         <CategorySection label="Organization">
-          <TileCard to="/settings/organization" icon={<MapPin className="h-[18px] w-[18px]" />} iconColor="#5B4FE9" title="Outlets / locations" />
-          <TileCard to="/settings/organization" icon={<Network className="h-[18px] w-[18px]" />} iconColor="#5B4FE9" title="Departments" />
-          <TileCard to="/settings/organization" icon={<Briefcase className="h-[18px] w-[18px]" />} iconColor="#5B4FE9" title="Positions" />
-          <TileCard to="/settings/organization" icon={<CalendarClock className="h-[18px] w-[18px]" />} iconColor="#5B4FE9" title="Job levels" />
+          <TileCard to="/v3-preview/settings/organization" icon={<MapPin className="h-[18px] w-[18px]" />} iconColor="#5B4FE9" title="Outlets / locations" />
+          <TileCard to="/v3-preview/settings/organization" icon={<Network className="h-[18px] w-[18px]" />} iconColor="#5B4FE9" title="Departments" />
+          <TileCard to="/v3-preview/settings/organization" icon={<Briefcase className="h-[18px] w-[18px]" />} iconColor="#5B4FE9" title="Positions" />
+          <TileCard to="/v3-preview/settings/organization" icon={<CalendarClock className="h-[18px] w-[18px]" />} iconColor="#5B4FE9" title="Job levels" />
         </CategorySection>
 
         <CategorySection label="Templates">
-          <TileCard to="/leave/settings" icon={<CalendarDays className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Leave" meta="Types, policies, workflows" />
-          <TileCard to="/roster/settings" icon={<Cast className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Roster" meta="Shift templates, weekly-off" />
-          <TileCard to="/payroll/settings" icon={<DollarSign className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Payroll deductions" />
-          <TileCard to="/settings/documents" icon={<FileText className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Documents" />
-          <TileCard to="/assets/settings" icon={<Shirt className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Assets & uniforms" />
-          <TileCard to="/settings/contracts" icon={<FileSignature className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Contracts" />
-          <TileCard to="/approvals/workflows" icon={<GitBranch className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Approval workflows" />
+          <TileCard to="/v3-preview/leave/types-policies" icon={<CalendarDays className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Leave" meta="Types, policies, workflows" />
+          <TileCard to="/v3-preview/roster/settings" icon={<Cast className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Roster" meta="Shift templates, weekly-off" />
+          <TileCard to="/v3-preview/payroll/settings" icon={<DollarSign className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Payroll deductions" />
+          <TileCard to="/v3-preview/settings/documents" icon={<FileText className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Documents" />
+          <TileCard to="/v3-preview/assets/settings" icon={<Shirt className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Assets & uniforms" />
+          <TileCard to="/v3-preview/settings/contracts" icon={<FileSignature className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Contracts" />
+          <TileCard to="/v3-preview/approvals/workflows" icon={<GitBranch className="h-[18px] w-[18px]" />} iconColor="#F0997B" title="Approval workflows" />
         </CategorySection>
 
         <CategorySection label="Access control">
-          <TileCard to="/users-access" icon={<Users className="h-[18px] w-[18px]" />} iconColor="#378ADD" title="Users" />
-          <TileCard to="/users-access" icon={<Shield className="h-[18px] w-[18px]" />} iconColor="#378ADD" title="Roles" />
-          <TileCard to="/users-access" icon={<KeyRound className="h-[18px] w-[18px]" />} iconColor="#378ADD" title="Permissions" />
-          <TileCard to="/users-access" icon={<GitBranch className="h-[18px] w-[18px]" />} iconColor="#378ADD" title="Role mappings" />
-          <TileCard to="/users-access" icon={<MapPin className="h-[18px] w-[18px]" />} iconColor="#378ADD" title="Access scopes" />
+          <TileCard to="/v3-preview/users-access/users" icon={<Users className="h-[18px] w-[18px]" />} iconColor="#378ADD" title="Users" />
+          <TileCard to="/v3-preview/users-access/roles" icon={<Shield className="h-[18px] w-[18px]" />} iconColor="#378ADD" title="Roles" />
+          <TileCard to="/v3-preview/users-access/permissions" icon={<KeyRound className="h-[18px] w-[18px]" />} iconColor="#378ADD" title="Permissions" />
+          <TileCard to="/v3-preview/users-access/role-mappings" icon={<GitBranch className="h-[18px] w-[18px]" />} iconColor="#378ADD" title="Role mappings" />
+          <TileCard to="/v3-preview/users-access/access-scopes" icon={<MapPin className="h-[18px] w-[18px]" />} iconColor="#378ADD" title="Access scopes" />
         </CategorySection>
 
         <CategorySection label="Employee settings">
-          <IconCard to="/employees/settings" icon={<Flag className="h-4 w-4" />} iconBg="#EAF3DE" iconColor="#27500A" title="Employee statuses" description="Active, on leave, pending setup..." />
-          <IconCard to="/employees/settings" icon={<Hash className="h-4 w-4" />} iconBg="#EAF3DE" iconColor="#27500A" title="Employee numbering" description="EMP-0001 format & sequence" />
+          <IconCard to="/v3-preview/employees/settings" icon={<Flag className="h-4 w-4" />} iconBg="#EAF3DE" iconColor="#27500A" title="Employee statuses" description="Active, on leave, pending setup..." />
+          <IconCard to="/v3-preview/employees/settings" icon={<Hash className="h-4 w-4" />} iconBg="#EAF3DE" iconColor="#27500A" title="Employee numbering" description="EMP-0001 format & sequence" />
         </CategorySection>
 
         <CategorySection label="Admin & ops">
-          <TileCard to="/settings/admin" icon={<ListChecks className="h-[18px] w-[18px]" />} iconColor="#6B6F86" title="Consistency" />
-          <TileCard to="/audit" icon={<History className="h-[18px] w-[18px]" />} iconColor="#6B6F86" title="Audit & security" />
+          <TileCard to="/v3-preview/settings/admin" icon={<ListChecks className="h-[18px] w-[18px]" />} iconColor="#6B6F86" title="Consistency" />
+          <TileCard to="/v3-preview/audit" icon={<History className="h-[18px] w-[18px]" />} iconColor="#6B6F86" title="Audit & security" />
           <TileCard to="/settings/admin/backup-retention" icon={<Database className="h-[18px] w-[18px]" />} iconColor="#6B6F86" title="Backup & retention" />
           <TileCard to="/settings/performance" icon={<Activity className="h-[18px] w-[18px]" />} iconColor="#6B6F86" title="Performance" />
           <TileCard to="/settings/admin/imports" icon={<ShieldCheck className="h-[18px] w-[18px]" />} iconColor="#6B6F86" title="Data transfer" />

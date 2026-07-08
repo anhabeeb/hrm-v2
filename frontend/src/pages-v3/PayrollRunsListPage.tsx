@@ -178,7 +178,7 @@ function NewRunModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">
-              No open payroll periods without a run yet. <Link to="/payroll/periods" className="text-primary hover:underline">Create one first</Link>.
+              No open payroll periods without a run yet. <Link to="/v3-preview/payroll/periods" className="text-primary hover:underline">Create one first</Link>.
             </p>
           )}
         </DialogBody>

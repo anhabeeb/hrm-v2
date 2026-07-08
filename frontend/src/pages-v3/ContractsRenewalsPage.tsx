@@ -48,7 +48,7 @@ export function ContractsRenewalsPage() {
               {rows.map((row, i) => (
                 <Panel key={String(row.id ?? i)} className="flex items-center gap-3.5 p-3">
                   <div className="min-w-0 flex-1">
-                    <Link to={`/employees/${row.employee_id}`} className="text-xs font-medium text-slate-950 hover:underline">{text(row.full_name)}</Link>
+                    <Link to={`/v3-preview/employees/${row.employee_id}`} className="text-xs font-medium text-slate-950 hover:underline">{text(row.full_name)}</Link>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">{text(row.original_contract_number)} → {text(row.renewal_contract_number, "not yet drafted")} · Previous end {text(row.previous_end_date)} · Proposed {text(row.proposed_start_date)} to {text(row.proposed_end_date)}</p>
                   </div>
                   <span className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium" style={{ background: statusTone(String(row.renewal_status)).bg, color: statusTone(String(row.renewal_status)).text }}>{humanizeTechnicalLabel(String(row.renewal_status))}</span>

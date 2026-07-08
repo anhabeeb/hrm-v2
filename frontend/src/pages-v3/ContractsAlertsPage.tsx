@@ -77,7 +77,7 @@ export function ContractsAlertsPage() {
               {rows.map((row, i) => (
                 <Panel key={String(row.id ?? i)} className="flex items-center gap-3.5 p-3">
                   <div className="min-w-0 flex-1">
-                    <Link to={`/employees/${row.employee_id}`} className="text-xs font-medium text-slate-950 hover:underline">{text(row.full_name)}</Link>
+                    <Link to={`/v3-preview/employees/${row.employee_id}`} className="text-xs font-medium text-slate-950 hover:underline">{text(row.full_name)}</Link>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">{humanizeTechnicalLabel(String(row.alert_type))} · {text(row.contract_number)} · Due {text(row.due_date)}{row.notes ? ` · ${text(row.notes)}` : ""}</p>
                   </div>
                   <span className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium" style={{ background: severityTone(String(row.severity)).bg, color: severityTone(String(row.severity)).text }}>{humanizeTechnicalLabel(String(row.severity))}</span>
