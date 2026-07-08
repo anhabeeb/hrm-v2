@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileCheck, FileText, FileX, ShieldCheck } from "lucide-react";
+import { ArrowBigUp, FileCheck, FileText, FileX, ShieldCheck } from "lucide-react";
 import { PageShell } from "../../components/ui/page-shell";
 import { Panel } from "../../components/ui/panel";
 import { Badge } from "../../components/ui/badge";
@@ -27,12 +27,32 @@ function statusTone(status: string): "success" | "warning" | "danger" | "neutral
   if (["EXPIRED", "TERMINATED", "CANCELLED", "NOT_RENEWED"].includes(status)) return "danger";
   return "neutral";
 }
+function money(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toLocaleString() : "—";
+}
+function changeParts(h: Row) {
+  const parts: string[] = [];
+  if (h.previous_position_title || h.new_position_title) {
+    if (text(h.previous_position_title, "") && text(h.new_position_title, "") && h.previous_position_title !== h.new_position_title) {
+      parts.push(`${text(h.previous_position_title)} → ${text(h.new_position_title)}`);
+    } else if (h.new_position_title) parts.push(text(h.new_position_title));
+  }
+  return {
+    headline: parts.length ? `Promoted: ${parts[0]}` : "Position/role change",
+    jobLevel: h.previous_job_level_name || h.new_job_level_name ? `Job level: ${text(h.previous_job_level_name, "—")} → ${text(h.new_job_level_name, "—")}` : null,
+    department: h.previous_department_name !== h.new_department_name && (h.previous_department_name || h.new_department_name) ? `Department: ${text(h.previous_department_name, "—")} → ${text(h.new_department_name, "—")}` : null
+  };
+}
 
 export function SelfServiceContractsPage() {
   const { token } = useAuth();
   const [active, setActive] = useState<Row | null>(null);
   const [history, setHistory] = useState<Row[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [jobHistory, setJobHistory] = useState<Row[]>([]);
+  const [salaryHistory, setSalaryHistory] = useState<Row[]>([]);
+  const [salaryVisible, setSalaryVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,11 +63,18 @@ export function SelfServiceContractsPage() {
       setLoading(true);
       setError(null);
       try {
-        const result = await api.getSelfServiceContracts(token!);
+        const [result, jobHistoryResult, salaryHistoryResult] = await Promise.all([
+          api.getSelfServiceContracts(token!),
+          api.getSelfServiceJobHistory(token!).catch(() => ({ job_history: [] as Row[] })),
+          api.getSelfServiceSalaryHistory(token!).catch(() => ({ salary_history: [] as Row[], salary_visible: false }))
+        ]);
         if (cancelled) return;
         setActive(result.active_contract);
         setHistory(asRows(result.contract_history));
         setMessage(result.message ?? null);
+        setJobHistory(asRows(jobHistoryResult.job_history));
+        setSalaryHistory(asRows(salaryHistoryResult.salary_history));
+        setSalaryVisible(Boolean(salaryHistoryResult.salary_visible));
       } catch (err) {
         if (!cancelled) setError(err instanceof ApiError ? err.message : "Unable to load your contracts.");
       } finally {
@@ -123,6 +150,35 @@ export function SelfServiceContractsPage() {
                   {!c.document_id ? <span className="whitespace-nowrap text-[9px] text-muted-foreground">No document uploaded</span> : null}
                 </div>
               ))}
+            </div>
+          </Panel>
+        ) : null}
+
+        {jobHistory.length ? (
+          <Panel className="overflow-hidden">
+            <div className="border-b px-4 py-3">
+              <p className="text-xs font-medium text-slate-950">My promotions</p>
+              <p className="mt-0.5 text-[9px] text-muted-foreground">Position and job level changes over time</p>
+            </div>
+            <div className="flex flex-col">
+              {jobHistory.map((h, i) => {
+                const { headline, jobLevel, department } = changeParts(h);
+                const salaryMatch = salaryVisible ? salaryHistory.find((s) => s.effective_date === h.effective_date) : undefined;
+                return (
+                  <div key={String(h.id ?? i)} className="flex items-start gap-3 px-4 py-3 border-b border-[#F1F1F7] last:border-b-0">
+                    <div className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-md bg-[#EAF3DE]"><ArrowBigUp className="h-3.5 w-3.5 text-[#27500A]" /></div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-slate-950">{headline}</p>
+                      <p className="mt-0.5 text-[9px] text-muted-foreground">
+                        {[`Effective ${fmtDate(h.effective_date)}`, jobLevel, department, h.reason ? `"${text(h.reason)}"` : null, h.approved_by_name ? `Approved by ${text(h.approved_by_name)}` : null].filter(Boolean).join(" · ")}
+                      </p>
+                      {salaryMatch ? (
+                        <p className="mt-1 text-[9px] text-slate-950">Basic salary: {money(salaryMatch.old_basic_salary)} → {money(salaryMatch.new_basic_salary)}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </Panel>
         ) : null}

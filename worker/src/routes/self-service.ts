@@ -207,7 +207,7 @@ export function maskSelfServiceSensitiveFields(row: Row | null | undefined, allo
   if (!row) return row;
   if (allowSensitive) return row;
   const masked = { ...row };
-  for (const key of ["bank_account_name", "bank_account_no", "bank_account_number_encrypted_or_plain_placeholder", "iban_or_swift_placeholder", "basic_salary", "net_salary", "gross_salary"]) {
+  for (const key of ["bank_account_name", "bank_account_no", "bank_account_number_encrypted_or_plain_placeholder", "iban_or_swift_placeholder", "basic_salary", "net_salary", "gross_salary", "old_basic_salary", "new_basic_salary"]) {
     if (key in masked) masked[key] = null;
   }
   return masked;
@@ -906,6 +906,55 @@ selfServiceRoutes.post("/profile/update-requests/:requestId/cancel", async (c) =
   const gate = await requireSelfServiceEmployeeContext(c);
   if (gate.response) return gate.response;
   return cancelSelfServiceProfileUpdateRequest(c, gate.employeeId!, c.req.param("requestId"));
+});
+
+selfServiceRoutes.get("/job-history", async (c) => {
+  if (!hasAny(c, ["self_service.job_history.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your job history.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const rows = await c.env.DB
+    .prepare(
+      `SELECT h.id, h.effective_date, h.reason,
+        pd.name AS previous_department_name, nd.name AS new_department_name,
+        pp.title AS previous_position_title, np.title AS new_position_title,
+        pl.name AS previous_location_name, nl.name AS new_location_name,
+        pjl.name AS previous_job_level_name, njl.name AS new_job_level_name,
+        ab.name AS approved_by_name
+       FROM employee_job_history h
+       LEFT JOIN departments pd ON pd.id = h.previous_department_id
+       LEFT JOIN departments nd ON nd.id = h.new_department_id
+       LEFT JOIN positions pp ON pp.id = h.previous_position_id
+       LEFT JOIN positions np ON np.id = h.new_position_id
+       LEFT JOIN locations pl ON pl.id = h.previous_location_id
+       LEFT JOIN locations nl ON nl.id = h.new_location_id
+       LEFT JOIN job_levels pjl ON pjl.id = h.previous_job_level_id
+       LEFT JOIN job_levels njl ON njl.id = h.new_job_level_id
+       LEFT JOIN users ab ON ab.id = h.approved_by_user_id
+       WHERE h.employee_id = ?
+       ORDER BY h.effective_date DESC, h.created_at DESC`
+    )
+    .bind(gate.employeeId)
+    .all<Row>();
+  return ok(c, { job_history: rows.results });
+});
+
+selfServiceRoutes.get("/salary-history", async (c) => {
+  if (!hasAny(c, ["self_service.salary_history.view", "self_service.view"])) return fail(c, 403, "FORBIDDEN", "You do not have permission to view your salary history.");
+  const gate = await requireSelfServiceEmployeeContext(c);
+  if (gate.response) return gate.response;
+  const selfServiceSettings = await getSelfServiceSettingsRow(c);
+  const allowSensitive = boolSetting(selfServiceSettings, "show_sensitive_payroll_values");
+  const rows = await c.env.DB
+    .prepare(
+      `SELECT h.id, h.old_basic_salary, h.new_basic_salary, h.effective_date, h.reason, ab.name AS approved_by_name
+       FROM employee_salary_history h
+       LEFT JOIN users ab ON ab.id = h.approved_by_user_id
+       WHERE h.employee_id = ?
+       ORDER BY h.effective_date DESC, h.created_at DESC`
+    )
+    .bind(gate.employeeId)
+    .all<Row>();
+  return ok(c, { salary_history: rows.results.map((row) => maskSelfServiceSensitiveFields(row, allowSensitive)), salary_visible: allowSensitive });
 });
 
 selfServiceRoutes.get("/documents", async (c) => {

@@ -464,6 +464,8 @@ INSERT OR IGNORE INTO permissions (id, key, module, description, is_critical) VA
   ('perm_reports_contracts_view', 'reports.contracts.view', 'reports', 'View contract reports', 0),
   ('perm_reports_contracts_sensitive_view', 'reports.contracts.sensitive.view', 'reports', 'View sensitive contract report values', 0),
   ('perm_self_service_contracts_view', 'self_service.contracts.view', 'self_service', 'View own contract summaries in self-service', 0),
+  ('perm_self_service_job_history_view', 'self_service.job_history.view', 'self_service', 'View own position/promotion history in self-service', 0),
+  ('perm_self_service_salary_history_view', 'self_service.salary_history.view', 'self_service', 'View own salary change history in self-service', 0),
   ('perm_self_service_view', 'self_service.view', 'self_service', 'Access employee self-service records linked to the current user', 0),
   ('perm_self_service_manage_access', 'self_service.manage_access', 'self_service', 'Manage employee self-service login access during onboarding and Employee 360 setup', 1),
   ('perm_self_service_kyc_request', 'self_service.kyc_request', 'self_service', 'Submit KYC/profile update requests for own employee profile', 0),
@@ -552,6 +554,17 @@ WITH contract_role_permissions(role_name, permission_key) AS (
 INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM contract_role_permissions rp
+INNER JOIN roles r ON r.name = rp.role_name
+INNER JOIN permissions p ON p.key = rp.permission_key;
+
+WITH self_service_history_role_permissions(role_name, permission_key) AS (
+  VALUES
+  ('Employee Self-Service', 'self_service.job_history.view'),
+  ('Employee Self-Service', 'self_service.salary_history.view')
+)
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM self_service_history_role_permissions rp
 INNER JOIN roles r ON r.name = rp.role_name
 INNER JOIN permissions p ON p.key = rp.permission_key;
 
