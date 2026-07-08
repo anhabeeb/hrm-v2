@@ -108,6 +108,15 @@ const SelfServiceRosterPageV3 = lazyPage(() => import("../pages-v3/self-service/
 const SelfServicePayrollPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServicePayrollPage"), "SelfServicePayrollPage");
 const SelfServiceContractsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceContractsPage"), "SelfServiceContractsPage");
 const SelfServiceAssetsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceAssetsPage"), "SelfServiceAssetsPage");
+const SelfServicePaymentMethodsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServicePaymentMethodsPage"), "SelfServicePaymentMethodsPage");
+const SelfServiceBankLoansPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceBankLoansPage"), "SelfServiceBankLoansPage");
+const SelfServicePensionPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServicePensionPage"), "SelfServicePensionPage");
+const SelfServiceOnboardingPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceOnboardingPage"), "SelfServiceOnboardingPage");
+const SelfServiceOffboardingPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceOffboardingPage"), "SelfServiceOffboardingPage");
+const SelfServiceUniformsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceUniformsPage"), "SelfServiceUniformsPage");
+const SelfServiceApprovalsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceApprovalsPage"), "SelfServiceApprovalsPage");
+const SelfServiceNotificationsPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceNotificationsPage"), "SelfServiceNotificationsPage");
+const SelfServiceKycPageV3 = lazyPage(() => import("../pages-v3/self-service/SelfServiceKycPage"), "SelfServiceKycPage");
 const ContractsListPageV3 = lazyPage(() => import("../pages-v3/ContractsListPage"), "ContractsListPage");
 const ContractsTypesPageV3 = lazyPage(() => import("../pages-v3/ContractsTypesPage"), "ContractsTypesPage");
 const ContractsProbationPageV3 = lazyPage(() => import("../pages-v3/ContractsProbationPage"), "ContractsProbationPage");
@@ -411,6 +420,15 @@ export function AppRoutes() {
             <Route path="v3-preview/self-service/payroll" element={<SelfServicePayrollPageV3 />} />
             <Route path="v3-preview/self-service/contracts" element={<SelfServiceContractsPageV3 />} />
             <Route path="v3-preview/self-service/assets" element={<SelfServiceAssetsPageV3 />} />
+            <Route path="v3-preview/self-service/payment-methods" element={<SelfServicePaymentMethodsPageV3 />} />
+            <Route path="v3-preview/self-service/bank-loans" element={<SelfServiceBankLoansPageV3 />} />
+            <Route path="v3-preview/self-service/pension" element={<SelfServicePensionPageV3 />} />
+            <Route path="v3-preview/self-service/onboarding" element={<SelfServiceOnboardingPageV3 />} />
+            <Route path="v3-preview/self-service/offboarding" element={<SelfServiceOffboardingPageV3 />} />
+            <Route path="v3-preview/self-service/uniforms" element={<SelfServiceUniformsPageV3 />} />
+            <Route path="v3-preview/self-service/approvals" element={<SelfServiceApprovalsPageV3 />} />
+            <Route path="v3-preview/self-service/notifications" element={<SelfServiceNotificationsPageV3 />} />
+            <Route path="v3-preview/self-service/kyc-requests" element={<SelfServiceKycPageV3 />} />
             <Route path="v3-preview/contracts" element={<ContractsListPageV3 />} />
             <Route path="v3-preview/contracts/types" element={<ContractsTypesPageV3 />} />
             <Route path="v3-preview/contracts/probation" element={<ContractsProbationPageV3 />} />
