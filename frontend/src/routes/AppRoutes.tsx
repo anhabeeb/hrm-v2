@@ -524,12 +524,16 @@ export function AppRoutes() {
             <Route path="attendance/reports" element={operational("attendance", "Attendance", <AttendanceReportsPageV3 />)} />
             <Route path="attendance/settings" element={<AttendanceSettingsPageV3 />} />
             <Route path="attendance/:employeeId" element={operational("attendance", "Attendance", <AttendanceEmployeeCalendarPageV3 />)} />
-            <Route path="leave" element={operational("leave", "Leave", <LeaveRequestsPage />)} />
-            <Route path="leave/requests" element={operational("leave", "Leave", <LeaveRequestsPage />)} />
-            <Route path="leave/approvals" element={operational("leave", "Leave", <LeaveRequestsPage approvalsOnly />)} />
-            <Route path="leave/calendar" element={operational("leave", "Leave", <LeaveCalendarPage />)} />
-            <Route path="leave/settings" element={operational("leave", "Leave", <LeaveSettingsPage />)} />
-            <Route path="leave/workflows" element={operational("leave", "Leave", <LeaveSettingsPage />)} />
+            <Route path="leave" element={operational("leave", "Leave", <LeaveRequestsPageV3 />)} />
+            <Route path="leave/requests" element={operational("leave", "Leave", <LeaveRequestsPageV3 />)} />
+            <Route path="leave/approvals" element={operational("leave", "Leave", <LeaveRequestsPageV3 approvalsOnly />)} />
+            <Route path="leave/calendar" element={operational("leave", "Leave", <LeaveCalendarPageV3 />)} />
+            <Route path="leave/balances" element={operational("leave", "Leave", <LeaveBalancesPageV3 />)} />
+            <Route path="leave/types-policies" element={operational("leave", "Leave", <LeaveTypesPoliciesPageV3 />)} />
+            <Route path="leave/document-rules" element={operational("leave", "Leave", <LeaveDocumentRulesPageV3 />)} />
+            <Route path="leave/deduction-rules" element={operational("leave", "Leave", <LeaveDeductionRulesPageV3 />)} />
+            <Route path="leave/settings" element={operational("leave", "Leave", <LeaveTypesPoliciesPageV3 />)} />
+            <Route path="leave/workflows" element={operational("leave", "Leave", <LeaveWorkflowsPageV3 />)} />
             <Route path="payroll" element={operational("payroll", "Payroll", <PayrollDashboardPageV3 />)} />
             <Route path="payroll/periods" element={operational("payroll", "Payroll", <PayrollPeriodsPageV3 />)} />
             <Route path="payroll/runs" element={operational("payroll", "Payroll", <PayrollRunsListPageV3 />)} />
