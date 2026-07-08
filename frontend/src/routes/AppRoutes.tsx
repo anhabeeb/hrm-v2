@@ -64,6 +64,11 @@ const PayrollBankLoansPageV3 = lazyPage(() => import("../pages-v3/PayrollBankLoa
 const PayrollPensionPageV3 = lazyPage(() => import("../pages-v3/PayrollPensionPage"), "PayrollPensionPage");
 const PayrollFinalSettlementPageV3 = lazyPage(() => import("../pages-v3/PayrollFinalSettlementPage"), "PayrollFinalSettlementPage");
 const PayrollReportsPageV3 = lazyPage(() => import("../pages-v3/PayrollReportsPage"), "PayrollReportsPage");
+const PayrollDashboardPageV3 = lazyPage(() => import("../pages-v3/PayrollDashboardPage"), "PayrollDashboardPage");
+const PayrollComponentsPageV3 = lazyPage(() => import("../pages-v3/PayrollComponentsPage"), "PayrollComponentsPage");
+const PayrollCustomDeductionsPageV3 = lazyPage(() => import("../pages-v3/PayrollCustomDeductionsPage"), "PayrollCustomDeductionsPage");
+const PayrollHistoryPageV3 = lazyPage(() => import("../pages-v3/PayrollHistoryPage"), "PayrollHistoryPage");
+const PayrollSettingsPageV3 = lazyPage(() => import("../pages-v3/PayrollSettingsPage"), "PayrollSettingsPage");
 const LeaveRequestsPageV3 = lazyPage(() => import("../pages-v3/LeaveRequestsPage"), "LeaveRequestsPage");
 const LeaveCalendarPageV3 = lazyPage(() => import("../pages-v3/LeaveCalendarPage"), "LeaveCalendarPage");
 const LeaveBalancesPageV3 = lazyPage(() => import("../pages-v3/LeaveBalancesPage"), "LeaveBalancesPage");
@@ -332,6 +337,7 @@ export function AppRoutes() {
             <Route path="v3-preview/employees/:id" element={<EmployeeProfilePageV3 />} />
             <Route path="v3-preview/attendance" element={<AttendanceListPageV3 />} />
             <Route path="v3-preview/attendance/:employeeId" element={<AttendanceEmployeeCalendarPageV3 />} />
+            <Route path="v3-preview/payroll" element={<PayrollDashboardPageV3 />} />
             <Route path="v3-preview/payroll/runs" element={<PayrollRunsListPageV3 />} />
             <Route path="v3-preview/payroll/runs/:runId" element={<PayrollRunDetailPageV3 />} />
             <Route path="v3-preview/payroll/periods" element={<PayrollPeriodsPageV3 />} />
@@ -340,10 +346,14 @@ export function AppRoutes() {
             <Route path="v3-preview/payroll/advances" element={<PayrollAdvancesPageV3 />} />
             <Route path="v3-preview/payroll/deductions" element={<PayrollDeductionsPageV3 />} />
             <Route path="v3-preview/payroll/adjustments" element={<PayrollAdjustmentsPageV3 />} />
+            <Route path="v3-preview/payroll/components" element={<PayrollComponentsPageV3 />} />
             <Route path="v3-preview/payroll/institutions" element={<PayrollInstitutionsPageV3 />} />
             <Route path="v3-preview/payroll/bank-loans" element={<PayrollBankLoansPageV3 />} />
+            <Route path="v3-preview/payroll/custom-deductions" element={<PayrollCustomDeductionsPageV3 />} />
             <Route path="v3-preview/payroll/pension" element={<PayrollPensionPageV3 />} />
             <Route path="v3-preview/payroll/final-settlement" element={<PayrollFinalSettlementPageV3 />} />
+            <Route path="v3-preview/payroll/history" element={<PayrollHistoryPageV3 />} />
+            <Route path="v3-preview/payroll/settings" element={<PayrollSettingsPageV3 />} />
             <Route path="v3-preview/payroll/reports" element={<PayrollReportsPageV3 />} />
             <Route path="v3-preview/leave/requests" element={<LeaveRequestsPageV3 />} />
             <Route path="v3-preview/leave/calendar" element={<LeaveCalendarPageV3 />} />
