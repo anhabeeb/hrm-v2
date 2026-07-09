@@ -498,10 +498,11 @@ export function AppRoutes() {
             <Route path="offboarding/settings" element={<LifecycleSettingsPageV3 kind="offboarding" />} />
             <Route path="offboarding/:caseId" element={operational("offboarding", "Offboarding", <OffboardingCaseWorkspacePageV3 />)} />
             <Route path="lifecycle/reports" element={<LifecycleReportsPage />} />
-            <Route path="contracts" element={operational("contracts", "Contracts", <ContractsPage />)} />
-            <Route path="contracts/probation" element={operational("contracts", "Contracts", <ContractsPage mode="probation" />)} />
-            <Route path="contracts/renewals" element={operational("contracts", "Contracts", <ContractsPage mode="renewals" />)} />
-            <Route path="contracts/alerts" element={operational("contracts", "Contracts", <ContractsPage mode="alerts" />)} />
+            <Route path="contracts" element={operational("contracts", "Contracts", <ContractsListPageV3 />)} />
+            <Route path="contracts/types" element={operational("contracts", "Contracts", <ContractsTypesPageV3 />)} />
+            <Route path="contracts/probation" element={operational("contracts", "Contracts", <ContractsProbationPageV3 />)} />
+            <Route path="contracts/renewals" element={operational("contracts", "Contracts", <ContractsRenewalsPageV3 />)} />
+            <Route path="contracts/alerts" element={operational("contracts", "Contracts", <ContractsAlertsPageV3 />)} />
             <Route path="approvals" element={operational("approvals", "Approvals", <ApprovalsPage />)} />
             <Route path="approvals/submitted" element={operational("approvals", "Approvals", <ApprovalsPage mode="submitted" />)} />
             <Route path="approvals/overdue" element={operational("approvals", "Approvals", <ApprovalsPage mode="overdue" />)} />
