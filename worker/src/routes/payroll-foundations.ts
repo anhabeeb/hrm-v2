@@ -6,7 +6,7 @@ import { hasValidationErrors, validateDateRange, validatePayrollRules } from "..
 import { requireAuth } from "../middleware/auth";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
-import { disabledModuleResponse, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
+import { requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
 import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 
 type Row = Record<string, unknown>;
@@ -152,10 +152,6 @@ const PAYROLL_SUBMODULE_LABELS: Record<PayrollSubmoduleKey, string> = {
   custom_deductions_enabled: "Custom deductions"
 };
 
-function payrollSubmoduleEnabled(settings: Row | null | undefined, key: PayrollSubmoduleKey) {
-  return bool(settings?.module_enabled, true) && bool(settings?.[key], true);
-}
-
 function fastPayrollSubmoduleDenied(c: Context<AppBindings>, key: PayrollSubmoduleKey) {
   const pathname = new URL(c.req.url).pathname;
   const method = c.req.method.toUpperCase();
@@ -179,14 +175,7 @@ async function requirePayrollSubmoduleEnabled(c: Context<AppBindings>, key: Payr
   const permissionDenied = fastPayrollSubmoduleDenied(c, key);
   if (permissionDenied) return permissionDenied;
   const centralSubmodule = key.replace(/_enabled$/, "").replace("bank_loan_deductions", "bank_loans");
-  const centralDisabled = await requireOperationalSubmoduleEnabled(c, "payroll", centralSubmodule, PAYROLL_SUBMODULE_LABELS[key]);
-  if (centralDisabled) return centralDisabled;
-  const settings = await getPayrollSettingsRow(c);
-  if (!bool(settings?.module_enabled, true)) return disabledModuleResponse(c, "payroll", "Payroll");
-  if (!payrollSubmoduleEnabled(settings, key)) {
-    return requireOperationalSubmoduleEnabled(c, "payroll", centralSubmodule, PAYROLL_SUBMODULE_LABELS[key]);
-  }
-  return null;
+  return requireOperationalSubmoduleEnabled(c, "payroll", centralSubmodule, PAYROLL_SUBMODULE_LABELS[key]);
 }
 
 function requirePayrollSubmoduleMiddleware(key: PayrollSubmoduleKey): MiddlewareHandler<AppBindings> {

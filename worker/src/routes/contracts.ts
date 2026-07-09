@@ -7,7 +7,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, Env } from "../types";
 import { hasValidationErrors, validateContractRules, validationResponse } from "../lib/moduleValidation";
 import { fail, getClientIp, nowIso, ok } from "../utils/http";
-import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
+import { requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 
@@ -300,11 +300,7 @@ async function getContractSettings(db: Env["DB"]) {
 }
 
 async function requireContractsEnabled(c: Context<AppBindings>) {
-  const moduleDisabled = await requireOperationalModuleEnabled(c, "contracts", "Contracts");
-  if (moduleDisabled) return moduleDisabled;
-  const settings = await getContractSettings(c.env.DB);
-  if (settings.contracts_enabled !== 1) return disabledModuleResponse(c, "contracts", "Contracts");
-  return null;
+  return requireOperationalModuleEnabled(c, "contracts", "Contracts");
 }
 
 async function auditContract(c: Context<AppBindings>, input: { action: string; entityType: string; entityId?: string | null; oldValue?: unknown; newValue?: unknown; reason?: string | null }) {

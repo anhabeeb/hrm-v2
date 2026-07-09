@@ -8,7 +8,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
-import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
+import { requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 import { employeeSetupStatusUpdateResponse, updateEmployeeSetupSectionStatusAfterSave } from "../employee-setup/save-integration";
 
@@ -234,8 +234,6 @@ async function requireRosterModuleEnabled(c: Context<AppBindings>, next: () => P
   }
   const moduleDisabled = await requireOperationalModuleEnabled(c, "roster", "Roster");
   if (moduleDisabled) return moduleDisabled;
-  const settings = await getRosterSettings(c);
-  if (!bool(settings.module_enabled, true)) return disabledModuleResponse(c, "roster", "Roster");
   await next();
 }
 

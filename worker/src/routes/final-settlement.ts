@@ -8,7 +8,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings, AuthUser, Env } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
-import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
+import { requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 import { getActivePaymentMethodSnapshot, getEmployeePaymentMethods, getFinalSettlementCustomDeductionImpact } from "./payroll-foundations";
 
@@ -306,11 +306,7 @@ function settlementPayrollSubmoduleEnabled(settings: Record<string, unknown> | n
 }
 
 export async function requireFinalSettlementModuleEnabled(c: Context<AppBindings>) {
-  const moduleDisabled = await requireOperationalModuleEnabled(c, "final_settlement", "Final settlement");
-  if (moduleDisabled) return moduleDisabled;
-  const settings = await getFinalSettlementSettings(c.env.DB);
-  if (Number(settings.final_settlement_enabled ?? settings.module_enabled ?? 1) !== 1) return disabledModuleResponse(c, "final_settlement", "Final settlement");
-  return null;
+  return requireOperationalModuleEnabled(c, "final_settlement", "Final settlement");
 }
 
 export async function canViewFinalSettlementForEmployee(c: Context<AppBindings>, employeeId: string) {

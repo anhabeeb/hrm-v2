@@ -10,7 +10,7 @@ import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { enqueueJob, jobToApi, markJobFailed, markJobRunning, markJobSucceeded, runJobWithWaitUntil, updateJobProgress, type BackgroundJobRow } from "../utils/background-jobs";
 import { fail, getClientIp, ok } from "../utils/http";
-import { disabledModuleResponse, requireOperationalModuleEnabled } from "../utils/module-enforcement";
+import { requireOperationalModuleEnabled } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { markSnapshotsStaleForEmployee, recalculateAttendanceSnapshot } from "../utils/snapshots";
 import { readJsonBody, readString } from "../utils/validation";
@@ -161,10 +161,6 @@ async function requireAttendanceModuleEnabled(c: Context<AppBindings>, next: () 
   }
   const moduleDisabled = await requireOperationalModuleEnabled(c, "attendance", "Attendance");
   if (moduleDisabled) return moduleDisabled;
-  const settings = await getAttendanceSettings(c);
-  if (Number(settings.module_enabled ?? 1) !== 1) {
-    return disabledModuleResponse(c, "attendance", "Attendance");
-  }
   await next();
 }
 

@@ -9,7 +9,7 @@ import { requirePermission } from "../middleware/permissions";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
-import { disabledModuleResponse, isOperationalModuleEnabled, requireOperationalModuleEnabled, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
+import { isOperationalModuleEnabled, requireOperationalModuleEnabled, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
 import { paginationMeta, parsePaginationParams } from "../utils/pagination";
 import { markSnapshotsStaleForEmployee, markSnapshotsStaleForPeriod, recalculatePayrollSnapshot } from "../utils/snapshots";
 import { readJsonBody, readString } from "../utils/validation";
@@ -405,14 +405,7 @@ function payrollSubmoduleEnabled(settings: Record<string, unknown>, key: Payroll
 
 async function requirePayrollSubmoduleEnabled(c: Context<AppBindings>, key: PayrollSubmoduleKey) {
   const centralSubmodule = key.replace(/_enabled$/, "").replace("bank_loan_deductions", "bank_loans");
-  const centralDisabled = await requireOperationalSubmoduleEnabled(c, "payroll", centralSubmodule, PAYROLL_SUBMODULE_LABELS[key]);
-  if (centralDisabled) return centralDisabled;
-  const settings = await getSettings(c);
-  if (Number(settings.module_enabled ?? 1) !== 1) return disabledModuleResponse(c, "payroll", "Payroll");
-  if (!payrollSubmoduleEnabled(settings, key)) {
-    return requireOperationalSubmoduleEnabled(c, "payroll", centralSubmodule, PAYROLL_SUBMODULE_LABELS[key]);
-  }
-  return null;
+  return requireOperationalSubmoduleEnabled(c, "payroll", centralSubmodule, PAYROLL_SUBMODULE_LABELS[key]);
 }
 
 function requirePayrollSubmoduleMiddleware(key: PayrollSubmoduleKey) {
@@ -424,11 +417,7 @@ function requirePayrollSubmoduleMiddleware(key: PayrollSubmoduleKey) {
 }
 
 async function requirePayrollModuleEnabled(c: Context<AppBindings>) {
-  const moduleDisabled = await requireOperationalModuleEnabled(c, "payroll", "Payroll");
-  if (moduleDisabled) return moduleDisabled;
-  const settings = await getSettings(c);
-  if (Number(settings.module_enabled ?? 1) !== 1) return disabledModuleResponse(c, "payroll", "Payroll");
-  return null;
+  return requireOperationalModuleEnabled(c, "payroll", "Payroll");
 }
 
 async function getEmployee(c: Context<AppBindings>, employeeId: string) {
