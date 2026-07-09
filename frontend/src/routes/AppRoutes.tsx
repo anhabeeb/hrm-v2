@@ -499,7 +499,7 @@ export function AppRoutes() {
             <Route path="offboarding/cases" element={operational("offboarding", "Offboarding", <OffboardingListPageV3 />)} />
             <Route path="offboarding/settings" element={<LifecycleSettingsPageV3 kind="offboarding" />} />
             <Route path="offboarding/:caseId" element={operational("offboarding", "Offboarding", <OffboardingCaseWorkspacePageV3 />)} />
-            <Route path="lifecycle/reports" element={<LifecycleReportsPage />} />
+            <Route path="lifecycle/reports" element={<ReportsPageV3 />} />
             <Route path="contracts" element={operational("contracts", "Contracts", <ContractsListPageV3 />)} />
             <Route path="contracts/types" element={operational("contracts", "Contracts", <ContractsTypesPageV3 />)} />
             <Route path="contracts/probation" element={operational("contracts", "Contracts", <ContractsProbationPageV3 />)} />
@@ -587,7 +587,7 @@ export function AppRoutes() {
             <Route path="assets/deduction-rules" element={operational("assets_uniforms", "Assets and uniforms", <AssetDeductionRulesPageV3 />)} />
             <Route path="assets/settings" element={<AssetUniformSettingsPageV3 />} />
             <Route path="assets/reports" element={operational("assets_uniforms", "Assets and uniforms", <AssetsReportsPageV3 />)} />
-            <Route path="reports" element={operational(["reports", "reports_exports"], "Reports", <ReportsPage />)} />
+            <Route path="reports" element={operational(["reports", "reports_exports"], "Reports", <ReportsPageV3 />)} />
             <Route path="reports/audit" element={<AuditLogPage />} />
             <Route path="self-service" element={operational("self_service", "Self-service", <SelfServiceHomePage />)} />
             <Route path="self-service/profile" element={operational("self_service", "Self-service", <SelfServiceProfilePage />)} />
@@ -630,8 +630,13 @@ export function AppRoutes() {
             <Route path="settings/contracts" element={<ContractsPage mode="settings" />} />
             <Route path="settings/employee-notes" element={<EmployeeNotesSettingsPage />} />
             <Route path="settings/import-migration" element={<ImportMigrationPage />} />
-            <Route path="audit" element={<AuditLogPage />} />
-            <Route path="users-access" element={<UsersAccessPage />} />
+            <Route path="audit" element={<AuditLogPageV3 />} />
+            <Route path="users-access" element={<UsersAccessUsersPageV3 />} />
+            <Route path="users-access/users" element={<UsersAccessUsersPageV3 />} />
+            <Route path="users-access/roles" element={<UsersAccessRolesPageV3 />} />
+            <Route path="users-access/permissions" element={<UsersAccessPermissionsPageV3 />} />
+            <Route path="users-access/role-mappings" element={<UsersAccessRoleMappingsPageV3 />} />
+            <Route path="users-access/access-scopes" element={<UsersAccessScopesPageV3 />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
