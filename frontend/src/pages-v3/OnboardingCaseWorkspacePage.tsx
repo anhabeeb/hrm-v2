@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowLeft, CircleCheck, CircleDashed, Laptop, Plus, Upload, X } from "lucide-react";
+import { AlertCircle, CircleCheck, CircleDashed, Laptop, Plus, Upload, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
@@ -10,6 +10,7 @@ import { Label } from "../components/ui/label";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
+import { usePageBreadcrumb } from "../hooks/useBreadcrumb";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import type { EmployeeSetupReadiness, EmployeeSetupSectionStatusRow } from "../types/employees";
@@ -144,6 +145,8 @@ export function OnboardingCaseWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, caseId]);
 
+  usePageBreadcrumb([workspace ? text(asRow(workspace.employee).full_name ?? asRow(workspace.case).employee_name, "") : null]);
+
   async function reload() {
     await load();
   }
@@ -220,10 +223,6 @@ export function OnboardingCaseWorkspacePage() {
   return (
     <PageShell constrained={false}>
       <div className="space-y-3">
-        <Link to="/v3-preview/onboarding" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-slate-900">
-          <ArrowLeft className="h-3.5 w-3.5" /> Onboarding / {name}
-        </Link>
-
         <Panel className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3.5">

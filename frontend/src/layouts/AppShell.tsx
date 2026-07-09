@@ -25,13 +25,14 @@ import {
   Users
 } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { GlobalSearch } from "../components/global/GlobalSearch";
 import { BackgroundJobIndicator } from "../components/jobs/BackgroundJobIndicator";
 import { NotificationBell } from "../components/global/NotificationBell";
 import { PageLoader } from "../components/loading";
 import { Button } from "../components/ui/button";
 import { APP_BRANDING } from "../config/branding";
+import { BreadcrumbProvider, useBreadcrumbContext } from "../hooks/useBreadcrumb";
 import { useAuth } from "../hooks/useAuth";
 import { useRoutePerformanceMetrics } from "../hooks/useRoutePerformanceMetrics";
 import { preloadLikelyRoute } from "../lib/routePreload";
@@ -45,6 +46,7 @@ type NavItem = {
   permissionAny?: string[];
   moduleKey?: string | string[];
   preloadKey?: string;
+  activePrefixes?: string[];
 };
 
 type NavGroup = {
@@ -72,7 +74,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Lifecycle",
     items: [
-      { label: "Employee Setup", to: "/employees/setup", icon: CheckCircle2, permissionAny: ["employees.view", "employees.lifecycle.view", "onboarding.cases.view"], moduleKey: "onboarding", preloadKey: "employee-setup" },
+      { label: "Employee Setup", to: "/employees/setup", icon: CheckCircle2, permissionAny: ["employees.view", "employees.lifecycle.view", "onboarding.cases.view"], moduleKey: "onboarding", preloadKey: "employee-setup", activePrefixes: ["/onboarding"] },
       { label: "Offboarding", to: "/offboarding", icon: Archive, permissionAny: ["offboarding.dashboard.view", "offboarding.cases.view", "employees.lifecycle.view"], moduleKey: "offboarding", preloadKey: "onboarding-case" },
       { label: "Approvals", to: "/approvals", icon: GitBranch, permissionAny: ["approvals.view", "approvals.inbox.view", "approvals.instances.view"], moduleKey: "approvals", preloadKey: "approvals" }
     ]
@@ -136,7 +138,8 @@ function routeTitle(pathname: string) {
 
 function routeMatchesItem(pathname: string, item: NavItem) {
   if (item.to === "/") return pathname === "/";
-  return pathname === item.to || pathname.startsWith(`${item.to}/`);
+  if (pathname === item.to || pathname.startsWith(`${item.to}/`)) return true;
+  return (item.activePrefixes ?? []).some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
 function readSidebarOpenGroupState() {
@@ -164,6 +167,14 @@ export function SelfServiceShell({ children }: { children: ReactNode }) {
 }
 
 export function AppShell() {
+  return (
+    <BreadcrumbProvider>
+      <AppShellInner />
+    </BreadcrumbProvider>
+  );
+}
+
+function AppShellInner() {
   const { token, user, logout } = useAuth();
   const location = useLocation();
   useRoutePerformanceMetrics(token, user);
@@ -196,7 +207,18 @@ export function AppShell() {
   }, [moduleVisibility, permissions, selfServiceVisible, visibleGroups]);
   const activeGroupLabel = useMemo(() => resolveActiveSidebarGroup(location.pathname, sidebarGroups), [location.pathname, sidebarGroups]);
   const activeGroupLabels = useMemo(() => new Set(activeGroupLabel ? [activeGroupLabel] : []), [activeGroupLabel]);
-  const title = routeTitle(location.pathname);
+  const activeNavItem = useMemo(
+    () => [...visibleTopLevelItems, ...sidebarGroups.flatMap((group) => group.items)].find((item) => routeMatchesItem(location.pathname, item)),
+    [visibleTopLevelItems, sidebarGroups, location.pathname]
+  );
+  const sectionLabel = activeNavItem?.label ?? routeTitle(location.pathname);
+  const { extra: breadcrumbExtra } = useBreadcrumbContext();
+  const breadcrumbTrail: Array<{ label: string; to?: string }> = [
+    { label: APP_BRANDING.appShortName, to: "/" },
+    { label: sectionLabel, to: activeNavItem?.to },
+    ...breadcrumbExtra.map((label) => ({ label }))
+  ];
+  const pageHeading = breadcrumbExtra.length ? breadcrumbExtra[breadcrumbExtra.length - 1] : sectionLabel;
   const prefetchNavItem = (item: NavItem) => {
     if (item.preloadKey) preloadLikelyRoute(item.preloadKey, moduleVisibility, item.moduleKey);
   };
@@ -264,6 +286,7 @@ export function AppShell() {
                   <div className="mb-3 border-b border-slate-100 pb-3">
                     {visibleTopLevelItems.map((item) => {
                       const Icon = item.icon;
+                      const isActive = routeMatchesItem(location.pathname, item);
                       return (
                         <NavLink
                           key={item.to}
@@ -273,13 +296,11 @@ export function AppShell() {
                           onFocus={() => prefetchNavItem(item)}
                           onMouseEnter={() => prefetchNavItem(item)}
                           title={collapsed ? item.label : undefined}
-                          className={({ isActive }) =>
-                            cn(
-                              "group flex h-10 items-center rounded-md px-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-                              collapsed ? "justify-center" : "gap-3",
-                              isActive && "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground"
-                            )
-                          }
+                          className={cn(
+                            "group flex h-10 items-center rounded-md px-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+                            collapsed ? "justify-center" : "gap-3",
+                            isActive && "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground"
+                          )}
                         >
                           <Icon className="h-4 w-4 shrink-0" />
                           {!collapsed ? <span className="truncate">{item.label}</span> : null}
@@ -317,6 +338,7 @@ export function AppShell() {
                           <div className={cn("space-y-1", !collapsed && "border-l border-slate-200 pl-2")}>
                             {group.items.map((item) => {
                               const Icon = item.icon;
+                              const isActive = routeMatchesItem(location.pathname, item);
                               return (
                                 <NavLink
                                   key={item.to}
@@ -326,13 +348,11 @@ export function AppShell() {
                                   onFocus={() => prefetchNavItem(item)}
                                   onMouseEnter={() => prefetchNavItem(item)}
                                   title={collapsed ? `${group.label}: ${item.label}` : undefined}
-                                  className={({ isActive }) =>
-                                    cn(
-                                      "group flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-                                      collapsed ? "justify-center" : "gap-3",
-                                      isActive && "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground"
-                                    )
-                                  }
+                                  className={cn(
+                                    "group flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+                                    collapsed ? "justify-center" : "gap-3",
+                                    isActive && "bg-primary text-primary-foreground shadow-sm hover:bg-primary hover:text-primary-foreground"
+                                  )}
                                 >
                                   <Icon className="h-4 w-4 shrink-0" />
                                   {!collapsed ? <span className="truncate">{item.label}</span> : null}
@@ -374,12 +394,22 @@ export function AppShell() {
                 <Menu className="h-4 w-4" />
               </Button>
               <div className="min-w-0">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{APP_BRANDING.appShortName}</span>
-                  <span>/</span>
-                  <span className="truncate">{title}</span>
+                <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-muted-foreground">
+                  {breadcrumbTrail.map((segment, index) => {
+                    const isLast = index === breadcrumbTrail.length - 1;
+                    return (
+                      <span key={index} className={cn("flex shrink-0 items-center gap-1.5", isLast ? "min-w-0 shrink" : null)}>
+                        {index > 0 ? <span aria-hidden="true">/</span> : null}
+                        {!isLast && segment.to ? (
+                          <Link to={segment.to} className="truncate hover:text-slate-950 hover:underline">{segment.label}</Link>
+                        ) : (
+                          <span className="truncate">{segment.label}</span>
+                        )}
+                      </span>
+                    );
+                  })}
                 </div>
-                <p className="truncate text-sm font-semibold text-slate-950">Admin workspace</p>
+                <p className="truncate text-sm font-semibold text-slate-950">{pageHeading}</p>
               </div>
             </div>
 

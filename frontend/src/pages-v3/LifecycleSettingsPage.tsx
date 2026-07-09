@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { PageShell, CheckboxField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
 import { Button } from "../components/ui/button";
 import { useAuth } from "../hooks/useAuth";
+import { usePageBreadcrumb } from "../hooks/useBreadcrumb";
 import { useAlert } from "../components/alerts/useAlert";
 import { api } from "../lib/api";
 import type { LifecycleSettings } from "../types/lifecycle";
@@ -76,6 +76,8 @@ export function LifecycleSettingsPage({ kind }: { kind: "onboarding" | "offboard
 
   useEffect(() => { void load(); }, [token, kind]);
 
+  usePageBreadcrumb(["Settings"]);
+
   async function save() {
     if (!token || !settings) return;
     setSaving(true);
@@ -97,9 +99,6 @@ export function LifecycleSettingsPage({ kind }: { kind: "onboarding" | "offboard
       <div className="space-y-3.5">
         <div className="flex items-center justify-between">
           <div>
-            <Link to={kind === "onboarding" ? "/v3-preview/onboarding" : "/v3-preview/offboarding"} className="mb-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-slate-900">
-              &larr; {title(kind)}
-            </Link>
             <p className="text-lg font-medium text-slate-950">{title(kind)} settings</p>
             <p className="mt-0.5 text-xs text-muted-foreground">Requirement rules that gate {kind === "onboarding" ? "employee activation" : "exit finalization"}</p>
           </div>

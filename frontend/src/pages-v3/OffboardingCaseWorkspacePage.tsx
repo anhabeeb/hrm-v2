@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowLeft, CircleCheck, CircleDashed } from "lucide-react";
+import { AlertCircle, CircleCheck, CircleDashed } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
@@ -7,6 +7,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
+import { usePageBreadcrumb } from "../hooks/useBreadcrumb";
 import { useAlert } from "../components/alerts/useAlert";
 import { ApiError, api } from "../lib/api";
 import { humanizeTechnicalLabel } from "../lib/displayLabels";
@@ -126,6 +127,8 @@ export function OffboardingCaseWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, caseId]);
 
+  usePageBreadcrumb([text(employee?.full_name ?? caseRow?.employee_name, "")]);
+
   if (!caseId) return null;
 
   if (loading && !caseRow) {
@@ -188,10 +191,6 @@ export function OffboardingCaseWorkspacePage() {
   return (
     <PageShell constrained={false}>
       <div className="space-y-3">
-        <Link to="/v3-preview/offboarding" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-slate-900">
-          <ArrowLeft className="h-3.5 w-3.5" /> Offboarding / {name}
-        </Link>
-
         <Panel className="flex items-center gap-4 p-4">
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-sm font-medium" style={{ background: color.bg, color: color.text }}>{initialsOf(name)}</div>
           <div className="min-w-0 flex-1">
