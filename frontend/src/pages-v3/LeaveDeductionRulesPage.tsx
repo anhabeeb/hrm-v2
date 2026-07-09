@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Calculator, Plus } from "lucide-react";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { EmptyState } from "../components/ui/empty-state";
 import { Button, RowActionButton } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -83,14 +83,14 @@ export function LeaveDeductionRulesPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={LEAVE_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Deduction rules</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">How excess or unpaid leave impacts payroll</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={LEAVE_NAV_ITEMS} moduleLabel="Leave" />
+                <p className="mt-0.5 text-xs text-muted-foreground">How excess or unpaid leave impacts payroll</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {loading ? (
             <div className="flex flex-col gap-2">{Array.from({ length: 2 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
           ) : allRules.length ? (
@@ -122,6 +122,8 @@ export function LeaveDeductionRulesPage() {
               <Button size="sm" onClick={() => setModal("new")} disabled={!policyId}><Plus className="h-4 w-4" /> Create deduction rule</Button>
             </Panel>
           ) : null}
+
+              </Panel>
         </div>
       </div>
 

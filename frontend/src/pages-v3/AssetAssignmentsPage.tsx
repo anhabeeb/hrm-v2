@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -119,17 +119,17 @@ export function AssetAssignmentsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ASSETS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Assignments</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Who has what, and its condition</p>
-            </div>
-            {canIssue ? <Button size="sm" onClick={() => setIssueOpen(true)}><Plus className="h-4 w-4" /> Assign item</Button> : null}
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={ASSETS_NAV_ITEMS} moduleLabel="Assets" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Who has what, and its condition</p>
+              </div>
+              {canIssue ? <Button size="sm" onClick={() => setIssueOpen(true)}><Plus className="h-4 w-4" /> Assign item</Button> : null}
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <Panel className="flex flex-col gap-2.5 p-3">
             <div className="flex flex-wrap items-center gap-3.5">
               <div className="min-w-[160px] flex-1 rounded-md bg-[#F7F7FB] px-3 py-1.5 text-xs text-muted-foreground">
@@ -195,6 +195,8 @@ export function AssetAssignmentsPage() {
           ) : (
             <Panel><EmptyState title="No asset assignments found" description="Adjust filters or assign an item to an employee." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
 

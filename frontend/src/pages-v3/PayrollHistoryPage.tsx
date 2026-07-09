@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
@@ -45,8 +45,8 @@ export function PayrollHistoryPage() {
   if (!canView) {
     return (
       <PageShell constrained={false}>
-        <div className="flex gap-4">
-          <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+        <div className="flex flex-col gap-3">
+          <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
           <div className="min-w-0 flex-1"><Panel><EmptyState title="Payroll history unavailable" description="Your account needs payroll history permission." /></Panel></div>
         </div>
       </PageShell>
@@ -55,17 +55,17 @@ export function PayrollHistoryPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">History</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Finalized payroll history based on frozen payroll result snapshots</p>
-            </div>
-            <ExportMenu variant="plain" moduleName="Payroll history" rows={rows as unknown as Record<string, unknown>[]} columns={["period_month", "period_year", "run_no", "employee_no_snapshot", "employee_name_snapshot", "department_name", "location_name", "total_earnings", "total_deductions", "net_salary", "status"]} />
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Finalized payroll history based on frozen payroll result snapshots</p>
+              </div>
+              <ExportMenu variant="plain" moduleName="Payroll history" rows={rows as unknown as Record<string, unknown>[]} columns={["period_month", "period_year", "run_no", "employee_no_snapshot", "employee_name_snapshot", "department_name", "location_name", "total_earnings", "total_deductions", "net_salary", "status"]} />
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {loading ? (
             <div className="flex flex-col gap-2">{Array.from({ length: 4 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
           ) : rows.length ? (
@@ -88,6 +88,8 @@ export function PayrollHistoryPage() {
           ) : (
             <Panel><EmptyState title="No finalized payroll history" description="Finalized payroll snapshots will appear here." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

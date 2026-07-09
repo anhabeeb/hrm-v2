@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { PermissionAdaptiveAction } from "../components/ui/permission-action";
 import { EmptyState } from "../components/ui/empty-state";
@@ -55,14 +55,14 @@ export function PayrollFinalSettlementPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-lg font-medium text-slate-950">Final settlement</p>
+          <div className="px-4 flex items-center justify-between">
+            <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
             <span className="text-xs text-muted-foreground">Triggered automatically when offboarding starts</span>
           </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {loading ? (
             <div className="flex flex-col gap-2">{Array.from({ length: 2 }).map((_, i) => <Panel key={i} className="h-32 animate-pulse" />)}</div>
           ) : cases.length ? (
@@ -104,6 +104,8 @@ export function PayrollFinalSettlementPage() {
           ) : (
             <Panel><EmptyState title="No final settlements in progress" description="Cases appear here automatically when an employee's offboarding starts." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

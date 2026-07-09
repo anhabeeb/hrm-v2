@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button, RowActionButton } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -170,14 +170,14 @@ export function PayrollCustomDeductionsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-4">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Custom deductions</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Configurable deduction templates, employee assignments, and payroll application history</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Configurable deduction templates, employee assignments, and payroll application history</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-slate-950">Templates</p>
@@ -252,6 +252,8 @@ export function PayrollCustomDeductionsPage() {
             </div>
             <ReportTable title="Payroll application history" rows={applications} columns={["employee_no", "employee_name", "template_name_snapshot", "scheduled_amount", "deducted_amount", "shortfall_amount", "application_status"]} />
           </div>
+
+              </Panel>
         </div>
       </div>
 

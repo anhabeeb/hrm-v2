@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Input } from "../components/ui/input";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
@@ -30,14 +30,14 @@ export function UsersAccessPermissionsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={USERS_ACCESS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Permissions</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Reference registry of every permission key in the system</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={USERS_ACCESS_NAV_ITEMS} moduleLabel="Users & access" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Reference registry of every permission key in the system</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <div className="flex items-center gap-2">
             <Input className="h-8 w-64 text-xs" placeholder="Search permissions..." value={search} onChange={(e) => setSearch(e.target.value)} />
             <SelectField value={module} onValueChange={setModule} className="h-8 w-48 text-xs">
@@ -64,6 +64,8 @@ export function UsersAccessPermissionsPage() {
           ) : (
             <Panel><EmptyState title="No permissions found" description="Adjust filters to view the registry." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

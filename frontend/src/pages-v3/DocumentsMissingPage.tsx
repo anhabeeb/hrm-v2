@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
@@ -63,34 +63,35 @@ export function DocumentsMissingPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={DOCUMENTS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <p className="text-lg font-medium text-slate-950">Missing documents</p>
+          <RouteNavSwitcher items={DOCUMENTS_NAV_ITEMS} moduleLabel="Documents" className="px-4" />
 
-          {error ? <Panel className="p-4 text-sm text-[#A32D2D]">{error}</Panel> : null}
+          <Panel className="shadow-none space-y-3 p-4">
+            {error ? <Panel className="p-4 text-sm text-[#A32D2D]">{error}</Panel> : null}
 
-          {loading ? (
-            <div className="flex flex-col gap-2">{Array.from({ length: 3 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
-          ) : groups.length ? (
-            <div className="flex flex-col gap-2">
-              {groups.map((group) => {
-                const color = colorFor(group.employeeName);
-                return (
-                  <Panel key={group.employeeId} className="flex items-center gap-3.5 p-3">
-                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-medium" style={{ background: color.bg, color: color.text }}>{initialsOf(group.employeeName)}</div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-950">{group.employeeName}</p>
-                      <p className="mt-0.5 text-[10px] text-muted-foreground">Missing: {group.types.join(", ")}</p>
-                    </div>
-                    <Button size="sm" variant="outline" onClick={() => navigate(`/v3-preview/employees/${group.employeeId}`)}>View employee</Button>
-                  </Panel>
-                );
-              })}
-            </div>
-          ) : (
-            <Panel><EmptyState title="No missing documents" description="Everyone has their required documents on file." /></Panel>
-          )}
+            {loading ? (
+              <div className="flex flex-col gap-2">{Array.from({ length: 3 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
+            ) : groups.length ? (
+              <div className="flex flex-col gap-2">
+                {groups.map((group) => {
+                  const color = colorFor(group.employeeName);
+                  return (
+                    <Panel key={group.employeeId} className="flex items-center gap-3.5 p-3">
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-medium" style={{ background: color.bg, color: color.text }}>{initialsOf(group.employeeName)}</div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-slate-950">{group.employeeName}</p>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">Missing: {group.types.join(", ")}</p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/v3-preview/employees/${group.employeeId}`)}>View employee</Button>
+                    </Panel>
+                  );
+                })}
+              </div>
+            ) : (
+              <Panel><EmptyState title="No missing documents" description="Everyone has their required documents on file." /></Panel>
+            )}
+          </Panel>
         </div>
       </div>
     </PageShell>

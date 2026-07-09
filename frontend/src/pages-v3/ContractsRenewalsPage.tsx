@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
@@ -33,14 +33,14 @@ export function ContractsRenewalsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={CONTRACTS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Renewals</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Contracts approaching expiry that are eligible for renewal</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={CONTRACTS_NAV_ITEMS} moduleLabel="Contracts" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Contracts approaching expiry that are eligible for renewal</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {loading ? (
             <div className="flex flex-col gap-2">{Array.from({ length: 3 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
           ) : rows.length ? (
@@ -58,6 +58,8 @@ export function ContractsRenewalsPage() {
           ) : (
             <Panel><EmptyState title="No renewals pending" description="Contracts nearing expiry that need a renewal decision will appear here." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

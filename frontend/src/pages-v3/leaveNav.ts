@@ -1,6 +1,6 @@
-import type { RouteNavRailItem } from "../components/ui/route-nav-rail";
+import type { RouteNavItem } from "../components/ui/route-nav-switcher";
 
-export const LEAVE_NAV_ITEMS: RouteNavRailItem[] = [
+export const LEAVE_NAV_ITEMS: RouteNavItem[] = [
   { key: "requests", label: "Requests", to: "/v3-preview/leave/requests" },
   { key: "approvals", label: "Approvals", to: "/v3-preview/leave/approvals" },
   { key: "calendar", label: "Calendar", to: "/v3-preview/leave/calendar" },

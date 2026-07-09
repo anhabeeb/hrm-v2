@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { UserCheck } from "lucide-react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -55,14 +55,14 @@ export function ApprovalDelegationsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={APPROVALS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Delegations</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Time-bound delegation of approval authority to another user</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={APPROVALS_NAV_ITEMS} moduleLabel="Approvals" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Time-bound delegation of approval authority to another user</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <Panel className="space-y-3 p-3">
             <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">New delegation</p>
             <div className="grid gap-2 md:grid-cols-3">
@@ -92,6 +92,8 @@ export function ApprovalDelegationsPage() {
           ) : (
             <Panel><EmptyState title="No delegations" description="Time-bound delegations will appear here." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
@@ -27,17 +27,17 @@ export function PayrollPaymentRegisterPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Payment register</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Bank transfer instructions for the latest run</p>
-            </div>
-            <ExportMenu variant="plain" moduleName="Payment register" rows={rows.map((r) => ({ employee: r.employee_name_snapshot, bank: r.bank_name_snapshot, amount: r.net_salary_amount, status: r.payment_status }))} columns={["employee", "bank", "amount", "status"]} />
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Bank transfer instructions for the latest run</p>
+              </div>
+              <ExportMenu variant="plain" moduleName="Payment register" rows={rows.map((r) => ({ employee: r.employee_name_snapshot, bank: r.bank_name_snapshot, amount: r.net_salary_amount, status: r.payment_status }))} columns={["employee", "bank", "amount", "status"]} />
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <Panel className="overflow-hidden p-0">
             <div className="themed-scroll overflow-x-auto">
               <table className="w-full text-[11px]">
@@ -65,6 +65,8 @@ export function PayrollPaymentRegisterPage() {
               {!loading && !rows.length ? <p className="p-6 text-center text-xs text-muted-foreground">No payment register rows yet.</p> : null}
             </div>
           </Panel>
+
+              </Panel>
         </div>
       </div>
     </PageShell>

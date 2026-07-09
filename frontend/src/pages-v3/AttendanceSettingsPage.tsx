@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { PageShell, SelectField, CheckboxField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -59,14 +59,14 @@ export function AttendanceSettingsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ATTENDANCE_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Settings</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Global attendance rules for roster, leave, and payroll integration</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={ATTENDANCE_NAV_ITEMS} moduleLabel="Attendance" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Global attendance rules for roster, leave, and payroll integration</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {loading || !settings ? (
             <div className="flex flex-col gap-2">{Array.from({ length: 4 }).map((_, i) => <Panel key={i} className="h-12 animate-pulse" />)}</div>
           ) : (
@@ -97,6 +97,8 @@ export function AttendanceSettingsPage() {
               {canManage ? <div className="mt-4 flex justify-end"><Button size="sm" loading={saving} onClick={() => void save()}>Save settings</Button></div> : null}
             </Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

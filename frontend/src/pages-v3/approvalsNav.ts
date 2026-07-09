@@ -1,6 +1,6 @@
-import type { RouteNavRailItem } from "../components/ui/route-nav-rail";
+import type { RouteNavItem } from "../components/ui/route-nav-switcher";
 
-export const APPROVALS_NAV_ITEMS: RouteNavRailItem[] = [
+export const APPROVALS_NAV_ITEMS: RouteNavItem[] = [
   { key: "inbox", label: "My pending", to: "/v3-preview/approvals", end: true },
   { key: "submitted", label: "Submitted", to: "/v3-preview/approvals/submitted" },
   { key: "overdue", label: "Overdue", to: "/v3-preview/approvals/overdue" },

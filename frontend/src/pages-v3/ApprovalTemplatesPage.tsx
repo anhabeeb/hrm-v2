@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -32,14 +32,14 @@ export function ApprovalTemplatesPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={APPROVALS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Templates</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Notification templates sent for approval events</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={APPROVALS_NAV_ITEMS} moduleLabel="Approvals" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Notification templates sent for approval events</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {loading ? (
             <div className="flex flex-col gap-2">{Array.from({ length: 3 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
           ) : rows.length ? (
@@ -58,6 +58,8 @@ export function ApprovalTemplatesPage() {
           ) : (
             <Panel><EmptyState title="No templates" description="Approval notification templates are seeded by default." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
 

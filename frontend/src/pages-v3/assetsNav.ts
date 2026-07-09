@@ -1,6 +1,6 @@
-import type { RouteNavRailItem } from "../components/ui/route-nav-rail";
+import type { RouteNavItem } from "../components/ui/route-nav-switcher";
 
-export const ASSETS_NAV_ITEMS: RouteNavRailItem[] = [
+export const ASSETS_NAV_ITEMS: RouteNavItem[] = [
   { key: "dashboard", label: "Dashboard", to: "/v3-preview/assets", end: true },
   { key: "items", label: "Items", to: "/v3-preview/assets/items" },
   { key: "assignments", label: "Assignments", to: "/v3-preview/assets/assignments" },

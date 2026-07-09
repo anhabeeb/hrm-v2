@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -73,17 +73,17 @@ export function AssetUniformSettingsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ASSETS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Settings</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Lifecycle, clearance, deduction, final settlement, self-service, and approval foundations</p>
-            </div>
-            {canManage ? <Button size="sm" disabled={!modulesEnabled} loading={saving} onClick={() => void save()}>Save settings</Button> : null}
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={ASSETS_NAV_ITEMS} moduleLabel="Assets" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Lifecycle, clearance, deduction, final settlement, self-service, and approval foundations</p>
+              </div>
+              {canManage ? <Button size="sm" disabled={!modulesEnabled} loading={saving} onClick={() => void save()}>Save settings</Button> : null}
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {loading || !settings ? (
             <div className="flex flex-col gap-2">{Array.from({ length: 6 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
           ) : (
@@ -114,6 +114,8 @@ export function AssetUniformSettingsPage() {
               </div>
             </Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

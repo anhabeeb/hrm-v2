@@ -3,7 +3,7 @@ import { CalendarClock, ChevronRight, Plus } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { EmptyState } from "../components/ui/empty-state";
@@ -70,58 +70,60 @@ export function PayrollRunsListPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="px-4 flex items-center justify-between">
             <div>
-              <p className="text-lg font-medium text-slate-950">Payroll runs</p>
+              <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
               <p className="mt-0.5 text-xs text-muted-foreground">Click a run to review before finalizing</p>
             </div>
             {canGenerate ? <Button size="sm" onClick={() => setNewRunOpen(true)}><Plus className="h-4 w-4" /> Start new run</Button> : null}
           </div>
 
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-            <Panel className="p-3"><p className="text-[10px] text-muted-foreground">Next run</p><p className="mt-1 text-sm font-medium text-slate-950">{nextRun ? monthLabel(nextRun) : "Not set"}</p></Panel>
-            <Panel className="p-3"><p className="text-[10px] text-muted-foreground">Est. total cost</p><p className="mt-1 text-sm font-medium text-slate-950">{formatCurrency(totalCost)}</p></Panel>
-            <Panel className="p-3"><p className="text-[10px] text-muted-foreground">Pending advances</p><p className="mt-1 text-sm font-medium text-[#854F0B]">—</p></Panel>
-          </div>
+          <Panel className="shadow-none space-y-3 p-4">
 
-          <Panel className="flex flex-wrap items-center gap-3.5 p-3">
-            <select className="bg-transparent text-xs text-muted-foreground outline-none" value={year} onChange={(e) => setYear(e.target.value)}>
-              {[0, 1, 2].map((i) => { const y = new Date().getFullYear() - i; return <option key={y} value={y}>{y}</option>; })}
-            </select>
-            <select className="bg-transparent text-xs text-muted-foreground outline-none" value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="all">All statuses</option>
-              {["DRAFT", "REVIEW", "SUBMITTED_FOR_APPROVAL", "APPROVED", "FINALIZED", "PAID"].map((s) => <option key={s} value={s}>{humanizeTechnicalLabel(s)}</option>)}
-            </select>
-          </Panel>
-
-          {error ? <Panel className="p-4 text-sm text-[#A32D2D]">{error}</Panel> : null}
-
-          {loading ? (
-            <div className="flex flex-col gap-2">{Array.from({ length: 3 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
-          ) : filtered.length ? (
-            <div className="flex flex-col gap-2">
-              {filtered.map((run) => {
-                const tone = statusTone(run.status);
-                return (
-                  <Panel key={run.id} className="flex cursor-pointer items-center gap-4 p-3.5 transition hover:-translate-y-0.5 hover:shadow-md" onClick={() => navigate(`/v3-preview/payroll/runs/${run.id}`)}>
-                    <div className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-lg bg-[#EEEDFE]"><CalendarClock className="h-4 w-4 text-[#26215C]" /></div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-950">{monthLabel(run)}</p>
-                      <p className="mt-0.5 text-[10px] text-muted-foreground">{run.employee_count ?? 0} employees · Run #{run.run_no}</p>
-                    </div>
-                    <p className="text-xs font-medium text-slate-950">{formatCurrency(run.net_salary_total)}</p>
-                    <span className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium" style={{ background: tone.bg, color: tone.text }}>{humanizeTechnicalLabel(run.status)}</span>
-                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </Panel>
-                );
-              })}
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              <Panel className="p-3"><p className="text-[10px] text-muted-foreground">Next run</p><p className="mt-1 text-sm font-medium text-slate-950">{nextRun ? monthLabel(nextRun) : "Not set"}</p></Panel>
+              <Panel className="p-3"><p className="text-[10px] text-muted-foreground">Est. total cost</p><p className="mt-1 text-sm font-medium text-slate-950">{formatCurrency(totalCost)}</p></Panel>
+              <Panel className="p-3"><p className="text-[10px] text-muted-foreground">Pending advances</p><p className="mt-1 text-sm font-medium text-[#854F0B]">—</p></Panel>
             </div>
-          ) : (
-            <Panel><EmptyState title="No payroll runs found" description="Adjust filters or start a new run for this period." /></Panel>
-          )}
+
+            <Panel className="flex flex-wrap items-center gap-3.5 p-3">
+              <select className="bg-transparent text-xs text-muted-foreground outline-none" value={year} onChange={(e) => setYear(e.target.value)}>
+                {[0, 1, 2].map((i) => { const y = new Date().getFullYear() - i; return <option key={y} value={y}>{y}</option>; })}
+              </select>
+              <select className="bg-transparent text-xs text-muted-foreground outline-none" value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="all">All statuses</option>
+                {["DRAFT", "REVIEW", "SUBMITTED_FOR_APPROVAL", "APPROVED", "FINALIZED", "PAID"].map((s) => <option key={s} value={s}>{humanizeTechnicalLabel(s)}</option>)}
+              </select>
+            </Panel>
+
+            {error ? <Panel className="p-4 text-sm text-[#A32D2D]">{error}</Panel> : null}
+
+            {loading ? (
+              <div className="flex flex-col gap-2">{Array.from({ length: 3 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
+            ) : filtered.length ? (
+              <div className="flex flex-col gap-2">
+                {filtered.map((run) => {
+                  const tone = statusTone(run.status);
+                  return (
+                    <Panel key={run.id} className="flex cursor-pointer items-center gap-4 p-3.5 transition hover:-translate-y-0.5 hover:shadow-md" onClick={() => navigate(`/v3-preview/payroll/runs/${run.id}`)}>
+                      <div className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-lg bg-[#EEEDFE]"><CalendarClock className="h-4 w-4 text-[#26215C]" /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-slate-950">{monthLabel(run)}</p>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">{run.employee_count ?? 0} employees · Run #{run.run_no}</p>
+                      </div>
+                      <p className="text-xs font-medium text-slate-950">{formatCurrency(run.net_salary_total)}</p>
+                      <span className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium" style={{ background: tone.bg, color: tone.text }}>{humanizeTechnicalLabel(run.status)}</span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </Panel>
+                  );
+                })}
+              </div>
+            ) : (
+              <Panel><EmptyState title="No payroll runs found" description="Adjust filters or start a new run for this period." /></Panel>
+            )}
+          </Panel>
         </div>
       </div>
 

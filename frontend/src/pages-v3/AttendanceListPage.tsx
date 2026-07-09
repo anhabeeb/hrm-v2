@@ -9,7 +9,7 @@ import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 import { humanizeTechnicalLabel } from "../lib/displayLabels";
 import { cn } from "../lib/utils";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { ATTENDANCE_NAV_ITEMS } from "./attendanceNav";
 import type { AttendanceRecord } from "../types/attendance";
 import type { Employee } from "../types/employees";
@@ -119,17 +119,17 @@ export function AttendanceListPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ATTENDANCE_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Attendance</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Click an employee to open their attendance calendar</p>
-          </div>
-          <ExportMenu variant="plain" moduleName="Attendance" rows={summaries.map((s) => ({ employee_no: s.employee.employee_no, full_name: s.employee.full_name, present: s.present, late: s.late, absent: s.absent }))} columns={["employee_no", "full_name", "present", "late", "absent"]} />
-        </div>
+        <div className="px-4 flex items-center justify-between">
+            <div>
+              <RouteNavSwitcher items={ATTENDANCE_NAV_ITEMS} moduleLabel="Attendance" />
+              <p className="mt-0.5 text-xs text-muted-foreground">Click an employee to open their attendance calendar</p>
+            </div>
+            <ExportMenu variant="plain" moduleName="Attendance" rows={summaries.map((s) => ({ employee_no: s.employee.employee_no, full_name: s.employee.full_name, present: s.present, late: s.late, absent: s.absent }))} columns={["employee_no", "full_name", "present", "late", "absent"]} />
+</div>
 
+            <Panel className="shadow-none space-y-3 p-4">
         <Panel className="flex flex-wrap items-center gap-3.5 p-3">
           <div className="min-w-[160px] flex-1 rounded-md bg-[#F7F7FB] px-3 py-1.5 text-xs text-muted-foreground">
             <input className="w-full bg-transparent outline-none placeholder:text-muted-foreground" placeholder="Search employee" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -189,6 +189,8 @@ export function AttendanceListPage() {
         ) : (
           <Panel><EmptyState title="No employees found" description="Adjust filters or check back once attendance data is recorded." /></Panel>
         )}
+
+            </Panel>
         </div>
       </div>
     </PageShell>

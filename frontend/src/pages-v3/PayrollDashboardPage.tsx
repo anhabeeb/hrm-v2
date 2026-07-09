@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { AlertCircle, Banknote, CalendarDays, CheckCircle2, Clock3, FileWarning, PauseCircle, WalletCards, type LucideIcon } from "lucide-react";
 import { PageShell, WarningPanel } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
@@ -60,8 +60,8 @@ export function PayrollDashboardPage() {
   if (!canView) {
     return (
       <PageShell constrained={false}>
-        <div className="flex gap-4">
-          <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+        <div className="flex flex-col gap-3">
+          <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
           <div className="min-w-0 flex-1"><Panel><EmptyState title="Payroll unavailable" description="Your account needs payroll.view permission." /></Panel></div>
         </div>
       </PageShell>
@@ -82,14 +82,14 @@ export function PayrollDashboardPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Payroll</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Month-end payroll foundation with scoped periods, review runs, advances, deductions, and reports</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Month-end payroll foundation with scoped periods, review runs, advances, deductions, and reports</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {error ? <WarningPanel tone="danger">{error}</WarningPanel> : null}
 
           {loading ? (
@@ -143,6 +143,8 @@ export function PayrollDashboardPage() {
               </Panel>
             </>
           ) : null}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

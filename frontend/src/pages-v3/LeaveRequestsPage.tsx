@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MoreVertical } from "lucide-react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { EmptyState } from "../components/ui/empty-state";
@@ -176,22 +176,22 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={LEAVE_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">{approvalsOnly ? "Pending leave approvals" : "Leave requests"}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{approvalsOnly ? "Requests waiting on your approval step" : "Review, approve, or track leave across the team"}</p>
-            </div>
-            <ExportMenu
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={LEAVE_NAV_ITEMS} moduleLabel="Leave" />
+                <p className="mt-0.5 text-xs text-muted-foreground">{approvalsOnly ? "Requests waiting on your approval step" : "Review, approve, or track leave across the team"}</p>
+              </div>
+              <ExportMenu
               variant="plain"
               moduleName={approvalsOnly ? "Pending leave approvals" : "Leave requests"}
               rows={filtered as unknown as Record<string, unknown>[]}
               columns={["employee_no", "employee_name", "department_name", "leave_type_name", "start_date", "end_date", "requested_days", "status", "current_approval_step", "submitted_at"]}
             />
-          </div>
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             <Panel className="p-3"><p className="text-[10px] text-muted-foreground">Pending</p><p className="mt-1 text-lg font-medium text-[#854F0B]">{dashboard?.pending_approvals ?? "—"}</p></Panel>
             <Panel className="p-3"><p className="text-[10px] text-muted-foreground">Approved this month</p><p className="mt-1 text-lg font-medium text-slate-950">{dashboard?.approved_this_month ?? "—"}</p></Panel>
@@ -280,6 +280,8 @@ export function LeaveRequestsPage({ approvalsOnly = false }: { approvalsOnly?: b
           ) : (
             <Panel><EmptyState title="No leave requests found" description="Adjust filters or check back once employees submit requests." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
 

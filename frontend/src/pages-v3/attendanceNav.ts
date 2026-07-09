@@ -1,6 +1,6 @@
-import type { RouteNavRailItem } from "../components/ui/route-nav-rail";
+import type { RouteNavItem } from "../components/ui/route-nav-switcher";
 
-export const ATTENDANCE_NAV_ITEMS: RouteNavRailItem[] = [
+export const ATTENDANCE_NAV_ITEMS: RouteNavItem[] = [
   { key: "records", label: "Records", to: "/v3-preview/attendance", end: true },
   { key: "calendar", label: "Calendar", to: "/v3-preview/attendance/calendar" },
   { key: "corrections", label: "Corrections", to: "/v3-preview/attendance/corrections" },

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { PageShell, SelectField, CheckboxField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -63,17 +63,17 @@ export function UsersAccessRoleMappingsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={USERS_ACCESS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Role mappings</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Templates that suggest a role and data scope for employee-linked users</p>
-            </div>
-            {canManage ? <Button size="sm" onClick={() => setModal({ mode: "create" })}><Plus className="h-4 w-4" /> Mapping</Button> : null}
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={USERS_ACCESS_NAV_ITEMS} moduleLabel="Users & access" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Templates that suggest a role and data scope for employee-linked users</p>
+              </div>
+              {canManage ? <Button size="sm" onClick={() => setModal({ mode: "create" })}><Plus className="h-4 w-4" /> Mapping</Button> : null}
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <Panel className="p-3 text-[10px] text-[#0C447C]" style={{ background: "#E6F1FB" }}>
             Roles decide what the user can do. Scopes decide which employees, departments, and locations the user can access. Higher priority rules win when multiple mappings match.
           </Panel>
@@ -104,6 +104,8 @@ export function UsersAccessRoleMappingsPage() {
           ) : (
             <Panel><EmptyState title="No role mappings found" description="Create access templates that suggest roles and data scopes for employee-linked users." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
 

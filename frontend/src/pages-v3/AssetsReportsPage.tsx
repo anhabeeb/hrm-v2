@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { EmptyState } from "../components/ui/empty-state";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { useAuth } from "../hooks/useAuth";
@@ -53,11 +53,10 @@ export function AssetsReportsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ASSETS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-lg font-medium text-slate-950">Reports</p>
+          <div className="px-4 flex items-center justify-between">
+            <RouteNavSwitcher items={ASSETS_NAV_ITEMS} moduleLabel="Assets" />
             <ExportMenu
               variant="plain"
               moduleName="Asset reports"
@@ -66,6 +65,7 @@ export function AssetsReportsPage() {
             />
           </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {error ? <Panel className="p-4 text-sm text-[#A32D2D]">{error}</Panel> : null}
 
           {loading ? (
@@ -98,6 +98,8 @@ export function AssetsReportsPage() {
           ) : (
             <Panel><EmptyState title="No asset data to report" description="Issue assets to employees to see reconciliation data here." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

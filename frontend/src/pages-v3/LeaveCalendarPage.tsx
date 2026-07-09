@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError, api } from "../lib/api";
 import { LEAVE_NAV_ITEMS } from "./leaveNav";
@@ -132,20 +132,22 @@ export function LeaveCalendarPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={LEAVE_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Team calendar</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Who's on leave, at a glance</p>
-            </div>
-            <div className="flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs shadow-sm">
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={LEAVE_NAV_ITEMS} moduleLabel="Leave" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Who's on leave, at a glance</p>
+              </div>
+              <div className="flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs shadow-sm">
               <button type="button" onClick={() => setMonth((m) => shiftMonth(m, -1))}><ChevronLeft className="h-3.5 w-3.5" /></button>
               <span className="min-w-[100px] text-center font-medium text-slate-950">{formatMonthLabel(month)}</span>
               <button type="button" onClick={() => setMonth((m) => shiftMonth(m, 1))}><ChevronRight className="h-3.5 w-3.5" /></button>
-            </div>
-          </div>
+</div>
+
+              </div>
+
+              <Panel className="shadow-none space-y-3 p-4">
 
           <Panel className="flex flex-col gap-2.5 p-3">
             <div className="flex flex-wrap items-center gap-3.5">
@@ -227,6 +229,8 @@ export function LeaveCalendarPage() {
               })}
             </div>
           ) : null}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

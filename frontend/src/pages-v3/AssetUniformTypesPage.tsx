@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { PageShell, SelectField, CheckboxField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button, RowActionButton } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -61,19 +61,21 @@ export function AssetUniformTypesPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ASSETS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Uniform types</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Uniform templates, clearance defaults, replacement cycle, and deduction defaults</p>
-            </div>
-            <div className="flex items-center gap-2">
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={ASSETS_NAV_ITEMS} moduleLabel="Assets" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Uniform templates, clearance defaults, replacement cycle, and deduction defaults</p>
+              </div>
+              <div className="flex items-center gap-2">
               <ExportMenu variant="plain" moduleName="Uniform types" rows={filtered as unknown as Record<string, unknown>[]} columns={["code", "name", "category", "default_replacement_cycle_months", "default_clearance_required", "default_deduction_amount", "status"]} />
               {canManage ? <Button size="sm" onClick={() => setModal("new")}><Plus className="h-4 w-4" /> Create type</Button> : null}
-            </div>
-          </div>
+</div>
+
+              </div>
+
+              <Panel className="shadow-none space-y-3 p-4">
 
           <Input className="h-8 w-64 text-xs" placeholder="Search code/name/category..." value={query} onChange={(e) => setQuery(e.target.value)} />
 
@@ -100,6 +102,8 @@ export function AssetUniformTypesPage() {
           ) : (
             <Panel><EmptyState title="No uniform types" description="Create uniform types such as shirts, shoes, aprons, and name badges." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
 

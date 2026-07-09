@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { EmptyState } from "../components/ui/empty-state";
 import { ExportMenu } from "../components/export/ExportMenu";
 import { useAuth } from "../hooks/useAuth";
@@ -92,22 +92,22 @@ export function LeaveBalancesPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={LEAVE_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Balances</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Leave balances across the team, {new Date().getFullYear()} cycle</p>
-            </div>
-            <ExportMenu
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={LEAVE_NAV_ITEMS} moduleLabel="Leave" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Leave balances across the team, {new Date().getFullYear()} cycle</p>
+              </div>
+              <ExportMenu
               variant="plain"
               moduleName="Leave balances"
               rows={filtered.flatMap((row) => row.balances.map((b) => ({ employee_no: row.employee.employee_no, employee_name: row.employee.full_name, leave_type: b.leave_type_name, opening_balance: b.opening_balance, used_days: b.used_days, pending_days: b.pending_days, closing_balance: b.closing_balance })))}
               columns={["employee_no", "employee_name", "leave_type", "opening_balance", "used_days", "pending_days", "closing_balance"]}
             />
-          </div>
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <Panel className="flex flex-col gap-2.5 p-3">
             <div className="flex flex-wrap items-center gap-3.5">
               <div className="min-w-[160px] flex-1 rounded-md bg-[#F7F7FB] px-3 py-1.5 text-xs text-muted-foreground">
@@ -185,6 +185,8 @@ export function LeaveBalancesPage() {
           ) : (
             <Panel><EmptyState title="No employees found" description="Adjust filters to see leave balances." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

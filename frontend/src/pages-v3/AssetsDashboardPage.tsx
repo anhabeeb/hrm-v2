@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AlertCircle, Boxes, CheckCircle2, PackageCheck, PackageX, RotateCcw, Wallet } from "lucide-react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
@@ -26,8 +26,8 @@ export function AssetsDashboardPage() {
   if (!canView) {
     return (
       <PageShell constrained={false}>
-        <div className="flex gap-4">
-          <RouteNavRail items={ASSETS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+        <div className="flex flex-col gap-3">
+          <RouteNavSwitcher items={ASSETS_NAV_ITEMS} moduleLabel="Assets" />
           <div className="min-w-0 flex-1"><Panel><EmptyState title="Assets unavailable" description="Your account needs assets.view permission." /></Panel></div>
         </div>
       </PageShell>
@@ -53,14 +53,14 @@ export function AssetsDashboardPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ASSETS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Assets &amp; Uniforms</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Asset inventory, employee issue/return tracking, deductions, and clearance foundation</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={ASSETS_NAV_ITEMS} moduleLabel="Assets" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Asset inventory, employee issue/return tracking, deductions, and clearance foundation</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {error ? <Panel className="p-3 text-xs text-[#A32D2D]">{error}</Panel> : null}
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -95,6 +95,8 @@ export function AssetsDashboardPage() {
               <Badge tone="neutral">Clearance-ready</Badge>
             </div>
           </Panel>
+
+              </Panel>
         </div>
       </div>
     </PageShell>

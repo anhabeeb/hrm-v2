@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { PageShell, CheckboxField, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { EmptyState } from "../components/ui/empty-state";
 import { Badge } from "../components/ui/badge";
 import { Button, RowActionButton } from "../components/ui/button";
@@ -97,14 +97,14 @@ export function LeaveTypesPoliciesPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={LEAVE_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-4">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Types & policies</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Leave type entitlements, carry-forward, and document rules</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={LEAVE_NAV_ITEMS} moduleLabel="Leave" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Leave type entitlements, carry-forward, and document rules</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-slate-950">Leave types</p>
@@ -168,6 +168,8 @@ export function LeaveTypesPoliciesPage() {
               <Panel><EmptyState title="No leave policies configured" description="Create a policy for each leave type to set entitlements and rules." /></Panel>
             )}
           </div>
+
+              </Panel>
         </div>
       </div>
 

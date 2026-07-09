@@ -3,7 +3,7 @@ import { Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -76,17 +76,17 @@ export function ContractsListPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={CONTRACTS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Contracts</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Manage contracts, probation, renewals, and expiry alerts</p>
-            </div>
-            {canCreate ? <Button size="sm" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4" /> New contract</Button> : null}
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={CONTRACTS_NAV_ITEMS} moduleLabel="Contracts" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Manage contracts, probation, renewals, and expiry alerts</p>
+              </div>
+              {canCreate ? <Button size="sm" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4" /> New contract</Button> : null}
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <div className="flex items-center gap-2">
             <SelectField value={status} onValueChange={setStatus} className="h-8 w-48 text-xs">
               <option value="">All statuses</option>
@@ -124,6 +124,8 @@ export function ContractsListPage() {
           ) : (
             <Panel><EmptyState title="No contracts found" description="Contracts created for employees will appear here." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
 

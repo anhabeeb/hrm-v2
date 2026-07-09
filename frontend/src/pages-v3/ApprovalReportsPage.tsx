@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
@@ -24,14 +24,14 @@ export function ApprovalReportsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={APPROVALS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Reports</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Pending approvals summary across all workflows</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={APPROVALS_NAV_ITEMS} moduleLabel="Approvals" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Pending approvals summary across all workflows</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {loading ? (
             <div className="flex flex-col gap-2">{Array.from({ length: 3 }).map((_, i) => <Panel key={i} className="h-14 animate-pulse" />)}</div>
           ) : rows.length ? (
@@ -46,6 +46,8 @@ export function ApprovalReportsPage() {
           ) : (
             <Panel><EmptyState title="No report rows" description="Approval report rows will appear after approvals are submitted." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

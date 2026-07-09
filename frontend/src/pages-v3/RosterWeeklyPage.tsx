@@ -7,7 +7,7 @@ import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { EmptyState } from "../components/ui/empty-state";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { RosterAssignmentModal } from "../components/roster/RosterAssignmentModal";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
@@ -169,8 +169,8 @@ export function RosterWeeklyPage() {
   if (!canView) {
     return (
       <PageShell constrained={false}>
-        <div className="flex gap-4">
-          <RouteNavRail items={ROSTER_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+        <div className="flex flex-col gap-3">
+          <RouteNavSwitcher items={ROSTER_NAV_ITEMS} moduleLabel="Roster" />
           <div className="min-w-0 flex-1"><Panel className="p-4"><EmptyState title="Roster unavailable" description="Your account needs roster.view permission." /></Panel></div>
         </div>
       </PageShell>
@@ -242,15 +242,14 @@ export function RosterWeeklyPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ROSTER_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Weekly roster</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{hasPeriod ? `${periodStatus === "PUBLISHED" ? "Published" : "Draft · not yet visible to employees"}` : "No roster yet for this week"}</p>
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="px-4 flex items-center justify-between">
+            <div>
+              <RouteNavSwitcher items={ROSTER_NAV_ITEMS} moduleLabel="Roster" />
+              <p className="mt-0.5 text-xs text-muted-foreground">{hasPeriod ? `${periodStatus === "PUBLISHED" ? "Published" : "Draft · not yet visible to employees"}` : "No roster yet for this week"}</p>
+            </div>
+            <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs text-muted-foreground shadow-panel">
               <button type="button" onClick={() => setWeekStart(addDaysIso(weekStart, -7))}>←</button>
               {weekStart} – {addDaysIso(weekStart, 6)}
@@ -260,6 +259,7 @@ export function RosterWeeklyPage() {
           </div>
         </div>
 
+        <Panel className="shadow-none space-y-3 p-4">
         <Panel className="flex flex-wrap items-center gap-3.5 p-3">
           <select className="bg-transparent text-xs text-muted-foreground outline-none" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
             <option value="">Department</option>
@@ -376,6 +376,8 @@ export function RosterWeeklyPage() {
             ) : null}
           </>
         )}
+
+            </Panel>
         </div>
       </div>
 

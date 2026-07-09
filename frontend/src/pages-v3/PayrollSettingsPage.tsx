@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { PageShell, SelectField, CheckboxField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -75,8 +75,8 @@ export function PayrollSettingsPage() {
   if (!canView) {
     return (
       <PageShell constrained={false}>
-        <div className="flex gap-4">
-          <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+        <div className="flex flex-col gap-3">
+          <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
           <div className="min-w-0 flex-1"><Panel><EmptyState title="Payroll settings unavailable" description="Your account needs payroll settings permission." /></Panel></div>
         </div>
       </PageShell>
@@ -89,17 +89,17 @@ export function PayrollSettingsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Settings</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">General payroll, bank-loan, pension, payment, and deduction-priority controls</p>
-            </div>
-            {canManage ? <Button size="sm" disabled={!moduleEnabled} loading={saving} onClick={() => void save()}>Save settings</Button> : null}
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
+                <p className="mt-0.5 text-xs text-muted-foreground">General payroll, bank-loan, pension, payment, and deduction-priority controls</p>
+              </div>
+              {canManage ? <Button size="sm" disabled={!moduleEnabled} loading={saving} onClick={() => void save()}>Save settings</Button> : null}
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <Panel className="p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -209,6 +209,8 @@ export function PayrollSettingsPage() {
               </Section>
             </Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

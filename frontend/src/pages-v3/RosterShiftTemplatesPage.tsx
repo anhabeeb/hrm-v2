@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { PageShell, CheckboxField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button, RowActionButton } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
@@ -81,8 +81,8 @@ export function RosterShiftTemplatesPage() {
   if (!canView) {
     return (
       <PageShell constrained={false}>
-        <div className="flex gap-4">
-          <RouteNavRail items={ROSTER_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+        <div className="flex flex-col gap-3">
+          <RouteNavSwitcher items={ROSTER_NAV_ITEMS} moduleLabel="Roster" />
           <div className="min-w-0 flex-1"><Panel><EmptyState title="Shift templates unavailable" description="Your account needs roster.view permission." /></Panel></div>
         </div>
       </PageShell>
@@ -91,19 +91,21 @@ export function RosterShiftTemplatesPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ROSTER_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Shift templates</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Reusable roster shifts for weekly planning and attendance/payroll calculations</p>
-            </div>
-            <div className="flex items-center gap-2">
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={ROSTER_NAV_ITEMS} moduleLabel="Roster" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Reusable roster shifts for weekly planning and attendance/payroll calculations</p>
+              </div>
+              <div className="flex items-center gap-2">
               <ExportMenu variant="plain" moduleName="Roster shift templates" rows={filtered as unknown as Record<string, unknown>[]} columns={["code", "name", "description", "start_time", "end_time", "break_minutes", "total_work_minutes", "is_overnight", "is_active"]} />
               {canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> New shift</Button> : null}
-            </div>
-          </div>
+</div>
+
+              </div>
+
+              <Panel className="shadow-none space-y-3 p-4">
 
           {moduleDisabled ? (
             <Panel><EmptyState title="Roster module is disabled" description="Enable roster from settings before managing shift templates." /></Panel>
@@ -143,6 +145,8 @@ export function RosterShiftTemplatesPage() {
               )}
             </>
           )}
+
+              </Panel>
         </div>
       </div>
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -41,14 +41,14 @@ export function PayrollDeductionsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-lg font-medium text-slate-950">Deductions</p>
+          <div className="px-4 flex items-center justify-between">
+            <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
             <Button size="sm" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4" /> New deduction</Button>
           </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {loading ? (
             <div className="flex flex-col gap-2">{Array.from({ length: 2 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
           ) : deductions.length ? (
@@ -67,6 +67,8 @@ export function PayrollDeductionsPage() {
           ) : (
             <Panel><EmptyState title="No payroll deductions" description="Recurring or one-time deductions will appear here." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
       {newOpen ? <NewDeductionModal onClose={() => setNewOpen(false)} onSaved={() => { setNewOpen(false); load(); }} /> : null}

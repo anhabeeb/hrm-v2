@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Eye, FileText } from "lucide-react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
 import { useAlert } from "../components/alerts/useAlert";
@@ -59,16 +59,14 @@ export function PayrollPayslipsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={PAYROLL_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Payslips</p>
+          <div className="px-4">
+              <RouteNavSwitcher items={PAYROLL_NAV_ITEMS} moduleLabel="Payroll" />
               <p className="mt-0.5 text-xs text-muted-foreground">Select multiple to download together</p>
-            </div>
           </div>
 
+            <Panel className="shadow-none space-y-3 p-4">
           {selected.size > 0 ? (
             <Panel className="flex items-center justify-between bg-[#EEEDFE] p-3">
               <span className="text-xs font-medium text-[#26215C]">{selected.size} selected</span>
@@ -107,6 +105,8 @@ export function PayrollPayslipsPage() {
           ) : (
             <Panel><EmptyState title="No payslips generated yet" description="Payslips appear here once a payroll run generates them." /></Panel>
           )}
+
+            </Panel>
         </div>
       </div>
     </PageShell>

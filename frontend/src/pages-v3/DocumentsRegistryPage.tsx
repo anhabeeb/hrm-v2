@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Download, FileImage, FileText, MoreVertical, Upload } from "lucide-react";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -117,17 +117,17 @@ export function DocumentsRegistryPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={DOCUMENTS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Registry</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">All employee documents in one place</p>
-            </div>
-            {canUpload ? <Button size="sm" onClick={() => setUploadOpen(true)}><Upload className="h-4 w-4" /> Upload document</Button> : null}
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={DOCUMENTS_NAV_ITEMS} moduleLabel="Documents" />
+                <p className="mt-0.5 text-xs text-muted-foreground">All employee documents in one place</p>
+              </div>
+              {canUpload ? <Button size="sm" onClick={() => setUploadOpen(true)}><Upload className="h-4 w-4" /> Upload document</Button> : null}
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             <Panel className="p-3"><p className="text-[10px] text-muted-foreground">Total documents</p><p className="mt-1 text-lg font-medium text-slate-950">{dashboard?.total_documents ?? "—"}</p></Panel>
             <Panel className="p-3"><p className="text-[10px] text-muted-foreground">Expiring soon</p><p className="mt-1 text-lg font-medium text-[#854F0B]">{dashboard?.expiring_soon ?? "—"}</p></Panel>
@@ -201,6 +201,8 @@ export function DocumentsRegistryPage() {
           ) : (
             <Panel><EmptyState title="No documents found" description="Adjust filters or upload a document." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
 

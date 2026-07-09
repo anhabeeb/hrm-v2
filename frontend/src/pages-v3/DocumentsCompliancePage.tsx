@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button, RowActionButton } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -136,8 +136,8 @@ export function DocumentsCompliancePage({ mode = "dashboard" }: { mode?: Mode })
   if (!canView) {
     return (
       <PageShell constrained={false}>
-        <div className="flex gap-4">
-          <RouteNavRail items={DOCUMENTS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+        <div className="flex flex-col gap-3">
+          <RouteNavSwitcher items={DOCUMENTS_NAV_ITEMS} moduleLabel="Documents" />
           <div className="min-w-0 flex-1"><Panel><EmptyState title="Document compliance unavailable" description="Your account needs document compliance permission." /></Panel></div>
         </div>
       </PageShell>
@@ -146,19 +146,21 @@ export function DocumentsCompliancePage({ mode = "dashboard" }: { mode?: Mode })
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={DOCUMENTS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">{TITLES[mode].title}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{TITLES[mode].description}</p>
-            </div>
-            <div className="flex items-center gap-2">
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={DOCUMENTS_NAV_ITEMS} moduleLabel="Documents" />
+                <p className="mt-0.5 text-xs text-muted-foreground">{TITLES[mode].description}</p>
+              </div>
+              <div className="flex items-center gap-2">
               <ExportMenu variant="plain" moduleName={`Document compliance ${mode}`} rows={exportRows} columns={exportColumns} />
               {canManage ? <Button size="sm" variant="outline" onClick={() => void refreshAll()}>Refresh compliance</Button> : null}
-            </div>
-          </div>
+</div>
+
+              </div>
+
+              <Panel className="shadow-none space-y-3 p-4">
 
           {mode !== "dashboard" ? (
             <Panel className="flex flex-wrap items-center gap-3.5 p-3">
@@ -248,6 +250,8 @@ export function DocumentsCompliancePage({ mode = "dashboard" }: { mode?: Mode })
               </div>
             ) : <Panel><EmptyState title="No waivers" description="Waived requirements will appear here." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
 

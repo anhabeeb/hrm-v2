@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Shirt } from "lucide-react";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button, RowActionButton } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -90,19 +90,21 @@ export function AssetUniformAssignmentsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ASSETS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Uniform assignments</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Issue, return, damage/lost, waive, and payroll recovery foundation for uniforms</p>
-            </div>
-            <div className="flex items-center gap-2">
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={ASSETS_NAV_ITEMS} moduleLabel="Assets" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Issue, return, damage/lost, waive, and payroll recovery foundation for uniforms</p>
+              </div>
+              <div className="flex items-center gap-2">
               <ExportMenu variant="plain" moduleName="Uniform assignments" rows={rows as unknown as Record<string, unknown>[]} columns={["employee_no", "employee_name", "department_name", "location_name", "uniform_type_code", "uniform_type_name", "size_label", "quantity_issued", "quantity_returned", "assignment_status", "clearance_status", "issued_date", "expected_return_date", "deduction_amount"]} />
               {canIssue ? <Button size="sm" onClick={() => setIssueOpen(true)}><Shirt className="h-4 w-4" /> Issue uniform</Button> : null}
-            </div>
-          </div>
+</div>
+
+              </div>
+
+              <Panel className="shadow-none space-y-3 p-4">
 
           <Panel className="flex flex-wrap items-center gap-3.5 p-3">
             <div className="min-w-[160px] flex-1 rounded-md bg-[#F7F7FB] px-3 py-1.5 text-xs text-muted-foreground">
@@ -147,6 +149,8 @@ export function AssetUniformAssignmentsPage() {
           ) : (
             <Panel><EmptyState title="No uniform assignments" description="Uniform assignments appear after stock is issued to employees." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
 

@@ -3,7 +3,7 @@ import { Plus } from "lucide-react";
 import { AttendanceDeviceModal } from "../components/attendance/AttendanceDeviceModal";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { EmptyState } from "../components/ui/empty-state";
@@ -64,17 +64,17 @@ export function AttendanceDevicesPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ATTENDANCE_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Devices</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Biometric, bridge, API, and manual import device registry</p>
-            </div>
-            {canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add device</Button> : null}
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={ATTENDANCE_NAV_ITEMS} moduleLabel="Attendance" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Biometric, bridge, API, and manual import device registry</p>
+              </div>
+              {canManage ? <Button size="sm" onClick={() => setEditing(null)}><Plus className="h-4 w-4" /> Add device</Button> : null}
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <Input className="h-8 w-64 text-xs" placeholder="Search devices..." value={search} onChange={(e) => setSearch(e.target.value)} />
 
           {loading ? (
@@ -103,6 +103,8 @@ export function AttendanceDevicesPage() {
           ) : (
             <Panel><EmptyState title="No devices found" description="Add a device or adjust the search." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
 

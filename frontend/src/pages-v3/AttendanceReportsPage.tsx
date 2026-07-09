@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Input } from "../components/ui/input";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
@@ -30,14 +30,14 @@ export function AttendanceReportsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ATTENDANCE_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="text-lg font-medium text-slate-950">Reports</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Attendance summary exports prepared for payroll reconciliation</p>
-          </div>
+            <div className="px-4">
+                <RouteNavSwitcher items={ATTENDANCE_NAV_ITEMS} moduleLabel="Attendance" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Attendance summary exports prepared for payroll reconciliation</p>
+            </div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           <div className="flex items-center gap-2">
             <Input className="h-8 w-36 text-xs" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
             <Input className="h-8 w-36 text-xs" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
@@ -63,6 +63,8 @@ export function AttendanceReportsPage() {
           ) : (
             <Panel><EmptyState title="No report rows found" description="Create attendance records or adjust the date range." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

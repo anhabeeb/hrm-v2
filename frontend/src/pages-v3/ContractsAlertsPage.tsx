@@ -3,7 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PageShell } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Button } from "../components/ui/button";
 import { EmptyState } from "../components/ui/empty-state";
 import { useAuth } from "../hooks/useAuth";
@@ -59,17 +59,17 @@ export function ContractsAlertsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={CONTRACTS_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Alerts</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Expiry and compliance alerts for employee contracts</p>
-            </div>
-            {canManage ? <Button size="sm" variant="outline" loading={refreshing} onClick={() => void refresh()}><ShieldCheck className="h-4 w-4" /> Refresh alerts</Button> : null}
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={CONTRACTS_NAV_ITEMS} moduleLabel="Contracts" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Expiry and compliance alerts for employee contracts</p>
+              </div>
+              {canManage ? <Button size="sm" variant="outline" loading={refreshing} onClick={() => void refresh()}><ShieldCheck className="h-4 w-4" /> Refresh alerts</Button> : null}
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {loading ? (
             <div className="flex flex-col gap-2">{Array.from({ length: 3 }).map((_, i) => <Panel key={i} className="h-16 animate-pulse" />)}</div>
           ) : rows.length ? (
@@ -88,6 +88,8 @@ export function ContractsAlertsPage() {
           ) : (
             <Panel><EmptyState title="No contract alerts" description="Expiry and compliance alerts will appear here once triggered." /></Panel>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

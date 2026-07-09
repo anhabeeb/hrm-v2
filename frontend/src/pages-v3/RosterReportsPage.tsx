@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { PageShell, SelectField } from "../components/ui/page-shell";
 import { Panel } from "../components/ui/panel";
-import { RouteNavRail } from "../components/ui/route-nav-rail";
+import { RouteNavSwitcher } from "../components/ui/route-nav-switcher";
 import { Badge } from "../components/ui/badge";
 import { EmptyState } from "../components/ui/empty-state";
 import { ExportMenu } from "../components/export/ExportMenu";
@@ -66,8 +66,8 @@ export function RosterReportsPage() {
   if (!canView) {
     return (
       <PageShell constrained={false}>
-        <div className="flex gap-4">
-          <RouteNavRail items={ROSTER_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+        <div className="flex flex-col gap-3">
+          <RouteNavSwitcher items={ROSTER_NAV_ITEMS} moduleLabel="Roster" />
           <div className="min-w-0 flex-1"><Panel><EmptyState title="Roster reports unavailable" description="Your account needs roster.reports.view permission." /></Panel></div>
         </div>
       </PageShell>
@@ -76,17 +76,17 @@ export function RosterReportsPage() {
 
   return (
     <PageShell constrained={false}>
-      <div className="flex gap-4">
-        <RouteNavRail items={ROSTER_NAV_ITEMS} className="hidden w-[172px] shrink-0 sm:flex" />
+      <div className="flex flex-col gap-3">
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-lg font-medium text-slate-950">Reports</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Weekly schedule summaries prepared for payroll and operations exports</p>
-            </div>
-            {canExport ? <ExportMenu variant="plain" moduleName="Roster reports" rows={reports} columns={["employee_no", "employee_name", "department_name", "location_name", "scheduled_days", "off_days", "leave_days", "unassigned_days", "scheduled_minutes"]} /> : null}
-          </div>
+          <div className="px-4 flex items-center justify-between">
+              <div>
+                <RouteNavSwitcher items={ROSTER_NAV_ITEMS} moduleLabel="Roster" />
+                <p className="mt-0.5 text-xs text-muted-foreground">Weekly schedule summaries prepared for payroll and operations exports</p>
+              </div>
+              {canExport ? <ExportMenu variant="plain" moduleName="Roster reports" rows={reports} columns={["employee_no", "employee_name", "department_name", "location_name", "scheduled_days", "off_days", "leave_days", "unassigned_days", "scheduled_minutes"]} /> : null}
+</div>
 
+              <Panel className="shadow-none space-y-3 p-4">
           {moduleDisabled ? (
             <Panel><EmptyState title="Roster module is disabled" description="Enable roster from settings before viewing roster reports." /></Panel>
           ) : (
@@ -138,6 +138,8 @@ export function RosterReportsPage() {
               )}
             </>
           )}
+
+              </Panel>
         </div>
       </div>
     </PageShell>

@@ -1,6 +1,6 @@
-import type { RouteNavRailItem } from "../components/ui/route-nav-rail";
+import type { RouteNavItem } from "../components/ui/route-nav-switcher";
 
-export const DOCUMENTS_NAV_ITEMS: RouteNavRailItem[] = [
+export const DOCUMENTS_NAV_ITEMS: RouteNavItem[] = [
   { key: "registry", label: "Registry", to: "/v3-preview/documents/registry" },
   { key: "compliance", label: "Compliance", to: "/v3-preview/documents/compliance", end: true },
   { key: "compliance-missing", label: "Missing", to: "/v3-preview/documents/compliance/missing" },
