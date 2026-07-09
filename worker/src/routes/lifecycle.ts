@@ -645,11 +645,13 @@ function failedReadinessSection(section: string, error: unknown) {
   };
 }
 
+type OnboardingReadinessSectionFailure = { type: string; section: string; label: string; code: string; message: string; reason: string; next_action: string };
+
 async function runOnboardingReadinessSection<T>(
   section: string,
   run: () => Promise<T>,
   fallback: (error: unknown) => T,
-  failures: Array<{ type: string; section: string; label: string; code: string; message: string; reason: string; next_action: string }>
+  failures: OnboardingReadinessSectionFailure[]
 ): Promise<T> {
   try {
     const result = await runOptionalSectionWithTimeout({
@@ -671,6 +673,16 @@ async function runOnboardingReadinessSection<T>(
     failures.push({ type: "READINESS_SECTION_FAILED", section: safe.section, label: safe.label, code: safe.code, message: safe.message, reason: safe.reason, next_action: safe.next_action });
     return fallback(error);
   }
+}
+
+async function collectOnboardingReadinessSection<T>(
+  section: string,
+  run: () => Promise<T>,
+  fallback: (error: unknown) => T
+): Promise<{ value: T; failures: OnboardingReadinessSectionFailure[] }> {
+  const failures: OnboardingReadinessSectionFailure[] = [];
+  const value = await runOnboardingReadinessSection(section, run, fallback, failures);
+  return { value, failures };
 }
 
 async function getOnboardingWorkspaceModuleStatuses(c: Context<AppBindings>) {
@@ -2787,6 +2799,17 @@ export async function createOnboardingTaskIfMissing(c: Context<AppBindings>, cas
     .run();
 }
 
+function onboardingTaskInsertStatement(c: Context<AppBindings>, caseId: string, employeeId: string, template: (typeof onboardingTemplates)[number], required: boolean) {
+  const [taskKey, taskName, , sourceModule, description] = template;
+  return c.env.DB
+    .prepare(
+      `INSERT OR IGNORE INTO employee_onboarding_tasks
+       (id, onboarding_case_id, employee_id, task_key, title, task_name, description, module, task_group, source_module, status, task_status, required, is_required)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 'NOT_STARTED', ?, ?)`
+    )
+    .bind(id("onboarding_task"), caseId, employeeId, taskKey, taskName, taskName, description, sourceModule, template[2], sourceModule, required ? 1 : 0, required ? 1 : 0);
+}
+
 async function createOffboardingTaskIfMissing(c: Context<AppBindings>, caseId: string, employeeId: string, template: (typeof offboardingTemplates)[number]) {
   const [taskKey, taskName, taskGroup, sourceModule, notes, required] = template;
   await c.env.DB
@@ -2820,49 +2843,56 @@ function isOnboardingTemplateRequired(template: (typeof onboardingTemplates)[num
 }
 
 async function seedOnboardingChecklistForEmployee(c: Context<AppBindings>, caseId: string, employeeId: string, settings: Record<string, unknown> | null | undefined) {
+  const uniqueModuleKeys = Array.from(new Set(onboardingTemplates.map((template) => onboardingTaskModuleKeys[template[0]])));
+  const moduleEnabledEntries = await Promise.all(uniqueModuleKeys.map(async (moduleKey) => [moduleKey, await isModuleEnabled(c.env.DB, moduleKey)] as const));
+  const moduleEnabledByKey = new Map(moduleEnabledEntries);
+
+  const statements = [];
   for (const template of onboardingTemplates) {
     const taskKey = template[0];
-    const moduleEnabled = await isModuleEnabled(c.env.DB, onboardingTaskModuleKeys[taskKey]);
+    const moduleEnabled = moduleEnabledByKey.get(onboardingTaskModuleKeys[taskKey]) ?? true;
     const required = moduleEnabled && isOnboardingTemplateRequired(template, settings);
     const notRequiredReason = moduleEnabled
       ? "Optional setup: not required for onboarding activation."
       : "Disabled module: not required for onboarding.";
-    await createOnboardingTaskIfMissing(c, caseId, employeeId, template, required);
-    await c.env.DB
-      .prepare(
-        `UPDATE employee_onboarding_tasks
-         SET is_required = ?, required = ?,
-             task_status = CASE
-               WHEN ? = 0 AND task_status IN ('COMPLETED', 'WAIVED') THEN task_status
-               WHEN ? = 0 THEN 'NOT_REQUIRED'
-               WHEN task_status = 'NOT_REQUIRED' THEN 'NOT_STARTED'
-               ELSE task_status
-             END,
-             status = CASE
-               WHEN ? = 0 AND status = 'COMPLETED' THEN status
-               WHEN ? = 0 THEN 'SKIPPED'
-               WHEN status = 'SKIPPED' AND task_status = 'NOT_REQUIRED' THEN 'PENDING'
-               ELSE status
-             END,
-             notes = CASE WHEN ? = 0 THEN ? ELSE notes END,
-             updated_at = ?
-         WHERE onboarding_case_id = ? AND task_key = ?`
-      )
-      .bind(
-        required ? 1 : 0,
-        required ? 1 : 0,
-        required ? 1 : 0,
-        required ? 1 : 0,
-        required ? 1 : 0,
-        required ? 1 : 0,
-        required ? 1 : 0,
-        notRequiredReason,
-        nowIso(),
-        caseId,
-        taskKey
-      )
-      .run();
+    statements.push(onboardingTaskInsertStatement(c, caseId, employeeId, template, required));
+    statements.push(
+      c.env.DB
+        .prepare(
+          `UPDATE employee_onboarding_tasks
+           SET is_required = ?, required = ?,
+               task_status = CASE
+                 WHEN ? = 0 AND task_status IN ('COMPLETED', 'WAIVED') THEN task_status
+                 WHEN ? = 0 THEN 'NOT_REQUIRED'
+                 WHEN task_status = 'NOT_REQUIRED' THEN 'NOT_STARTED'
+                 ELSE task_status
+               END,
+               status = CASE
+                 WHEN ? = 0 AND status = 'COMPLETED' THEN status
+                 WHEN ? = 0 THEN 'SKIPPED'
+                 WHEN status = 'SKIPPED' AND task_status = 'NOT_REQUIRED' THEN 'PENDING'
+                 ELSE status
+               END,
+               notes = CASE WHEN ? = 0 THEN ? ELSE notes END,
+               updated_at = ?
+           WHERE onboarding_case_id = ? AND task_key = ?`
+        )
+        .bind(
+          required ? 1 : 0,
+          required ? 1 : 0,
+          required ? 1 : 0,
+          required ? 1 : 0,
+          required ? 1 : 0,
+          required ? 1 : 0,
+          required ? 1 : 0,
+          notRequiredReason,
+          nowIso(),
+          caseId,
+          taskKey
+        )
+    );
   }
+  await c.env.DB.batch(statements);
 }
 
 async function refreshOffboardingChecklist(c: Context<AppBindings>, caseId: string) {
@@ -3418,28 +3448,74 @@ export async function getEmployeeOnboardingReadiness(c: Context<AppBindings>, ca
   const startedAt = Date.now();
   const gate = await getCaseEmployee(c, "ONBOARDING", caseId, "view");
   if (!gate) return null;
-  const sectionFailures: Array<{ type: string; section: string; label: string; code: string; message: string; reason: string; next_action: string }> = [];
-  await runOnboardingReadinessSection("checklist", () => refreshOnboardingChecklist(c, caseId), () => null, sectionFailures);
-  const checklist = await runOnboardingReadinessSection("checklist", () => getOnboardingChecklistStatus(c, caseId), (error) => ({
-    ...deferredOnboardingChecklist("Onboarding checklist"),
-    blockers: [{ type: "READINESS_SECTION_FAILED", section: "checklist", message: sanitizeOnboardingReadinessError(error, "checklist").message }]
-  }), sectionFailures);
-  const moduleBlockers = await runOnboardingReadinessSection("readiness", () => getOnboardingBlockers(c, caseId), () => [], sectionFailures);
-  const documents = await runOnboardingReadinessSection("documents", () => getOnboardingDocumentChecklist(c, caseId), (error) => ({
-    ...emptyOnboardingDocumentChecklist("FAILED", sanitizeOnboardingReadinessError(error, "documents").message),
-    warnings: [{ type: "READINESS_SECTION_FAILED", section: "documents", message: sanitizeOnboardingReadinessError(error, "documents").message }]
-  } as Awaited<ReturnType<typeof getOnboardingDocumentChecklist>>), sectionFailures);
+
+  const refreshFailures: OnboardingReadinessSectionFailure[] = [];
+  await runOnboardingReadinessSection("checklist", () => refreshOnboardingChecklist(c, caseId), () => null, refreshFailures);
+
+  const [
+    checklistResult,
+    moduleBlockersResult,
+    documentsResult,
+    contractResult,
+    payrollResult,
+    paymentMethodResult,
+    pensionResult,
+    rosterResult,
+    attendanceResult,
+    biometricResult,
+    userAccessResult,
+    assetsUniformsResult
+  ] = await Promise.all([
+    collectOnboardingReadinessSection("checklist", () => getOnboardingChecklistStatus(c, caseId), (error) => ({
+      ...deferredOnboardingChecklist("Onboarding checklist"),
+      blockers: [{ type: "READINESS_SECTION_FAILED", section: "checklist", message: sanitizeOnboardingReadinessError(error, "checklist").message }]
+    })),
+    collectOnboardingReadinessSection("readiness", () => getOnboardingBlockers(c, caseId), () => []),
+    collectOnboardingReadinessSection("documents", () => getOnboardingDocumentChecklist(c, caseId), (error) => ({
+      ...emptyOnboardingDocumentChecklist("FAILED", sanitizeOnboardingReadinessError(error, "documents").message),
+      warnings: [{ type: "READINESS_SECTION_FAILED", section: "documents", message: sanitizeOnboardingReadinessError(error, "documents").message }]
+    } as Awaited<ReturnType<typeof getOnboardingDocumentChecklist>>)),
+    collectOnboardingReadinessSection("contract", () => getOnboardingContractStatus(c, caseId), (error) => failedReadinessSection("contract", error) as unknown as Awaited<ReturnType<typeof getOnboardingContractStatus>>),
+    collectOnboardingReadinessSection("payroll", () => getOnboardingPayrollReadiness(c, caseId), (error) => failedReadinessSection("payroll", error) as unknown as Awaited<ReturnType<typeof getOnboardingPayrollReadiness>>),
+    collectOnboardingReadinessSection("payment_method", () => getOnboardingPaymentMethodStatus(c, caseId), (error) => failedReadinessSection("payment_method", error) as unknown as Awaited<ReturnType<typeof getOnboardingPaymentMethodStatus>>),
+    collectOnboardingReadinessSection("pension", () => getOnboardingPensionStatus(c, caseId), (error) => failedReadinessSection("pension", error) as unknown as Awaited<ReturnType<typeof getOnboardingPensionStatus>>),
+    collectOnboardingReadinessSection("roster", () => getOnboardingRosterReadiness(c, caseId), (error) => failedReadinessSection("roster", error) as unknown as Awaited<ReturnType<typeof getOnboardingRosterReadiness>>),
+    collectOnboardingReadinessSection("attendance", () => getOnboardingAttendanceReadiness(c, caseId), (error) => failedReadinessSection("attendance", error) as unknown as Awaited<ReturnType<typeof getOnboardingAttendanceReadiness>>),
+    collectOnboardingReadinessSection("biometric", () => getOnboardingBiometricMappingStatus(c, caseId), (error) => failedReadinessSection("biometric", error) as unknown as Awaited<ReturnType<typeof getOnboardingBiometricMappingStatus>>),
+    collectOnboardingReadinessSection("user_access", () => getOnboardingUserAccessStatus(c, caseId), (error) => failedReadinessSection("user_access", error) as unknown as Awaited<ReturnType<typeof getOnboardingUserAccessStatus>>),
+    collectOnboardingReadinessSection("assets_uniforms", () => getOnboardingAssetUniformStatus(c, caseId), (error) => failedReadinessSection("assets_uniforms", error) as unknown as Awaited<ReturnType<typeof getOnboardingAssetUniformStatus>>)
+  ]);
+
+  const checklist = checklistResult.value;
+  const moduleBlockers = moduleBlockersResult.value;
+  const documents = documentsResult.value;
   const warningItems = Array.isArray(documents.warnings) ? documents.warnings : [];
   const calculatedAt = nowIso();
-  const contract = await runOnboardingReadinessSection("contract", () => getOnboardingContractStatus(c, caseId), (error) => failedReadinessSection("contract", error) as unknown as Awaited<ReturnType<typeof getOnboardingContractStatus>>, sectionFailures);
-  const payroll = await runOnboardingReadinessSection("payroll", () => getOnboardingPayrollReadiness(c, caseId), (error) => failedReadinessSection("payroll", error) as unknown as Awaited<ReturnType<typeof getOnboardingPayrollReadiness>>, sectionFailures);
-  const paymentMethod = await runOnboardingReadinessSection("payment_method", () => getOnboardingPaymentMethodStatus(c, caseId), (error) => failedReadinessSection("payment_method", error) as unknown as Awaited<ReturnType<typeof getOnboardingPaymentMethodStatus>>, sectionFailures);
-  const pension = await runOnboardingReadinessSection("pension", () => getOnboardingPensionStatus(c, caseId), (error) => failedReadinessSection("pension", error) as unknown as Awaited<ReturnType<typeof getOnboardingPensionStatus>>, sectionFailures);
-  const roster = await runOnboardingReadinessSection("roster", () => getOnboardingRosterReadiness(c, caseId), (error) => failedReadinessSection("roster", error) as unknown as Awaited<ReturnType<typeof getOnboardingRosterReadiness>>, sectionFailures);
-  const attendance = await runOnboardingReadinessSection("attendance", () => getOnboardingAttendanceReadiness(c, caseId), (error) => failedReadinessSection("attendance", error) as unknown as Awaited<ReturnType<typeof getOnboardingAttendanceReadiness>>, sectionFailures);
-  const biometric = await runOnboardingReadinessSection("biometric", () => getOnboardingBiometricMappingStatus(c, caseId), (error) => failedReadinessSection("biometric", error) as unknown as Awaited<ReturnType<typeof getOnboardingBiometricMappingStatus>>, sectionFailures);
-  const userAccess = await runOnboardingReadinessSection("user_access", () => getOnboardingUserAccessStatus(c, caseId), (error) => failedReadinessSection("user_access", error) as unknown as Awaited<ReturnType<typeof getOnboardingUserAccessStatus>>, sectionFailures);
-  const assetsUniforms = await runOnboardingReadinessSection("assets_uniforms", () => getOnboardingAssetUniformStatus(c, caseId), (error) => failedReadinessSection("assets_uniforms", error) as unknown as Awaited<ReturnType<typeof getOnboardingAssetUniformStatus>>, sectionFailures);
+  const contract = contractResult.value;
+  const payroll = payrollResult.value;
+  const paymentMethod = paymentMethodResult.value;
+  const pension = pensionResult.value;
+  const roster = rosterResult.value;
+  const attendance = attendanceResult.value;
+  const biometric = biometricResult.value;
+  const userAccess = userAccessResult.value;
+  const assetsUniforms = assetsUniformsResult.value;
+
+  const sectionFailures: OnboardingReadinessSectionFailure[] = [
+    ...refreshFailures,
+    ...checklistResult.failures,
+    ...moduleBlockersResult.failures,
+    ...documentsResult.failures,
+    ...contractResult.failures,
+    ...payrollResult.failures,
+    ...paymentMethodResult.failures,
+    ...pensionResult.failures,
+    ...rosterResult.failures,
+    ...attendanceResult.failures,
+    ...biometricResult.failures,
+    ...userAccessResult.failures,
+    ...assetsUniformsResult.failures
+  ];
   const sectionFailureBlockers = sectionFailures.map((failure) => ({
     type: failure.type,
     section: failure.section,
