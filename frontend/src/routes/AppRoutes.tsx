@@ -559,11 +559,11 @@ export function AppRoutes() {
             <Route path="payroll/exit-payroll" element={operational("final_settlement", "Final settlement", <PayrollFinalSettlementPageV3 />)} />
             <Route path="payroll/settings" element={<PayrollSettingsPageV3 />} />
             <Route path="payroll/reports" element={operational("payroll_reports", "Payroll reports", <PayrollReportsPageV3 />)} />
-            <Route path="roster" element={operational("roster", "Roster", <RosterWeeklyPage />)} />
-            <Route path="roster/weekly" element={operational("roster", "Roster", <RosterWeeklyPage />)} />
-            <Route path="roster/shift-templates" element={operational("roster", "Roster", <RosterShiftTemplatesPage />)} />
-            <Route path="roster/reports" element={operational("roster", "Roster", <RosterReportsPage />)} />
-            <Route path="roster/settings" element={<RosterSettingsPage />} />
+            <Route path="roster" element={operational("roster", "Roster", <RosterWeeklyPageV3 />)} />
+            <Route path="roster/weekly" element={operational("roster", "Roster", <RosterWeeklyPageV3 />)} />
+            <Route path="roster/shift-templates" element={operational("roster", "Roster", <RosterShiftTemplatesPageV3 />)} />
+            <Route path="roster/reports" element={operational("roster", "Roster", <RosterReportsPageV3 />)} />
+            <Route path="roster/settings" element={<RosterSettingsPageV3 />} />
             <Route path="documents" element={operational("documents", "Documents", <DocumentsRegistryPageV3 />)} />
             <Route path="documents/registry" element={operational("documents", "Documents", <DocumentsRegistryPageV3 />)} />
             <Route path="documents/missing" element={operational("documents", "Documents", <DocumentsMissingPageV3 />)} />
