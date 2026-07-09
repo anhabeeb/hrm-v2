@@ -53,7 +53,7 @@ export function EmployeeSetupListPage() {
             const percent = required ? Math.round((complete / required) * 100) : 0;
             const tone = toneFor(summary);
             return (
-              <Link key={employee.id} to={`/v3-preview/employees/${employee.id}?setup=1`}>
+              <Link key={employee.id} to={employee.active_onboarding_case_id ? `/onboarding/${employee.active_onboarding_case_id}` : `/employees/${employee.id}?setup=1`}>
                 <Panel className="flex items-center gap-3.5 p-3 transition hover:-translate-y-0.5 hover:shadow-md">
                   <ProgressRing value={complete} max={Math.max(required, 1)} color="#5B4FE9" label="" sublabel="complete" />
                   <div className="min-w-0 flex-1">

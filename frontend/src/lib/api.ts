@@ -984,7 +984,7 @@ export const api = {
     return request<WithEmployeeSetupStatusUpdate<{ employee: Employee }>>(`/api/v1/employees/${id}/job-history`, { method: "POST", body: JSON.stringify(input) }, token);
   },
   listEmployeeOnboarding(token: string, id: string) {
-    return request<{ onboarding: OnboardingTask[] }>(`/api/v1/employees/${id}/onboarding`, {}, token);
+    return request<{ onboarding: { id: string; case_number: string } | null; tasks: OnboardingTask[] }>(`/api/v1/employees/${id}/onboarding`, {}, token);
   },
   updateEmployeeOnboardingTask(token: string, id: string, taskId: string, status: OnboardingStatus) {
     return request<WithEmployeeSetupStatusUpdate<{ task: OnboardingTask }>>(`/api/v1/employees/${id}/onboarding/${taskId}`, { method: "PATCH", body: JSON.stringify({ status }) }, token);

@@ -214,6 +214,9 @@ export function OnboardingCaseWorkspacePage() {
     }
   }
 
+  const tileStatuses = TILES.map((tile) => ({ tile, combined: combineSectionStatus(sections, tile.sectionKeys) }));
+  const outstandingCount = tileStatuses.filter(({ combined }) => combined.status !== "complete" && combined.status !== "not_required").length + otherBlocking.length;
+
   return (
     <PageShell constrained={false}>
       <div className="space-y-3">
@@ -221,13 +224,31 @@ export function OnboardingCaseWorkspacePage() {
           <ArrowLeft className="h-3.5 w-3.5" /> Onboarding / {name}
         </Link>
 
-        <Panel className="flex items-center gap-4 p-4">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-sm font-medium" style={{ background: color.bg, color: color.text }}>{initialsOf(name)}</div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-slate-950">{name}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{[roleLine, startLine].filter(Boolean).join(" · ") || "—"}</p>
+        <Panel className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-sm font-medium" style={{ background: color.bg, color: color.text }}>{initialsOf(name)}</div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-slate-950">{name}</p>
+                  <span className="shrink-0 rounded-full bg-[#FAEEDA] px-2 py-0.5 text-[10px] font-medium text-[#854F0B]">Onboarding</span>
+                </div>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{[roleLine, startLine].filter(Boolean).join(" · ") || "—"}{caseRow.case_number ? ` · Case ${text(caseRow.case_number)}` : ""}</p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <ProgressRing percent={pct} />
+              <Button loading={activating} disabled={!canActivate} title={!canActivate ? "Complete the required sections below first" : undefined} onClick={() => void runActivate()}>Activate employee</Button>
+            </div>
           </div>
-          <ProgressRing percent={pct} />
+          <div className="mt-3 flex items-center justify-between border-t border-[#E7E7F1] pt-3">
+            <span className="text-xs text-muted-foreground">{completeCount} of {relevantSections.length} sections complete</span>
+            {outstandingCount ? (
+              <span className="rounded-full bg-[#FCEBEB] px-2.5 py-1 text-[10px] font-medium text-[#A32D2D]">{outstandingCount} outstanding</span>
+            ) : (
+              <span className="rounded-full bg-[#EAF3DE] px-2.5 py-1 text-[10px] font-medium text-[#27500A]">Ready to activate</span>
+            )}
+          </div>
         </Panel>
 
         {otherBlocking.length ? (
@@ -240,9 +261,8 @@ export function OnboardingCaseWorkspacePage() {
 
         {error ? <Panel className="p-3 text-xs text-[#A32D2D]">{error}</Panel> : null}
 
-        <div className="flex flex-col gap-2">
-          {TILES.map((tile) => {
-            const combined = combineSectionStatus(sections, tile.sectionKeys);
+        <Panel className="divide-y divide-[#E7E7F1] p-0">
+          {tileStatuses.map(({ tile, combined }) => {
             const visual = tileVisual(combined.status);
             const canEdit =
               tile.key === "personal" ? canEditPersonal :
@@ -271,7 +291,7 @@ export function OnboardingCaseWorkspacePage() {
 
             const showAction = combined.status !== "complete" && combined.status !== "not_required" && canEdit;
             return (
-              <Panel key={tile.key} className="flex items-center gap-3.5 p-3" style={visual.dim ? { opacity: 0.6 } : undefined}>
+              <div key={tile.key} className="flex items-center gap-3.5 p-3" style={visual.dim ? { opacity: 0.6 } : undefined}>
                 <visual.Icon className="h-[18px] w-[18px] shrink-0" style={{ color: visual.color }} />
                 <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setActiveTile(tile.key)}>
                   <p className="text-xs font-medium text-slate-950">{tile.label}</p>
@@ -279,16 +299,10 @@ export function OnboardingCaseWorkspacePage() {
                 </button>
                 {visual.badge}
                 {showAction ? <Button size="sm" variant="actionSave" onClick={() => setActiveTile(tile.key)}>Mark complete</Button> : null}
-              </Panel>
+              </div>
             );
           })}
-        </div>
-
-        {canActivate ? (
-          <div className="flex justify-end">
-            <Button loading={activating} onClick={() => void runActivate()}>Activate employee</Button>
-          </div>
-        ) : null}
+        </Panel>
       </div>
 
       {activeTile === "personal" ? <PersonalInfoDialog workspace={workspace} caseId={caseId} employeeId={employeeId} onClose={() => setActiveTile(null)} onSaved={reload} /> : null}
@@ -345,7 +359,7 @@ function BankVerificationRow({ label, combined, visual, workspace, employeeId, c
   }
 
   return (
-    <Panel className="flex items-center gap-3.5 p-3" style={visualEffective.dim ? { opacity: 0.6 } : undefined}>
+    <div className="flex items-center gap-3.5 p-3" style={visualEffective.dim ? { opacity: 0.6 } : undefined}>
       <visualEffective.Icon className="h-[18px] w-[18px] shrink-0" style={{ color: visualEffective.color }} />
       <button type="button" className="min-w-0 flex-1 text-left" onClick={onOpenDialog}>
         <p className="text-xs font-medium text-slate-950">{label}</p>
@@ -353,7 +367,7 @@ function BankVerificationRow({ label, combined, visual, workspace, employeeId, c
       </button>
       {displayComplete ? <Badge tone="success">Complete</Badge> : visualEffective.badge}
       {action}
-    </Panel>
+    </div>
   );
 }
 

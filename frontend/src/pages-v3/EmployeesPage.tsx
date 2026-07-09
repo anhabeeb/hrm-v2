@@ -218,7 +218,8 @@ export function EmployeesPage() {
         const { employee } = await api.createEmployee(token, input);
         setModal(null);
         alerts.showSuccess("New hire added", "Continue setup from the onboarding checklist.");
-        navigate(`/employees/${employee.id}?setup=1`);
+        const { onboarding } = await api.listEmployeeOnboarding(token, employee.id).catch(() => ({ onboarding: null }));
+        navigate(onboarding ? `/onboarding/${onboarding.id}` : `/employees/${employee.id}?setup=1`);
         return;
       } else if (modal.employee) {
         await api.updateEmployee(token, modal.employee.id, input);
