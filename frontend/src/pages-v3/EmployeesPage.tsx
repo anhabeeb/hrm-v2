@@ -215,13 +215,17 @@ export function EmployeesPage() {
     if (!token || !modal) return;
     try {
       if (modal.mode === "create") {
-        await api.createEmployee(token, input);
+        const { employee } = await api.createEmployee(token, input);
+        setModal(null);
+        alerts.showSuccess("New hire added", "Continue setup from the onboarding checklist.");
+        navigate(`/employees/${employee.id}?setup=1`);
+        return;
       } else if (modal.employee) {
         await api.updateEmployee(token, modal.employee.id, input);
       }
       setModal(null);
       await Promise.all([load(), employeesQuery.refetch()]);
-      alerts.showSuccess(modal.mode === "create" ? "Employee created" : "Employee updated", modal.mode === "create" ? "The employee record was added." : "The employee record was saved.");
+      alerts.showSuccess("Employee updated", "The employee record was saved.");
     } catch (err) {
       const issues = normalizeValidationIssues(err);
       if (issues.length) alerts.showValidationError(issues, "Employee form needs attention");
@@ -284,7 +288,7 @@ export function EmployeesPage() {
             </Link>
           ) : null}
           {canExport ? <ExportMenu variant="plain" moduleName="Employees" rows={filtered as unknown as Record<string, unknown>[]} columns={["employee_no", "full_name", "employee_type", "employment_type", "status_key", "joining_date", "user_linked", "linked_user_email"]} filterSummary={activeChips.map((chip) => `${chip.label}: ${String(chip.value)}`)} /> : null}
-          {canCreate ? <Button size="sm" onClick={() => setModal({ mode: "create" })}><Plus className="h-4 w-4" /> New employee</Button> : null}
+          {canCreate ? <Button size="sm" onClick={() => setModal({ mode: "create" })}><Plus className="h-4 w-4" /> Add new hire</Button> : null}
           </>
         }
       />
@@ -515,21 +519,16 @@ function EmployeeFormModal(props: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/25 p-4">
       <div className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-lg border bg-white shadow-xl">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <div><h2 className="text-sm font-semibold">{props.mode === "create" ? "Create employee" : "Edit employee"}</h2><p className="text-xs text-muted-foreground">Profile photo is managed from Employee 360 after the employee record is saved.</p></div>
+          <div><h2 className="text-sm font-semibold">{props.mode === "create" ? "Add new hire" : "Edit employee"}</h2><p className="text-xs text-muted-foreground">{props.mode === "create" ? "Just enough to create the record. Documents, contract, payroll setup, and the rest happen from the onboarding checklist next." : "Profile photo is managed from Employee 360 after the employee record is saved."}</p></div>
           <Button variant="ghost" size="sm" onClick={props.onClose}>Close</Button>
         </div>
         <div className="max-h-[70vh] overflow-y-auto p-4">
           <FormErrorSummary issues={validation.issues} />
           <div className="grid gap-3 md:grid-cols-3">
             <Field field="full_name" label="Full name" value={form.full_name} issues={validation.fieldIssues("full_name")} onChange={(v) => update("full_name", v)} />
-            <Field field="display_name" label="Display name" value={form.display_name ?? ""} issues={validation.fieldIssues("display_name")} onChange={(v) => update("display_name", v)} />
             <Field field="employee_no" label="Employee No" value={form.employee_no ?? ""} disabled={!props.canNumber} placeholder={props.canNumber ? "Manual or blank for auto" : "Auto-generated"} issues={validation.fieldIssues("employee_no")} onChange={(v) => update("employee_no", v)} />
-            <Field label="Gender" value={form.gender ?? ""} onChange={(v) => update("gender", v)} />
-            <Field field="date_of_birth" label="Date of birth" type="date" value={form.date_of_birth ?? ""} issues={validation.fieldIssues("date_of_birth")} onChange={(v) => update("date_of_birth", v)} />
-            <Field label="Nationality" value={form.nationality ?? ""} onChange={(v) => update("nationality", v)} />
             <div className="space-y-1.5"><UiSelectField label="Employee type" value={form.employee_type} onValueChange={(v) => update("employee_type", v)}>{employeeTypes.map((t) => <option key={t} value={t}>{t}</option>)}</UiSelectField><FieldError issues={validation.fieldIssues("employee_type")} /></div>
             <div className="space-y-1.5"><UiSelectField label="Employment type" value={form.employment_type} onValueChange={(v) => update("employment_type", v)}>{employmentTypes.map((t) => <option key={t} value={t}>{t}</option>)}</UiSelectField><FieldError issues={validation.fieldIssues("employment_type")} /></div>
-            <UiSelectField label="Status" value={form.status_id ?? ""} onValueChange={(v) => update("status_id", v)}><option value="">Draft / Onboarding default</option>{props.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</UiSelectField>
             <div className="md:col-span-3">
               <OrganizationCascadeSelector
                 includeLocation
@@ -547,15 +546,24 @@ function EmployeeFormModal(props: {
                 onChange={updateCascade}
               />
             </div>
-            <UiSelectField label="Reporting manager" value={form.reporting_manager_employee_id ?? ""} onValueChange={(v) => update("reporting_manager_employee_id", v)}><option value="">None</option>{props.employees.filter((e) => e.id !== props.employee?.id).map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}</UiSelectField>
-            <Field field="joining_date" label="Joining date" type="date" value={form.joining_date ?? ""} issues={validation.fieldIssues("joining_date")} onChange={(v) => update("joining_date", v)} />
-            <Field field="confirmation_date" label="Confirmation date" type="date" value={form.confirmation_date ?? ""} issues={validation.fieldIssues("confirmation_date")} onChange={(v) => update("confirmation_date", v)} />
-            <Field field="contract_start_date" label="Contract start" type="date" value={form.contract_start_date ?? ""} issues={validation.fieldIssues("contract_start_date")} onChange={(v) => update("contract_start_date", v)} />
-            <Field field="contract_end_date" label="Contract end" type="date" value={form.contract_end_date ?? ""} issues={validation.fieldIssues("contract_end_date")} onChange={(v) => update("contract_end_date", v)} />
-            <Field field="probation_end_date" label="Probation end" type="date" value={form.probation_end_date ?? ""} issues={validation.fieldIssues("probation_end_date")} onChange={(v) => update("probation_end_date", v)} />
-            <CheckboxField label="Payroll included" checked={form.payroll_included} onChange={(value) => update("payroll_included", value)} className="self-end" />
-            <CheckboxField label="Roster eligible" checked={form.roster_eligible} onChange={(value) => update("roster_eligible", value)} className="self-end" />
-            <div className="md:col-span-3"><Field field="notes_summary" label="Notes summary" value={form.notes_summary ?? ""} issues={validation.fieldIssues("notes_summary")} onChange={(v) => update("notes_summary", v)} /></div>
+            {props.mode === "edit" ? (
+              <>
+                <Field field="display_name" label="Display name" value={form.display_name ?? ""} issues={validation.fieldIssues("display_name")} onChange={(v) => update("display_name", v)} />
+                <Field label="Gender" value={form.gender ?? ""} onChange={(v) => update("gender", v)} />
+                <Field field="date_of_birth" label="Date of birth" type="date" value={form.date_of_birth ?? ""} issues={validation.fieldIssues("date_of_birth")} onChange={(v) => update("date_of_birth", v)} />
+                <Field label="Nationality" value={form.nationality ?? ""} onChange={(v) => update("nationality", v)} />
+                <UiSelectField label="Status" value={form.status_id ?? ""} onValueChange={(v) => update("status_id", v)}><option value="">Draft / Onboarding default</option>{props.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</UiSelectField>
+                <UiSelectField label="Reporting manager" value={form.reporting_manager_employee_id ?? ""} onValueChange={(v) => update("reporting_manager_employee_id", v)}><option value="">None</option>{props.employees.filter((e) => e.id !== props.employee?.id).map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}</UiSelectField>
+                <Field field="joining_date" label="Joining date" type="date" value={form.joining_date ?? ""} issues={validation.fieldIssues("joining_date")} onChange={(v) => update("joining_date", v)} />
+                <Field field="confirmation_date" label="Confirmation date" type="date" value={form.confirmation_date ?? ""} issues={validation.fieldIssues("confirmation_date")} onChange={(v) => update("confirmation_date", v)} />
+                <Field field="contract_start_date" label="Contract start" type="date" value={form.contract_start_date ?? ""} issues={validation.fieldIssues("contract_start_date")} onChange={(v) => update("contract_start_date", v)} />
+                <Field field="contract_end_date" label="Contract end" type="date" value={form.contract_end_date ?? ""} issues={validation.fieldIssues("contract_end_date")} onChange={(v) => update("contract_end_date", v)} />
+                <Field field="probation_end_date" label="Probation end" type="date" value={form.probation_end_date ?? ""} issues={validation.fieldIssues("probation_end_date")} onChange={(v) => update("probation_end_date", v)} />
+                <CheckboxField label="Payroll included" checked={form.payroll_included} onChange={(value) => update("payroll_included", value)} className="self-end" />
+                <CheckboxField label="Roster eligible" checked={form.roster_eligible} onChange={(value) => update("roster_eligible", value)} className="self-end" />
+                <div className="md:col-span-3"><Field field="notes_summary" label="Notes summary" value={form.notes_summary ?? ""} issues={validation.fieldIssues("notes_summary")} onChange={(v) => update("notes_summary", v)} /></div>
+              </>
+            ) : null}
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
