@@ -607,8 +607,9 @@ export function AppRoutes() {
             <Route path="self-service/approvals" element={operationalAll(["self_service", "approvals"], "Approvals", <SelfServiceApprovalsPage />)} />
             <Route path="self-service/notifications" element={operationalAll(["self_service", "notifications"], "Notifications", <SelfServiceNotificationsPage />)} />
             <Route path="self-service/kyc-requests" element={operationalAll(["self_service", "documents"], "KYC requests", <SelfServiceKycPage />)} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="settings/admin" element={<AdminSettingsPage />} />
+            <Route path="settings" element={<SettingsHubPageV3 />} />
+            <Route path="settings/modules" element={<SettingsModulesPageV3 />} />
+            <Route path="settings/admin" element={<AdminSettingsPageV3 />} />
             <Route path="settings/admin/backup-retention" element={<AdminBackupRetentionPage />} />
             <Route path="settings/performance" element={<PerformanceDashboardPage />} />
             <Route path="admin/help" element={<AdminHelpGuidePage />} />
@@ -622,13 +623,13 @@ export function AppRoutes() {
             <Route path="settings/admin/smoke-tests" element={<DataTransferPage mode="smoke" />} />
             <Route path="settings/admin/deployment-readiness" element={<DataTransferPage mode="deployment" />} />
             <Route path="settings/admin/data-transfer-settings" element={<DataTransferPage mode="settings" />} />
-            <Route path="settings/organization" element={<OrganizationSettingsPage />} />
-            <Route path="settings/self-service" element={<SelfServiceSettingsPage />} />
-            <Route path="settings/documents" element={<DocumentSettingsPage />} />
-            <Route path="settings/documents/compliance" element={<DocumentCompliancePage mode="settings" />} />
-            <Route path="settings/documents/compliance/types" element={<DocumentCompliancePage mode="type-settings" />} />
-            <Route path="settings/contracts" element={<ContractsPage mode="settings" />} />
-            <Route path="settings/employee-notes" element={<EmployeeNotesSettingsPage />} />
+            <Route path="settings/organization" element={<OrganizationSettingsPageV3 />} />
+            <Route path="settings/self-service" element={<SelfServiceSettingsPageV3 />} />
+            <Route path="settings/documents" element={<DocumentSettingsPageV3 />} />
+            <Route path="settings/documents/compliance" element={<DocumentComplianceSettingsPageV3 />} />
+            <Route path="settings/documents/compliance/types" element={<DocumentComplianceSettingsPageV3 initialTab="type-rules" />} />
+            <Route path="settings/contracts" element={<ContractsSettingsPageV3 />} />
+            <Route path="settings/employee-notes" element={<EmployeeNotesSettingsPageV3 />} />
             <Route path="settings/import-migration" element={<ImportMigrationPage />} />
             <Route path="audit" element={<AuditLogPageV3 />} />
             <Route path="users-access" element={<UsersAccessUsersPageV3 />} />
