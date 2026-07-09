@@ -589,24 +589,24 @@ export function AppRoutes() {
             <Route path="assets/reports" element={operational("assets_uniforms", "Assets and uniforms", <AssetsReportsPageV3 />)} />
             <Route path="reports" element={operational(["reports", "reports_exports"], "Reports", <ReportsPageV3 />)} />
             <Route path="reports/audit" element={<AuditLogPage />} />
-            <Route path="self-service" element={operational("self_service", "Self-service", <SelfServiceHomePage />)} />
-            <Route path="self-service/profile" element={operational("self_service", "Self-service", <SelfServiceProfilePage />)} />
-            <Route path="self-service/documents" element={operationalAll(["self_service", "documents"], "Documents", <SelfServiceDocumentsPage />)} />
-            <Route path="self-service/attendance" element={operationalAll(["self_service", "attendance"], "Attendance", <SelfServiceAttendancePage />)} />
-            <Route path="self-service/leave" element={operationalAll(["self_service", "leave"], "Leave", <SelfServiceLeavePage />)} />
-            <Route path="self-service/roster" element={operationalAll(["self_service", "roster"], "Roster", <SelfServiceRosterPage />)} />
-            <Route path="self-service/payroll" element={operationalAll(["self_service", "payroll"], "Payroll", <SelfServicePayrollPage />)} />
-            <Route path="self-service/payment-methods" element={operationalAll(["self_service", "payroll", "payroll_payment_methods"], "Payment methods", <SelfServicePaymentMethodsPage />)} />
-            <Route path="self-service/bank-loans" element={operationalAll(["self_service", "payroll", "payroll_bank_loans"], "Bank loans", <SelfServiceBankLoansPage />)} />
-            <Route path="self-service/pension" element={operationalAll(["self_service", "payroll", "payroll_pension"], "Pension", <SelfServicePensionPage />)} />
-            <Route path="self-service/contracts" element={operationalAll(["self_service", "contracts"], "Contracts", <SelfServiceContractsPage />)} />
-            <Route path="self-service/onboarding" element={operationalAll(["self_service", "onboarding"], "Onboarding", <SelfServiceOnboardingPage />)} />
-            <Route path="self-service/offboarding" element={operationalAll(["self_service", "offboarding"], "Offboarding", <SelfServiceOffboardingPage />)} />
-            <Route path="self-service/assets" element={operationalAll(["self_service", "assets_uniforms"], "Assets and uniforms", <SelfServiceAssetsPage />)} />
-            <Route path="self-service/uniforms" element={operationalAll(["self_service", "assets_uniforms"], "Assets and uniforms", <SelfServiceUniformsPage />)} />
-            <Route path="self-service/approvals" element={operationalAll(["self_service", "approvals"], "Approvals", <SelfServiceApprovalsPage />)} />
-            <Route path="self-service/notifications" element={operationalAll(["self_service", "notifications"], "Notifications", <SelfServiceNotificationsPage />)} />
-            <Route path="self-service/kyc-requests" element={operationalAll(["self_service", "documents"], "KYC requests", <SelfServiceKycPage />)} />
+            <Route path="self-service" element={operational("self_service", "Self-service", <SelfServiceHomePageV3 />)} />
+            <Route path="self-service/profile" element={operational("self_service", "Self-service", <SelfServiceProfilePageV3 />)} />
+            <Route path="self-service/documents" element={operationalAll(["self_service", "documents"], "Documents", <SelfServiceDocumentsPageV3 />)} />
+            <Route path="self-service/attendance" element={operationalAll(["self_service", "attendance"], "Attendance", <SelfServiceAttendancePageV3 />)} />
+            <Route path="self-service/leave" element={operationalAll(["self_service", "leave"], "Leave", <SelfServiceLeavePageV3 />)} />
+            <Route path="self-service/roster" element={operationalAll(["self_service", "roster"], "Roster", <SelfServiceRosterPageV3 />)} />
+            <Route path="self-service/payroll" element={operationalAll(["self_service", "payroll"], "Payroll", <SelfServicePayrollPageV3 />)} />
+            <Route path="self-service/payment-methods" element={operationalAll(["self_service", "payroll", "payroll_payment_methods"], "Payment methods", <SelfServicePaymentMethodsPageV3 />)} />
+            <Route path="self-service/bank-loans" element={operationalAll(["self_service", "payroll", "payroll_bank_loans"], "Bank loans", <SelfServiceBankLoansPageV3 />)} />
+            <Route path="self-service/pension" element={operationalAll(["self_service", "payroll", "payroll_pension"], "Pension", <SelfServicePensionPageV3 />)} />
+            <Route path="self-service/contracts" element={operationalAll(["self_service", "contracts"], "Contracts", <SelfServiceContractsPageV3 />)} />
+            <Route path="self-service/onboarding" element={operationalAll(["self_service", "onboarding"], "Onboarding", <SelfServiceOnboardingPageV3 />)} />
+            <Route path="self-service/offboarding" element={operationalAll(["self_service", "offboarding"], "Offboarding", <SelfServiceOffboardingPageV3 />)} />
+            <Route path="self-service/assets" element={operationalAll(["self_service", "assets_uniforms"], "Assets and uniforms", <SelfServiceAssetsPageV3 />)} />
+            <Route path="self-service/uniforms" element={operationalAll(["self_service", "assets_uniforms"], "Assets and uniforms", <SelfServiceUniformsPageV3 />)} />
+            <Route path="self-service/approvals" element={operationalAll(["self_service", "approvals"], "Approvals", <SelfServiceApprovalsPageV3 />)} />
+            <Route path="self-service/notifications" element={operationalAll(["self_service", "notifications"], "Notifications", <SelfServiceNotificationsPageV3 />)} />
+            <Route path="self-service/kyc-requests" element={operationalAll(["self_service", "documents"], "KYC requests", <SelfServiceKycPageV3 />)} />
             <Route path="settings" element={<SettingsHubPageV3 />} />
             <Route path="settings/modules" element={<SettingsModulesPageV3 />} />
             <Route path="settings/admin" element={<AdminSettingsPageV3 />} />
