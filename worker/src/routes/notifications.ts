@@ -21,7 +21,7 @@ const NOTIFICATION_LIMIT_DEFAULT = 20;
 const NOTIFICATION_LIMIT_MAX = 100;
 const NOTIFICATION_SELECT_COLUMNS = `
   id, recipient_user_id, recipient_employee_id, employee_id, module_key, entity_type, entity_id,
-  title, message, severity, notification_type, route, is_read, read_at, dismissed_at,
+  title, message, severity, notification_type, route, is_read, read_at,
   created_at, metadata_json
 `;
 const NOTIFICATION_PREFERENCE_COLUMNS = `

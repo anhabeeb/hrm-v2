@@ -142,6 +142,7 @@ const EmployeeSetupListPageV3 = lazyPage(() => import("../pages-v3/EmployeeSetup
 const EmployeeSettingsPageV3 = lazyPage(() => import("../pages-v3/EmployeeSettingsPage"), "EmployeeSettingsPage");
 const ReportsPageV3 = lazyPage(() => import("../pages-v3/ReportsPage"), "ReportsPage");
 const AuditLogPageV3 = lazyPage(() => import("../pages-v3/AuditLogPage"), "AuditLogPage");
+const NotificationCenterPageV3 = lazyPage(() => import("../pages-v3/NotificationCenterPage"), "NotificationCenterPage");
 const UsersAccessUsersPageV3 = lazyPage(() => import("../pages-v3/UsersAccessUsersPage"), "UsersAccessUsersPage");
 const UsersAccessRolesPageV3 = lazyPage(() => import("../pages-v3/UsersAccessRolesPage"), "UsersAccessRolesPage");
 const UsersAccessPermissionsPageV3 = lazyPage(() => import("../pages-v3/UsersAccessPermissionsPage"), "UsersAccessPermissionsPage");
@@ -471,6 +472,7 @@ export function AppRoutes() {
             <Route path="v3-preview/employees/settings" element={<EmployeeSettingsPageV3 />} />
             <Route path="v3-preview/reports" element={<ReportsPageV3 />} />
             <Route path="v3-preview/audit" element={<AuditLogPageV3 />} />
+            <Route path="v3-preview/notifications" element={<NotificationCenterPageV3 />} />
             <Route path="v3-preview/users-access/users" element={<UsersAccessUsersPageV3 />} />
             <Route path="v3-preview/users-access/roles" element={<UsersAccessRolesPageV3 />} />
             <Route path="v3-preview/users-access/permissions" element={<UsersAccessPermissionsPageV3 />} />
@@ -483,7 +485,7 @@ export function AppRoutes() {
             <Route path="v3-preview/attendance/settings" element={<AttendanceSettingsPageV3 />} />
             <Route path="search" element={<SearchResultsPage />} />
             <Route path="help" element={<AdminHelpGuidePage />} />
-            <Route path="notifications" element={<NotificationCenterPage />} />
+            <Route path="notifications" element={<NotificationCenterPageV3 />} />
             <Route path="employees" element={<EmployeesPageV3 />} />
             <Route path="employees/setup" element={<EmployeeSetupListPageV3 />} />
             <Route path="employees/kyc-requests" element={<KycRequestsPageV3 />} />
@@ -588,7 +590,7 @@ export function AppRoutes() {
             <Route path="assets/settings" element={<AssetUniformSettingsPageV3 />} />
             <Route path="assets/reports" element={operational("assets_uniforms", "Assets and uniforms", <AssetsReportsPageV3 />)} />
             <Route path="reports" element={operational(["reports", "reports_exports"], "Reports", <ReportsPageV3 />)} />
-            <Route path="reports/audit" element={<AuditLogPage />} />
+            <Route path="reports/audit" element={<AuditLogPageV3 />} />
             <Route path="self-service" element={operational("self_service", "Self-service", <SelfServiceHomePageV3 />)} />
             <Route path="self-service/profile" element={operational("self_service", "Self-service", <SelfServiceProfilePageV3 />)} />
             <Route path="self-service/documents" element={operationalAll(["self_service", "documents"], "Documents", <SelfServiceDocumentsPageV3 />)} />
