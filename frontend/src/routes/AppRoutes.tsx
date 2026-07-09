@@ -136,6 +136,7 @@ const ApprovalWorkflowsPageV3 = lazyPage(() => import("../pages-v3/ApprovalWorkf
 const ApprovalDelegationsPageV3 = lazyPage(() => import("../pages-v3/ApprovalDelegationsPage"), "ApprovalDelegationsPage");
 const ApprovalTemplatesPageV3 = lazyPage(() => import("../pages-v3/ApprovalTemplatesPage"), "ApprovalTemplatesPage");
 const ApprovalReportsPageV3 = lazyPage(() => import("../pages-v3/ApprovalReportsPage"), "ApprovalReportsPage");
+const ApprovalSettingsPageV3 = lazyPage(() => import("../pages-v3/ApprovalSettingsPage"), "ApprovalSettingsPage");
 const KycRequestsPageV3 = lazyPage(() => import("../pages-v3/KycRequestsPage"), "KycRequestsPage");
 const EmployeeSetupListPageV3 = lazyPage(() => import("../pages-v3/EmployeeSetupListPage"), "EmployeeSetupListPage");
 const EmployeeSettingsPageV3 = lazyPage(() => import("../pages-v3/EmployeeSettingsPage"), "EmployeeSettingsPage");
@@ -464,6 +465,7 @@ export function AppRoutes() {
             <Route path="v3-preview/approvals/delegations" element={<ApprovalDelegationsPageV3 />} />
             <Route path="v3-preview/approvals/templates" element={<ApprovalTemplatesPageV3 />} />
             <Route path="v3-preview/approvals/reports" element={<ApprovalReportsPageV3 />} />
+            <Route path="v3-preview/approvals/settings" element={<ApprovalSettingsPageV3 />} />
             <Route path="v3-preview/employees/kyc-requests" element={<KycRequestsPageV3 />} />
             <Route path="v3-preview/employees/setup" element={<EmployeeSetupListPageV3 />} />
             <Route path="v3-preview/employees/settings" element={<EmployeeSettingsPageV3 />} />
@@ -503,17 +505,17 @@ export function AppRoutes() {
             <Route path="contracts/probation" element={operational("contracts", "Contracts", <ContractsProbationPageV3 />)} />
             <Route path="contracts/renewals" element={operational("contracts", "Contracts", <ContractsRenewalsPageV3 />)} />
             <Route path="contracts/alerts" element={operational("contracts", "Contracts", <ContractsAlertsPageV3 />)} />
-            <Route path="approvals" element={operational("approvals", "Approvals", <ApprovalsPage />)} />
-            <Route path="approvals/submitted" element={operational("approvals", "Approvals", <ApprovalsPage mode="submitted" />)} />
-            <Route path="approvals/overdue" element={operational("approvals", "Approvals", <ApprovalsPage mode="overdue" />)} />
-            <Route path="approvals/escalated" element={operational("approvals", "Approvals", <ApprovalsPage mode="escalated" />)} />
-            <Route path="approvals/delegated" element={operational("approvals", "Approvals", <ApprovalsPage mode="delegated" />)} />
-            <Route path="approvals/history" element={operational("approvals", "Approvals", <ApprovalsPage mode="history" />)} />
-            <Route path="approvals/workflows" element={<ApprovalsPage mode="workflows" />} />
-            <Route path="approvals/settings" element={<ApprovalsPage mode="settings" />} />
-            <Route path="approvals/delegations" element={operational("approvals", "Approvals", <ApprovalsPage mode="delegations" />)} />
-            <Route path="approvals/templates" element={<ApprovalsPage mode="templates" />} />
-            <Route path="approvals/reports" element={operational("approvals", "Approvals", <ApprovalsPage mode="reports" />)} />
+            <Route path="approvals" element={operational("approvals", "Approvals", <ApprovalInboxPageV3 mode="inbox" />)} />
+            <Route path="approvals/submitted" element={operational("approvals", "Approvals", <ApprovalInboxPageV3 mode="submitted" />)} />
+            <Route path="approvals/overdue" element={operational("approvals", "Approvals", <ApprovalInboxPageV3 mode="overdue" />)} />
+            <Route path="approvals/escalated" element={operational("approvals", "Approvals", <ApprovalInboxPageV3 mode="escalated" />)} />
+            <Route path="approvals/delegated" element={operational("approvals", "Approvals", <ApprovalInboxPageV3 mode="delegated" />)} />
+            <Route path="approvals/history" element={operational("approvals", "Approvals", <ApprovalInboxPageV3 mode="history" />)} />
+            <Route path="approvals/workflows" element={<ApprovalWorkflowsPageV3 />} />
+            <Route path="approvals/settings" element={<ApprovalSettingsPageV3 />} />
+            <Route path="approvals/delegations" element={operational("approvals", "Approvals", <ApprovalDelegationsPageV3 />)} />
+            <Route path="approvals/templates" element={<ApprovalTemplatesPageV3 />} />
+            <Route path="approvals/reports" element={operational("approvals", "Approvals", <ApprovalReportsPageV3 />)} />
             <Route path="attendance" element={operational("attendance", "Attendance", <AttendanceListPageV3 />)} />
             <Route path="attendance/records" element={operational("attendance", "Attendance", <AttendanceListPageV3 />)} />
             <Route path="attendance/calendar" element={operational("attendance", "Attendance", <AttendanceCalendarPageV3 />)} />
