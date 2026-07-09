@@ -7,7 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import { publishAccessEvent } from "../realtime/publisher";
 import type { AppBindings } from "../types";
 import { fail, getClientIp, ok } from "../utils/http";
-import { disabledModuleResponse, disabledSubmoduleResponse, isOperationalModuleEnabled, isOperationalSubmoduleEnabled, requireOperationalModuleEnabled, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
+import { disabledSubmoduleResponse, isOperationalModuleEnabled, isOperationalSubmoduleEnabled, requireOperationalModuleEnabled, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
 import { applyLeaveBalanceChange, getLeaveApprovalChainPreview, getSelfServiceLeaveCycles } from "./leave";
@@ -149,13 +149,7 @@ function boolSetting(settings: Row, key: SelfServiceSettingKey) {
 }
 
 export async function requireSelfServiceEnabled(c: Context<AppBindings>) {
-  const moduleDisabled = await requireOperationalModuleEnabled(c, "self_service", "Employee self-service");
-  if (moduleDisabled) return moduleDisabled;
-  const settings = await getSelfServiceSettingsRow(c);
-  if (!boolSetting(settings, "module_enabled")) {
-    return disabledModuleResponse(c, "self_service", "Employee self-service");
-  }
-  return null;
+  return requireOperationalModuleEnabled(c, "self_service", "Employee self-service");
 }
 
 export async function assertSelfServiceModuleEnabled(c: Context<AppBindings>, moduleKey: SelfServiceSettingKey) {
@@ -581,11 +575,7 @@ async function getSelfServiceAttendanceSettings(c: Context<AppBindings>) {
 }
 
 async function requireSelfServiceAttendanceEnabled(c: Context<AppBindings>) {
-  const moduleDisabled = await requireOperationalModuleEnabled(c, "attendance", "Attendance");
-  if (moduleDisabled) return moduleDisabled;
-  const settings = await getSelfServiceAttendanceSettings(c);
-  if (Number(settings.module_enabled ?? 1) !== 1) return disabledModuleResponse(c, "attendance", "Attendance");
-  return null;
+  return requireOperationalModuleEnabled(c, "attendance", "Attendance");
 }
 
 async function getSelfServiceRosterSettings(c: Context<AppBindings>) {
@@ -602,7 +592,6 @@ async function requireSelfServiceRosterEnabled(c: Context<AppBindings>) {
   const moduleDisabled = await requireOperationalModuleEnabled(c, "roster", "Roster");
   if (moduleDisabled) return moduleDisabled;
   const settings = await getSelfServiceRosterSettings(c);
-  if (Number(settings.module_enabled ?? 1) !== 1) return disabledModuleResponse(c, "roster", "Roster");
   if (Number(settings.employee_self_service_roster_visibility_enabled ?? 1) !== 1) return disabledSubmoduleResponse(c, "self_service", "roster", "Self-service roster");
   return null;
 }
@@ -1642,8 +1631,6 @@ selfServiceRoutes.get("/payroll", async (c) => {
   if (gate.response) return gate.response;
   const payrollModuleDisabled = await requireOperationalModuleEnabled(c, "payroll", "Payroll");
   if (payrollModuleDisabled) return payrollModuleDisabled;
-  const payrollSettings = await c.env.DB.prepare("SELECT module_enabled FROM payroll_settings WHERE id = 'payroll_settings_default'").first<Row>();
-  if (Number(payrollSettings?.module_enabled ?? 1) !== 1) return disabledModuleResponse(c, "payroll", "Payroll");
   const visibility = await getSelfServiceModuleVisibility(c);
   const profile = await c.env.DB.prepare("SELECT employee_id, basic_salary, currency, payroll_included, payment_method, effective_from FROM employee_payroll_profiles WHERE employee_id = ?").bind(gate.employeeId).first<Row>();
   const runs = (
