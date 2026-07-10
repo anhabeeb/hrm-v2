@@ -61,7 +61,7 @@ function SimpleTable({ rows: tableRows, columns, empty }: { rows: Row[]; columns
       <CardRowList empty={!tableRows.length} emptyTitle={empty} emptyDescription="No sensitive data is displayed in this operational view.">
         {tableRows.map((row, index) => (
           <KeyValueCardRow
-            key={String(row.id ?? row.policy_key ?? row.job_id ?? row.target ?? index)}
+            key={`${String(row.id ?? row.policy_key ?? row.job_id ?? row.target ?? "row")}-${index}`}
             title={text(row[titleColumn])}
             badge={["status", "is_enabled", "dry_run"].includes(titleColumn) ? <Badge tone={tone(row[titleColumn])}>{text(row[titleColumn])}</Badge> : undefined}
             fields={restColumns.map((column) => ({
