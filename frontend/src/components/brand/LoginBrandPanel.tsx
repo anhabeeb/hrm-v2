@@ -22,7 +22,7 @@ export function LoginBrandPanel() {
           <p className="text-2xl tracking-tight text-white sm:text-3xl" style={{ fontFamily: "'Sora', sans-serif", fontWeight: 600 }}>
             {APP_BRANDING.appName}
           </p>
-          <p className="text-sm text-white/75">{APP_BRANDING.tagline}</p>
+          <p className="text-sm uppercase text-white/75">{APP_BRANDING.tagline}</p>
         </div>
       </div>
       <div className="absolute inset-x-0 bottom-8 hidden items-center justify-center gap-2 text-xs text-white/50 lg:flex">

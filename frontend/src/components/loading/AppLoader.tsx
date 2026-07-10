@@ -16,7 +16,7 @@ export function AppLoader({
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-slate-950">{APP_BRANDING.appName}</p>
-            <p className="truncate text-xs text-muted-foreground">{APP_BRANDING.tagline}</p>
+            <p className="truncate text-xs uppercase text-muted-foreground">{APP_BRANDING.tagline}</p>
           </div>
         </div>
         <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-slate-100">
