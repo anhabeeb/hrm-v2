@@ -44,6 +44,11 @@ export function BackgroundJobDrawer({
     mutationFn: (jobId: string) => backgroundJobsApi.cancel(token, jobId),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: listKey })
   });
+  const pendingJobIds = jobs.filter((job) => job.status === "QUEUED" || job.status === "RETRYING").map((job) => job.id);
+  const clearPendingMutation = useMutation({
+    mutationFn: (jobIds: string[]) => Promise.allSettled(jobIds.map((jobId) => backgroundJobsApi.cancel(token, jobId))),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: listKey })
+  });
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -51,7 +56,19 @@ export function BackgroundJobDrawer({
         <SheetHeader>
           <div className="flex items-start justify-between gap-3">
             <SheetTitle>Background Jobs</SheetTitle>
-            <AdminHelpLink target="backgroundJobs" label="Jobs guide" />
+            <div className="flex items-center gap-2">
+              {pendingJobIds.length ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => clearPendingMutation.mutate(pendingJobIds)}
+                  disabled={clearPendingMutation.isPending}
+                >
+                  <XCircle className="h-4 w-4" /> Clear pending
+                </Button>
+              ) : null}
+              <AdminHelpLink target="backgroundJobs" label="Jobs guide" />
+            </div>
           </div>
           <SheetDescription>Track long-running document, onboarding, attendance, report, and import work without blocking the app.</SheetDescription>
         </SheetHeader>
