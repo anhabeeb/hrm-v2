@@ -82,10 +82,10 @@ export function ReportsPage() {
   useEffect(() => { if (selected) void load(); }, [token, selected]);
   useEffect(() => { if (mode === "exports") void loadExportLogs(); }, [mode, token, selected]);
 
-  async function queueExport(format: "csv" | "xlsx" | "pdf") {
+  async function queueExport(format: "xlsx" | "pdf") {
     if (!token || !selected || !canExport) return;
     try {
-      const exportFormat = format === "xlsx" ? "EXCEL" : format === "pdf" ? "PDF" : "CSV";
+      const exportFormat = format === "xlsx" ? "EXCEL" : "PDF";
       const result = await api.queueReportExport(token, selected, { ...activeFilters, export_format: exportFormat });
       alerts.showSuccess("Report export queued", result.message ?? "Track progress in the background job drawer.");
       if (mode === "exports") void loadExportLogs();
@@ -131,7 +131,6 @@ export function ReportsPage() {
         <Button size="sm" variant="outline" onClick={() => void (mode === "exports" ? loadExportLogs() : load())}>Apply</Button>
         {mode === "reports" ? (
           <div className="ml-auto flex gap-1.5">
-            <Button size="sm" variant="outline" disabled={!canExport} onClick={() => void queueExport("csv")}>Export CSV</Button>
             <Button size="sm" variant="outline" disabled={!canExport} onClick={() => void queueExport("xlsx")}>Export Excel</Button>
             <Button size="sm" variant="outline" disabled={!canExport} onClick={() => void queueExport("pdf")}>Export PDF</Button>
           </div>
