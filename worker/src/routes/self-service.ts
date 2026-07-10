@@ -511,14 +511,39 @@ export async function getSelfServiceLifecycleSummary(c: Context<AppBindings>, em
   return { onboarding: await getSelfServiceOnboardingStatus(c, employeeId), offboarding: await getSelfServiceOffboardingStatus(c, employeeId) };
 }
 
+function humanizeActivityKey(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  return raw
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase()
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export async function getSelfServiceNotifications(c: Context<AppBindings>, employeeId: string) {
   const [approvals, kyc, leave, attendance] = await Promise.all([
-    c.env.DB.prepare("SELECT id, 'approval' AS type, status AS severity, module_key AS title, created_at, updated_at FROM approval_instances WHERE employee_id = ? OR submitted_by_user_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId, c.get("currentUser").id).all<Row>(),
-    c.env.DB.prepare("SELECT id, 'profile_update' AS type, status AS severity, field_key AS title, created_at, updated_at FROM employee_kyc_update_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId).all<Row>(),
-    c.env.DB.prepare("SELECT id, 'leave' AS type, status AS severity, leave_type_id AS title, created_at, updated_at FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId).all<Row>(),
-    c.env.DB.prepare("SELECT id, 'attendance_correction' AS type, status AS severity, attendance_date AS title, created_at, updated_at FROM attendance_correction_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId).all<Row>()
+    c.env.DB.prepare("SELECT id, 'approval' AS type, status AS severity, request_title AS title, created_at, updated_at FROM approval_instances WHERE employee_id = ? OR submitted_by_user_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId, c.get("currentUser").id).all<Row>(),
+    c.env.DB.prepare("SELECT id, 'profile_update' AS type, status AS severity, section, field_key, created_at, updated_at FROM employee_kyc_update_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId).all<Row>(),
+    c.env.DB.prepare("SELECT lr.id, 'leave' AS type, lr.status AS severity, lt.name AS leave_type_name, lr.created_at, lr.updated_at FROM leave_requests lr JOIN leave_types lt ON lt.id = lr.leave_type_id WHERE lr.employee_id = ? ORDER BY lr.created_at DESC LIMIT 25").bind(employeeId).all<Row>(),
+    c.env.DB.prepare("SELECT id, 'attendance_correction' AS type, status AS severity, attendance_date, created_at, updated_at FROM attendance_correction_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId).all<Row>()
   ]);
-  return [...approvals.results, ...kyc.results, ...leave.results, ...attendance.results].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""))).slice(0, 50);
+  const kycTitled = kyc.results.map((row) => ({
+    ...row,
+    title: `${humanizeActivityKey(row.field_key) || humanizeActivityKey(row.section) || "Profile"} update request`
+  }));
+  const leaveTitled = leave.results.map((row) => ({
+    ...row,
+    title: `${String(row.leave_type_name ?? "Leave")} request`
+  }));
+  const attendanceTitled = attendance.results.map((row) => ({
+    ...row,
+    title: `Attendance correction for ${String(row.attendance_date ?? "")}`
+  }));
+  return [...approvals.results, ...kycTitled, ...leaveTitled, ...attendanceTitled].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""))).slice(0, 50);
 }
 
 export async function markSelfServiceNotificationRead(c: Context<AppBindings>, employeeId: string, notificationId: string) {
