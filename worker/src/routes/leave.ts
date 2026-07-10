@@ -841,7 +841,7 @@ leaveRoutes.get("/requests", requirePermission("leave.view"), async (c) => {
   addRange(c, conditions, params, "end_date", "lr.end_date");
   addRange(c, conditions, params, "submitted", "lr.submitted_at");
   if (readString(c.req.query("pending_my_approval")) === "true") {
-    conditions.push("pending.approver_user_id = ?");
+    conditions.push("pending.approver_user_id = ? AND lr.status = 'PENDING_APPROVAL'");
     params.push(c.get("currentUser").id);
   }
   const rows = await c.env.DB
@@ -1189,6 +1189,13 @@ async function currentApproval(c: Context<AppBindings>, requestId: string) {
   return c.env.DB.prepare("SELECT * FROM leave_request_approvals WHERE leave_request_id = ? AND status = 'PENDING' ORDER BY step_order LIMIT 1").bind(requestId).first<Record<string, unknown>>();
 }
 
+export async function closeOutPendingLeaveApprovals(db: AppBindings["Bindings"]["DB"], requestId: string, note: string, actorUserId: string | null) {
+  await db
+    .prepare("UPDATE leave_request_approvals SET status = 'SKIPPED', action_by_user_id = ?, action_at = ?, note = ?, updated_at = ? WHERE leave_request_id = ? AND status = 'PENDING'")
+    .bind(actorUserId, new Date().toISOString(), note, new Date().toISOString(), requestId)
+    .run();
+}
+
 async function canActOnApproval(c: Context<AppBindings>, approval: Record<string, unknown>, request: Record<string, unknown>) {
   const actorId = c.get("currentUser").id;
   if (!hasAny(c, ["leave.approve", "leave.requests.approve", "leave.requests.reject"])) return false;
@@ -1203,6 +1210,7 @@ leaveRoutes.post("/requests/:id/approve", async (c) => {
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (request.status !== "PENDING_APPROVAL") return fail(c, 409, "INVALID_STATUS", "This leave request is not awaiting approval.");
   const approval = await currentApproval(c, id);
   if (!approval) return fail(c, 409, "NO_PENDING_APPROVAL", "No approval step is pending.");
   if (!(await canActOnApproval(c, approval, request))) return fail(c, 403, "FORBIDDEN", "You are not the current approver for this step.");
@@ -1227,11 +1235,13 @@ leaveRoutes.post("/requests/:id/reject", async (c) => {
   const request = await getRequest(c.env.DB, id);
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   if (!(await canAccessEmployee(c.env.DB, c.get("currentUser"), String(request.employee_id), "leave", "view"))) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
+  if (request.status !== "PENDING_APPROVAL") return fail(c, 409, "INVALID_STATUS", "This leave request is not awaiting approval.");
   const approval = await currentApproval(c, id);
   if (!approval) return fail(c, 409, "NO_PENDING_APPROVAL", "No approval step is pending.");
   if (!(await canActOnApproval(c, approval, request))) return fail(c, 403, "FORBIDDEN", "You are not the current approver for this step.");
   await c.env.DB.prepare("UPDATE leave_request_approvals SET status = 'REJECTED', action_by_user_id = ?, action_at = ?, note = ?, updated_at = ? WHERE id = ?").bind(c.get("currentUser").id, new Date().toISOString(), note, new Date().toISOString(), String(approval.id)).run();
   await c.env.DB.prepare("UPDATE leave_requests SET status = 'REJECTED', rejected_at = ?, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), new Date().toISOString(), id).run();
+  await closeOutPendingLeaveApprovals(c.env.DB, id, "Skipped: an earlier approval step rejected this leave request.", c.get("currentUser").id);
   await updateBalance(c, request, "pending_release");
   await auditLeave(c, { action: "leave.request.rejected", entityType: "leave_request", entityId: id, reason: note });
   await publishLeave(c, "leave.request.rejected", id, "rejected");
@@ -1251,6 +1261,7 @@ leaveRoutes.post("/requests/:id/cancel", async (c) => {
   if (request.status === "APPROVED") await updateBalance(c, request, "cancel_approved");
   if (request.status === "PENDING_APPROVAL" || request.status === "SUBMITTED") await updateBalance(c, request, "pending_release");
   await c.env.DB.prepare("UPDATE leave_requests SET status = 'CANCELLED', cancelled_at = ?, cancellation_reason = ?, updated_at = ? WHERE id = ?").bind(new Date().toISOString(), reason, new Date().toISOString(), id).run();
+  await closeOutPendingLeaveApprovals(c.env.DB, id, `Skipped: leave request was cancelled (${reason}).`, c.get("currentUser").id);
   await auditLeave(c, { action: "leave.request.cancelled", entityType: "leave_request", entityId: id, reason });
   await publishLeave(c, "leave.request.cancelled", id, "cancelled");
   return ok(c, { request: await getRequest(c.env.DB, id) });
@@ -1364,7 +1375,7 @@ leaveRoutes.get("/dashboard", requirePermission("leave.view"), async (c) => {
   const scopedEmployeeSql = `SELECT e.id FROM employees e WHERE ${scope.sql}`;
   const rows = await c.env.DB.prepare(
     `SELECT
-      (SELECT COUNT(*) FROM leave_request_approvals WHERE status = 'PENDING' AND approver_user_id = ?) AS pending_approvals,
+      (SELECT COUNT(*) FROM leave_request_approvals lra INNER JOIN leave_requests lr2 ON lr2.id = lra.leave_request_id WHERE lra.status = 'PENDING' AND lra.approver_user_id = ? AND lr2.status = 'PENDING_APPROVAL') AS pending_approvals,
       (SELECT COUNT(*) FROM leave_requests WHERE employee_id IN (${scopedEmployeeSql}) AND created_at >= ?) AS requests_this_month,
       (SELECT COUNT(*) FROM leave_requests WHERE employee_id IN (${scopedEmployeeSql}) AND status = 'APPROVED' AND approved_at >= ?) AS approved_this_month,
       (SELECT COUNT(*) FROM leave_requests WHERE employee_id IN (${scopedEmployeeSql}) AND status = 'APPROVED' AND start_date <= date('now') AND end_date >= date('now')) AS employees_currently_on_leave,

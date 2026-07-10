@@ -1179,7 +1179,7 @@ async function leaveReport(c: Context<AppBindings>) {
   addFilter(conditions, bindings, f.leave_type_id, "lr.leave_type_id = ?");
   addFilter(conditions, bindings, f.status, "lr.status = ?");
   if (f.pending_my_approval === "true") {
-    conditions.push("pending.approver_user_id = ?");
+    conditions.push("pending.approver_user_id = ? AND lr.status = 'PENDING_APPROVAL'");
     bindings.push(c.get("currentUser").id);
   }
   if (f.date_from) {

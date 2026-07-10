@@ -10,7 +10,7 @@ import { fail, getClientIp, ok } from "../utils/http";
 import { disabledSubmoduleResponse, isOperationalModuleEnabled, isOperationalSubmoduleEnabled, requireOperationalModuleEnabled, requireOperationalSubmoduleEnabled } from "../utils/module-enforcement";
 import { readJsonBody, readString } from "../utils/validation";
 import { calculateEmployeeDocumentCompliance } from "./document-compliance";
-import { applyLeaveBalanceChange, getLeaveApprovalChainPreview, getSelfServiceLeaveCycles } from "./leave";
+import { applyLeaveBalanceChange, closeOutPendingLeaveApprovals, getLeaveApprovalChainPreview, getSelfServiceLeaveCycles } from "./leave";
 
 type Row = Record<string, unknown>;
 
@@ -531,15 +531,15 @@ export async function getSelfServiceNotifications(c: Context<AppBindings>, emplo
     c.env.DB.prepare("SELECT lr.id, 'leave' AS type, lr.status AS severity, lt.name AS leave_type_name, lr.created_at, lr.updated_at FROM leave_requests lr JOIN leave_types lt ON lt.id = lr.leave_type_id WHERE lr.employee_id = ? ORDER BY lr.created_at DESC LIMIT 25").bind(employeeId).all<Row>(),
     c.env.DB.prepare("SELECT id, 'attendance_correction' AS type, status AS severity, attendance_date, created_at, updated_at FROM attendance_correction_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 25").bind(employeeId).all<Row>()
   ]);
-  const kycTitled = kyc.results.map((row) => ({
+  const kycTitled = kyc.results.map((row): Row => ({
     ...row,
     title: `${humanizeActivityKey(row.field_key) || humanizeActivityKey(row.section) || "Profile"} update request`
   }));
-  const leaveTitled = leave.results.map((row) => ({
+  const leaveTitled = leave.results.map((row): Row => ({
     ...row,
     title: `${String(row.leave_type_name ?? "Leave")} request`
   }));
-  const attendanceTitled = attendance.results.map((row) => ({
+  const attendanceTitled = attendance.results.map((row): Row => ({
     ...row,
     title: `Attendance correction for ${String(row.attendance_date ?? "")}`
   }));
@@ -1395,6 +1395,7 @@ selfServiceRoutes.post("/leave/requests/:requestId/cancel", async (c) => {
   if (!request) return fail(c, 404, "NOT_FOUND", "Leave request was not found.");
   if (!["DRAFT", "PENDING_APPROVAL"].includes(String(request.status))) return fail(c, 400, "LEAVE_NOT_CANCELLABLE", "Only draft or pending leave requests can be cancelled from self-service.");
   await c.env.DB.prepare("UPDATE leave_requests SET status = 'CANCELLED', updated_at = ? WHERE id = ?").bind(new Date().toISOString(), c.req.param("requestId")).run();
+  await closeOutPendingLeaveApprovals(c.env.DB, c.req.param("requestId"), "Skipped: leave request was cancelled by the employee.", c.get("currentUser").id);
   await recordAudit(c.env.DB, { actorUserId: c.get("currentUser").id, action: "self_service.leave_request.cancelled", module: "self_service", entityType: "leave_request", entityId: c.req.param("requestId"), newValue: { employee_id: gate.employeeId }, ipAddress: getClientIp(c.req.raw), userAgent: c.req.header("User-Agent") });
   return ok(c, { cancelled: true });
 });
