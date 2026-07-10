@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 180" width="220" height="180">
+  <style>
+    .wm { font: 600 30px/1 'Sora', sans-serif; letter-spacing: -0.015em; }
+  </style>
+  <g transform="translate(60,6)">
+    <circle cx="50" cy="50" r="43" fill="none" stroke="#7F77DD" stroke-width="2"></circle>
+    <circle cx="50" cy="50" r="30" fill="none" stroke="#5B4FE9" stroke-width="9"></circle>
+  </g>
+  <text class="wm" x="110" y="140" text-anchor="middle">
+    <tspan fill="#17171F">Omni</tspan><tspan fill="#5B4FE9">Core</tspan>
+  </text>
+</svg>

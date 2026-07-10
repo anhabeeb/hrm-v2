@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { signJwt, requireJwtSecret } from "../auth/jwt";
+import { signJwt, requireJwtSecret, REMEMBER_ME_TTL_SECONDS } from "../auth/jwt";
 import { verifyPassword } from "../auth/password";
 import { expireSessionForIdleTimeout, getSecuritySessionSettings } from "../auth/session";
 import { recordAudit } from "../db/audit";
@@ -17,6 +17,7 @@ authRoutes.post("/login", async (c) => {
   const body = await readJsonBody(c.req.raw);
   const email = normalizeEmail(body.email);
   const password = readString(body.password);
+  const rememberMe = body.rememberMe === true;
 
   if (!isEmail(email) || !password) {
     return fail(c, 401, "INVALID_CREDENTIALS", GENERIC_LOGIN_ERROR);
@@ -58,7 +59,12 @@ authRoutes.post("/login", async (c) => {
   }));
 
   const authUser = await toAuthUser(c.env.DB, { ...user, last_login_at: new Date().toISOString() });
-  const token = await signJwt(requireJwtSecret(c.env.JWT_SECRET), user.id, user.email);
+  const token = await signJwt(
+    requireJwtSecret(c.env.JWT_SECRET),
+    user.id,
+    user.email,
+    rememberMe ? REMEMBER_ME_TTL_SECONDS : undefined
+  );
   return ok(c, { token, user: authUser });
 });
 

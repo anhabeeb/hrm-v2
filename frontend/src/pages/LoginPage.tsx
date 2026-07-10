@@ -15,6 +15,7 @@ export function LoginPage() {
   const alerts = useAlert();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -46,7 +47,7 @@ export function LoginPage() {
       return;
     }
     try {
-      const user = await login({ email, password });
+      const user = await login({ email, password, rememberMe });
       alerts.showSuccess("Signed in", `Redirecting to ${APP_BRANDING.appName}.`);
       navigate(defaultLandingPath(user), { replace: true });
     } catch (caught) {
@@ -68,49 +69,57 @@ export function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto grid min-h-screen w-full max-w-[1380px] grid-cols-1 items-center gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] lg:gap-10 lg:px-10 lg:py-0">
-        <LoginBrandPanel />
-        <div className="hidden h-[min(560px,72vh)] w-px bg-slate-200 lg:block" aria-hidden="true" />
-        <section className="flex w-full justify-center px-4 py-6 sm:px-6 lg:px-8" aria-label="Sign in form">
-          <div className="flex w-full max-w-[640px] items-center justify-center rounded-2xl border border-slate-200 bg-white px-8 py-10 shadow-panel sm:px-10 lg:min-h-[620px]">
-            <div className="w-full max-w-md">
-              <div className="mb-10 flex flex-col items-center text-center">
-                <img
-                  src="/brand/cafe-asiana-logo.jpg"
-                  alt="Cafe Asiana logo"
-                  className="mb-6 h-auto max-h-28 w-auto max-w-[320px] object-contain sm:max-h-36 sm:max-w-[400px] lg:max-h-44 lg:max-w-[460px]"
-                  draggable={false}
-                />
-                <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">Welcome to Cafe Asiana&apos;s HRM System</h1>
-              </div>
-              <form className="space-y-4" onSubmit={handleSubmit}>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" aria-invalid={Boolean(emailError) || undefined} />
-                  {emailError ? <p className="text-xs text-red-700">{emailError}</p> : null}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    type="password"
-                    autoComplete="current-password"
-                    aria-invalid={Boolean(passwordError) || undefined}
-                  />
-                  {passwordError ? <p className="text-xs text-red-700">{passwordError}</p> : null}
-                </div>
-                {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-                <Button type="submit" className="w-full" disabled={submitting} loading={submitting} loadingLabel="Signing in">
-                  Sign in
-                </Button>
-              </form>
-            </div>
+    <main className="flex min-h-screen w-full flex-col bg-white lg:flex-row">
+      <LoginBrandPanel />
+      <section className="flex w-full flex-1 items-center justify-center px-6 py-12 sm:px-10 lg:w-1/2" aria-label="Sign in form">
+        <div className="w-full max-w-[380px]">
+          <div className="mb-8 flex flex-col items-center text-center">
+            <img
+              src="/brand/cafe-asiana-logo.jpg"
+              alt="Cafe Asiana logo"
+              className="mb-6 h-auto max-h-20 w-auto max-w-[240px] object-contain sm:max-h-24 sm:max-w-[280px]"
+              draggable={false}
+            />
+            <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">Welcome to Cafe Asiana&apos;s HRM System</h1>
           </div>
-        </section>
-      </div>
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" aria-invalid={Boolean(emailError) || undefined} />
+              {emailError ? <p className="text-xs text-red-700">{emailError}</p> : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                autoComplete="current-password"
+                aria-invalid={Boolean(passwordError) || undefined}
+              />
+              {passwordError ? <p className="text-xs text-red-700">{passwordError}</p> : null}
+            </div>
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-xs text-slate-700">
+                <input type="checkbox" className="h-3.5 w-3.5" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />
+                Remember me
+              </label>
+              <button
+                type="button"
+                className="text-xs text-primary hover:underline"
+                onClick={() => alerts.showInfo("Forgot your password?", "Contact your HR administrator to reset it.")}
+              >
+                Forgot password?
+              </button>
+            </div>
+            {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+            <Button type="submit" className="w-full" disabled={submitting} loading={submitting} loadingLabel="Signing in">
+              Sign in
+            </Button>
+          </form>
+        </div>
+      </section>
     </main>
   );
 }

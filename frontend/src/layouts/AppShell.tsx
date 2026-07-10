@@ -274,7 +274,7 @@ function AppShellInner() {
               </div>
               {!collapsed ? (
                 <div className="ml-3 min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-950">{APP_BRANDING.appName}</p>
+                  <p className="truncate text-sm text-slate-950" style={{ fontFamily: "'Sora', sans-serif", fontWeight: 600 }}>{APP_BRANDING.appName}</p>
                   <p className="truncate text-xs text-muted-foreground">{APP_BRANDING.tagline}</p>
                 </div>
               ) : null}

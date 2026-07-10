@@ -142,3 +142,52 @@ textarea {
     transform: translateX(185%);
   }
 }
+
+.oc-ripple-ring {
+  position: absolute;
+  border-radius: 9999px;
+  border: 2px solid #ECEAFB;
+  animation: oc-ripple 3.2s ease-out infinite;
+}
+.oc-ripple-ring--alt {
+  border-color: #D6D1F5;
+  animation-delay: 1.6s;
+}
+@keyframes oc-ripple {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.oc-core-ring {
+  border-radius: 9999px;
+  border: 22px solid #fff;
+  animation: oc-breathe 4s ease-in-out infinite;
+}
+@keyframes oc-breathe {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+.omni-orbit-spin {
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+  animation: omni-spin 11s linear infinite;
+}
+@keyframes omni-spin {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

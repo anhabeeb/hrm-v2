@@ -8,7 +8,7 @@ export const authApi = {
   me(token: string) {
     return apiClient.get<{ user: AuthUser }>("/api/v1/auth/me", { token, dedupe: false, requestLabel: "auth.me" });
   },
-  login(input: { email: string; password: string }) {
+  login(input: { email: string; password: string; rememberMe?: boolean }) {
     return apiClient.post<{ token: string; user: AuthUser }>("/api/v1/auth/login", input, { requestLabel: "auth.login" });
   },
   createOwner(input: { name: string; email: string; password: string }) {

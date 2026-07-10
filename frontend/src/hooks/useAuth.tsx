@@ -17,7 +17,7 @@ interface AuthContextValue {
   bootstrap: BootstrapStatus | null;
   loading: boolean;
   refreshBootstrap: () => Promise<BootstrapStatus>;
-  login: (input: { email: string; password: string }) => Promise<AuthUser>;
+  login: (input: { email: string; password: string; rememberMe?: boolean }) => Promise<AuthUser>;
   setupOwner: (input: { name: string; email: string; password: string }) => Promise<void>;
   refreshCurrentUser: () => Promise<AuthUser | null>;
   logout: () => Promise<void>;
@@ -141,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearSession, loadCurrentUser, persistSession, refreshBootstrap]);
 
   const login = useCallback(
-    async (input: { email: string; password: string }) => {
+    async (input: { email: string; password: string; rememberMe?: boolean }) => {
       const result = await authApi.login(input);
       persistSession(result.token, result.user);
       return result.user;

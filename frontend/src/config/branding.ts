@@ -6,6 +6,7 @@ export const APP_BRANDING = {
   loginTitle: "OmniCore - HR",
   loginSubtitle: "Secure workforce, payroll, attendance, and employee operations platform.",
   appLogoAnimation: "/brand/omnicore-logo-animation.svg",
+  appLogoAnimationOnColor: "/brand/omnicore-logo-animation-white.svg",
   appLogoIcon: "/brand/omnicore-favicon.svg",
   appLogoStatic: "/brand/omnicore-favicon.svg",
   browserTitle: "OmniCore - HR",

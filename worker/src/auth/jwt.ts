@@ -3,6 +3,7 @@ import type { JwtPayload } from "../types";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const TOKEN_TTL_SECONDS = 60 * 60 * 8;
+export const REMEMBER_ME_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 function bytesToBase64Url(bytes: Uint8Array) {
   let binary = "";
@@ -40,13 +41,13 @@ export function requireJwtSecret(secret: string | undefined) {
   return secret;
 }
 
-export async function signJwt(secret: string, userId: string, email: string) {
+export async function signJwt(secret: string, userId: string, email: string, ttlSeconds: number = TOKEN_TTL_SECONDS) {
   const now = Math.floor(Date.now() / 1000);
   const payload: JwtPayload = {
     sub: userId,
     email,
     iat: now,
-    exp: now + TOKEN_TTL_SECONDS,
+    exp: now + ttlSeconds,
     jti: crypto.randomUUID()
   };
   const header = { alg: "HS256", typ: "JWT" };
