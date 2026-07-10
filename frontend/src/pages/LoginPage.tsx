@@ -93,11 +93,17 @@ export function LoginPage() {
       if (result.status === "unlocked" && result.user) {
         finishToApp(result.user);
       } else if (result.status === "expired") {
-        setPinError("Your saved session expired. Please sign in again.");
+        setPin("");
         setShowPinUnlock(false);
+        alerts.showInfo("Session expired", "Your saved session expired. Please sign in again.");
+      } else if (result.status === "locked-out") {
+        setPin("");
+        setShowPinUnlock(false);
+        alerts.showError("Too many incorrect attempts", "Please sign in with your email and password.");
       } else {
         setPin("");
-        setPinError("Incorrect PIN.");
+        const remaining = result.attemptsRemaining;
+        setPinError(remaining ? `Incorrect PIN. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.` : "Incorrect PIN.");
       }
     } finally {
       setSubmitting(false);

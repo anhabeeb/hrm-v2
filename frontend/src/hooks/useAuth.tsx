@@ -12,8 +12,10 @@ const TOKEN_KEY = "hrm_v2_token";
 const USER_SECURITY_SIGNATURE_KEY = "hrm_v2_user_security_signature";
 const USER_QUERY_SCOPE_SIGNATURE_KEY = "hrm_v2_query_scope_signature";
 const PIN_VAULT_KEY = "hrm_v2_pin_vault";
+const PIN_ATTEMPTS_KEY = "hrm_v2_pin_attempts";
+const MAX_PIN_ATTEMPTS = 5;
 
-export type PinUnlockResult = "unlocked" | "wrong-pin" | "expired";
+export type PinUnlockResult = "unlocked" | "wrong-pin" | "expired" | "locked-out";
 
 function readPinVault(): PinVault | null {
   const raw = localStorage.getItem(PIN_VAULT_KEY);
@@ -40,7 +42,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   setupPin: (pin: string) => Promise<void>;
   dismissPinSetup: () => void;
-  unlockWithPin: (pin: string) => Promise<{ status: PinUnlockResult; user?: AuthUser }>;
+  unlockWithPin: (pin: string) => Promise<{ status: PinUnlockResult; user?: AuthUser; attemptsRemaining?: number }>;
   lock: () => void;
   clearPinVault: () => void;
 }
@@ -98,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_SECURITY_SIGNATURE_KEY);
     localStorage.removeItem(USER_QUERY_SCOPE_SIGNATURE_KEY);
+    localStorage.removeItem(PIN_ATTEMPTS_KEY);
     persistVault(null);
     setLocked(false);
     void clearSensitiveIndexedDbCaches();
@@ -231,6 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const vault = await createPinVault(pin, user.email, token);
       persistVault(vault);
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(PIN_ATTEMPTS_KEY);
       setPinSetupPending(false);
     },
     [persistVault, token, user]
@@ -241,15 +245,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const unlockWithPin = useCallback(
-    async (pin: string): Promise<{ status: PinUnlockResult; user?: AuthUser }> => {
+    async (pin: string): Promise<{ status: PinUnlockResult; user?: AuthUser; attemptsRemaining?: number }> => {
       if (!pinVault) return { status: "wrong-pin" };
       const recoveredToken = await unlockPinVault(pinVault, pin);
-      if (!recoveredToken) return { status: "wrong-pin" };
+      if (!recoveredToken) {
+        const attempts = Number(localStorage.getItem(PIN_ATTEMPTS_KEY) ?? "0") + 1;
+        if (attempts >= MAX_PIN_ATTEMPTS) {
+          localStorage.removeItem(PIN_ATTEMPTS_KEY);
+          persistVault(null);
+          setLocked(false);
+          return { status: "locked-out" };
+        }
+        localStorage.setItem(PIN_ATTEMPTS_KEY, String(attempts));
+        return { status: "wrong-pin", attemptsRemaining: MAX_PIN_ATTEMPTS - attempts };
+      }
       try {
         const result = await loadCurrentUser(recoveredToken);
         persistSession(recoveredToken, result.user, { keepPlaintext: false });
+        localStorage.removeItem(PIN_ATTEMPTS_KEY);
         return { status: "unlocked", user: result.user };
       } catch {
+        localStorage.removeItem(PIN_ATTEMPTS_KEY);
         persistVault(null);
         setLocked(false);
         return { status: "expired" };
@@ -266,6 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [pinVault]);
 
   const clearPinVault = useCallback(() => {
+    localStorage.removeItem(PIN_ATTEMPTS_KEY);
     persistVault(null);
   }, [persistVault]);
 
