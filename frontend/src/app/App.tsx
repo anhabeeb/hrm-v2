@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AlertProvider } from "../components/alerts/AlertProvider";
+import { PinSetupModal } from "../components/auth/PinSetupModal";
 import { AuthProvider } from "../hooks/useAuth";
 import { IdleTimeoutProvider } from "../hooks/useIdleTimeout";
 import { LiveQueryInvalidationBridge } from "../hooks/useLiveQueryInvalidation";
@@ -13,6 +14,7 @@ export function App() {
         <AuthProvider>
           <IdleTimeoutProvider>
             <LiveQueryInvalidationBridge />
+            <PinSetupModal />
             <AppRoutes />
           </IdleTimeoutProvider>
         </AuthProvider>

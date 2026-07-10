@@ -81,7 +81,7 @@ function isAdminUser(permissions: string[], isOwner?: boolean) {
 }
 
 export function IdleTimeoutProvider({ children }: { children: ReactNode }) {
-  const { token, user, logout } = useAuth();
+  const { token, user, logout, lock, pinVaultEmail } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [settings, setSettings] = useState<IdleTimeoutSettings>(DEFAULT_IDLE_TIMEOUT_SETTINGS);
@@ -126,11 +126,16 @@ export function IdleTimeoutProvider({ children }: { children: ReactNode }) {
         // Logout must continue even if the audit marker fails.
       }
     } finally {
-      sessionStorage.setItem("hrm_v2_login_message", "You were logged out due to inactivity.");
-      await logout();
+      if (pinVaultEmail) {
+        sessionStorage.setItem("hrm_v2_login_message", "Locked due to inactivity. Enter your PIN to continue.");
+        lock();
+      } else {
+        sessionStorage.setItem("hrm_v2_login_message", "You were logged out due to inactivity.");
+        await logout();
+      }
       navigate("/login", { replace: true });
     }
-  }, [logout, navigate, settings.audit_timeout_logout, token]);
+  }, [lock, logout, navigate, pinVaultEmail, settings.audit_timeout_logout, token]);
 
   useEffect(() => {
     let mounted = true;

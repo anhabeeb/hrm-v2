@@ -8,11 +8,17 @@ import { Label } from "../components/ui/label";
 import { APP_BRANDING } from "../config/branding";
 import { ApiError } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
+import type { AuthUser } from "../types/auth";
+
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, "").slice(0, 6);
+}
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, locked, pinVaultEmail, unlockWithPin, clearPinVault } = useAuth();
   const alerts = useAlert();
+  const [showPinUnlock, setShowPinUnlock] = useState(locked);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -20,6 +26,8 @@ export function LoginPage() {
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState("");
 
   useEffect(() => {
     const message = sessionStorage.getItem("hrm_v2_login_message");
@@ -29,6 +37,11 @@ export function LoginPage() {
       sessionStorage.removeItem("hrm_v2_login_message");
     }
   }, [alerts]);
+
+  function finishToApp(user: AuthUser) {
+    alerts.showSuccess("Signed in", `Redirecting to ${APP_BRANDING.appName}.`);
+    navigate(defaultLandingPath(user), { replace: true });
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,8 +61,7 @@ export function LoginPage() {
     }
     try {
       const user = await login({ email, password, rememberMe });
-      alerts.showSuccess("Signed in", `Redirecting to ${APP_BRANDING.appName}.`);
-      navigate(defaultLandingPath(user), { replace: true });
+      finishToApp(user);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 401) {
         const message = "Check your email and password.";
@@ -68,56 +80,126 @@ export function LoginPage() {
     }
   }
 
+  async function handlePinUnlock(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPinError("");
+    if (pin.length < 4) {
+      setPinError("Enter your PIN.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await unlockWithPin(pin);
+      if (result.status === "unlocked" && result.user) {
+        finishToApp(result.user);
+      } else if (result.status === "expired") {
+        setPinError("Your saved session expired. Please sign in again.");
+        setShowPinUnlock(false);
+      } else {
+        setPin("");
+        setPinError("Incorrect PIN.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function useCredentialsInstead() {
+    clearPinVault();
+    setShowPinUnlock(false);
+    setPin("");
+    setPinError("");
+  }
+
   return (
     <main className="flex min-h-screen w-full flex-col bg-white lg:flex-row">
       <LoginBrandPanel />
       <section className="flex w-full flex-1 items-center justify-center px-6 py-12 sm:px-10 lg:w-1/2" aria-label="Sign in form">
         <div className="w-full max-w-[380px]">
-          <div className="mb-8 flex flex-col items-center text-center">
-            <img
-              src="/brand/cafe-asiana-logo.jpg"
-              alt="Cafe Asiana logo"
-              className="mb-6 h-auto max-h-20 w-auto max-w-[240px] object-contain sm:max-h-24 sm:max-w-[280px]"
-              draggable={false}
-            />
-            <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">Welcome to Cafe Asiana&apos;s HRM System</h1>
-          </div>
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" aria-invalid={Boolean(emailError) || undefined} />
-              {emailError ? <p className="text-xs text-red-700">{emailError}</p> : null}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                type="password"
-                autoComplete="current-password"
-                aria-invalid={Boolean(passwordError) || undefined}
-              />
-              {passwordError ? <p className="text-xs text-red-700">{passwordError}</p> : null}
-            </div>
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-xs text-slate-700">
-                <input type="checkbox" className="h-3.5 w-3.5" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />
-                Remember me
-              </label>
-              <button
-                type="button"
-                className="text-xs text-primary hover:underline"
-                onClick={() => alerts.showInfo("Forgot your password?", "Contact your HR administrator to reset it.")}
-              >
-                Forgot password?
-              </button>
-            </div>
-            {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-            <Button type="submit" className="w-full" disabled={submitting} loading={submitting} loadingLabel="Signing in">
-              Sign in
-            </Button>
-          </form>
+          {showPinUnlock ? (
+            <>
+              <div className="mb-8 flex flex-col items-center text-center">
+                <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">Welcome back</h1>
+                <p className="mt-2 text-sm text-muted-foreground">Enter your PIN to unlock {APP_BRANDING.appName}{pinVaultEmail ? ` for ${pinVaultEmail}` : ""}.</p>
+              </div>
+              <form className="space-y-4" onSubmit={handlePinUnlock}>
+                <div className="space-y-2">
+                  <Label htmlFor="unlock-pin">PIN</Label>
+                  <Input
+                    id="unlock-pin"
+                    value={pin}
+                    onChange={(event) => setPin(digitsOnly(event.target.value))}
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={6}
+                    placeholder="••••••"
+                    autoFocus
+                  />
+                </div>
+                {pinError ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{pinError}</div> : null}
+                <Button type="submit" className="w-full" disabled={submitting} loading={submitting} loadingLabel="Unlocking">
+                  Unlock
+                </Button>
+                <button type="button" className="w-full text-center text-xs text-primary hover:underline" onClick={useCredentialsInstead}>
+                  Use email and password instead
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <div className="mb-8 flex flex-col items-center text-center">
+                <img
+                  src="/brand/cafe-asiana-logo.jpg"
+                  alt="Cafe Asiana logo"
+                  className="mb-6 h-auto max-h-20 w-auto max-w-[240px] object-contain sm:max-h-24 sm:max-w-[280px]"
+                  draggable={false}
+                />
+                <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">Welcome to Cafe Asiana&apos;s HRM System</h1>
+              </div>
+              <form className="space-y-4" onSubmit={handleSubmit}>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" aria-invalid={Boolean(emailError) || undefined} />
+                  {emailError ? <p className="text-xs text-red-700">{emailError}</p> : null}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    type="password"
+                    autoComplete="current-password"
+                    aria-invalid={Boolean(passwordError) || undefined}
+                  />
+                  {passwordError ? <p className="text-xs text-red-700">{passwordError}</p> : null}
+                </div>
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 text-xs text-slate-700">
+                    <input type="checkbox" className="h-3.5 w-3.5" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />
+                    Remember me
+                  </label>
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => alerts.showInfo("Forgot your password?", "Contact your HR administrator to reset it.")}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+                <Button type="submit" className="w-full" disabled={submitting} loading={submitting} loadingLabel="Signing in">
+                  Sign in
+                </Button>
+                {pinVaultEmail ? (
+                  <button type="button" className="w-full text-center text-xs text-primary hover:underline" onClick={() => setShowPinUnlock(true)}>
+                    Use PIN instead
+                  </button>
+                ) : null}
+              </form>
+            </>
+          )}
         </div>
       </section>
     </main>
